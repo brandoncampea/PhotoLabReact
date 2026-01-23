@@ -1,13 +1,19 @@
 import api from './api';
 import { mockApi } from './mockApi';
-import { Order, CartItem } from '../types';
+import { Order, CartItem, ShippingAddress } from '../types';
 
 const useMockApi = import.meta.env.VITE_USE_MOCK_API === 'true';
 
 export const orderService = {
-  async createOrder(items: CartItem[]): Promise<Order> {
+  async createOrder(
+    items: CartItem[], 
+    shippingAddress: ShippingAddress,
+    shippingOption: 'batch' | 'direct' | 'none',
+    shippingCost: number,
+    discountCode?: string
+  ): Promise<Order> {
     if (useMockApi) {
-      return mockApi.orders.createOrder(items);
+      return mockApi.orders.createOrder(items, shippingAddress, shippingOption, shippingCost, discountCode);
     }
     const response = await api.post<Order>('/orders', {
       items: items.map(item => ({
@@ -15,6 +21,10 @@ export const orderService = {
         quantity: item.quantity,
         cropData: item.cropData,
       })),
+      shippingAddress,
+      shippingOption,
+      shippingCost,
+      discountCode
     });
     return response.data;
   },

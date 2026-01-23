@@ -240,7 +240,7 @@ const AdminDiscountCodes: React.FC = () => {
                       type="radio"
                       value="percentage"
                       checked={formData.discountType === 'percentage'}
-                      onChange={(e) => setFormData({ ...formData, discountType: 'percentage' })}
+                      onChange={() => setFormData({ ...formData, discountType: 'percentage' })}
                     />
                     Percentage
                   </label>
@@ -249,7 +249,7 @@ const AdminDiscountCodes: React.FC = () => {
                       type="radio"
                       value="fixed"
                       checked={formData.discountType === 'fixed'}
-                      onChange={(e) => setFormData({ ...formData, discountType: 'fixed' })}
+                      onChange={() => setFormData({ ...formData, discountType: 'fixed' })}
                     />
                     Fixed Amount
                   </label>
@@ -280,7 +280,7 @@ const AdminDiscountCodes: React.FC = () => {
                       type="radio"
                       value="entire-order"
                       checked={formData.applicationType === 'entire-order'}
-                      onChange={(e) => setFormData({ ...formData, applicationType: 'entire-order', applicableProductIds: [] })}
+                      onChange={() => setFormData({ ...formData, applicationType: 'entire-order', applicableProductIds: [] })}
                     />
                     Entire Order
                   </label>
@@ -289,7 +289,7 @@ const AdminDiscountCodes: React.FC = () => {
                       type="radio"
                       value="specific-products"
                       checked={formData.applicationType === 'specific-products'}
-                      onChange={(e) => setFormData({ ...formData, applicationType: 'specific-products' })}
+                      onChange={() => setFormData({ ...formData, applicationType: 'specific-products' })}
                     />
                     Specific Products
                   </label>

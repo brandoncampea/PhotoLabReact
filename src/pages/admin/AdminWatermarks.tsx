@@ -7,7 +7,6 @@ const AdminWatermarks: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingWatermark, setEditingWatermark] = useState<Watermark | null>(null);
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string>('');
   const [formData, setFormData] = useState({
     name: '',
@@ -35,7 +34,6 @@ const AdminWatermarks: React.FC = () => {
 
   const handleCreate = () => {
     setEditingWatermark(null);
-    setUploadedFile(null);
     setPreviewUrl('');
     setFormData({
       name: '',
@@ -50,7 +48,6 @@ const AdminWatermarks: React.FC = () => {
 
   const handleEdit = (watermark: Watermark) => {
     setEditingWatermark(watermark);
-    setUploadedFile(null);
     setPreviewUrl(watermark.imageUrl);
     setFormData({
       name: watermark.name,
@@ -70,8 +67,6 @@ const AdminWatermarks: React.FC = () => {
         alert('Please select an image file');
         return;
       }
-      
-      setUploadedFile(file);
       
       // Create preview URL and convert to base64
       const reader = new FileReader();

@@ -1,4 +1,4 @@
-import { LoginCredentials, RegisterData, AuthResponse, Album, Photo, Order, CartItem, User } from '../types';
+import { LoginCredentials, RegisterData, AuthResponse, Album, Photo, Order, CartItem, User, ShippingAddress } from '../types';
 
 // Mock users storage
 let mockUsers: User[] = [
@@ -161,15 +161,28 @@ export const mockApi = {
   },
 
   orders: {
-    async createOrder(items: CartItem[]): Promise<Order> {
+    async createOrder(
+      items: CartItem[], 
+      shippingAddress: ShippingAddress,
+      shippingOption: 'batch' | 'direct' | 'none',
+      shippingCost: number,
+      discountCode?: string
+    ): Promise<Order> {
       await delay(600);
       console.log('Mock API: Creating order with', items.length, 'items');
+      console.log('Shipping Address:', shippingAddress);
+      console.log('Shipping Option:', shippingOption, 'Cost:', shippingCost);
+      if (discountCode) console.log('Discount Code:', discountCode);
+      
       const order: Order = {
         id: mockOrders.length + 1,
-        userId: mockUser.id,
+        userId: mockUsers[0]?.id || 1,
         orderDate: new Date().toISOString(),
-        totalAmount: items.reduce((sum, item) => sum + item.photo.price * item.quantity, 0) + 5,
+        totalAmount: items.reduce((sum, item) => sum + item.photo.price * item.quantity, 0) + shippingCost,
         status: 'Processing',
+        shippingOption,
+        shippingCost,
+        shippingAddress,
         items: items.map((item, index) => ({
           id: index + 1,
           photoId: item.photoId,
@@ -180,6 +193,14 @@ export const mockApi = {
         })),
       };
       mockOrders.push(order);
+      
+      // Log email receipt simulation
+      console.log('\ud83d\udce7 Email Receipt Sent:');
+      console.log('  To:', shippingAddress.email);
+      console.log('  Order #:', `ORD-${order.id}`);
+      console.log('  Total:', `$${order.totalAmount.toFixed(2)}`);
+      console.log('  Items:', items.length);
+      
       return order;
     },
 

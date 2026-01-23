@@ -13,6 +13,7 @@ import Cart from './pages/Cart';
 import Orders from './pages/Orders';
 import AdminLogin from './pages/admin/AdminLogin';
 import AdminDashboard from './pages/admin/AdminDashboard';
+import AdminAnalytics from './pages/admin/AdminAnalytics';
 import AdminAlbums from './pages/admin/AdminAlbums';
 import AdminPhotos from './pages/admin/AdminPhotos';
 import AdminProducts from './pages/admin/AdminProducts';
@@ -20,8 +21,9 @@ import AdminWatermarks from './pages/admin/AdminWatermarks';
 import AdminOrders from './pages/admin/AdminOrders';
 import AdminCustomers from './pages/admin/AdminCustomers';
 import AdminShipping from './pages/admin/AdminShipping';
-import AdminStripe from './pages/admin/AdminStripe';
+import AdminPayments from './pages/admin/AdminStripe';
 import AdminUsers from './pages/admin/AdminUsers';
+import AdminProfile from './pages/admin/AdminProfile';
 import AdminPackages from './pages/admin/AdminPackages';
 import AdminDiscountCodes from './pages/admin/AdminDiscountCodes';
 import './App.css';
@@ -86,6 +88,7 @@ function App() {
                       <AdminLayout>
                         <Routes>
                           <Route path="dashboard" element={<AdminDashboard />} />
+                          <Route path="analytics" element={<AdminAnalytics />} />
                           <Route path="albums" element={<AdminAlbums />} />
                           <Route path="photos" element={<AdminPhotos />} />
                           <Route path="products" element={<AdminProducts />} />
@@ -93,8 +96,9 @@ function App() {
                           <Route path="orders" element={<AdminOrders />} />
                           <Route path="customers" element={<AdminCustomers />} />
                           <Route path="shipping" element={<AdminShipping />} />
-                          <Route path="stripe" element={<AdminStripe />} />
+                          <Route path="payments" element={<AdminPayments />} />
                           <Route path="users" element={<AdminUsers />} />
+                          <Route path="profile" element={<AdminProfile />} />
                           <Route path="packages" element={<AdminPackages />} />
                           <Route path="discount-codes" element={<AdminDiscountCodes />} />
                           <Route path="*" element={<Navigate to="/admin/dashboard" replace />} />

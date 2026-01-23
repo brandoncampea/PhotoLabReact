@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { StripeConfig } from '../../types';
 import { adminMockApi } from '../../services/adminMockApi';
 
-const AdminStripe: React.FC = () => {
+const AdminPayments: React.FC = () => {
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'stripe' | null>('stripe');
   const [config, setConfig] = useState<StripeConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -58,23 +59,80 @@ const AdminStripe: React.FC = () => {
   };
 
   if (loading) {
-    return <div className="loading">Loading Stripe configuration...</div>;
+    return <div className="loading">Loading payment configuration...</div>;
   }
 
   return (
     <div className="admin-page">
       <div className="page-header">
-        <h1>Stripe Payment Settings</h1>
+        <h1>💳 Payment Methods</h1>
+        <p style={{ fontSize: '0.9rem', color: '#666', marginTop: '0.5rem' }}>Configure payment processing options for your store</p>
       </div>
 
-      <div className="admin-form" style={{ maxWidth: '800px' }}>
-        <div className="info-box" style={{
-          padding: '1rem',
-          backgroundColor: '#fff3cd',
-          borderRadius: '8px',
-          marginBottom: '2rem',
-          border: '1px solid #ffc107'
-        }}>
+      <div style={{ marginBottom: '2rem' }}>
+        <h2 style={{ fontSize: '1.2rem', marginBottom: '1rem' }}>Available Payment Methods</h2>
+        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+          <div 
+            onClick={() => setSelectedPaymentMethod('stripe')}
+            style={{
+              border: selectedPaymentMethod === 'stripe' ? '2px solid #4169E1' : '2px solid #ddd',
+              borderRadius: '8px',
+              padding: '1.5rem',
+              cursor: 'pointer',
+              minWidth: '200px',
+              background: selectedPaymentMethod === 'stripe' ? '#f0f4ff' : '#fff',
+              transition: 'all 0.2s'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
+              <span style={{ fontSize: '2rem' }}>💳</span>
+              <h3 style={{ margin: 0 }}>Stripe</h3>
+            </div>
+            <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.85rem', color: '#666' }}>
+              Accept credit cards, Apple Pay, Google Pay, and more
+            </p>
+            <div style={{ marginTop: '0.75rem' }}>
+              <span className={`status-badge ${config?.isActive ? 'active' : 'inactive'}`}>
+                {config?.isActive ? 'Active' : 'Inactive'}
+              </span>
+            </div>
+          </div>
+          
+          <div 
+            style={{
+              border: '2px dashed #ddd',
+              borderRadius: '8px',
+              padding: '1.5rem',
+              minWidth: '200px',
+              background: '#fafafa',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#999'
+            }}
+          >
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>+</div>
+              <p style={{ margin: 0, fontSize: '0.9rem' }}>More payment methods coming soon</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {selectedPaymentMethod === 'stripe' && (
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+            <h2 style={{ fontSize: '1.2rem', margin: 0 }}>Stripe Configuration</h2>
+          </div>
+
+          <div className="admin-form" style={{ maxWidth: '800px' }}>
+            <div className="info-box" style={{
+              padding: '1rem',
+              backgroundColor: '#fff3cd',
+              borderRadius: '8px',
+              marginBottom: '2rem',
+              border: '1px solid #ffc107'
+            }}>
           <h3 style={{ marginTop: 0, color: '#856404' }}>⚠️ Security Notice</h3>
           <p style={{ margin: 0, fontSize: '0.9rem', color: '#856404' }}>
             Never share your Stripe secret keys publicly. In production, store these securely on the backend.
@@ -246,9 +304,11 @@ const AdminStripe: React.FC = () => {
             </ul>
           </div>
         )}
-      </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
-export default AdminStripe;
+export default AdminPayments;

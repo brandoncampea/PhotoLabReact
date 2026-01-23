@@ -58,6 +58,19 @@ export interface Order {
   shippingCost: number;
   items: OrderItem[];
   downloadUrls?: DownloadUrl[];
+  shippingAddress: ShippingAddress;
+}
+
+export interface ShippingAddress {
+  fullName: string;
+  addressLine1: string;
+  addressLine2?: string;
+  city: string;
+  state: string;
+  zipCode: string;
+  country: string;
+  email: string;
+  phone?: string;
 }
 
 export interface DownloadUrl {
@@ -188,6 +201,49 @@ export interface StripeConfig {
   isLiveMode: boolean;
   isActive: boolean;
   webhookSecret?: string;
+}
+
+export interface ProfileConfig {
+  id: number;
+  ownerName: string;
+  businessName: string;
+  email: string;
+  receiveOrderNotifications: boolean;
+}
+
+export interface AnalyticsData {
+  totalVisitors: number;
+  totalPageViews: number;
+  albumViews: AlbumViewStats[];
+  photoViews: PhotoViewStats[];
+  recentActivity: ActivityLog[];
+}
+
+export interface AlbumViewStats {
+  albumId: number;
+  albumName: string;
+  views: number;
+  lastViewed: string;
+}
+
+export interface PhotoViewStats {
+  photoId: number;
+  photoFileName: string;
+  albumId: number;
+  albumName: string;
+  views: number;
+  lastViewed: string;
+}
+
+export interface ActivityLog {
+  id: number;
+  type: 'visit' | 'album_view' | 'photo_view';
+  timestamp: string;
+  albumId?: number;
+  albumName?: string;
+  photoId?: number;
+  photoFileName?: string;
+  userAgent?: string;
 }
 
 export interface PaymentIntent {

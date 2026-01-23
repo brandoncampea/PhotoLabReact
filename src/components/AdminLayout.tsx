@@ -27,6 +27,12 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             📊 Dashboard
           </Link>
           <Link
+            to="/admin/analytics"
+            className={`admin-nav-link ${isActive('/admin/analytics') ? 'active' : ''}`}
+          >
+            📈 Analytics
+          </Link>
+          <Link
             to="/admin/albums"
             className={`admin-nav-link ${isActive('/admin/albums') ? 'active' : ''}`}
           >
@@ -69,16 +75,22 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             🚚 Shipping
           </Link>
           <Link
-            to="/admin/stripe"
-            className={`admin-nav-link ${isActive('/admin/stripe') ? 'active' : ''}`}
+            to="/admin/payments"
+            className={`admin-nav-link ${isActive('/admin/payments') ? 'active' : ''}`}
           >
-            💳 Stripe
+            💳 Payments
           </Link>
           <Link
             to="/admin/users"
             className={`admin-nav-link ${isActive('/admin/users') ? 'active' : ''}`}
           >
             👥 Users
+          </Link>
+          <Link
+            to="/admin/profile"
+            className={`admin-nav-link ${isActive('/admin/profile') ? 'active' : ''}`}
+          >
+            👤 Profile
           </Link>
           <Link
             to="/admin/packages"

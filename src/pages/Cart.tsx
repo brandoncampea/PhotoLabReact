@@ -7,7 +7,7 @@ import { shippingService } from '../services/shippingService';
 import { stripeService } from '../services/stripeService';
 import { productService } from '../services/productService';
 import { downloadService } from '../services/downloadService';
-import { ShippingConfig, StripeConfig, Product, DiscountCode } from '../types';
+import { ShippingConfig, StripeConfig, Product, DiscountCode, ShippingAddress } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { adminMockApi } from '../services/adminMockApi';
 
@@ -25,12 +25,30 @@ const Cart: React.FC = () => {
   const [discountCode, setDiscountCode] = useState('');
   const [appliedDiscount, setAppliedDiscount] = useState<DiscountCode | null>(null);
   const [discountError, setDiscountError] = useState('');
+  const [shippingAddress, setShippingAddress] = useState<ShippingAddress>({
+    fullName: '',
+    addressLine1: '',
+    addressLine2: '',
+    city: '',
+    state: '',
+    zipCode: '',
+    country: 'United States',
+    email: user?.email || '',
+    phone: ''
+  });
 
   useEffect(() => {
     loadShippingConfig();
     loadStripeConfig();
     loadProducts();
   }, []);
+
+  useEffect(() => {
+    // Update email in shipping address when user changes
+    if (user?.email) {
+      setShippingAddress(prev => ({ ...prev, email: user.email }));
+    }
+  }, [user]);
 
   const loadProducts = async () => {
     try {
@@ -171,6 +189,13 @@ const Cart: React.FC = () => {
       return;
     }
 
+    // Validate shipping address
+    if (!shippingAddress.fullName || !shippingAddress.addressLine1 || 
+        !shippingAddress.city || !shippingAddress.state || !shippingAddress.zipCode || !shippingAddress.email) {
+      setError('Please complete all required shipping address fields.');
+      return;
+    }
+
     setLoading(true);
     setProcessingPayment(true);
     setError('');
@@ -219,10 +244,17 @@ const Cart: React.FC = () => {
         }
 
         // Create order after successful payment
-        await orderService.createOrder(items);
+        const orderNumber = `ORD-${Date.now()}`;
+        await orderService.createOrder(items, shippingAddress, shippingOption, getShippingCost(), appliedDiscount?.code);
+        
+        // Send email receipt (in production, would call email service)
+        console.log('📧 Email receipt sent to:', shippingAddress.email);
+        console.log('Order Number:', orderNumber);
+        console.log('Total Amount:', getFinalTotal());
+        
         clearCart();
         
-        let successMessage = 'Payment successful! Your order has been placed.';
+        let successMessage = 'Payment successful! Your order has been placed. A receipt has been sent to ' + shippingAddress.email + '.';
         
         if (hasOnlyDigitalProducts()) {
           successMessage += ' Download links have been sent to your email.';
@@ -307,6 +339,127 @@ const Cart: React.FC = () => {
               </p>
             </div>
           )}
+
+          {/* Shipping Address Form */}
+          <div style={{ margin: '1rem 0', padding: '1rem', backgroundColor: '#f8f9fa', borderRadius: '8px' }}>
+            <h3 style={{ marginTop: 0, marginBottom: '1rem', fontSize: '1rem' }}>Shipping Address</h3>
+            
+            <div style={{ display: 'grid', gap: '0.75rem' }}>
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.85rem', fontWeight: 500 }}>
+                  Full Name <span style={{ color: '#d32f2f' }}>*</span>
+                </label>
+                <input
+                  type="text"
+                  value={shippingAddress.fullName}
+                  onChange={(e) => setShippingAddress({ ...shippingAddress, fullName: e.target.value })}
+                  placeholder="John Doe"
+                  required
+                  style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.85rem', fontWeight: 500 }}>
+                  Email <span style={{ color: '#d32f2f' }}>*</span>
+                </label>
+                <input
+                  type="email"
+                  value={shippingAddress.email}
+                  onChange={(e) => setShippingAddress({ ...shippingAddress, email: e.target.value })}
+                  placeholder="john@example.com"
+                  required
+                  style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.85rem', fontWeight: 500 }}>
+                  Address Line 1 <span style={{ color: '#d32f2f' }}>*</span>
+                </label>
+                <input
+                  type="text"
+                  value={shippingAddress.addressLine1}
+                  onChange={(e) => setShippingAddress({ ...shippingAddress, addressLine1: e.target.value })}
+                  placeholder="123 Main St"
+                  required
+                  style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.85rem', fontWeight: 500 }}>
+                  Address Line 2
+                </label>
+                <input
+                  type="text"
+                  value={shippingAddress.addressLine2}
+                  onChange={(e) => setShippingAddress({ ...shippingAddress, addressLine2: e.target.value })}
+                  placeholder="Apt 4B (optional)"
+                  style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px' }}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.85rem', fontWeight: 500 }}>
+                    City <span style={{ color: '#d32f2f' }}>*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={shippingAddress.city}
+                    onChange={(e) => setShippingAddress({ ...shippingAddress, city: e.target.value })}
+                    placeholder="New York"
+                    required
+                    style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.85rem', fontWeight: 500 }}>
+                    State <span style={{ color: '#d32f2f' }}>*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={shippingAddress.state}
+                    onChange={(e) => setShippingAddress({ ...shippingAddress, state: e.target.value })}
+                    placeholder="NY"
+                    required
+                    style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px' }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.85rem', fontWeight: 500 }}>
+                    ZIP Code <span style={{ color: '#d32f2f' }}>*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={shippingAddress.zipCode}
+                    onChange={(e) => setShippingAddress({ ...shippingAddress, zipCode: e.target.value })}
+                    placeholder="10001"
+                    required
+                    style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.85rem', fontWeight: 500 }}>
+                    Phone (optional)
+                  </label>
+                  <input
+                    type="tel"
+                    value={shippingAddress.phone}
+                    onChange={(e) => setShippingAddress({ ...shippingAddress, phone: e.target.value })}
+                    placeholder="(555) 123-4567"
+                    style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px' }}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
 
           {shippingConfig && hasPhysicalProducts() && (
             <div style={{ margin: '1rem 0', padding: '1rem', backgroundColor: '#f8f9fa', borderRadius: '8px' }}>
