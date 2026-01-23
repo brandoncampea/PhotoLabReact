@@ -1,0 +1,349 @@
+import React, { useRef, useState, useEffect } from 'react';
+import Cropper, { ReactCropperElement } from 'react-cropper';
+import 'cropperjs/dist/cropper.css';
+import { Photo, CropData, Product, ProductSize } from '../types';
+import { useCart } from '../contexts/CartContext';
+import { productService } from '../services/productService';
+
+interface CropperModalProps {
+  photo: Photo;
+  onClose: () => void;
+}
+
+const CropperModal: React.FC<CropperModalProps> = ({ photo, onClose }) => {
+  const cropperRef = useRef<ReactCropperElement>(null);
+  const { addToCart } = useCart();
+  const [quantity, setQuantity] = useState(1);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [selectedSize, setSelectedSize] = useState<ProductSize | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [photoAspectRatio, setPhotoAspectRatio] = useState<number | null>(null);
+
+  useEffect(() => {
+    loadProducts();
+    loadPhotoAspectRatio();
+  }, []);
+
+  const loadPhotoAspectRatio = () => {
+    const img = new Image();
+    img.onload = () => {
+      setPhotoAspectRatio(img.width / img.height);
+    };
+    img.src = photo.fullImageUrl;
+  };
+
+  const loadProducts = async () => {
+    try {
+      const data = await productService.getActiveProducts();
+      // Sort by popularity (highest first)
+      const sorted = [...data].sort((a, b) => b.popularity - a.popularity);
+      setProducts(sorted);
+    } catch (error) {
+      console.error('Failed to load products:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleProductSelect = (product: Product) => {
+    setSelectedProduct(product);
+    const sortedSizes = getSortedSizes(product.sizes);
+    if (sortedSizes.length > 0) {
+      setSelectedSize(sortedSizes[0]);
+    }
+  };
+
+  const getSortedSizes = (sizes: ProductSize[]) => {
+    if (!photoAspectRatio) return sizes;
+    
+    return [...sizes].sort((a, b) => {
+      const aRatio = a.width / a.height;
+      const bRatio = b.width / b.height;
+      const aDiff = Math.abs(aRatio - photoAspectRatio);
+      const bDiff = Math.abs(bRatio - photoAspectRatio);
+      return aDiff - bDiff;
+    });
+  };
+
+  const isRecommendedSize = (size: ProductSize): boolean => {
+    if (!photoAspectRatio) return false;
+    
+    const sizeRatio = size.width / size.height;
+    const diff = Math.abs(sizeRatio - photoAspectRatio);
+    
+    // Consider it recommended if aspect ratio difference is less than 15%
+    return diff < 0.15;
+  };
+
+  const handleSizeSelect = (size: ProductSize) => {
+    setSelectedSize(size);
+  };
+
+  useEffect(() => {
+    if (selectedSize && cropperRef.current?.cropper) {
+      const aspectRatio = selectedSize.width / selectedSize.height;
+      cropperRef.current.cropper.setAspectRatio(aspectRatio);
+    }
+  }, [selectedSize]);
+
+  const getAspectRatio = () => {
+    if (selectedSize) {
+      return selectedSize.width / selectedSize.height;
+    }
+    return 4 / 3;
+  };
+
+  const getTotalPrice = () => {
+    if (selectedProduct && selectedSize) {
+      return (selectedProduct.basePrice + selectedSize.priceModifier) * quantity;
+    }
+    return photo.price * quantity;
+  };
+
+  const handleAddToCart = () => {
+    const cropper = cropperRef.current?.cropper;
+    if (cropper && selectedProduct && selectedSize) {
+      const cropData = cropper.getData() as CropData;
+      addToCart(photo, quantity, cropData, selectedProduct.id, selectedSize.id);
+      onClose();
+    }
+  };
+
+  const handleAddWithoutCrop = () => {
+    if (selectedProduct && selectedSize) {
+      addToCart(photo, quantity, undefined, selectedProduct.id, selectedSize.id);
+      onClose();
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="modal-overlay" onClick={onClose}>
+        <div className="modal-content cropper-modal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-body">
+            <div className="loading">Loading products...</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Product selection screen
+  if (!selectedProduct) {
+    return (
+      <div className="modal-overlay" onClick={onClose}>
+        <div className="modal-content cropper-modal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-header">
+            <h2>Select Product</h2>
+            <button onClick={onClose} className="btn-close">
+              ×
+            </button>
+          </div>
+
+          <div className="modal-body">
+            <div style={{ marginBottom: '1rem' }}>
+              <img 
+                src={photo.thumbnailUrl} 
+                alt={photo.fileName} 
+                style={{ width: '100%', maxHeight: '200px', objectFit: 'contain', marginBottom: '1rem' }}
+              />
+            </div>
+            <p style={{ marginBottom: '1.5rem', color: '#666' }}>
+              Choose a product type to crop your photo to the correct proportions:
+            </p>
+            <div className="product-grid" style={{ 
+              display: 'grid', 
+              gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', 
+              gap: '1rem' 
+            }}>
+              {products.map(product => (
+                <div 
+                  key={product.id}
+                  onClick={() => handleProductSelect(product)}
+                  style={{
+                    border: '2px solid #e0e0e0',
+                    borderRadius: '8px',
+                    padding: '1.5rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                    backgroundColor: '#fff',
+                    position: 'relative'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = '#4169E1';
+                    e.currentTarget.style.transform = 'translateY(-2px)';
+                    e.currentTarget.style.boxShadow = '0 4px 8px rgba(0,0,0,0.1)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = '#e0e0e0';
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = 'none';
+                  }}
+                >
+                  {product.isDigital && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '0.5rem',
+                      right: '0.5rem',
+                      backgroundColor: '#10b981',
+                      color: '#fff',
+                      padding: '0.25rem 0.5rem',
+                      borderRadius: '4px',
+                      fontSize: '0.75rem',
+                      fontWeight: 600
+                    }}>
+                      💾 Digital
+                    </div>
+                  )}
+                  <h3 style={{ marginBottom: '0.5rem', color: '#333' }}>{product.name}</h3>
+                  <p style={{ marginBottom: '1rem', color: '#666', fontSize: '0.9rem' }}>
+                    {product.description}
+                  </p>
+                  <p style={{ fontSize: '1.25rem', fontWeight: 600, color: '#4169E1' }}>
+                    From ${product.basePrice.toFixed(2)}
+                  </p>
+                  <p style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: '#888' }}>
+                    {product.sizes.length} sizes available
+                    {product.isDigital && ' • Instant delivery'}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Cropper screen
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content cropper-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <div>
+            <h2>Crop & Order Photo</h2>
+            <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.9rem', color: '#666' }}>
+              {selectedProduct.name} - {selectedSize?.name}
+            </p>
+          </div>
+          <button onClick={onClose} className="btn-close">
+            ×
+          </button>
+        </div>
+
+        <div className="modal-body">
+          <div style={{ marginBottom: '1rem', display: 'flex', gap: '1rem', alignItems: 'center' }}>
+            <button 
+              onClick={() => setSelectedProduct(null)}
+              className="btn btn-secondary"
+              style={{ fontSize: '0.9rem' }}
+            >
+              ← Change Product
+            </button>
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', flex: 1 }}>
+              {getSortedSizes(selectedProduct.sizes).map(size => {
+                const recommended = isRecommendedSize(size);
+                return (
+                  <button
+                    key={size.id}
+                    onClick={() => handleSizeSelect(size)}
+                    className="btn"
+                    style={{
+                      backgroundColor: selectedSize?.id === size.id ? '#4169E1' : '#fff',
+                      color: selectedSize?.id === size.id ? '#fff' : '#333',
+                      border: recommended ? '2px solid #10b981' : '1px solid #ddd',
+                      padding: '0.5rem 1rem',
+                      fontSize: '0.9rem',
+                      position: 'relative'
+                    }}
+                  >
+                    {size.name} (${(selectedProduct.basePrice + size.priceModifier).toFixed(2)})
+                    {recommended && (
+                      <span style={{
+                        marginLeft: '0.5rem',
+                        fontSize: '0.75rem',
+                        backgroundColor: '#10b981',
+                        color: '#fff',
+                        padding: '0.125rem 0.375rem',
+                        borderRadius: '3px',
+                        fontWeight: 600
+                      }}>
+                        ✓ Best Fit
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="cropper-container">
+            <Cropper
+              ref={cropperRef}
+              src={photo.fullImageUrl}
+              style={{ height: 400, width: '100%' }}
+              initialAspectRatio={getAspectRatio()}
+              aspectRatio={getAspectRatio()}
+              guides={true}
+              viewMode={1}
+              minCropBoxHeight={10}
+              minCropBoxWidth={10}
+              background={false}
+              responsive={true}
+              autoCropArea={1}
+              checkOrientation={false}
+            />
+          </div>
+
+          <div className="cropper-controls">
+            <div className="quantity-control">
+              <label htmlFor="quantity">Quantity:</label>
+              <div className="quantity-input">
+                <button
+                  onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                  className="quantity-btn"
+                >
+                  -
+                </button>
+                <input
+                  type="number"
+                  id="quantity"
+                  min="1"
+                  value={quantity}
+                  onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                />
+                <button
+                  onClick={() => setQuantity(quantity + 1)}
+                  className="quantity-btn"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+
+            <div className="price-info">
+              <span className="photo-price">
+                ${(selectedProduct.basePrice + (selectedSize?.priceModifier || 0)).toFixed(2)} each
+              </span>
+              <span className="total-price">
+                Total: ${getTotalPrice().toFixed(2)}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="modal-footer">
+          <button onClick={handleAddWithoutCrop} className="btn btn-secondary">
+            Add Without Crop
+          </button>
+          <button onClick={handleAddToCart} className="btn btn-primary">
+            Add to Cart
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default CropperModal;
