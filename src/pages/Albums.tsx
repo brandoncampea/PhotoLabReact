@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Album } from '../types';
 import { albumService } from '../services/albumService';
+import { analyticsService } from '../services/analyticsService';
 
 const Albums: React.FC = () => {
   const [albums, setAlbums] = useState<Album[]>([]);
@@ -10,6 +11,8 @@ const Albums: React.FC = () => {
 
   useEffect(() => {
     loadAlbums();
+    // Track site visit
+    analyticsService.trackVisit();
   }, []);
 
   const loadAlbums = async () => {

@@ -1,4 +1,4 @@
-import { AdminUser, Product, Watermark, Customer, DashboardStats, Album, Photo, Order, ShippingConfig, StripeConfig, UserAccount, Package, DiscountCode } from '../types';
+import { AdminUser, Product, Watermark, Customer, DashboardStats, Album, Photo, Order, ShippingConfig, StripeConfig, UserAccount, Package, DiscountCode, ProfileConfig } from '../types';
 
 // Mock admin user
 const mockAdminUser: AdminUser = {
@@ -27,6 +27,15 @@ let mockStripeConfig: StripeConfig = {
   isLiveMode: false,
   isActive: true,
   webhookSecret: 'whsec_example_webhook_secret',
+};
+
+// Mock Profile configuration
+let mockProfileConfig: ProfileConfig = {
+  id: 1,
+  ownerName: 'John Smith',
+  businessName: 'PhotoLab Studio',
+  email: 'admin@photolab.com',
+  receiveOrderNotifications: true,
 };
 
 // Mock products
@@ -775,6 +784,15 @@ export const adminMockApi = {
         items: [],
         shippingOption: 'batch',
         shippingCost: 0,
+        shippingAddress: {
+          fullName: 'Mock User',
+          addressLine1: '123 Main St',
+          city: 'Test City',
+          state: 'TS',
+          zipCode: '12345',
+          country: 'United States',
+          email: 'test@example.com'
+        }
       };
     },
   },
@@ -836,6 +854,21 @@ export const adminMockApi = {
       console.log('Admin Mock API: Updating Stripe config', data);
       mockStripeConfig = { ...mockStripeConfig, ...data };
       return mockStripeConfig;
+    },
+  },
+
+  profile: {
+    async getConfig(): Promise<ProfileConfig> {
+      await delay(300);
+      console.log('Admin Mock API: Fetching profile config');
+      return mockProfileConfig;
+    },
+
+    async updateConfig(data: Partial<ProfileConfig>): Promise<ProfileConfig> {
+      await delay(400);
+      console.log('Admin Mock API: Updating profile config', data);
+      mockProfileConfig = { ...mockProfileConfig, ...data };
+      return mockProfileConfig;
     },
   },
 

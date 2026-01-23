@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Album, Photo } from '../types';
 import { albumService } from '../services/albumService';
 import { photoService } from '../services/photoService';
+import { analyticsService } from '../services/analyticsService';
 import PhotoCard from '../components/PhotoCard';
 import CropperModal from '../components/CropperModal';
 
@@ -30,6 +31,9 @@ const AlbumDetails: React.FC = () => {
       ]);
       setAlbum(albumData);
       setPhotos(photosData);
+      
+      // Track album view
+      analyticsService.trackAlbumView(albumId, albumData.name);
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to load album details');
     } finally {
@@ -38,6 +42,10 @@ const AlbumDetails: React.FC = () => {
   };
 
   const handlePhotoClick = (photo: Photo) => {
+    // Track photo view
+    if (album) {
+      analyticsService.trackPhotoView(photo.id, photo.fileName, album.id, album.name);
+    }
     setSelectedPhoto(photo);
   };
 
