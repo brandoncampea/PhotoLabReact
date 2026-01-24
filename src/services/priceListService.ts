@@ -1,5 +1,8 @@
 import { PriceList, ImportedPriceData, PriceGroupMapping, Product } from '../types';
 import { adminMockApi } from './adminMockApi';
+import api from './api';
+
+const useMockApi = import.meta.env.VITE_USE_MOCK_API === 'true';
 
 export interface ColumnMapping {
   productIdx: number;
@@ -259,6 +262,14 @@ export const mapSizesForImport = (
 /**
  * Creates a new price list from imported data
  */
+const toTitleCase = (value: string): string => {
+  return value
+    .toLowerCase()
+    .split(/\s+/)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+};
+
 export const createPriceListFromImport = async (
   name: string,
   description: string,
@@ -268,7 +279,7 @@ export const createPriceListFromImport = async (
   const priceListProducts = mappings.map(mapping => ({
     id: Math.floor(Math.random() * 100000),
     priceListId: 0, // Will be set by API
-    name: mapping.productName,
+    name: toTitleCase(mapping.productName),
     description: '',
     isDigital: false,
     sizes: mapping.items.map(item => ({
@@ -283,13 +294,21 @@ export const createPriceListFromImport = async (
   }));
 
   // Create price list with nested products
-  const priceList = await adminMockApi.priceLists.create({
+  if (useMockApi) {
+    const priceList = await adminMockApi.priceLists.create({
+      name,
+      description,
+      products: priceListProducts,
+    });
+    return priceList;
+  }
+
+  const priceList = await api.post<PriceList>('/price-lists', {
     name,
     description,
-    products: priceListProducts,
   });
 
-  return priceList;
+  return priceList.data;
 };
 
 /**

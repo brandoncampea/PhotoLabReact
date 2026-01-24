@@ -19,6 +19,9 @@ export interface Album {
   createdDate: string;
   category?: string;
   priceListId?: number;
+  isPasswordProtected?: boolean;
+  password?: string;
+  passwordHint?: string;
 }
 
 export interface Photo {
@@ -272,6 +275,7 @@ export interface PaymentIntent {
 }
 export interface Package {
   id: number;
+  priceListId: number;
   name: string;
   description: string;
   packagePrice: number;
@@ -284,8 +288,8 @@ export interface PackageItem {
   productId: number;
   productSizeId: number;
   quantity: number;
-  product?: Product;
-  productSize?: ProductSize;
+  product?: PriceListProduct;
+  productSize?: PriceListProductSize;
 }
 
 export interface DiscountCode {
@@ -319,6 +323,7 @@ export interface PriceList {
   products: PriceListProduct[];
   isActive: boolean;
   createdDate: string;
+  isDefault?: boolean;
   updatedDate?: string;
 }
 

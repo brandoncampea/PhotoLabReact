@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Package, Product } from '../../types';
+import { Package, PriceListProduct } from '../../types';
 import { adminMockApi } from '../../services/adminMockApi';
 
 const AdminPackages: React.FC = () => {
   const [packages, setPackages] = useState<Package[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
+  const [products, setProducts] = useState<PriceListProduct[]>([]);
+  const [priceListId, setPriceListId] = useState<number>(1);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingPackage, setEditingPackage] = useState<Package | null>(null);
@@ -14,6 +15,7 @@ const AdminPackages: React.FC = () => {
     packagePrice: 0,
     items: [] as { productId: number; productSizeId: number; quantity: number }[],
     isActive: true,
+    priceListId: 1,
   });
 
   useEffect(() => {
@@ -43,6 +45,7 @@ const AdminPackages: React.FC = () => {
       packagePrice: 0,
       items: [],
       isActive: true,
+      priceListId,
     });
     setShowModal(true);
   };
@@ -55,7 +58,9 @@ const AdminPackages: React.FC = () => {
       packagePrice: pkg.packagePrice,
       items: pkg.items,
       isActive: pkg.isActive,
+      priceListId: pkg.priceListId,
     });
+    setPriceListId(pkg.priceListId);
     setShowModal(true);
   };
 

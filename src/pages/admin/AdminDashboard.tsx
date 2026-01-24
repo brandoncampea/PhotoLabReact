@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Order } from '../../types';
 import { adminMockApi } from '../../services/adminMockApi';
 import { analyticsService } from '../../services/analyticsService';
 import { DashboardStats } from '../../types';
 
 const AdminDashboard: React.FC = () => {
+  const navigate = useNavigate();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -77,14 +79,24 @@ const AdminDashboard: React.FC = () => {
       
       {/* Key Metrics */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.5rem', marginBottom: '2rem' }}>
-        <div style={{
-          padding: '1.5rem',
-          backgroundColor: '#e3f2fd',
-          borderRadius: '12px',
-          border: '2px solid #4169E1',
-          position: 'relative',
-          overflow: 'hidden'
-        }}>
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => navigate('/admin/analytics')}
+          onKeyDown={(e) => e.key === 'Enter' && navigate('/admin/analytics')}
+          style={{
+            padding: '1.5rem',
+            backgroundColor: '#e3f2fd',
+            borderRadius: '12px',
+            border: '2px solid #4169E1',
+            position: 'relative',
+            overflow: 'hidden',
+            cursor: 'pointer',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
+            transition: 'transform 0.15s ease, box-shadow 0.15s ease'
+          }}
+          className="dashboard-card"
+        >
           <div style={{ position: 'absolute', top: '10px', right: '10px', fontSize: '2rem', opacity: 0.2 }}>💰</div>
           <div style={{ fontSize: '0.9rem', color: '#666', marginBottom: '0.5rem', fontWeight: 500 }}>Total Revenue</div>
           <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#4169E1' }}>
@@ -93,16 +105,27 @@ const AdminDashboard: React.FC = () => {
           <div style={{ fontSize: '0.8rem', color: '#666', marginTop: '0.5rem' }}>
             Avg: ${averageOrderValue} per order
           </div>
+          <div style={{ fontSize: '0.8rem', color: '#4169E1', marginTop: '0.75rem', fontWeight: 600 }}>View analytics →</div>
         </div>
 
-        <div style={{
-          padding: '1.5rem',
-          backgroundColor: '#e8f5e9',
-          borderRadius: '12px',
-          border: '2px solid #4caf50',
-          position: 'relative',
-          overflow: 'hidden'
-        }}>
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => navigate('/admin/orders')}
+          onKeyDown={(e) => e.key === 'Enter' && navigate('/admin/orders')}
+          style={{
+            padding: '1.5rem',
+            backgroundColor: '#e8f5e9',
+            borderRadius: '12px',
+            border: '2px solid #4caf50',
+            position: 'relative',
+            overflow: 'hidden',
+            cursor: 'pointer',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
+            transition: 'transform 0.15s ease, box-shadow 0.15s ease'
+          }}
+          className="dashboard-card"
+        >
           <div style={{ position: 'absolute', top: '10px', right: '10px', fontSize: '2rem', opacity: 0.2 }}>📦</div>
           <div style={{ fontSize: '0.9rem', color: '#666', marginBottom: '0.5rem', fontWeight: 500 }}>Total Orders</div>
           <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#4caf50' }}>
@@ -111,16 +134,27 @@ const AdminDashboard: React.FC = () => {
           <div style={{ fontSize: '0.8rem', color: '#666', marginTop: '0.5rem' }}>
             {orderCompletionRate}% completion rate
           </div>
+          <div style={{ fontSize: '0.8rem', color: '#2e7d32', marginTop: '0.75rem', fontWeight: 600 }}>Go to orders →</div>
         </div>
 
-        <div style={{
-          padding: '1.5rem',
-          backgroundColor: '#f3e5f5',
-          borderRadius: '12px',
-          border: '2px solid #9c27b0',
-          position: 'relative',
-          overflow: 'hidden'
-        }}>
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => navigate('/admin/customers')}
+          onKeyDown={(e) => e.key === 'Enter' && navigate('/admin/customers')}
+          style={{
+            padding: '1.5rem',
+            backgroundColor: '#f3e5f5',
+            borderRadius: '12px',
+            border: '2px solid #9c27b0',
+            position: 'relative',
+            overflow: 'hidden',
+            cursor: 'pointer',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
+            transition: 'transform 0.15s ease, box-shadow 0.15s ease'
+          }}
+          className="dashboard-card"
+        >
           <div style={{ position: 'absolute', top: '10px', right: '10px', fontSize: '2rem', opacity: 0.2 }}>👥</div>
           <div style={{ fontSize: '0.9rem', color: '#666', marginBottom: '0.5rem', fontWeight: 500 }}>Total Customers</div>
           <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#9c27b0' }}>
@@ -129,16 +163,27 @@ const AdminDashboard: React.FC = () => {
           <div style={{ fontSize: '0.8rem', color: '#666', marginTop: '0.5rem' }}>
             Active user accounts
           </div>
+          <div style={{ fontSize: '0.8rem', color: '#7b1fa2', marginTop: '0.75rem', fontWeight: 600 }}>View customers →</div>
         </div>
 
-        <div style={{
-          padding: '1.5rem',
-          backgroundColor: '#fff3e0',
-          borderRadius: '12px',
-          border: '2px solid #ff9800',
-          position: 'relative',
-          overflow: 'hidden'
-        }}>
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => navigate('/admin/orders')}
+          onKeyDown={(e) => e.key === 'Enter' && navigate('/admin/orders')}
+          style={{
+            padding: '1.5rem',
+            backgroundColor: '#fff3e0',
+            borderRadius: '12px',
+            border: '2px solid #ff9800',
+            position: 'relative',
+            overflow: 'hidden',
+            cursor: 'pointer',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
+            transition: 'transform 0.15s ease, box-shadow 0.15s ease'
+          }}
+          className="dashboard-card"
+        >
           <div style={{ position: 'absolute', top: '10px', right: '10px', fontSize: '2rem', opacity: 0.2 }}>⏳</div>
           <div style={{ fontSize: '0.9rem', color: '#666', marginBottom: '0.5rem', fontWeight: 500 }}>Pending Orders</div>
           <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#ff9800' }}>
@@ -147,16 +192,27 @@ const AdminDashboard: React.FC = () => {
           <div style={{ fontSize: '0.8rem', color: '#666', marginTop: '0.5rem' }}>
             Requires attention
           </div>
+          <div style={{ fontSize: '0.8rem', color: '#ef6c00', marginTop: '0.75rem', fontWeight: 600 }}>Review pending →</div>
         </div>
 
-        <div style={{
-          padding: '1.5rem',
-          backgroundColor: '#f1f8e9',
-          borderRadius: '12px',
-          border: '2px solid #689f38',
-          position: 'relative',
-          overflow: 'hidden'
-        }}>
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => navigate('/admin/analytics')}
+          onKeyDown={(e) => e.key === 'Enter' && navigate('/admin/analytics')}
+          style={{
+            padding: '1.5rem',
+            backgroundColor: '#f1f8e9',
+            borderRadius: '12px',
+            border: '2px solid #689f38',
+            position: 'relative',
+            overflow: 'hidden',
+            cursor: 'pointer',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
+            transition: 'transform 0.15s ease, box-shadow 0.15s ease'
+          }}
+          className="dashboard-card"
+        >
           <div style={{ position: 'absolute', top: '10px', right: '10px', fontSize: '2rem', opacity: 0.2 }}>📈</div>
           <div style={{ fontSize: '0.9rem', color: '#666', marginBottom: '0.5rem', fontWeight: 500 }}>Total Profit</div>
           <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#689f38' }}>
@@ -165,6 +221,7 @@ const AdminDashboard: React.FC = () => {
           <div style={{ fontSize: '0.8rem', color: '#666', marginTop: '0.5rem' }}>
             {profitData.margin}% margin
           </div>
+          <div style={{ fontSize: '0.8rem', color: '#558b2f', marginTop: '0.75rem', fontWeight: 600 }}>See profit details →</div>
         </div>
       </div>
 

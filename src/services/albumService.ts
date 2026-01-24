@@ -9,15 +9,25 @@ export const albumService = {
     if (useMockApi) {
       return mockApi.albums.getAlbums();
     }
-    const response = await api.get<Album[]>('/albums');
-    return response.data;
+    try {
+      const response = await api.get<Album[]>('/albums');
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching albums from API:', error);
+      throw error;
+    }
   },
 
   async getAlbum(id: number): Promise<Album> {
     if (useMockApi) {
       return mockApi.albums.getAlbum(id);
     }
-    const response = await api.get<Album>(`/albums/${id}`);
-    return response.data;
+    try {
+      const response = await api.get<Album>(`/albums/${id}`);
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching album from API:', error);
+      throw error;
+    }
   },
 };

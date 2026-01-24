@@ -43,7 +43,15 @@ const upload = multer({
 // Get photos by album
 router.get('/album/:albumId', (req, res) => {
   try {
-    const photos = db.prepare('SELECT * FROM photos WHERE album_id = ? ORDER BY created_at DESC').all(req.params.albumId);
+    const photos = db.prepare(`
+      SELECT 
+        id, album_id as albumId, file_name as fileName, 
+        thumbnail_url as thumbnailUrl, full_image_url as fullImageUrl,
+        description, metadata, created_at as createdDate
+      FROM photos 
+      WHERE album_id = ? 
+      ORDER BY created_at DESC
+    `).all(req.params.albumId);
     res.json(photos);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -65,10 +73,10 @@ router.post('/upload', upload.array('photos', 50), (req, res) => {
       
       return {
         id: result.lastInsertRowid,
-        album_id: parseInt(albumId),
-        file_name: file.originalname,
-        thumbnail_url: photoUrl,
-        full_image_url: photoUrl,
+        albumId: parseInt(albumId),
+        fileName: file.originalname,
+        thumbnailUrl: photoUrl,
+        fullImageUrl: photoUrl,
         description: parsedDescriptions[index] || ''
       };
     });
@@ -96,7 +104,14 @@ router.put('/:id', (req, res) => {
       WHERE id = ?
     `).run(description, metadata ? JSON.stringify(metadata) : null, req.params.id);
     
-    const photo = db.prepare('SELECT * FROM photos WHERE id = ?').get(req.params.id);
+    const photo = db.prepare(`
+      SELECT 
+        id, album_id as albumId, file_name as fileName, 
+        thumbnail_url as thumbnailUrl, full_image_url as fullImageUrl,
+        description, metadata, created_at as createdDate
+      FROM photos 
+      WHERE id = ?
+    `).get(req.params.id);
     res.json(photo);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -137,7 +152,10 @@ router.get('/search', (req, res) => {
   try {
     const { q } = req.query;
     const photos = db.prepare(`
-      SELECT p.*, a.title as album_title 
+      SELECT p.id, p.album_id as albumId, p.file_name as fileName, 
+             p.thumbnail_url as thumbnailUrl, p.full_image_url as fullImageUrl,
+             p.description, p.metadata, p.created_at as createdDate,
+             a.name as albumName
       FROM photos p
       JOIN albums a ON p.album_id = a.id
       WHERE p.file_name LIKE ? OR p.description LIKE ? OR p.metadata LIKE ?

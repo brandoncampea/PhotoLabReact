@@ -26,7 +26,6 @@ import AdminShipping from './pages/admin/AdminShipping';
 import AdminPayments from './pages/admin/AdminStripe';
 import AdminUsers from './pages/admin/AdminUsers';
 import AdminProfile from './pages/admin/AdminProfile';
-import AdminPackages from './pages/admin/AdminPackages';
 import AdminDiscountCodes from './pages/admin/AdminDiscountCodes';
 import './App.css';
 import './AdminStyles.css';
@@ -110,7 +109,6 @@ function App() {
                           <Route path="payments" element={<AdminPayments />} />
                           <Route path="users" element={<AdminUsers />} />
                           <Route path="profile" element={<AdminProfile />} />
-                          <Route path="packages" element={<AdminPackages />} />
                           <Route path="discount-codes" element={<AdminDiscountCodes />} />
                           <Route path="*" element={<Navigate to="/admin/dashboard" replace />} />
                         </Routes>
