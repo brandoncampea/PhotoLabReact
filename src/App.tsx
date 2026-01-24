@@ -9,6 +9,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Albums from './pages/Albums';
 import AlbumDetails from './pages/AlbumDetails';
+import Search from './pages/Search';
 import Cart from './pages/Cart';
 import Orders from './pages/Orders';
 import AdminLogin from './pages/admin/AdminLogin';
@@ -58,6 +59,14 @@ function App() {
                   element={
                     <ProtectedRoute>
                       <AlbumDetails />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/search"
+                  element={
+                    <ProtectedRoute>
+                      <Search />
                     </ProtectedRoute>
                   }
                 />

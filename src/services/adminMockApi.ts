@@ -1,4 +1,5 @@
 import { AdminUser, Product, Watermark, Customer, DashboardStats, Album, Photo, Order, ShippingConfig, StripeConfig, UserAccount, Package, DiscountCode, ProfileConfig } from '../types';
+import { addMockAlbum, updateMockAlbum, deleteMockAlbum, addMockPhotos, updateMockPhoto, deleteMockPhoto } from './mockApi';
 
 // Mock admin user
 const mockAdminUser: AdminUser = {
@@ -36,7 +37,11 @@ let mockProfileConfig: ProfileConfig = {
   businessName: 'PhotoLab Studio',
   email: 'admin@photolab.com',
   receiveOrderNotifications: true,
+  logoUrl: '',
 };
+
+// Mock album categories
+let mockCategories: string[] = ['Weddings', 'Portraits', 'Events', 'Nature'];
 
 // Mock products
 let mockProducts: Product[] = [
@@ -89,7 +94,7 @@ let mockWatermarks: Watermark[] = [
   {
     id: 1,
     name: 'Photo Lab Logo',
-    imageUrl: 'https://via.placeholder.com/200x80/4169E1/ffffff?text=PhotoLab',
+    imageUrl: 'https://picsum.photos/seed/watermark1/200/80',
     position: 'bottom-right',
     opacity: 0.5,
     isDefault: true,
@@ -98,7 +103,7 @@ let mockWatermarks: Watermark[] = [
   {
     id: 2,
     name: 'Copyright',
-    imageUrl: 'https://via.placeholder.com/150x50/333333/ffffff?text=©',
+    imageUrl: 'https://picsum.photos/seed/watermark2/150/50',
     position: 'bottom-left',
     opacity: 0.3,
     isDefault: false,
@@ -107,7 +112,7 @@ let mockWatermarks: Watermark[] = [
   {
     id: 3,
     name: 'Pattern Watermark',
-    imageUrl: 'https://via.placeholder.com/100x100/888888/ffffff?text=©PHOTO',
+    imageUrl: 'https://picsum.photos/seed/watermark3/100/100',
     position: 'center',
     opacity: 0.2,
     isDefault: false,
@@ -620,67 +625,100 @@ export const adminMockApi = {
     async create(data: Partial<Album>): Promise<Album> {
       await delay(500);
       console.log('Admin Mock API: Creating album', data);
-      return {
-        id: Math.floor(Math.random() * 1000),
+      const newAlbum: Album = {
+        id: Math.floor(Math.random() * 10000) + 1000,
         name: data.name || '',
         description: data.description || '',
-        coverImageUrl: data.coverImageUrl || '',
+        coverImageUrl: data.coverImageUrl || 'https://picsum.photos/seed/nocover/400/300',
         photoCount: 0,
         createdDate: new Date().toISOString(),
+        category: data.category,
       };
+      addMockAlbum(newAlbum);
+      return newAlbum;
     },
 
     async update(id: number, data: Partial<Album>): Promise<Album> {
       await delay(400);
       console.log('Admin Mock API: Updating album', id, data);
+      const updated = updateMockAlbum(id, data);
+      if (updated) {
+        return updated;
+      }
+      // Fallback if album not found
       return {
         id,
         name: data.name || '',
         description: data.description || '',
-        coverImageUrl: data.coverImageUrl || '',
+        coverImageUrl: data.coverImageUrl || 'https://picsum.photos/seed/nocover/400/300',
         photoCount: data.photoCount || 0,
         createdDate: new Date().toISOString(),
+        category: data.category,
       };
     },
 
     async delete(id: number): Promise<void> {
       await delay(300);
       console.log('Admin Mock API: Deleting album', id);
+      deleteMockAlbum(id);
+    },
+
+    async getCategories(): Promise<string[]> {
+      await delay(200);
+      console.log('Admin Mock API: Fetching categories');
+      return [...mockCategories];
+    },
+
+    async addCategory(category: string): Promise<string[]> {
+      await delay(300);
+      console.log('Admin Mock API: Adding category', category);
+      if (!mockCategories.includes(category)) {
+        mockCategories.push(category);
+      }
+      return [...mockCategories];
     },
   },
 
   photos: {
-    async upload(albumId: number, files: File[]): Promise<Photo[]> {
+    async upload(albumId: number, filesWithMetadata: Array<{ file: File; metadata: any }>): Promise<Photo[]> {
       await delay(1000);
-      console.log('Admin Mock API: Uploading', files.length, 'photos to album', albumId);
-      return files.map((file) => ({
-        id: Math.floor(Math.random() * 10000),
+      console.log('Admin Mock API: Uploading', filesWithMetadata.length, 'photos with metadata to album', albumId);
+      const newPhotos = filesWithMetadata.map(({ file, metadata }) => ({
+        id: Math.floor(Math.random() * 100000) + 10000,
         albumId,
         fileName: file.name,
         thumbnailUrl: URL.createObjectURL(file),
         fullImageUrl: URL.createObjectURL(file),
-        price: 9.99,
         description: '',
+        metadata,
       }));
+      addMockPhotos(albumId, newPhotos);
+      return newPhotos;
     },
 
     async update(id: number, data: Partial<Photo>): Promise<Photo> {
       await delay(400);
       console.log('Admin Mock API: Updating photo', id, data);
+      const updated = updateMockPhoto(id, data);
+      if (updated) {
+        return updated;
+      }
+      // Fallback if photo not found
       return {
         id,
         albumId: data.albumId || 1,
         fileName: data.fileName || '',
         thumbnailUrl: data.thumbnailUrl || '',
         fullImageUrl: data.fullImageUrl || '',
-        price: data.price || 9.99,
         description: data.description,
+        metadata: data.metadata,
       };
     },
 
     async delete(id: number): Promise<void> {
       await delay(300);
       console.log('Admin Mock API: Deleting photo', id);
+      deleteMockPhoto(id);
     },
   },
 

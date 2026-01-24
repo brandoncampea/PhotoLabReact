@@ -21,7 +21,7 @@ export const stripeService = {
   ): Promise<PaymentIntent> {
     if (useMockApi) {
       // Mock payment intent creation
-      const totalAmount = items.reduce((sum, item) => sum + item.photo.price * item.quantity, 0);
+      const totalAmount = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
       const finalAmount = Math.round((totalAmount + shippingCost - discountAmount) * 100); // Convert to cents
       
       return {

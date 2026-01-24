@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Album } from '../../types';
+import { Album, Photo } from '../../types';
 import { albumService } from '../../services/albumService';
+import { photoService } from '../../services/photoService';
 import { adminMockApi } from '../../services/adminMockApi';
 
 const AdminAlbums: React.FC = () => {
@@ -8,14 +9,21 @@ const AdminAlbums: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingAlbum, setEditingAlbum] = useState<Album | null>(null);
+  const [albumPhotos, setAlbumPhotos] = useState<Photo[]>([]);
+  const [showPhotoSelector, setShowPhotoSelector] = useState(false);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [showNewCategory, setShowNewCategory] = useState(false);
+  const [newCategory, setNewCategory] = useState('');
   const [formData, setFormData] = useState({
     name: '',
     description: '',
     coverImageUrl: '',
+    category: '',
   });
 
   useEffect(() => {
     loadAlbums();
+    loadCategories();
   }, []);
 
   const loadAlbums = async () => {
@@ -29,9 +37,20 @@ const AdminAlbums: React.FC = () => {
     }
   };
 
+  const loadCategories = async () => {
+    try {
+      const data = await adminMockApi.albums.getCategories();
+      setCategories(data);
+    } catch (error) {
+      console.error('Failed to load categories:', error);
+    }
+  };
+
   const handleCreate = () => {
     setEditingAlbum(null);
-    setFormData({ name: '', description: '', coverImageUrl: '' });
+    setFormData({ name: '', description: '', coverImageUrl: '', category: '' });
+    setShowNewCategory(false);
+    setNewCategory('');
     setShowModal(true);
   };
 
@@ -40,9 +59,45 @@ const AdminAlbums: React.FC = () => {
     setFormData({
       name: album.name,
       description: album.description,
-      coverImageUrl: album.coverImageUrl,
+      coverImageUrl: album.coverImageUrl || '',
+      category: album.category || '',
     });
+    setShowNewCategory(false);
+    setNewCategory('');
     setShowModal(true);
+    // Load photos for this album
+    if (album.id) {
+      loadAlbumPhotos(album.id);
+    }
+  };
+
+  const loadAlbumPhotos = async (albumId: number) => {
+    try {
+      const photos = await photoService.getPhotosByAlbum(albumId);
+      setAlbumPhotos(photos);
+    } catch (error) {
+      console.error('Failed to load album photos:', error);
+      setAlbumPhotos([]);
+    }
+  };
+
+  const handleSelectPhotoAsCover = (photoUrl: string) => {
+    setFormData({ ...formData, coverImageUrl: photoUrl });
+    setShowPhotoSelector(false);
+  };
+
+  const handleAddCategory = async () => {
+    if (newCategory.trim()) {
+      try {
+        const updatedCategories = await adminMockApi.albums.addCategory(newCategory.trim());
+        setCategories(updatedCategories);
+        setFormData({ ...formData, category: newCategory.trim() });
+        setNewCategory('');
+        setShowNewCategory(false);
+      } catch (error) {
+        console.error('Failed to add category:', error);
+      }
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -90,6 +145,7 @@ const AdminAlbums: React.FC = () => {
             <tr>
               <th>Cover</th>
               <th>Name</th>
+              <th>Category</th>
               <th>Description</th>
               <th>Photos</th>
               <th>Created</th>
@@ -103,6 +159,7 @@ const AdminAlbums: React.FC = () => {
                   <img src={album.coverImageUrl} alt={album.name} className="table-thumbnail" />
                 </td>
                 <td>{album.name}</td>
+                <td>{album.category || '-'}</td>
                 <td>{album.description}</td>
                 <td>{album.photoCount}</td>
                 <td>{new Date(album.createdDate).toLocaleDateString()}</td>
@@ -145,13 +202,116 @@ const AdminAlbums: React.FC = () => {
                 />
               </div>
               <div className="form-group">
+                <label>Category</label>
+                <select
+                  value={formData.category}
+                  onChange={(e) => {
+                    if (e.target.value === '__add_new__') {
+                      setShowNewCategory(true);
+                      setFormData({ ...formData, category: '' });
+                    } else {
+                      setFormData({ ...formData, category: e.target.value });
+                      setShowNewCategory(false);
+                    }
+                  }}
+                >
+                  <option value="">No Category</option>
+                  {categories.map((cat) => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                  <option value="__add_new__">+ Add New Category</option>
+                </select>
+                {showNewCategory && (
+                  <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem' }}>
+                    <input
+                      type="text"
+                      placeholder="Enter new category"
+                      value={newCategory}
+                      onChange={(e) => setNewCategory(e.target.value)}
+                      onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddCategory())}
+                      style={{ flex: 1 }}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddCategory}
+                      className="btn btn-primary"
+                      style={{ padding: '0.5rem 1rem' }}
+                    >
+                      Add
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setShowNewCategory(false); setNewCategory(''); }}
+                      className="btn btn-secondary"
+                      style={{ padding: '0.5rem 1rem' }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
+              </div>
+              <div className="form-group">
                 <label>Cover Image URL</label>
                 <input
                   type="url"
                   value={formData.coverImageUrl}
                   onChange={(e) => setFormData({ ...formData, coverImageUrl: e.target.value })}
-                  required
+                  placeholder="Leave empty for default placeholder"
                 />
+                {editingAlbum && albumPhotos.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowPhotoSelector(!showPhotoSelector)}
+                    className="btn btn-secondary"
+                    style={{ marginTop: '0.5rem', width: '100%' }}
+                  >
+                    {showPhotoSelector ? 'Hide Photos' : 'Select from Album Photos'}
+                  </button>
+                )}
+                {showPhotoSelector && (
+                  <div style={{
+                    marginTop: '1rem',
+                    padding: '1rem',
+                    backgroundColor: '#f5f5f5',
+                    borderRadius: '8px',
+                    maxHeight: '300px',
+                    overflowY: 'auto'
+                  }}>
+                    <p style={{ marginBottom: '0.5rem', fontWeight: 500 }}>Select a photo as cover:</p>
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))',
+                      gap: '0.5rem'
+                    }}>
+                      {albumPhotos.map((photo) => (
+                        <div
+                          key={photo.id}
+                          onClick={() => handleSelectPhotoAsCover(photo.fullImageUrl)}
+                          style={{
+                            cursor: 'pointer',
+                            border: formData.coverImageUrl === photo.fullImageUrl ? '3px solid #4169E1' : '2px solid #ddd',
+                            borderRadius: '4px',
+                            overflow: 'hidden',
+                            aspectRatio: '1',
+                            transition: 'all 0.2s'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
+                          onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                        >
+                          <img
+                            src={photo.thumbnailUrl}
+                            alt={photo.fileName}
+                            style={{
+                              width: '100%',
+                              height: '100%',
+                              objectFit: 'cover'
+                            }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="modal-footer">
                 <button type="button" onClick={() => setShowModal(false)} className="btn btn-secondary">

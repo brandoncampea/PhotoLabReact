@@ -4,27 +4,53 @@ import { Photo, Album } from '../../types';
 import { photoService } from '../../services/photoService';
 import { albumService } from '../../services/albumService';
 import { adminMockApi } from '../../services/adminMockApi';
+import { exifService } from '../../services/exifService';
 
 const AdminPhotos: React.FC = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const albumId = parseInt(searchParams.get('album') || '1');
   const [albums, setAlbums] = useState<Album[]>([]);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [albumId, setAlbumId] = useState<number | null>(null);
 
   useEffect(() => {
     loadAlbums();
   }, []);
 
   useEffect(() => {
-    loadPhotos();
+    // Set albumId from URL params after albums are loaded
+    if (albums.length > 0) {
+      const urlAlbumParam = searchParams.get('album');
+      const urlAlbumId = urlAlbumParam ? parseInt(urlAlbumParam) : null;
+      
+      console.log('AdminPhotos: URL album param:', urlAlbumParam, 'parsed:', urlAlbumId);
+      console.log('AdminPhotos: Available albums:', albums.map(a => ({ id: a.id, name: a.name })));
+      
+      if (urlAlbumId && !isNaN(urlAlbumId) && albums.find(a => a.id === urlAlbumId)) {
+        console.log('AdminPhotos: Setting albumId to URL param:', urlAlbumId);
+        setAlbumId(urlAlbumId);
+      } else {
+        // Default to first album if URL param is invalid or missing
+        const firstAlbumId = albums[0].id;
+        console.log('AdminPhotos: Defaulting to first album:', firstAlbumId);
+        setAlbumId(firstAlbumId);
+        navigate(`/admin/photos?album=${firstAlbumId}`, { replace: true });
+      }
+    }
+  }, [albums, searchParams, navigate]);
+
+  useEffect(() => {
+    if (albumId) {
+      loadPhotos();
+    }
   }, [albumId]);
 
   const loadAlbums = async () => {
     try {
       const data = await albumService.getAlbums();
+      console.log('AdminPhotos: Loaded albums:', data);
       setAlbums(data);
     } catch (error) {
       console.error('Failed to load albums:', error);
@@ -32,6 +58,7 @@ const AdminPhotos: React.FC = () => {
   };
 
   const loadPhotos = async () => {
+    if (!albumId) return;
     try {
       const data = await photoService.getPhotosByAlbum(albumId);
       setPhotos(data);
@@ -44,12 +71,21 @@ const AdminPhotos: React.FC = () => {
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    if (files.length === 0) return;
+    if (files.length === 0 || !albumId) return;
 
     setUploading(true);
     try {
-      await adminMockApi.photos.upload(albumId, files);
+      // Extract metadata from each file
+      const filesWithMetadata = await Promise.all(
+        files.map(async (file) => {
+          const metadata = await exifService.extractMetadata(file);
+          return { file, metadata };
+        })
+      );
+      
+      await adminMockApi.photos.upload(albumId, filesWithMetadata);
       loadPhotos();
+      loadAlbums(); // Reload albums to update photo count
     } catch (error) {
       console.error('Failed to upload photos:', error);
     } finally {
@@ -62,6 +98,7 @@ const AdminPhotos: React.FC = () => {
       try {
         await adminMockApi.photos.delete(id);
         loadPhotos();
+        loadAlbums(); // Reload albums to update photo count
       } catch (error) {
         console.error('Failed to delete photo:', error);
       }
@@ -75,8 +112,22 @@ const AdminPhotos: React.FC = () => {
 
   const currentAlbum = albums.find(a => a.id === albumId);
 
-  if (loading) {
-    return <div className="loading">Loading photos...</div>;
+  if (loading || !albumId) {
+    return <div className="loading">Loading...</div>;
+  }
+
+  if (albums.length === 0) {
+    return (
+      <div className="admin-page">
+        <div className="page-header">
+          <h1>Manage Photos</h1>
+        </div>
+        <div className="empty-state">
+          <p>No albums found. Please create an album first.</p>
+          <a href="/admin/albums" className="btn btn-primary">Go to Albums</a>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -142,7 +193,6 @@ const AdminPhotos: React.FC = () => {
             <img src={photo.thumbnailUrl} alt={photo.fileName} />
             <div className="photo-info">
               <p className="photo-filename">{photo.fileName}</p>
-              <p className="photo-price">${photo.price.toFixed(2)}</p>
             </div>
             <button
               onClick={() => handleDelete(photo.id)}

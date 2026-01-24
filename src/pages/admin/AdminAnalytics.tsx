@@ -144,7 +144,7 @@ const AdminAnalytics: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {analytics.albumViews.slice(0, 10).map((album, index) => (
+                  {analytics.albumViews.slice(0, 10).map((album) => (
                     <tr key={album.albumId} style={{ borderBottom: '1px solid #dee2e6' }}>
                       <td style={{ padding: '0.75rem' }}>
                         <strong>{album.albumName}</strong>

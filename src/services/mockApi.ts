@@ -22,67 +22,163 @@ let mockUsers: User[] = [
 
 const mockToken = 'mock-jwt-token-12345';
 
-const mockAlbums: Album[] = [
-  {
-    id: 1,
-    name: 'Summer Vacation 2025',
-    description: 'Beautiful moments from our summer trip',
-    coverImageUrl: 'https://picsum.photos/seed/album1/400/300',
-    photoCount: 12,
-    createdDate: '2025-07-15T00:00:00Z',
-  },
-  {
-    id: 2,
-    name: 'Family Portraits',
-    description: 'Professional family photos',
-    coverImageUrl: 'https://picsum.photos/seed/album2/400/300',
-    photoCount: 8,
-    createdDate: '2025-09-20T00:00:00Z',
-  },
-  {
-    id: 3,
-    name: 'Nature Photography',
-    description: 'Stunning landscapes and wildlife',
-    coverImageUrl: 'https://picsum.photos/seed/album3/400/300',
-    photoCount: 15,
-    createdDate: '2025-10-10T00:00:00Z',
-  },
-];
-
-const mockPhotos: Record<number, Photo[]> = {
-  1: Array.from({ length: 12 }, (_, i) => ({
-    id: i + 1,
-    albumId: 1,
-    fileName: `summer-photo-${i + 1}.jpg`,
-    thumbnailUrl: `https://picsum.photos/seed/photo1-${i}/300/300`,
-    fullImageUrl: `https://picsum.photos/seed/photo1-${i}/1200/900`,
-    price: 9.99 + (i % 3),
-    description: `Beautiful summer photo #${i + 1}`,
-  })),
-  2: Array.from({ length: 8 }, (_, i) => ({
-    id: i + 13,
-    albumId: 2,
-    fileName: `family-photo-${i + 1}.jpg`,
-    thumbnailUrl: `https://picsum.photos/seed/photo2-${i}/300/300`,
-    fullImageUrl: `https://picsum.photos/seed/photo2-${i}/1200/900`,
-    price: 14.99 + (i % 2),
-    description: `Family portrait #${i + 1}`,
-  })),
-  3: Array.from({ length: 15 }, (_, i) => ({
-    id: i + 21,
-    albumId: 3,
-    fileName: `nature-photo-${i + 1}.jpg`,
-    thumbnailUrl: `https://picsum.photos/seed/photo3-${i}/300/300`,
-    fullImageUrl: `https://picsum.photos/seed/photo3-${i}/1200/900`,
-    price: 12.99 + (i % 4),
-    description: `Nature shot #${i + 1}`,
-  })),
+// Initialize albums from localStorage or use defaults
+const initAlbums = (): Album[] => {
+  const stored = localStorage.getItem('mockAlbums');
+  if (stored) {
+    try {
+      return JSON.parse(stored);
+    } catch (e) {
+      console.error('Failed to parse stored albums:', e);
+    }
+  }
+  return [
+    {
+      id: 1,
+      name: 'Summer Vacation 2025',
+      description: 'Beautiful moments from our summer trip',
+      coverImageUrl: 'https://picsum.photos/seed/album1/400/300',
+      photoCount: 12,
+      createdDate: '2025-07-15T00:00:00Z',
+    },
+    {
+      id: 2,
+      name: 'Family Portraits',
+      description: 'Professional family photos',
+      coverImageUrl: 'https://picsum.photos/seed/album2/400/300',
+      photoCount: 8,
+      createdDate: '2025-09-20T00:00:00Z',
+    },
+    {
+      id: 3,
+      name: 'Nature Photography',
+      description: 'Stunning landscapes and wildlife',
+      coverImageUrl: 'https://picsum.photos/seed/album3/400/300',
+      photoCount: 15,
+      createdDate: '2025-10-10T00:00:00Z',
+    },
+  ];
 };
+
+let mockAlbums: Album[] = initAlbums();
+
+// Initialize photos from localStorage or use defaults
+const initPhotos = (): Record<number, Photo[]> => {
+  const stored = localStorage.getItem('mockPhotos');
+  if (stored) {
+    try {
+      return JSON.parse(stored);
+    } catch (e) {
+      console.error('Failed to parse stored photos:', e);
+    }
+  }
+  return {
+    1: Array.from({ length: 12 }, (_, i) => ({
+      id: i + 1,
+      albumId: 1,
+      fileName: `summer-photo-${i + 1}.jpg`,
+      thumbnailUrl: `https://picsum.photos/seed/photo1-${i}/300/300`,
+      fullImageUrl: `https://picsum.photos/seed/photo1-${i}/1200/900`,
+      description: `Beautiful summer photo #${i + 1}`,
+    })),
+    2: Array.from({ length: 8 }, (_, i) => ({
+      id: i + 13,
+      albumId: 2,
+      fileName: `family-photo-${i + 1}.jpg`,
+      thumbnailUrl: `https://picsum.photos/seed/photo2-${i}/300/300`,
+      fullImageUrl: `https://picsum.photos/seed/photo2-${i}/1200/900`,
+      description: `Family portrait #${i + 1}`,
+    })),
+    3: Array.from({ length: 15 }, (_, i) => ({
+      id: i + 21,
+      albumId: 3,
+      fileName: `nature-photo-${i + 1}.jpg`,
+      thumbnailUrl: `https://picsum.photos/seed/photo3-${i}/300/300`,
+      fullImageUrl: `https://picsum.photos/seed/photo3-${i}/1200/900`,
+      description: `Nature shot #${i + 1}`,
+    })),
+  };
+};
+
+let mockPhotos: Record<number, Photo[]> = initPhotos();
 
 const mockOrders: Order[] = [];
 
 // Simulate network delay
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Admin functions to modify mock data
+export const addMockAlbum = (album: Album) => {
+  mockAlbums.push(album);
+  localStorage.setItem('mockAlbums', JSON.stringify(mockAlbums));
+};
+
+export const updateMockAlbum = (id: number, data: Partial<Album>) => {
+  const index = mockAlbums.findIndex(a => a.id === id);
+  if (index !== -1) {
+    mockAlbums[index] = { ...mockAlbums[index], ...data };
+    localStorage.setItem('mockAlbums', JSON.stringify(mockAlbums));
+    return mockAlbums[index];
+  }
+  return null;
+};
+
+export const deleteMockAlbum = (id: number) => {
+  const index = mockAlbums.findIndex(a => a.id === id);
+  if (index !== -1) {
+    mockAlbums.splice(index, 1);
+    localStorage.setItem('mockAlbums', JSON.stringify(mockAlbums));
+    return true;
+  }
+  return false;
+};
+
+export const addMockPhotos = (albumId: number, photos: Photo[]) => {
+  if (!mockPhotos[albumId]) {
+    mockPhotos[albumId] = [];
+  }
+  mockPhotos[albumId].push(...photos);
+  
+  // Update album photo count
+  const album = mockAlbums.find(a => a.id === albumId);
+  if (album) {
+    album.photoCount = mockPhotos[albumId].length;
+    localStorage.setItem('mockAlbums', JSON.stringify(mockAlbums));
+  }
+  localStorage.setItem('mockPhotos', JSON.stringify(mockPhotos));
+};
+
+export const updateMockPhoto = (id: number, data: Partial<Photo>) => {
+  for (const albumId in mockPhotos) {
+    const index = mockPhotos[albumId].findIndex(p => p.id === id);
+    if (index !== -1) {
+      mockPhotos[albumId][index] = { ...mockPhotos[albumId][index], ...data };
+      localStorage.setItem('mockPhotos', JSON.stringify(mockPhotos));
+      return mockPhotos[albumId][index];
+    }
+  }
+  return null;
+};
+
+export const deleteMockPhoto = (id: number) => {
+  for (const albumId in mockPhotos) {
+    const index = mockPhotos[albumId].findIndex(p => p.id === id);
+    if (index !== -1) {
+      mockPhotos[albumId].splice(index, 1);
+      
+      // Update album photo count
+      const album = mockAlbums.find(a => a.id === parseInt(albumId));
+      if (album) {
+        album.photoCount = mockPhotos[albumId].length;
+        localStorage.setItem('mockAlbums', JSON.stringify(mockAlbums));
+      }
+      localStorage.setItem('mockPhotos', JSON.stringify(mockPhotos));
+      
+      return true;
+    }
+  }
+  return false;
+};
 
 export const mockApi = {
   auth: {
@@ -178,7 +274,7 @@ export const mockApi = {
         id: mockOrders.length + 1,
         userId: mockUsers[0]?.id || 1,
         orderDate: new Date().toISOString(),
-        totalAmount: items.reduce((sum, item) => sum + item.photo.price * item.quantity, 0) + shippingCost,
+        totalAmount: items.reduce((sum, item) => sum + item.price * item.quantity, 0) + shippingCost,
         status: 'Processing',
         shippingOption,
         shippingCost,
@@ -188,7 +284,7 @@ export const mockApi = {
           photoId: item.photoId,
           photo: item.photo,
           quantity: item.quantity,
-          price: item.photo.price,
+          price: item.price,
           cropData: item.cropData,
         })),
       };

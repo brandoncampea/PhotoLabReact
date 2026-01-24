@@ -2,12 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCart } from '../contexts/CartContext';
 import CartItem from '../components/CartItem';
+import CropperModal from '../components/CropperModal';
 import { orderService } from '../services/orderService';
 import { shippingService } from '../services/shippingService';
 import { stripeService } from '../services/stripeService';
 import { productService } from '../services/productService';
 import { downloadService } from '../services/downloadService';
-import { ShippingConfig, StripeConfig, Product, DiscountCode, ShippingAddress } from '../types';
+import { ShippingConfig, StripeConfig, Product, DiscountCode, ShippingAddress, CartItem as CartItemType } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { adminMockApi } from '../services/adminMockApi';
 
@@ -25,6 +26,7 @@ const Cart: React.FC = () => {
   const [discountCode, setDiscountCode] = useState('');
   const [appliedDiscount, setAppliedDiscount] = useState<DiscountCode | null>(null);
   const [discountError, setDiscountError] = useState('');
+  const [editingItem, setEditingItem] = useState<CartItemType | null>(null);
   const [shippingAddress, setShippingAddress] = useState<ShippingAddress>({
     fullName: '',
     addressLine1: '',
@@ -312,7 +314,11 @@ const Cart: React.FC = () => {
       <div className="cart-content">
         <div className="cart-items">
           {items.map((item) => (
-            <CartItem key={item.photoId} item={item} />
+            <CartItem 
+              key={item.photoId} 
+              item={item} 
+              onEditCrop={(item) => setEditingItem(item)}
+            />
           ))}
         </div>
 
@@ -670,6 +676,18 @@ const Cart: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {editingItem && (
+        <CropperModal
+          photo={editingItem.photo}
+          onClose={() => setEditingItem(null)}
+          editMode={true}
+          existingCropData={editingItem.cropData}
+          existingQuantity={editingItem.quantity}
+          existingProductId={editingItem.productId}
+          existingProductSizeId={editingItem.productSizeId}
+        />
+      )}
     </div>
   );
 };
