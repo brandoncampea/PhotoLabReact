@@ -14,9 +14,10 @@ export interface Album {
   id: number;
   name: string;
   description: string;
-  coverImageUrl: string;
+  coverImageUrl?: string;
   photoCount: number;
   createdDate: string;
+  category?: string;
 }
 
 export interface Photo {
@@ -25,14 +26,28 @@ export interface Photo {
   fileName: string;
   thumbnailUrl: string;
   fullImageUrl: string;
-  price: number;
   description?: string;
+  metadata?: PhotoMetadata;
+}
+
+export interface PhotoMetadata {
+  cameraMake?: string;
+  cameraModel?: string;
+  dateTaken?: string;
+  iso?: string;
+  aperture?: string;
+  shutterSpeed?: string;
+  focalLength?: string;
+  width?: number;
+  height?: number;
+  fileSize?: number;
 }
 
 export interface CartItem {
   photoId: number;
   photo: Photo;
   quantity: number;
+  price: number;
   cropData?: CropData;
   productId?: number;
   productSizeId?: number;
@@ -209,6 +224,7 @@ export interface ProfileConfig {
   businessName: string;
   email: string;
   receiveOrderNotifications: boolean;
+  logoUrl?: string;
 }
 
 export interface AnalyticsData {

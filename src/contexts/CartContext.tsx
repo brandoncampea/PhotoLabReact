@@ -1,9 +1,10 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { CartItem, Photo, CropData } from '../types';
+import { productService } from '../services/productService';
 
 interface CartContextType {
   items: CartItem[];
-  addToCart: (photo: Photo, quantity?: number, cropData?: CropData, productId?: number, productSizeId?: number) => void;
+  addToCart: (photo: Photo, quantity?: number, cropData?: CropData, productId?: number, productSizeId?: number) => Promise<void>;
   removeFromCart: (photoId: number) => void;
   updateQuantity: (photoId: number, quantity: number) => void;
   updateCropData: (photoId: number, cropData: CropData) => void;
@@ -30,19 +31,34 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.setItem('cart', JSON.stringify(items));
   }, [items]);
 
-  const addToCart = (photo: Photo, quantity = 1, cropData?: CropData, productId?: number, productSizeId?: number) => {
+  const addToCart = async (photo: Photo, quantity = 1, cropData?: CropData, productId?: number, productSizeId?: number) => {
+    // Calculate price from product and size
+    let price = 0;
+    if (productId && productSizeId) {
+      try {
+        const products = await productService.getActiveProducts();
+        const product = products.find(p => p.id === productId);
+        const size = product?.sizes.find(s => s.id === productSizeId);
+        if (product && size) {
+          price = product.basePrice + size.priceModifier;
+        }
+      } catch (error) {
+        console.error('Error fetching product price:', error);
+      }
+    }
+
     setItems((prevItems) => {
       const existingItem = prevItems.find((item) => item.photoId === photo.id);
       
       if (existingItem) {
         return prevItems.map((item) =>
           item.photoId === photo.id
-            ? { ...item, quantity: item.quantity + quantity, cropData: cropData || item.cropData, productId, productSizeId }
+            ? { ...item, quantity: item.quantity + quantity, cropData: cropData || item.cropData, productId, productSizeId, price: price || item.price }
             : item
         );
       }
       
-      return [...prevItems, { photoId: photo.id, photo, quantity, cropData, productId, productSizeId }];
+      return [...prevItems, { photoId: photo.id, photo, quantity, cropData, productId, productSizeId, price }];
     });
   };
 
@@ -80,7 +96,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const getTotalPrice = () => {
-    return items.reduce((total, item) => total + item.photo.price * item.quantity, 0);
+    return items.reduce((total, item) => total + item.price * item.quantity, 0);
   };
 
   return (

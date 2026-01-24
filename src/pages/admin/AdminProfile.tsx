@@ -10,6 +10,9 @@ const AdminProfile: React.FC = () => {
   const [businessName, setBusinessName] = useState('');
   const [email, setEmail] = useState('');
   const [receiveOrderNotifications, setReceiveOrderNotifications] = useState(true);
+  const [logoUrl, setLogoUrl] = useState('');
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState('');
 
   useEffect(() => {
     loadConfig();
@@ -23,6 +26,8 @@ const AdminProfile: React.FC = () => {
       setBusinessName(data.businessName);
       setEmail(data.email);
       setReceiveOrderNotifications(data.receiveOrderNotifications);
+      setLogoUrl(data.logoUrl || '');
+      setLogoPreview(data.logoUrl || '');
     } catch (error) {
       console.error('Failed to load profile config:', error);
     } finally {
@@ -33,11 +38,15 @@ const AdminProfile: React.FC = () => {
   const handleSave = async () => {
     setSaving(true);
     try {
+      // If a new logo was uploaded, use the preview URL
+      const finalLogoUrl = logoFile ? logoPreview : logoUrl;
+      
       const updatedConfig = await adminMockApi.profile.updateConfig({
         ownerName,
         businessName,
         email,
         receiveOrderNotifications,
+        logoUrl: finalLogoUrl,
       });
       setConfig(updatedConfig);
       alert('Profile saved successfully!');
@@ -63,6 +72,70 @@ const AdminProfile: React.FC = () => {
       </div>
 
       <div className="admin-form" style={{ maxWidth: '600px' }}>
+        <div className="form-group">
+          <label htmlFor="logo">Site Logo</label>
+          <div style={{ marginBottom: '1rem' }}>
+            {logoPreview && (
+              <div style={{
+                marginBottom: '1rem',
+                padding: '1rem',
+                backgroundColor: '#f5f5f5',
+                borderRadius: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '1rem'
+              }}>
+                <img
+                  src={logoPreview}
+                  alt="Logo preview"
+                  style={{
+                    maxWidth: '200px',
+                    maxHeight: '60px',
+                    objectFit: 'contain'
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLogoFile(null);
+                    setLogoPreview('');
+                    setLogoUrl('');
+                  }}
+                  style={{
+                    padding: '0.5rem 1rem',
+                    backgroundColor: '#d32f2f',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Remove Logo
+                </button>
+              </div>
+            )}
+            <input
+              type="file"
+              id="logo"
+              accept="image/*"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  setLogoFile(file);
+                  const reader = new FileReader();
+                  reader.onloadend = () => {
+                    setLogoPreview(reader.result as string);
+                  };
+                  reader.readAsDataURL(file);
+                }
+              }}
+            />
+          </div>
+          <p style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.25rem' }}>
+            Upload a logo image to replace the "📸 Photo Lab" text in the header. Recommended: transparent PNG, max height 60px
+          </p>
+        </div>
+
         <div className="form-group">
           <label htmlFor="ownerName">
             Owner Name <span style={{ color: '#d32f2f' }}>*</span>

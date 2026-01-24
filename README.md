@@ -4,13 +4,33 @@ A modern React customer portal for photo ordering with cropping, cart management
 
 ## Features
 
+### Customer Portal
 - 🔐 **Authentication** - User registration and login with JWT tokens
 - 📸 **Photo Albums** - Browse albums and view photos
+- 🔍 **Photo Search** - Search photos by name or EXIF metadata (camera, settings, date)
+- 📊 **Photo Metadata** - View camera settings, date taken, and image details
 - ✂️ **Image Cropping** - Crop photos before ordering using react-cropper
 - 🛒 **Shopping Cart** - Add photos to cart with custom crops
-- 💳 **Checkout** - Place orders and view order history
+- 💳 **Checkout** - Place orders with shipping address collection
+- 📦 **Product Selection** - Choose from multiple print sizes and digital downloads
+- 🎁 **Packages** - Purchase bundled product packages at special pricing
+- 💰 **Discount Codes** - Apply promo codes to orders
 - 📱 **Mobile Responsive** - Optimized for mobile, tablet, and desktop
 - 🎨 **Modern UI** - Clean, intuitive interface with smooth animations
+
+### Admin Portal
+- 📁 **Album Management** - Create and manage photo albums
+- 🖼️ **Photo Upload** - Upload photos with automatic EXIF metadata extraction
+- 🛍️ **Product Management** - Manage print products, sizes, and pricing
+- 📦 **Package System** - Create product packages with bundled pricing
+- 💰 **Discount Codes** - Create and manage promotional discount codes
+- 🚚 **Shipping Options** - Configure batch and direct shipping with deadlines
+- 🎨 **Watermark Management** - Upload and configure watermarks with tiling
+- 👥 **User Management** - Manage customer accounts and roles
+- 💳 **Payment Configuration** - Set up Stripe and other payment providers
+- 📊 **Analytics Dashboard** - Track site visits, album views, and photo views
+- 📈 **Sales Reports** - View order statistics and revenue data
+- 👤 **Business Profile** - Configure business info and notification settings
 
 ## Tech Stack
 

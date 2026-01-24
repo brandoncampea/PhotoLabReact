@@ -1,28 +1,45 @@
 import React, { useRef, useState, useEffect } from 'react';
 import Cropper, { ReactCropperElement } from 'react-cropper';
 import 'cropperjs/dist/cropper.css';
-import { Photo, CropData, Product, ProductSize } from '../types';
+import { Photo, CropData, Product, ProductSize, Watermark } from '../types';
 import { useCart } from '../contexts/CartContext';
 import { productService } from '../services/productService';
+import { watermarkService } from '../services/watermarkService';
+import WatermarkedImage from './WatermarkedImage';
 
 interface CropperModalProps {
   photo: Photo;
   onClose: () => void;
+  editMode?: boolean;
+  existingCropData?: CropData;
+  existingQuantity?: number;
+  existingProductId?: number;
+  existingProductSizeId?: number;
 }
 
-const CropperModal: React.FC<CropperModalProps> = ({ photo, onClose }) => {
+const CropperModal: React.FC<CropperModalProps> = ({ 
+  photo, 
+  onClose, 
+  editMode = false,
+  existingCropData,
+  existingQuantity = 1,
+  existingProductId,
+  existingProductSizeId
+}) => {
   const cropperRef = useRef<ReactCropperElement>(null);
-  const { addToCart } = useCart();
-  const [quantity, setQuantity] = useState(1);
+  const { addToCart, updateCropData } = useCart();
+  const [quantity, setQuantity] = useState(existingQuantity);
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [selectedSize, setSelectedSize] = useState<ProductSize | null>(null);
   const [loading, setLoading] = useState(true);
   const [photoAspectRatio, setPhotoAspectRatio] = useState<number | null>(null);
+  const [watermark, setWatermark] = useState<Watermark | null>(null);
 
   useEffect(() => {
     loadProducts();
     loadPhotoAspectRatio();
+    loadWatermark();
   }, []);
 
   const loadPhotoAspectRatio = () => {
@@ -33,12 +50,33 @@ const CropperModal: React.FC<CropperModalProps> = ({ photo, onClose }) => {
     img.src = photo.fullImageUrl;
   };
 
+  const loadWatermark = async () => {
+    try {
+      const defaultWatermark = await watermarkService.getDefaultWatermark();
+      setWatermark(defaultWatermark);
+    } catch (error) {
+      console.error('Failed to load watermark:', error);
+    }
+  };
+
   const loadProducts = async () => {
     try {
       const data = await productService.getActiveProducts();
       // Sort by popularity (highest first)
       const sorted = [...data].sort((a, b) => b.popularity - a.popularity);
       setProducts(sorted);
+      
+      // In edit mode, select the existing product and size
+      if (editMode && existingProductId && existingProductSizeId) {
+        const product = sorted.find(p => p.id === existingProductId);
+        if (product) {
+          setSelectedProduct(product);
+          const size = product.sizes.find(s => s.id === existingProductSizeId);
+          if (size) {
+            setSelectedSize(size);
+          }
+        }
+      }
     } catch (error) {
       console.error('Failed to load products:', error);
     } finally {
@@ -84,8 +122,21 @@ const CropperModal: React.FC<CropperModalProps> = ({ photo, onClose }) => {
     if (selectedSize && cropperRef.current?.cropper) {
       const aspectRatio = selectedSize.width / selectedSize.height;
       cropperRef.current.cropper.setAspectRatio(aspectRatio);
+      
+      // In edit mode, restore existing crop data
+      if (editMode && existingCropData) {
+        cropperRef.current.cropper.setData({
+          x: existingCropData.x,
+          y: existingCropData.y,
+          width: existingCropData.width,
+          height: existingCropData.height,
+          rotate: existingCropData.rotate,
+          scaleX: existingCropData.scaleX,
+          scaleY: existingCropData.scaleY
+        });
+      }
     }
-  }, [selectedSize]);
+  }, [selectedSize, editMode, existingCropData]);
 
   const getAspectRatio = () => {
     if (selectedSize) {
@@ -98,14 +149,22 @@ const CropperModal: React.FC<CropperModalProps> = ({ photo, onClose }) => {
     if (selectedProduct && selectedSize) {
       return (selectedProduct.basePrice + selectedSize.priceModifier) * quantity;
     }
-    return photo.price * quantity;
+    return 0;
   };
 
   const handleAddToCart = () => {
     const cropper = cropperRef.current?.cropper;
     if (cropper && selectedProduct && selectedSize) {
       const cropData = cropper.getData() as CropData;
-      addToCart(photo, quantity, cropData, selectedProduct.id, selectedSize.id);
+      
+      if (editMode) {
+        // Update existing item's crop data
+        updateCropData(photo.id, cropData);
+      } else {
+        // Add new item to cart
+        addToCart(photo, quantity, cropData, selectedProduct.id, selectedSize.id);
+      }
+      
       onClose();
     }
   };
@@ -135,7 +194,7 @@ const CropperModal: React.FC<CropperModalProps> = ({ photo, onClose }) => {
       <div className="modal-overlay" onClick={onClose}>
         <div className="modal-content cropper-modal" onClick={(e) => e.stopPropagation()}>
           <div className="modal-header">
-            <h2>Select Product</h2>
+            <h2>{editMode ? 'Edit Crop' : 'Select Product'}</h2>
             <button onClick={onClose} className="btn-close">
               ×
             </button>
@@ -143,11 +202,55 @@ const CropperModal: React.FC<CropperModalProps> = ({ photo, onClose }) => {
 
           <div className="modal-body">
             <div style={{ marginBottom: '1rem' }}>
-              <img 
-                src={photo.thumbnailUrl} 
-                alt={photo.fileName} 
-                style={{ width: '100%', maxHeight: '200px', objectFit: 'contain', marginBottom: '1rem' }}
-              />
+              <div style={{ width: '100%', maxHeight: '200px', display: 'flex', justifyContent: 'center', alignItems: 'center', marginBottom: '0.5rem' }}>
+                <WatermarkedImage
+                  src={photo.thumbnailUrl}
+                  alt={photo.fileName}
+                  style={{ maxWidth: '100%', maxHeight: '200px', objectFit: 'contain' }}
+                />
+              </div>
+              <div style={{ padding: '0.75rem', backgroundColor: '#f9fafb', borderRadius: '0.5rem', marginBottom: '1rem' }}>
+                <p style={{ fontWeight: 600, marginBottom: '0.5rem', color: '#333' }}>{photo.fileName}</p>
+                {photo.metadata && (
+                  <div style={{ fontSize: '0.875rem', color: '#666', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.5rem' }}>
+                    {photo.metadata.cameraMake && (
+                      <div>
+                        <strong>Camera:</strong> {photo.metadata.cameraMake} {photo.metadata.cameraModel}
+                      </div>
+                    )}
+                    {photo.metadata.dateTaken && (
+                      <div>
+                        <strong>Date:</strong> {new Date(photo.metadata.dateTaken).toLocaleDateString()}
+                      </div>
+                    )}
+                    {photo.metadata.iso && (
+                      <div>
+                        <strong>ISO:</strong> {photo.metadata.iso}
+                      </div>
+                    )}
+                    {photo.metadata.aperture && (
+                      <div>
+                        <strong>Aperture:</strong> f/{photo.metadata.aperture}
+                      </div>
+                    )}
+                    {photo.metadata.shutterSpeed && (
+                      <div>
+                        <strong>Shutter:</strong> {photo.metadata.shutterSpeed}
+                      </div>
+                    )}
+                    {photo.metadata.focalLength && (
+                      <div>
+                        <strong>Focal Length:</strong> {photo.metadata.focalLength}mm
+                      </div>
+                    )}
+                    {photo.metadata.width && photo.metadata.height && (
+                      <div>
+                        <strong>Size:</strong> {photo.metadata.width} × {photo.metadata.height}px
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
             <p style={{ marginBottom: '1.5rem', color: '#666' }}>
               Choose a product type to crop your photo to the correct proportions:
@@ -222,7 +325,7 @@ const CropperModal: React.FC<CropperModalProps> = ({ photo, onClose }) => {
       <div className="modal-content cropper-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <div>
-            <h2>Crop & Order Photo</h2>
+            <h2>{editMode ? 'Edit Crop' : 'Crop & Order Photo'}</h2>
             <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.9rem', color: '#666' }}>
               {selectedProduct.name} - {selectedSize?.name}
             </p>
@@ -278,7 +381,7 @@ const CropperModal: React.FC<CropperModalProps> = ({ photo, onClose }) => {
             </div>
           </div>
 
-          <div className="cropper-container">
+          <div className="cropper-container" style={{ position: 'relative' }}>
             <Cropper
               ref={cropperRef}
               src={photo.fullImageUrl}
@@ -294,7 +397,64 @@ const CropperModal: React.FC<CropperModalProps> = ({ photo, onClose }) => {
               autoCropArea={1}
               checkOrientation={false}
             />
+            {watermark && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  pointerEvents: 'none',
+                  zIndex: 10,
+                  display: 'flex',
+                  justifyContent: watermark.position.includes('right') ? 'flex-end' : watermark.position.includes('left') ? 'flex-start' : 'center',
+                  alignItems: watermark.position.includes('bottom') ? 'flex-end' : watermark.position.includes('top') ? 'flex-start' : 'center',
+                  padding: watermark.tiled ? 0 : '10px',
+                  ...(watermark.tiled ? {
+                    backgroundImage: `url(${watermark.imageUrl})`,
+                    backgroundRepeat: 'repeat',
+                    backgroundSize: '200px auto',
+                    backgroundPosition: 'center',
+                    opacity: watermark.opacity,
+                  } : {}),
+                }}
+              >
+                {!watermark.tiled && (
+                  <img
+                    src={watermark.imageUrl}
+                    alt="Watermark"
+                    style={{
+                      maxWidth: '40%',
+                      maxHeight: '40%',
+                      opacity: watermark.opacity,
+                      objectFit: 'contain',
+                    }}
+                  />
+                )}
+              </div>
+            )}
           </div>
+
+          {watermark && (
+            <div style={{
+              marginTop: '0.75rem',
+              padding: '0.75rem',
+              backgroundColor: '#f0f9ff',
+              border: '1px solid #bae6fd',
+              borderRadius: '0.5rem',
+              fontSize: '0.875rem',
+              color: '#0369a1',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem'
+            }}>
+              <span style={{ fontSize: '1.2rem' }}>ℹ️</span>
+              <span>
+                <strong>Note:</strong> Watermarks are for preview only and will be removed from all purchased photos.
+              </span>
+            </div>
+          )}
 
           <div className="cropper-controls">
             <div className="quantity-control">
@@ -334,11 +494,13 @@ const CropperModal: React.FC<CropperModalProps> = ({ photo, onClose }) => {
         </div>
 
         <div className="modal-footer">
-          <button onClick={handleAddWithoutCrop} className="btn btn-secondary">
-            Add Without Crop
-          </button>
+          {!editMode && (
+            <button onClick={handleAddWithoutCrop} className="btn btn-secondary">
+              Add Without Crop
+            </button>
+          )}
           <button onClick={handleAddToCart} className="btn btn-primary">
-            Add to Cart
+            {editMode ? 'Update Crop' : 'Add to Cart'}
           </button>
         </div>
       </div>

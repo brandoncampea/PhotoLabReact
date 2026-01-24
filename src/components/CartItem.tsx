@@ -1,12 +1,14 @@
 import React from 'react';
 import { CartItem as CartItemType } from '../types';
 import { useCart } from '../contexts/CartContext';
+import WatermarkedImage from './WatermarkedImage';
 
 interface CartItemProps {
   item: CartItemType;
+  onEditCrop?: (item: CartItemType) => void;
 }
 
-const CartItem: React.FC<CartItemProps> = ({ item }) => {
+const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop }) => {
   const { updateQuantity, removeFromCart } = useCart();
 
   const handleQuantityChange = (newQuantity: number) => {
@@ -15,16 +17,62 @@ const CartItem: React.FC<CartItemProps> = ({ item }) => {
     }
   };
 
-  const subtotal = item.photo.price * item.quantity;
+  const subtotal = item.price * item.quantity;
+
+  // Calculate crop preview overlay position (as percentage of image)
+  const getCropStyle = () => {
+    if (!item.cropData) return null;
+    
+    const { x, y, width, height } = item.cropData;
+    
+    return {
+      position: 'absolute' as const,
+      left: `${x}%`,
+      top: `${y}%`,
+      width: `${width}%`,
+      height: `${height}%`,
+      border: '2px solid #3b82f6',
+      boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.5)',
+      pointerEvents: 'none' as const,
+    };
+  };
 
   return (
     <div className="cart-item">
-      <img src={item.photo.thumbnailUrl} alt={item.photo.fileName} className="cart-item-image" />
+      <div className="cart-item-image" style={{ width: '100px', height: '100px', overflow: 'hidden', flexShrink: 0, position: 'relative' }}>
+        <WatermarkedImage 
+          src={item.photo.thumbnailUrl} 
+          alt={item.photo.fileName}
+          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+        />
+        {item.cropData && <div style={getCropStyle()!} />}
+      </div>
       
       <div className="cart-item-details">
         <h3>{item.photo.fileName}</h3>
         {item.photo.description && <p>{item.photo.description}</p>}
-        {item.cropData && <span className="badge">Custom Crop</span>}
+        {item.cropData && (
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <span className="badge">Custom Crop</span>
+            {onEditCrop && (
+              <button 
+                onClick={() => onEditCrop(item)}
+                className="btn-edit-crop"
+                style={{
+                  padding: '0.25rem 0.5rem',
+                  fontSize: '0.75rem',
+                  backgroundColor: '#3b82f6',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '0.25rem',
+                  cursor: 'pointer'
+                }}
+              >
+                Edit Crop
+              </button>
+            )}
+          </div>
+        )}
       </div>
       
       <div className="cart-item-quantity">
@@ -45,7 +93,7 @@ const CartItem: React.FC<CartItemProps> = ({ item }) => {
       
       <div className="cart-item-price">
         <p className="price-label">
-          ${item.photo.price.toFixed(2)} × {item.quantity}
+          ${item.price.toFixed(2)} × {item.quantity}
         </p>
         <p className="price-total">${subtotal.toFixed(2)}</p>
       </div>
