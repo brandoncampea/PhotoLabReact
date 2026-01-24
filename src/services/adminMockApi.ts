@@ -1,4 +1,4 @@
-import { AdminUser, Watermark, Customer, DashboardStats, Album, Photo, Order, ShippingConfig, StripeConfig, UserAccount, Package, PackageItem, Product, DiscountCode, ProfileConfig, PriceList } from '../types';
+import { AdminUser, Watermark, Customer, DashboardStats, Album, Photo, Order, ShippingConfig, StripeConfig, UserAccount, Package, PackageItem, DiscountCode, ProfileConfig, PriceList } from '../types';
 import { addMockAlbum, updateMockAlbum, deleteMockAlbum, addMockPhotos, updateMockPhoto, deleteMockPhoto } from './mockApi';
 
 // Mock admin user
@@ -30,8 +30,8 @@ let mockStripeConfig: StripeConfig = {
   webhookSecret: 'whsec_example_webhook_secret',
 };
 
-// Mock Profile configuration
-let mockProfileConfig: ProfileConfig = {
+// Mock Profile configuration - with defaults
+const defaultMockProfileConfig: ProfileConfig = {
   id: 1,
   ownerName: 'John Smith',
   businessName: 'PhotoLab Studio',
@@ -40,51 +40,37 @@ let mockProfileConfig: ProfileConfig = {
   logoUrl: '',
 };
 
+// Initialize profile from localStorage or use defaults
+const initializeProfileFromStorage = (): ProfileConfig => {
+  if (typeof window === 'undefined') return defaultMockProfileConfig;
+  
+  try {
+    const stored = localStorage.getItem('photolab_profile_config');
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (error) {
+    console.warn('Failed to load profile config from localStorage:', error);
+  }
+  
+  return defaultMockProfileConfig;
+};
+
+let mockProfileConfig: ProfileConfig = initializeProfileFromStorage();
+
+// Save profile to localStorage
+const saveProfileToStorage = () => {
+  if (typeof window === 'undefined') return;
+  
+  try {
+    localStorage.setItem('photolab_profile_config', JSON.stringify(mockProfileConfig));
+  } catch (error) {
+    console.warn('Failed to save profile config to localStorage:', error);
+  }
+};
+
 // Mock album categories
 let mockCategories: string[] = ['Weddings', 'Portraits', 'Events', 'Nature'];
-
-// Mock products
-let mockProducts: Product[] = [
-  {
-    id: 1,
-    name: 'Standard Print',
-    description: 'High quality photo print',
-    sizes: [
-      { id: 1, name: '4x6', width: 4, height: 6, price: 9.99 },
-      { id: 2, name: '5x7', width: 5, height: 7, price: 11.99 },
-      { id: 3, name: '8x10', width: 8, height: 10, price: 14.99 },
-    ],
-    isActive: true,
-    popularity: 100,
-    isDigital: false,
-  },
-  {
-    id: 2,
-    name: 'Canvas Print',
-    description: 'Museum quality canvas',
-    sizes: [
-      { id: 4, name: '12x16', width: 12, height: 16, price: 29.99 },
-      { id: 5, name: '16x20', width: 16, height: 20, price: 39.99 },
-      { id: 6, name: '24x36', width: 24, height: 36, price: 59.99 },
-    ],
-    isActive: true,
-    popularity: 75,
-    isDigital: false,
-  },
-  {
-    id: 3,
-    name: 'Digital Download',
-    description: 'High-resolution digital file',
-    sizes: [
-      { id: 7, name: 'Original', width: 0, height: 0, price: 4.99 },
-      { id: 8, name: '4K', width: 3840, height: 2160, price: 6.99 },
-      { id: 9, name: '8K', width: 7680, height: 4320, price: 9.99 },
-    ],
-    isActive: true,
-    popularity: 90,
-    isDigital: true,
-  },
-];
 
 // Mock watermarks
 let mockWatermarks: Watermark[] = [
@@ -157,10 +143,11 @@ let mockUserAccounts: UserAccount[] = [
   },
 ];
 
-// Mock packages
+// Mock packages (tied to specific price lists)
 let mockPackages: Package[] = [
   {
     id: 1,
+    priceListId: 1,
     name: 'Starter Package',
     description: '10 standard prints at a discounted rate',
     packagePrice: 79.99,
@@ -172,6 +159,7 @@ let mockPackages: Package[] = [
   },
   {
     id: 2,
+    priceListId: 1,
     name: 'Family Package',
     description: 'Mix of prints and canvas for the whole family',
     packagePrice: 149.99,
@@ -185,6 +173,7 @@ let mockPackages: Package[] = [
   },
   {
     id: 3,
+    priceListId: 2,
     name: 'Premium Package',
     description: 'Best value - large format prints and digitals',
     packagePrice: 299.99,
@@ -273,12 +262,14 @@ let mockCustomers: Customer[] = [
 ];
 
 // Mock price lists (now containing products and their pricing)
-let mockPriceLists: PriceList[] = [
+// Default price lists
+const defaultMockPriceLists: PriceList[] = [
   {
     id: 1,
     name: 'Standard Pricing',
     description: 'Default pricing for all products',
     isActive: true,
+    isDefault: true,
     createdDate: '2025-12-01T00:00:00Z',
     products: [
       {
@@ -324,6 +315,7 @@ let mockPriceLists: PriceList[] = [
     name: 'Discount Pricing',
     description: 'Special pricing for volume orders',
     isActive: true,
+    isDefault: false,
     createdDate: '2025-12-15T00:00:00Z',
     products: [
       {
@@ -353,6 +345,35 @@ let mockPriceLists: PriceList[] = [
     ],
   },
 ];
+
+// Initialize from localStorage or use defaults
+const initializePriceListsFromStorage = (): PriceList[] => {
+  if (typeof window === 'undefined') return defaultMockPriceLists;
+  
+  try {
+    const stored = localStorage.getItem('photolab_price_lists');
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (error) {
+    console.warn('Failed to load price lists from localStorage:', error);
+  }
+  
+  return defaultMockPriceLists;
+};
+
+let mockPriceLists: PriceList[] = initializePriceListsFromStorage();
+
+// Save to localStorage whenever mockPriceLists changes
+const savePriceListsToStorage = () => {
+  if (typeof window === 'undefined') return;
+  
+  try {
+    localStorage.setItem('photolab_price_lists', JSON.stringify(mockPriceLists));
+  } catch (error) {
+    console.warn('Failed to save price lists to localStorage:', error);
+  }
+};
 
 
 
@@ -712,6 +733,10 @@ export const adminMockApi = {
         photoCount: 0,
         createdDate: new Date().toISOString(),
         category: data.category,
+        priceListId: data.priceListId,
+        isPasswordProtected: !!data.isPasswordProtected,
+        password: data.isPasswordProtected ? data.password || '' : '',
+        passwordHint: data.isPasswordProtected ? data.passwordHint || '' : '',
       };
       addMockAlbum(newAlbum);
       return newAlbum;
@@ -733,6 +758,10 @@ export const adminMockApi = {
         photoCount: data.photoCount || 0,
         createdDate: new Date().toISOString(),
         category: data.category,
+        priceListId: data.priceListId,
+        isPasswordProtected: !!data.isPasswordProtected,
+        password: data.isPasswordProtected ? data.password || '' : '',
+        passwordHint: data.isPasswordProtected ? data.passwordHint || '' : '',
       };
     },
 
@@ -754,6 +783,13 @@ export const adminMockApi = {
       if (!mockCategories.includes(category)) {
         mockCategories.push(category);
       }
+      return [...mockCategories];
+    },
+
+    async deleteCategory(category: string): Promise<string[]> {
+      await delay(300);
+      console.log('Admin Mock API: Deleting category', category);
+      mockCategories = mockCategories.filter(c => c !== category);
       return [...mockCategories];
     },
   },
@@ -989,6 +1025,7 @@ export const adminMockApi = {
       await delay(400);
       console.log('Admin Mock API: Updating profile config', data);
       mockProfileConfig = { ...mockProfileConfig, ...data };
+      saveProfileToStorage();
       return mockProfileConfig;
     },
   },
@@ -1035,21 +1072,26 @@ export const adminMockApi = {
   },
 
   packages: {
-    async getAll(): Promise<Package[]> {
+    async getAll(priceListId?: number): Promise<Package[]> {
       await delay(300);
-      console.log('Admin Mock API: Fetching packages');
-      return mockPackages.map(pkg => ({
-        ...pkg,
-        items: pkg.items.map((item: PackageItem) => {
-          const product = mockProducts.find(p => p.id === item.productId);
-          const productSize = product?.sizes.find((s: any) => s.id === item.productSizeId);
-          return {
-            ...item,
-            product,
-            productSize,
-          };
-        }),
-      }));
+      console.log('Admin Mock API: Fetching packages', priceListId ? `for priceList ${priceListId}` : '');
+      const source = priceListId ? mockPackages.filter(p => p.priceListId === priceListId) : mockPackages;
+
+      return source.map(pkg => {
+        const priceList = mockPriceLists.find(pl => pl.id === pkg.priceListId);
+        return {
+          ...pkg,
+          items: pkg.items.map((item: PackageItem) => {
+            const product = priceList?.products.find(p => p.id === item.productId);
+            const productSize = product?.sizes.find((s: any) => s.id === item.productSizeId);
+            return {
+              ...item,
+              product,
+              productSize,
+            };
+          }),
+        };
+      });
     },
 
     async getById(id: number): Promise<Package> {
@@ -1057,10 +1099,11 @@ export const adminMockApi = {
       console.log('Admin Mock API: Fetching package', id);
       const pkg = mockPackages.find(p => p.id === id);
       if (!pkg) throw new Error('Package not found');
+      const priceList = mockPriceLists.find(pl => pl.id === pkg.priceListId);
       return {
         ...pkg,
         items: pkg.items.map((item: PackageItem) => {
-          const product = mockProducts.find(p => p.id === item.productId);
+          const product = priceList?.products.find(p => p.id === item.productId);
           const productSize = product?.sizes.find((s: any) => s.id === item.productSizeId);
           return {
             ...item,
@@ -1074,8 +1117,11 @@ export const adminMockApi = {
     async create(data: Partial<Package>): Promise<Package> {
       await delay(400);
       console.log('Admin Mock API: Creating package', data);
+      if (!data.priceListId) throw new Error('priceListId is required for packages');
+
       const newPackage: Package = {
         id: mockPackages.length + 1,
+        priceListId: data.priceListId,
         name: data.name || '',
         description: data.description || '',
         packagePrice: data.packagePrice || 0,
@@ -1221,9 +1267,14 @@ export const adminMockApi = {
         description: data.description,
         products: data.products || [],
         isActive: data.isActive ?? true,
+        isDefault: data.isDefault ?? false,
         createdDate: new Date().toISOString(),
       };
+      if (newPriceList.isDefault) {
+        mockPriceLists = mockPriceLists.map(pl => ({ ...pl, isDefault: false }));
+      }
       mockPriceLists.push(newPriceList);
+      savePriceListsToStorage();
       return newPriceList;
     },
 
@@ -1237,9 +1288,29 @@ export const adminMockApi = {
           ...data,
           updatedDate: new Date().toISOString()
         };
+        if (data.isDefault) {
+          mockPriceLists = mockPriceLists.map((pl, i) => ({
+            ...pl,
+            isDefault: i === index,
+          }));
+        }
+        savePriceListsToStorage();
         return mockPriceLists[index];
       }
       throw new Error('Price list not found');
+    },
+
+    async setDefault(id: number): Promise<PriceList> {
+      await delay(200);
+      console.log('Admin Mock API: Setting default price list', id);
+      const exists = mockPriceLists.find(pl => pl.id === id);
+      if (!exists) throw new Error('Price list not found');
+      mockPriceLists = mockPriceLists.map(pl => ({
+        ...pl,
+        isDefault: pl.id === id,
+      }));
+      savePriceListsToStorage();
+      return mockPriceLists.find(pl => pl.id === id)!;
     },
 
     async delete(id: number): Promise<void> {
@@ -1248,6 +1319,7 @@ export const adminMockApi = {
       const index = mockPriceLists.findIndex(pl => pl.id === id);
       if (index !== -1) {
         mockPriceLists.splice(index, 1);
+        savePriceListsToStorage();
       }
     },
 
@@ -1266,6 +1338,7 @@ export const adminMockApi = {
         sizes: product.sizes || [],
       };
       priceList.products.push(newProduct);
+      savePriceListsToStorage();
       return newProduct;
     },
 
@@ -1279,6 +1352,7 @@ export const adminMockApi = {
       if (!product) throw new Error('Product not found in price list');
       
       Object.assign(product, data);
+      savePriceListsToStorage();
       return product;
     },
 
@@ -1291,6 +1365,7 @@ export const adminMockApi = {
       const index = priceList.products.findIndex(p => p.id === productId);
       if (index !== -1) {
         priceList.products.splice(index, 1);
+        savePriceListsToStorage();
       }
     },
 
@@ -1313,6 +1388,7 @@ export const adminMockApi = {
         cost: size.cost ?? 0,
       };
       product.sizes.push(newSize);
+      savePriceListsToStorage();
       return newSize;
     },
 
@@ -1329,6 +1405,7 @@ export const adminMockApi = {
       if (!size) throw new Error('Size not found');
       
       Object.assign(size, data);
+      savePriceListsToStorage();
       return size;
     },
 
@@ -1344,6 +1421,7 @@ export const adminMockApi = {
       const index = product.sizes.findIndex(s => s.id === sizeId);
       if (index !== -1) {
         product.sizes.splice(index, 1);
+        savePriceListsToStorage();
       }
     },
   },

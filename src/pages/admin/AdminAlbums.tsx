@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { Album, Photo, PriceList } from '../../types';
 import { albumService } from '../../services/albumService';
 import { photoService } from '../../services/photoService';
-import { adminMockApi } from '../../services/adminMockApi';
+import { categoryService } from '../../services/categoryService';
+import { albumAdminService } from '../../services/albumAdminService';
 
 const AdminAlbums: React.FC = () => {
   const [albums, setAlbums] = useState<Album[]>([]);
@@ -21,6 +22,9 @@ const AdminAlbums: React.FC = () => {
     coverImageUrl: '',
     category: '',
     priceListId: undefined as number | undefined,
+    isPasswordProtected: false,
+    password: '',
+    passwordHint: '',
   });
 
   useEffect(() => {
@@ -42,7 +46,7 @@ const AdminAlbums: React.FC = () => {
 
   const loadCategories = async () => {
     try {
-      const data = await adminMockApi.albums.getCategories();
+      const data = await categoryService.getCategories();
       setCategories(data);
     } catch (error) {
       console.error('Failed to load categories:', error);
@@ -51,7 +55,7 @@ const AdminAlbums: React.FC = () => {
 
   const loadPriceLists = async () => {
     try {
-      const data = await adminMockApi.priceLists.getAll();
+      const data = await albumAdminService.getPriceLists();
       setPriceLists(data);
     } catch (error) {
       console.error('Failed to load price lists:', error);
@@ -60,7 +64,7 @@ const AdminAlbums: React.FC = () => {
 
   const handleCreate = () => {
     setEditingAlbum(null);
-    setFormData({ name: '', description: '', coverImageUrl: '', category: '', priceListId: undefined });
+    setFormData({ name: '', description: '', coverImageUrl: '', category: '', priceListId: undefined, isPasswordProtected: false, password: '', passwordHint: '' });
     setShowNewCategory(false);
     setNewCategory('');
     setShowModal(true);
@@ -74,6 +78,9 @@ const AdminAlbums: React.FC = () => {
       coverImageUrl: album.coverImageUrl || '',
       category: album.category || '',
       priceListId: album.priceListId,
+      isPasswordProtected: !!album.isPasswordProtected,
+      password: album.isPasswordProtected ? album.password || '' : '',
+      passwordHint: album.isPasswordProtected ? album.passwordHint || '' : '',
     });
     setShowNewCategory(false);
     setNewCategory('');
@@ -102,7 +109,7 @@ const AdminAlbums: React.FC = () => {
   const handleAddCategory = async () => {
     if (newCategory.trim()) {
       try {
-        const updatedCategories = await adminMockApi.albums.addCategory(newCategory.trim());
+        const updatedCategories = await categoryService.addCategory(newCategory.trim());
         setCategories(updatedCategories);
         setFormData({ ...formData, category: newCategory.trim() });
         setNewCategory('');
@@ -116,10 +123,15 @@ const AdminAlbums: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const payload = {
+        ...formData,
+        password: formData.isPasswordProtected ? formData.password : '',
+        passwordHint: formData.isPasswordProtected ? formData.passwordHint : '',
+      };
       if (editingAlbum) {
-        await adminMockApi.albums.update(editingAlbum.id, formData);
+        await albumAdminService.updateAlbum(editingAlbum.id, payload);
       } else {
-        await adminMockApi.albums.create(formData);
+        await albumAdminService.createAlbum(payload);
       }
       setShowModal(false);
       loadAlbums();
@@ -131,10 +143,21 @@ const AdminAlbums: React.FC = () => {
   const handleDelete = async (id: number) => {
     if (confirm('Are you sure you want to delete this album?')) {
       try {
-        await adminMockApi.albums.delete(id);
+        await albumAdminService.deleteAlbum(id);
         loadAlbums();
       } catch (error) {
         console.error('Failed to delete album:', error);
+      }
+    }
+  };
+
+  const handleDeleteCategory = async (category: string) => {
+    if (confirm(`Delete category "${category}"? Albums with this category will have it removed.`)) {
+      try {
+        await categoryService.deleteCategory(category);
+        loadCategories();
+      } catch (error) {
+        console.error('Failed to delete category:', error);
       }
     }
   };
@@ -152,6 +175,45 @@ const AdminAlbums: React.FC = () => {
         </button>
       </div>
 
+      {categories.length > 0 && (
+        <div style={{ marginBottom: '2rem', padding: '1rem', backgroundColor: '#f9f9f9', borderRadius: '8px' }}>
+          <h3 style={{ marginTop: 0, marginBottom: '0.75rem' }}>Categories ({categories.length})</h3>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+            {categories.map((category) => (
+              <div
+                key={category}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  backgroundColor: '#e8f4f8',
+                  border: '1px solid #0066cc',
+                  borderRadius: '20px',
+                  padding: '0.5rem 0.75rem',
+                  gap: '0.5rem'
+                }}
+              >
+                <span>{category}</span>
+                <button
+                  onClick={() => handleDeleteCategory(category)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#d32f2f',
+                    cursor: 'pointer',
+                    fontSize: '1rem',
+                    padding: 0,
+                    lineHeight: 1
+                  }}
+                  title="Delete category"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="admin-table">
         <table>
           <thead>
@@ -161,6 +223,7 @@ const AdminAlbums: React.FC = () => {
               <th>Category</th>
               <th>Price List</th>
               <th>Description</th>
+              <th>Protected</th>
               <th>Photos</th>
               <th>Created</th>
               <th>Actions</th>
@@ -176,6 +239,7 @@ const AdminAlbums: React.FC = () => {
                 <td>{album.category || '-'}</td>
                 <td>{priceLists.find(pl => pl.id === album.priceListId)?.name || 'Default'}</td>
                 <td>{album.description}</td>
+                <td>{album.isPasswordProtected ? 'Yes' : 'No'}</td>
                 <td>{album.photoCount}</td>
                 <td>{new Date(album.createdDate).toLocaleDateString()}</td>
                 <td>
@@ -279,6 +343,41 @@ const AdminAlbums: React.FC = () => {
                 <a href="/admin/price-lists" style={{ fontSize: '0.85rem', color: '#0066cc', marginTop: '0.5rem', display: 'block' }}>
                   Manage price lists →
                 </a>
+              </div>
+              <div className="form-group">
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={formData.isPasswordProtected}
+                    onChange={(e) => {
+                      const isProtected = e.target.checked;
+                      setFormData({
+                        ...formData,
+                        isPasswordProtected: isProtected,
+                        password: isProtected ? formData.password : '',
+                        passwordHint: isProtected ? formData.passwordHint : '',
+                      });
+                    }}
+                  />
+                  Require password to view album
+                </label>
+                {formData.isPasswordProtected && (
+                  <div style={{ marginTop: '0.75rem', display: 'grid', gap: '0.75rem' }}>
+                    <input
+                      type="text"
+                      placeholder="Album password"
+                      value={formData.password}
+                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                      required
+                    />
+                    <input
+                      type="text"
+                      placeholder="Optional hint (e.g. Couple's last name)"
+                      value={formData.passwordHint}
+                      onChange={(e) => setFormData({ ...formData, passwordHint: e.target.value })}
+                    />
+                  </div>
+                )}
               </div>
               <div className="form-group">
                 <input

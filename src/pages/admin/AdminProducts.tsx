@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { PriceList, PriceListProduct, PriceListProductSize } from '../../types';
+import { PriceList, PriceListProduct, PriceListProductSize, Package } from '../../types';
 import { adminMockApi } from '../../services/adminMockApi';
 
 const AdminProducts: React.FC = () => {
@@ -10,6 +10,10 @@ const AdminProducts: React.FC = () => {
   const [showSizeModal, setShowSizeModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<PriceListProduct | null>(null);
   const [editingSize, setEditingSize] = useState<{ productId: number; size: PriceListProductSize } | null>(null);
+  const [packages, setPackages] = useState<Package[]>([]);
+  const [packagesLoading, setPackagesLoading] = useState(false);
+  const [showPackageModal, setShowPackageModal] = useState(false);
+  const [editingPackage, setEditingPackage] = useState<Package | null>(null);
   
   const [productForm, setProductForm] = useState({
     name: '',
@@ -25,9 +29,25 @@ const AdminProducts: React.FC = () => {
     cost: 0,
   });
 
+  const [packageForm, setPackageForm] = useState({
+    name: '',
+    description: '',
+    packagePrice: 0,
+    items: [] as { productId: number; productSizeId: number; quantity: number }[],
+    isActive: true,
+  });
+
   useEffect(() => {
     loadPriceLists();
   }, []);
+
+  useEffect(() => {
+    if (selectedPriceList) {
+      loadPackages(selectedPriceList.id);
+    } else {
+      setPackages([]);
+    }
+  }, [selectedPriceList]);
 
   const loadPriceLists = async () => {
     try {
@@ -40,6 +60,18 @@ const AdminProducts: React.FC = () => {
       console.error('Failed to load price lists:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadPackages = async (priceListId: number) => {
+    setPackagesLoading(true);
+    try {
+      const pkgData = await adminMockApi.packages.getAll(priceListId);
+      setPackages(pkgData);
+    } catch (error) {
+      console.error('Failed to load packages:', error);
+    } finally {
+      setPackagesLoading(false);
     }
   };
 
@@ -131,6 +163,97 @@ const AdminProducts: React.FC = () => {
       setSelectedPriceList(updated);
     } catch (error) {
       console.error('Failed to delete size:', error);
+    }
+  };
+
+  // Package management
+  const handleCreatePackage = () => {
+    setEditingPackage(null);
+    setPackageForm({
+      name: '',
+      description: '',
+      packagePrice: 0,
+      items: [],
+      isActive: true,
+    });
+    setShowPackageModal(true);
+  };
+
+  const handleEditPackage = (pkg: Package) => {
+    setEditingPackage(pkg);
+    setPackageForm({
+      name: pkg.name,
+      description: pkg.description,
+      packagePrice: pkg.packagePrice,
+      items: pkg.items,
+      isActive: pkg.isActive,
+    });
+    setShowPackageModal(true);
+  };
+
+  const handleDeletePackage = async (id: number) => {
+    if (!selectedPriceList) return;
+    if (confirm('Delete this package?')) {
+      try {
+        await adminMockApi.packages.delete(id);
+        loadPackages(selectedPriceList.id);
+      } catch (error) {
+        console.error('Failed to delete package:', error);
+      }
+    }
+  };
+
+  const addPackageItem = () => {
+    if (!selectedPriceList || selectedPriceList.products.length === 0) return;
+    const firstProduct = selectedPriceList.products[0];
+    const firstSize = firstProduct.sizes[0];
+    if (!firstSize) return;
+    setPackageForm({
+      ...packageForm,
+      items: [...packageForm.items, { productId: firstProduct.id, productSizeId: firstSize.id, quantity: 1 }],
+    });
+  };
+
+  const removePackageItem = (index: number) => {
+    setPackageForm({
+      ...packageForm,
+      items: packageForm.items.filter((_, i) => i !== index),
+    });
+  };
+
+  const updatePackageItem = (index: number, field: string, value: any) => {
+    const newItems = [...packageForm.items];
+    newItems[index] = { ...newItems[index], [field]: value };
+
+    if (field === 'productId' && selectedPriceList) {
+      const product = selectedPriceList.products.find(p => p.id === value);
+      if (product && product.sizes.length > 0) {
+        newItems[index].productSizeId = product.sizes[0].id;
+      }
+    }
+
+    setPackageForm({ ...packageForm, items: newItems });
+  };
+
+  const handleSubmitPackage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedPriceList) return;
+    try {
+      if (editingPackage) {
+        await adminMockApi.packages.update(editingPackage.id, {
+          ...packageForm,
+          priceListId: selectedPriceList.id,
+        });
+      } else {
+        await adminMockApi.packages.create({
+          ...packageForm,
+          priceListId: selectedPriceList.id,
+        });
+      }
+      setShowPackageModal(false);
+      loadPackages(selectedPriceList.id);
+    } catch (error) {
+      console.error('Failed to save package:', error);
     }
   };
 
@@ -331,6 +454,200 @@ const AdminProducts: React.FC = () => {
         </div>
       )}
 
+      {/* Package Modal */}
+      {showPackageModal && selectedPriceList && (
+        <div className="modal-overlay" onClick={() => setShowPackageModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '720px' }}>
+            <div className="modal-header">
+              <h2>{editingPackage ? 'Edit Package' : 'Create Package'}</h2>
+              <button onClick={() => setShowPackageModal(false)} className="btn-close">×</button>
+            </div>
+            <form onSubmit={handleSubmitPackage} className="modal-body">
+              <div className="form-group">
+                <label>Package Name</label>
+                <input
+                  type="text"
+                  value={packageForm.name}
+                  onChange={(e) => setPackageForm({ ...packageForm, name: e.target.value })}
+                  required
+                  placeholder="e.g., Family Package"
+                />
+              </div>
+              <div className="form-group">
+                <label>Description</label>
+                <textarea
+                  value={packageForm.description}
+                  onChange={(e) => setPackageForm({ ...packageForm, description: e.target.value })}
+                  rows={2}
+                  placeholder="Brief description"
+                />
+              </div>
+
+              <div className="form-group">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <label style={{ margin: 0 }}>Package Items</label>
+                  <button type="button" onClick={addPackageItem} className="btn btn-secondary" style={{ fontSize: '0.85rem', padding: '0.25rem 0.75rem' }}>
+                    + Add Item
+                  </button>
+                </div>
+                {packageForm.items.length === 0 ? (
+                  <p style={{ color: '#666', fontSize: '0.9rem', fontStyle: 'italic' }}>
+                    No items yet. Add at least one product/size.
+                  </p>
+                ) : (
+                  <div style={{ border: '1px solid #ddd', borderRadius: '4px', padding: '0.5rem' }}>
+                    {packageForm.items.map((item, index) => {
+                      const product = selectedPriceList.products.find(p => p.id === item.productId);
+                      return (
+                        <div key={index} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'center' }}>
+                          <select
+                            value={item.productId}
+                            onChange={(e) => updatePackageItem(index, 'productId', parseInt(e.target.value))}
+                            style={{ flex: 2 }}
+                          >
+                            {selectedPriceList.products.map(product => (
+                              <option key={product.id} value={product.id}>{product.name}</option>
+                            ))}
+                          </select>
+                          <select
+                            value={item.productSizeId}
+                            onChange={(e) => updatePackageItem(index, 'productSizeId', parseInt(e.target.value))}
+                            style={{ flex: 2 }}
+                          >
+                            {product?.sizes.map(size => (
+                              <option key={size.id} value={size.id}>{size.name}</option>
+                            ))}
+                          </select>
+                          <input
+                            type="number"
+                            min={1}
+                            value={item.quantity}
+                            onChange={(e) => updatePackageItem(index, 'quantity', parseInt(e.target.value))}
+                            style={{ width: '80px' }}
+                          />
+                          <button type="button" onClick={() => removePackageItem(index)} className="btn-icon" title="Remove">
+                            🗑️
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div>
+                  <label>Package Price</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    value={packageForm.packagePrice}
+                    onChange={(e) => setPackageForm({ ...packageForm, packagePrice: parseFloat(e.target.value) })}
+                  />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '1.6rem' }}>
+                  <input
+                    id="package-active"
+                    type="checkbox"
+                    checked={packageForm.isActive}
+                    onChange={(e) => setPackageForm({ ...packageForm, isActive: e.target.checked })}
+                  />
+                  <label htmlFor="package-active" style={{ margin: 0 }}>Active</label>
+                </div>
+              </div>
+
+              <div className="modal-actions" style={{ marginTop: '1rem', display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+                <button type="button" onClick={() => setShowPackageModal(false)} className="btn btn-secondary">
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary">
+                  {editingPackage ? 'Update Package' : 'Create Package'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+
+                            {/* Packages for this price list */}
+                            <div style={{ marginTop: '2.5rem' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                                <h2 style={{ margin: 0 }}>Packages</h2>
+                                <button onClick={handleCreatePackage} className="btn btn-primary" disabled={packagesLoading}>
+                                  + Create Package
+                                </button>
+                              </div>
+                              {packagesLoading ? (
+                                <div className="loading">Loading packages...</div>
+                              ) : packages.length === 0 ? (
+                                <p style={{ color: '#666', fontStyle: 'italic' }}>No packages yet for this price list.</p>
+                              ) : (
+                                <div className="table-container" style={{ marginTop: '0.5rem' }}>
+                                  <table className="admin-table">
+                                    <thead>
+                                      <tr>
+                                        <th>Name</th>
+                                        <th>Description</th>
+                                        <th>Items</th>
+                                        <th>Retail Value</th>
+                                        <th>Package Price</th>
+                                        <th>Savings</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {packages.map(pkg => {
+                                        const retailValue = pkg.items.reduce((total, item) => {
+                                          const product = selectedPriceList?.products.find(p => p.id === item.productId);
+                                          const size = product?.sizes.find(s => s.id === item.productSizeId);
+                                          const price = size?.price ?? 0;
+                                          return total + price * item.quantity;
+                                        }, 0);
+                                        const savings = retailValue - pkg.packagePrice;
+                                        const savingsPercent = retailValue > 0 ? ((savings / retailValue) * 100).toFixed(0) : '0';
+
+                                        return (
+                                          <tr key={pkg.id}>
+                                            <td><strong>{pkg.name}</strong></td>
+                                            <td>{pkg.description}</td>
+                                            <td>
+                                              {pkg.items.map((item, idx) => {
+                                                const product = selectedPriceList?.products.find(p => p.id === item.productId);
+                                                const size = product?.sizes.find(s => s.id === item.productSizeId);
+                                                return (
+                                                  <div key={idx} style={{ fontSize: '0.85rem', marginBottom: '0.25rem' }}>
+                                                    {item.quantity}x {product?.name || 'Unknown'} ({size?.name || 'Size'})
+                                                  </div>
+                                                );
+                                              })}
+                                            </td>
+                                            <td>${retailValue.toFixed(2)}</td>
+                                            <td><strong>${pkg.packagePrice.toFixed(2)}</strong></td>
+                                            <td style={{ color: '#4caf50' }}>
+                                              ${savings.toFixed(2)} ({savingsPercent}%)
+                                            </td>
+                                            <td>
+                                              <span className={`status-badge ${pkg.isActive ? 'active' : 'inactive'}`}>
+                                                {pkg.isActive ? 'Active' : 'Inactive'}
+                                              </span>
+                                            </td>
+                                            <td>
+                                              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                                <button onClick={() => handleEditPackage(pkg)} className="btn-icon">✏️</button>
+                                                <button onClick={() => handleDeletePackage(pkg.id)} className="btn-icon">🗑️</button>
+                                              </div>
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              )}
+                            </div>
       {/* Product Modal */}
       {showProductModal && (
         <div className="modal-overlay" onClick={() => setShowProductModal(false)}>

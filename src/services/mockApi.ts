@@ -40,6 +40,9 @@ const initAlbums = (): Album[] => {
       coverImageUrl: 'https://picsum.photos/seed/album1/400/300',
       photoCount: 12,
       createdDate: '2025-07-15T00:00:00Z',
+      isPasswordProtected: false,
+      password: '',
+      passwordHint: '',
     },
     {
       id: 2,
@@ -48,6 +51,9 @@ const initAlbums = (): Album[] => {
       coverImageUrl: 'https://picsum.photos/seed/album2/400/300',
       photoCount: 8,
       createdDate: '2025-09-20T00:00:00Z',
+      isPasswordProtected: false,
+      password: '',
+      passwordHint: '',
     },
     {
       id: 3,
@@ -56,6 +62,9 @@ const initAlbums = (): Album[] => {
       coverImageUrl: 'https://picsum.photos/seed/album3/400/300',
       photoCount: 15,
       createdDate: '2025-10-10T00:00:00Z',
+      isPasswordProtected: false,
+      password: '',
+      passwordHint: '',
     },
   ];
 };
@@ -129,17 +138,72 @@ const mockOrders: Order[] = [];
 // Simulate network delay
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+const persistAlbums = () => {
+  localStorage.setItem('mockAlbums', JSON.stringify(mockAlbums));
+};
+
+// Persist photos cautiously to avoid localStorage quota issues with large data URLs
+const MAX_DATA_URL_LENGTH = 150000; // ~150KB per string to keep storage reasonable
+let photosPersistenceDisabled = false;
+
+const sanitizePhotosForStorage = (): Record<number, Photo[]> => {
+  const sanitized: Record<number, Photo[]> = {};
+  for (const [albumIdStr, photos] of Object.entries(mockPhotos)) {
+    const albumIdNum = Number(albumIdStr);
+    if (Number.isNaN(albumIdNum)) continue;
+    sanitized[albumIdNum] = photos.map((photo) => {
+      const trimmed: Photo = { ...photo };
+      const trimDataUrl = (value?: string): string => {
+        if (!value) return '';
+        const isDataUrl = value.startsWith('data:');
+        if (isDataUrl && value.length > MAX_DATA_URL_LENGTH) {
+          return '';
+        }
+        return value;
+      };
+      trimmed.thumbnailUrl = trimDataUrl(trimmed.thumbnailUrl);
+      trimmed.fullImageUrl = trimDataUrl(trimmed.fullImageUrl);
+      return trimmed;
+    });
+  }
+  return sanitized;
+};
+
+const persistPhotos = () => {
+  if (photosPersistenceDisabled) return;
+  try {
+    const sanitized = sanitizePhotosForStorage();
+    localStorage.setItem('mockPhotos', JSON.stringify(sanitized));
+  } catch (error) {
+    console.warn('Failed to persist photos to localStorage; using in-memory only.', error);
+    photosPersistenceDisabled = true;
+  }
+};
+
 // Admin functions to modify mock data
 export const addMockAlbum = (album: Album) => {
-  mockAlbums.push(album);
-  localStorage.setItem('mockAlbums', JSON.stringify(mockAlbums));
+  const normalized: Album = {
+    ...album,
+    isPasswordProtected: !!album.isPasswordProtected,
+    password: album.isPasswordProtected ? album.password || '' : '',
+    passwordHint: album.isPasswordProtected ? album.passwordHint || '' : '',
+  };
+  mockAlbums.push(normalized);
+  persistAlbums();
 };
 
 export const updateMockAlbum = (id: number, data: Partial<Album>) => {
   const index = mockAlbums.findIndex(a => a.id === id);
   if (index !== -1) {
-    mockAlbums[index] = { ...mockAlbums[index], ...data };
-    localStorage.setItem('mockAlbums', JSON.stringify(mockAlbums));
+    const isPasswordProtected = data.isPasswordProtected ?? mockAlbums[index].isPasswordProtected;
+    mockAlbums[index] = {
+      ...mockAlbums[index],
+      ...data,
+      isPasswordProtected,
+      password: isPasswordProtected ? (data.password ?? mockAlbums[index].password ?? '') : '',
+      passwordHint: isPasswordProtected ? (data.passwordHint ?? mockAlbums[index].passwordHint ?? '') : '',
+    };
+    persistAlbums();
     return mockAlbums[index];
   }
   return null;
@@ -149,7 +213,7 @@ export const deleteMockAlbum = (id: number) => {
   const index = mockAlbums.findIndex(a => a.id === id);
   if (index !== -1) {
     mockAlbums.splice(index, 1);
-    localStorage.setItem('mockAlbums', JSON.stringify(mockAlbums));
+    persistAlbums();
     return true;
   }
   return false;
@@ -165,12 +229,9 @@ export const addMockPhotos = (albumId: number, photos: Photo[]) => {
   const album = mockAlbums.find(a => a.id === albumId);
   if (album) {
     album.photoCount = mockPhotos[albumId].length;
-    localStorage.setItem('mockAlbums', JSON.stringify(mockAlbums));
+    persistAlbums();
   }
-  
-  // Don't save photos to localStorage - they're too large and will exceed quota
-  // Photos will be kept in memory for the current session only
-  console.warn('Note: Uploaded photos are stored in memory only and will be lost on page refresh. For production, use a proper backend with file storage.');
+  persistPhotos();
 };
 
 export const updateMockPhoto = (id: number, data: Partial<Photo>) => {
@@ -180,7 +241,7 @@ export const updateMockPhoto = (id: number, data: Partial<Photo>) => {
     const index = photos.findIndex(p => p.id === id);
     if (index !== -1) {
       mockPhotos[albumIdNum][index] = { ...mockPhotos[albumIdNum][index], ...data };
-      // Don't save photos to localStorage
+      persistPhotos();
       return mockPhotos[albumIdNum][index];
     }
   }
@@ -198,10 +259,9 @@ export const deleteMockPhoto = (id: number) => {
       // Update album photo count
       const album = mockAlbums.find(a => a.id === albumIdNum);
       if (album) {
-      // Don't save photos to localStorage
-        localStorage.setItem('mockAlbums', JSON.stringify(mockAlbums));
+        persistAlbums();
       }
-      localStorage.setItem('mockPhotos', JSON.stringify(mockPhotos));
+      persistPhotos();
       
       return true;
     }

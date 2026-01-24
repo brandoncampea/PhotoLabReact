@@ -10,6 +10,13 @@ import photoRoutes from './routes/photos.js';
 import orderRoutes from './routes/orders.js';
 import productRoutes from './routes/products.js';
 import analyticsRoutes from './routes/analytics.js';
+import priceListRoutes from './routes/priceLists.js';
+import packageRoutes from './routes/packages.js';
+import profileRoutes from './routes/profile.js';
+import cartRoutes from './routes/cart.js';
+import watermarkRoutes from './routes/watermarks.js';
+import discountCodeRoutes from './routes/discountCodes.js';
+import categoryRoutes from './routes/categories.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -32,6 +39,13 @@ app.use('/api/photos', photoRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/price-lists', priceListRoutes);
+app.use('/api/packages', packageRoutes);
+app.use('/api/profile', profileRoutes);
+app.use('/api/cart', cartRoutes);
+app.use('/api/watermarks', watermarkRoutes);
+app.use('/api/discount-codes', discountCodeRoutes);
+app.use('/api/categories', categoryRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

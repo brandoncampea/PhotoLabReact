@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { CartItem, Photo, CropData } from '../types';
 import { productService } from '../services/productService';
+import api from '../services/api';
 
 interface CartContextType {
   items: CartItem[];
@@ -15,20 +16,45 @@ interface CartContextType {
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
+const saveCartToApi = async (items: CartItem[]) => {
+  try {
+    const user = localStorage.getItem('user');
+    const userId = user ? JSON.parse(user).id : null;
+    await api.post('/cart', { userId, items });
+  } catch (error) {
+    console.warn('Failed to sync cart to backend:', error);
+    // Fallback to localStorage if API fails
+    localStorage.setItem('cart', JSON.stringify(items));
+  }
+};
+
+const loadCartFromApi = async () => {
+  try {
+    const user = localStorage.getItem('user');
+    const userId = user ? JSON.parse(user).id : null;
+    const response = await api.get('/cart', { params: { userId } });
+    return response.data;
+  } catch (error) {
+    console.warn('Failed to load cart from backend, using localStorage:', error);
+    // Fallback to localStorage
+    const saved = localStorage.getItem('cart');
+    return saved ? JSON.parse(saved) : [];
+  }
+};
+
 export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [items, setItems] = useState<CartItem[]>([]);
 
-  // Load cart from localStorage on mount
+  // Load cart from API on mount
   useEffect(() => {
-    const savedCart = localStorage.getItem('cart');
-    if (savedCart) {
-      setItems(JSON.parse(savedCart));
-    }
+    loadCartFromApi().then(cart => setItems(cart || []));
   }, []);
 
-  // Save cart to localStorage whenever it changes
+  // Save cart to API whenever it changes
   useEffect(() => {
-    localStorage.setItem('cart', JSON.stringify(items));
+    if (items.length > 0 || localStorage.getItem('cart')) {
+      saveCartToApi(items);
+    }
   }, [items]);
 
   const addToCart = async (photo: Photo, quantity = 1, cropData?: CropData, productId?: number, productSizeId?: number) => {
@@ -57,7 +83,6 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
             : item
         );
       }
-      
       return [...prevItems, { photoId: photo.id, photo, quantity, cropData, productId, productSizeId, price }];
     });
   };
