@@ -147,7 +147,7 @@ const CropperModal: React.FC<CropperModalProps> = ({
 
   const getTotalPrice = () => {
     if (selectedProduct && selectedSize) {
-      return (selectedProduct.basePrice + selectedSize.priceModifier) * quantity;
+      return selectedSize.price * quantity;
     }
     return 0;
   };
@@ -304,7 +304,7 @@ const CropperModal: React.FC<CropperModalProps> = ({
                     {product.description}
                   </p>
                   <p style={{ fontSize: '1.25rem', fontWeight: 600, color: '#4169E1' }}>
-                    From ${product.basePrice.toFixed(2)}
+                    From ${((product.sizes.length ? Math.min(...product.sizes.map(s => s.price)) : 0)).toFixed(2)}
                   </p>
                   <p style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: '#888' }}>
                     {product.sizes.length} sizes available
@@ -361,7 +361,7 @@ const CropperModal: React.FC<CropperModalProps> = ({
                       position: 'relative'
                     }}
                   >
-                    {size.name} (${(selectedProduct.basePrice + size.priceModifier).toFixed(2)})
+                    {size.name} (${size.price.toFixed(2)})
                     {recommended && (
                       <span style={{
                         marginLeft: '0.5rem',
@@ -484,7 +484,7 @@ const CropperModal: React.FC<CropperModalProps> = ({
 
             <div className="price-info">
               <span className="photo-price">
-                ${(selectedProduct.basePrice + (selectedSize?.priceModifier || 0)).toFixed(2)} each
+               ${(selectedSize?.price ?? 0).toFixed(2)} each
               </span>
               <span className="total-price">
                 Total: ${getTotalPrice().toFixed(2)}

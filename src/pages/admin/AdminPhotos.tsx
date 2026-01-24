@@ -105,6 +105,16 @@ const AdminPhotos: React.FC = () => {
     }
   };
 
+  const handleSetCover = async (photo: Photo) => {
+    if (!albumId) return;
+    try {
+      await adminMockApi.albums.update(albumId, { coverImageUrl: photo.thumbnailUrl || photo.fullImageUrl });
+      await loadAlbums();
+    } catch (error) {
+      console.error('Failed to set album cover:', error);
+    }
+  };
+
   const handleAlbumChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newAlbumId = e.target.value;
     navigate(`/admin/photos?album=${newAlbumId}`);
@@ -194,12 +204,26 @@ const AdminPhotos: React.FC = () => {
             <div className="photo-info">
               <p className="photo-filename">{photo.fileName}</p>
             </div>
-            <button
-              onClick={() => handleDelete(photo.id)}
-              className="btn-delete"
-            >
-              Delete
-            </button>
+            {currentAlbum && (currentAlbum.coverImageUrl === photo.thumbnailUrl || currentAlbum.coverImageUrl === photo.fullImageUrl) && (
+              <div className="badge" style={{ backgroundColor: '#0d6efd', color: 'white', padding: '0.2rem 0.5rem', borderRadius: '12px', fontSize: '0.75rem', alignSelf: 'flex-start', margin: '0 0 0.5rem 0.5rem' }}>
+                Cover photo
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: '0.5rem', padding: '0.75rem' }}>
+              <button
+                onClick={() => handleSetCover(photo)}
+                className="btn btn-secondary"
+                disabled={currentAlbum ? (currentAlbum.coverImageUrl === photo.thumbnailUrl || currentAlbum.coverImageUrl === photo.fullImageUrl) : false}
+              >
+                {currentAlbum && (currentAlbum.coverImageUrl === photo.thumbnailUrl || currentAlbum.coverImageUrl === photo.fullImageUrl) ? 'Current cover' : 'Set as cover'}
+              </button>
+              <button
+                onClick={() => handleDelete(photo.id)}
+                className="btn-delete"
+              >
+                Delete
+              </button>
+            </div>
           </div>
         ))}
       </div>

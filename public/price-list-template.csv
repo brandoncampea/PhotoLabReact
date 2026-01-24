@@ -1,0 +1,10 @@
+Product,Size,Width,Height,Price,Description
+Standard Print,4x6,4,6,9.99,High quality photo print
+Standard Print,5x7,5,7,11.99,High quality photo print
+Standard Print,8x10,8,10,14.99,High quality photo print
+Canvas Print,12x16,12,16,29.99,Museum quality canvas
+Canvas Print,16x20,16,20,39.99,Museum quality canvas
+Canvas Print,24x36,24,36,59.99,Museum quality canvas
+Digital Download,Original,0,0,4.99,High-resolution digital file
+Digital Download,4K,3840,2160,6.99,4K resolution digital file
+Digital Download,8K,7680,4320,9.99,8K resolution digital file

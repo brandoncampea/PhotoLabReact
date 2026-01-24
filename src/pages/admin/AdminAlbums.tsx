@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { Album, Photo } from '../../types';
+import { Album, Photo, PriceList } from '../../types';
 import { albumService } from '../../services/albumService';
 import { photoService } from '../../services/photoService';
 import { adminMockApi } from '../../services/adminMockApi';
 
 const AdminAlbums: React.FC = () => {
   const [albums, setAlbums] = useState<Album[]>([]);
+  const [priceLists, setPriceLists] = useState<PriceList[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingAlbum, setEditingAlbum] = useState<Album | null>(null);
@@ -19,11 +20,13 @@ const AdminAlbums: React.FC = () => {
     description: '',
     coverImageUrl: '',
     category: '',
+    priceListId: undefined as number | undefined,
   });
 
   useEffect(() => {
     loadAlbums();
     loadCategories();
+    loadPriceLists();
   }, []);
 
   const loadAlbums = async () => {
@@ -46,9 +49,18 @@ const AdminAlbums: React.FC = () => {
     }
   };
 
+  const loadPriceLists = async () => {
+    try {
+      const data = await adminMockApi.priceLists.getAll();
+      setPriceLists(data);
+    } catch (error) {
+      console.error('Failed to load price lists:', error);
+    }
+  };
+
   const handleCreate = () => {
     setEditingAlbum(null);
-    setFormData({ name: '', description: '', coverImageUrl: '', category: '' });
+    setFormData({ name: '', description: '', coverImageUrl: '', category: '', priceListId: undefined });
     setShowNewCategory(false);
     setNewCategory('');
     setShowModal(true);
@@ -61,6 +73,7 @@ const AdminAlbums: React.FC = () => {
       description: album.description,
       coverImageUrl: album.coverImageUrl || '',
       category: album.category || '',
+      priceListId: album.priceListId,
     });
     setShowNewCategory(false);
     setNewCategory('');
@@ -146,6 +159,7 @@ const AdminAlbums: React.FC = () => {
               <th>Cover</th>
               <th>Name</th>
               <th>Category</th>
+              <th>Price List</th>
               <th>Description</th>
               <th>Photos</th>
               <th>Created</th>
@@ -160,6 +174,7 @@ const AdminAlbums: React.FC = () => {
                 </td>
                 <td>{album.name}</td>
                 <td>{album.category || '-'}</td>
+                <td>{priceLists.find(pl => pl.id === album.priceListId)?.name || 'Default'}</td>
                 <td>{album.description}</td>
                 <td>{album.photoCount}</td>
                 <td>{new Date(album.createdDate).toLocaleDateString()}</td>
@@ -251,7 +266,21 @@ const AdminAlbums: React.FC = () => {
                 )}
               </div>
               <div className="form-group">
-                <label>Cover Image URL</label>
+                <label>Price List</label>
+                <select
+                  value={formData.priceListId || ''}
+                  onChange={(e) => setFormData({ ...formData, priceListId: e.target.value ? parseInt(e.target.value) : undefined })}
+                >
+                  <option value="">Use Default Pricing</option>
+                  {priceLists.map((pl) => (
+                    <option key={pl.id} value={pl.id}>{pl.name}</option>
+                  ))}
+                </select>
+                <a href="/admin/price-lists" style={{ fontSize: '0.85rem', color: '#0066cc', marginTop: '0.5rem', display: 'block' }}>
+                  Manage price lists →
+                </a>
+              </div>
+              <div className="form-group">
                 <input
                   type="url"
                   value={formData.coverImageUrl}
