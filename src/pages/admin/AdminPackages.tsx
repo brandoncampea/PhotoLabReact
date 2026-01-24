@@ -127,7 +127,7 @@ const AdminPackages: React.FC = () => {
       const product = products.find(p => p.id === item.productId);
       const size = product?.sizes.find(s => s.id === item.productSizeId);
       if (product && size) {
-        const itemPrice = product.basePrice + size.priceModifier;
+        const itemPrice = size.price;
         total += itemPrice * item.quantity;
       }
     });

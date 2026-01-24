@@ -51,6 +51,12 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             📦 Products
           </Link>
           <Link
+            to="/admin/price-lists"
+            className={`admin-nav-link ${isActive('/admin/price-lists') ? 'active' : ''}`}
+          >
+            💰 Price Lists
+          </Link>
+          <Link
             to="/admin/watermarks"
             className={`admin-nav-link ${isActive('/admin/watermarks') ? 'active' : ''}`}
           >

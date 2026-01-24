@@ -67,7 +67,29 @@ const initPhotos = (): Record<number, Photo[]> => {
   const stored = localStorage.getItem('mockPhotos');
   if (stored) {
     try {
-      return JSON.parse(stored);
+      const parsedPhotos = JSON.parse(stored) as Record<number, Photo[]>;
+      // Filter out photos with blob URLs that are no longer valid
+      const cleanedPhotos: Record<number, Photo[]> = {};
+      for (const [albumIdStr, photos] of Object.entries(parsedPhotos)) {
+        const albumIdNum = Number(albumIdStr);
+        if (Number.isNaN(albumIdNum)) continue;
+        cleanedPhotos[albumIdNum] = photos.filter((photo: Photo) => {
+          // Keep photos that don't use blob URLs or use valid data URLs
+          return !photo.thumbnailUrl.startsWith('blob:') && !photo.fullImageUrl.startsWith('blob:');
+        });
+      }
+      // Only return parsed photos if we have at least some valid photos
+      const hasValidPhotos = Object.values(cleanedPhotos).some(photos => photos.length > 0);
+      if (hasValidPhotos) {
+        // Update album photo counts to match cleaned photos
+        mockAlbums = mockAlbums.map(album => ({
+          ...album,
+          photoCount: cleanedPhotos[album.id]?.length || 0
+        }));
+        localStorage.setItem('mockAlbums', JSON.stringify(mockAlbums));
+        localStorage.setItem('mockPhotos', JSON.stringify(cleanedPhotos));
+        return cleanedPhotos;
+      }
     } catch (e) {
       console.error('Failed to parse stored photos:', e);
     }
@@ -145,31 +167,38 @@ export const addMockPhotos = (albumId: number, photos: Photo[]) => {
     album.photoCount = mockPhotos[albumId].length;
     localStorage.setItem('mockAlbums', JSON.stringify(mockAlbums));
   }
-  localStorage.setItem('mockPhotos', JSON.stringify(mockPhotos));
+  
+  // Don't save photos to localStorage - they're too large and will exceed quota
+  // Photos will be kept in memory for the current session only
+  console.warn('Note: Uploaded photos are stored in memory only and will be lost on page refresh. For production, use a proper backend with file storage.');
 };
 
 export const updateMockPhoto = (id: number, data: Partial<Photo>) => {
-  for (const albumId in mockPhotos) {
-    const index = mockPhotos[albumId].findIndex(p => p.id === id);
+  for (const [albumIdStr, photos] of Object.entries(mockPhotos)) {
+    const albumIdNum = Number(albumIdStr);
+    if (Number.isNaN(albumIdNum)) continue;
+    const index = photos.findIndex(p => p.id === id);
     if (index !== -1) {
-      mockPhotos[albumId][index] = { ...mockPhotos[albumId][index], ...data };
-      localStorage.setItem('mockPhotos', JSON.stringify(mockPhotos));
-      return mockPhotos[albumId][index];
+      mockPhotos[albumIdNum][index] = { ...mockPhotos[albumIdNum][index], ...data };
+      // Don't save photos to localStorage
+      return mockPhotos[albumIdNum][index];
     }
   }
   return null;
 };
 
 export const deleteMockPhoto = (id: number) => {
-  for (const albumId in mockPhotos) {
-    const index = mockPhotos[albumId].findIndex(p => p.id === id);
+  for (const [albumIdStr, photos] of Object.entries(mockPhotos)) {
+    const albumIdNum = Number(albumIdStr);
+    if (Number.isNaN(albumIdNum)) continue;
+    const index = photos.findIndex(p => p.id === id);
     if (index !== -1) {
-      mockPhotos[albumId].splice(index, 1);
+      mockPhotos[albumIdNum].splice(index, 1);
       
       // Update album photo count
-      const album = mockAlbums.find(a => a.id === parseInt(albumId));
+      const album = mockAlbums.find(a => a.id === albumIdNum);
       if (album) {
-        album.photoCount = mockPhotos[albumId].length;
+      // Don't save photos to localStorage
         localStorage.setItem('mockAlbums', JSON.stringify(mockAlbums));
       }
       localStorage.setItem('mockPhotos', JSON.stringify(mockPhotos));

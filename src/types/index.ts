@@ -18,6 +18,7 @@ export interface Album {
   photoCount: number;
   createdDate: string;
   category?: string;
+  priceListId?: number;
 }
 
 export interface Photo {
@@ -103,6 +104,7 @@ export interface OrderItem {
   photo: Photo;
   quantity: number;
   price: number;
+  cost?: number;
   cropData?: CropData;
   productId?: number;
   productSizeId?: number;
@@ -144,7 +146,6 @@ export interface Product {
   id: number;
   name: string;
   description: string;
-  basePrice: number;
   sizes: ProductSize[];
   isActive: boolean;
   popularity: number;
@@ -156,7 +157,7 @@ export interface ProductSize {
   name: string;
   width: number;
   height: number;
-  priceModifier: number;
+  price: number;
 }
 
 export interface Watermark {
@@ -309,4 +310,64 @@ export interface DiscountCodeUsage {
   userId: number;
   orderId: number;
   usedDate: string;
+}
+
+export interface PriceList {
+  id: number;
+  name: string;
+  description?: string;
+  products: PriceListProduct[];
+  isActive: boolean;
+  createdDate: string;
+  updatedDate?: string;
+}
+
+export interface PriceListProduct {
+  id: number;
+  priceListId: number;
+  name: string;
+  description?: string;
+  isDigital: boolean;
+  sizes: PriceListProductSize[];
+}
+
+export interface PriceListProductSize {
+  id: number;
+  productId: number;
+  name: string;
+  width: number;
+  height: number;
+  price: number;
+  cost: number;
+}
+
+export interface PriceListItem {
+  id: number;
+  priceListId: number;
+  productId: number;
+  productSizeId: number;
+  price: number;
+  product?: PriceListProduct;
+  productSize?: PriceListProductSize;
+}
+
+export interface ImportedPriceData {
+  productName: string;
+  sizeName: string;
+  width?: number;
+  height?: number;
+  price: number;
+  cost?: number;
+  description?: string;
+}
+
+export interface PriceGroupMapping {
+  productName: string;
+  productId: number;
+  items: {
+    sizeName: string;
+    width?: number;
+    height?: number;
+    price: number;
+  }[];
 }

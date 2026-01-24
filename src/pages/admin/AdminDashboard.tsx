@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
+import { Order } from '../../types';
 import { adminMockApi } from '../../services/adminMockApi';
 import { analyticsService } from '../../services/analyticsService';
 import { DashboardStats } from '../../types';
 
 const AdminDashboard: React.FC = () => {
   const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -16,8 +18,12 @@ const AdminDashboard: React.FC = () => {
 
   const loadStats = async () => {
     try {
-      const data = await adminMockApi.dashboard.getStats();
-      setStats(data);
+      const [dashboardData, ordersData] = await Promise.all([
+        adminMockApi.dashboard.getStats(),
+        adminMockApi.orders.getAll(),
+      ]);
+      setStats(dashboardData);
+      setOrders(ordersData);
     } catch (error) {
       console.error('Failed to load stats:', error);
     } finally {
@@ -42,6 +48,23 @@ const AdminDashboard: React.FC = () => {
   const averageOrderValue = stats?.totalOrders 
     ? (stats.totalRevenue / stats.totalOrders).toFixed(2) 
     : '0.00';
+
+  // Calculate total profit and cost
+  const calculateProfit = () => {
+    let totalCost = 0;
+    orders.forEach(order => {
+      order.items?.forEach(item => {
+        if (item.cost !== undefined) {
+          totalCost += item.cost * item.quantity;
+        }
+      });
+    });
+    const revenue = stats?.totalRevenue || 0;
+    const profit = revenue - totalCost;
+    return { profit, cost: totalCost, margin: revenue > 0 ? ((profit / revenue) * 100).toFixed(1) : 0 };
+  };
+
+  const profitData = calculateProfit();
 
   return (
     <div className="admin-page">
@@ -123,6 +146,24 @@ const AdminDashboard: React.FC = () => {
           </div>
           <div style={{ fontSize: '0.8rem', color: '#666', marginTop: '0.5rem' }}>
             Requires attention
+          </div>
+        </div>
+
+        <div style={{
+          padding: '1.5rem',
+          backgroundColor: '#f1f8e9',
+          borderRadius: '12px',
+          border: '2px solid #689f38',
+          position: 'relative',
+          overflow: 'hidden'
+        }}>
+          <div style={{ position: 'absolute', top: '10px', right: '10px', fontSize: '2rem', opacity: 0.2 }}>📈</div>
+          <div style={{ fontSize: '0.9rem', color: '#666', marginBottom: '0.5rem', fontWeight: 500 }}>Total Profit</div>
+          <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#689f38' }}>
+            ${profitData.profit.toFixed(2)}
+          </div>
+          <div style={{ fontSize: '0.8rem', color: '#666', marginTop: '0.5rem' }}>
+            {profitData.margin}% margin
           </div>
         </div>
       </div>

@@ -18,6 +18,7 @@ import AdminAnalytics from './pages/admin/AdminAnalytics';
 import AdminAlbums from './pages/admin/AdminAlbums';
 import AdminPhotos from './pages/admin/AdminPhotos';
 import AdminProducts from './pages/admin/AdminProducts';
+import AdminPriceLists from './pages/admin/AdminPriceLists';
 import AdminWatermarks from './pages/admin/AdminWatermarks';
 import AdminOrders from './pages/admin/AdminOrders';
 import AdminCustomers from './pages/admin/AdminCustomers';
@@ -101,6 +102,7 @@ function App() {
                           <Route path="albums" element={<AdminAlbums />} />
                           <Route path="photos" element={<AdminPhotos />} />
                           <Route path="products" element={<AdminProducts />} />
+                          <Route path="price-lists" element={<AdminPriceLists />} />
                           <Route path="watermarks" element={<AdminWatermarks />} />
                           <Route path="orders" element={<AdminOrders />} />
                           <Route path="customers" element={<AdminCustomers />} />

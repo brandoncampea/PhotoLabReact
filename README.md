@@ -19,9 +19,10 @@ A modern React customer portal for photo ordering with cropping, cart management
 - 🎨 **Modern UI** - Clean, intuitive interface with smooth animations
 
 ### Admin Portal
-- 📁 **Album Management** - Create and manage photo albums
+- 📁 **Album Management** - Create and manage photo albums with album-specific pricing
 - 🖼️ **Photo Upload** - Upload photos with automatic EXIF metadata extraction
 - 🛍️ **Product Management** - Manage print products, sizes, and pricing
+- 💰 **Price Lists** - Create and manage multiple price lists, import from CSV with smart product grouping
 - 📦 **Package System** - Create product packages with bundled pricing
 - 💰 **Discount Codes** - Create and manage promotional discount codes
 - 🚚 **Shipping Options** - Configure batch and direct shipping with deadlines

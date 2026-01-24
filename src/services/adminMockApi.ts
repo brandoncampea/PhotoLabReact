@@ -1,4 +1,4 @@
-import { AdminUser, Product, Watermark, Customer, DashboardStats, Album, Photo, Order, ShippingConfig, StripeConfig, UserAccount, Package, DiscountCode, ProfileConfig } from '../types';
+import { AdminUser, Watermark, Customer, DashboardStats, Album, Photo, Order, ShippingConfig, StripeConfig, UserAccount, Package, PackageItem, Product, DiscountCode, ProfileConfig, PriceList } from '../types';
 import { addMockAlbum, updateMockAlbum, deleteMockAlbum, addMockPhotos, updateMockPhoto, deleteMockPhoto } from './mockApi';
 
 // Mock admin user
@@ -49,11 +49,10 @@ let mockProducts: Product[] = [
     id: 1,
     name: 'Standard Print',
     description: 'High quality photo print',
-    basePrice: 9.99,
     sizes: [
-      { id: 1, name: '4x6', width: 4, height: 6, priceModifier: 0 },
-      { id: 2, name: '5x7', width: 5, height: 7, priceModifier: 2 },
-      { id: 3, name: '8x10', width: 8, height: 10, priceModifier: 5 },
+      { id: 1, name: '4x6', width: 4, height: 6, price: 9.99 },
+      { id: 2, name: '5x7', width: 5, height: 7, price: 11.99 },
+      { id: 3, name: '8x10', width: 8, height: 10, price: 14.99 },
     ],
     isActive: true,
     popularity: 100,
@@ -63,11 +62,10 @@ let mockProducts: Product[] = [
     id: 2,
     name: 'Canvas Print',
     description: 'Museum quality canvas',
-    basePrice: 29.99,
     sizes: [
-      { id: 4, name: '12x16', width: 12, height: 16, priceModifier: 0 },
-      { id: 5, name: '16x20', width: 16, height: 20, priceModifier: 10 },
-      { id: 6, name: '24x36', width: 24, height: 36, priceModifier: 30 },
+      { id: 4, name: '12x16', width: 12, height: 16, price: 29.99 },
+      { id: 5, name: '16x20', width: 16, height: 20, price: 39.99 },
+      { id: 6, name: '24x36', width: 24, height: 36, price: 59.99 },
     ],
     isActive: true,
     popularity: 75,
@@ -77,11 +75,10 @@ let mockProducts: Product[] = [
     id: 3,
     name: 'Digital Download',
     description: 'High-resolution digital file',
-    basePrice: 4.99,
     sizes: [
-      { id: 7, name: 'Original', width: 0, height: 0, priceModifier: 0 },
-      { id: 8, name: '4K', width: 3840, height: 2160, priceModifier: 2 },
-      { id: 9, name: '8K', width: 7680, height: 4320, priceModifier: 5 },
+      { id: 7, name: 'Original', width: 0, height: 0, price: 4.99 },
+      { id: 8, name: '4K', width: 3840, height: 2160, price: 6.99 },
+      { id: 9, name: '8K', width: 7680, height: 4320, price: 9.99 },
     ],
     isActive: true,
     popularity: 90,
@@ -272,6 +269,88 @@ let mockCustomers: Customer[] = [
     totalOrders: 1,
     totalSpent: 45.99,
     isActive: true,
+  },
+];
+
+// Mock price lists (now containing products and their pricing)
+let mockPriceLists: PriceList[] = [
+  {
+    id: 1,
+    name: 'Standard Pricing',
+    description: 'Default pricing for all products',
+    isActive: true,
+    createdDate: '2025-12-01T00:00:00Z',
+    products: [
+      {
+        id: 1,
+        priceListId: 1,
+        name: 'Standard Print',
+        description: 'High quality photo print',
+        isDigital: false,
+        sizes: [
+          { id: 1, productId: 1, name: '4x6', width: 4, height: 6, price: 9.99, cost: 3.50 },
+          { id: 2, productId: 1, name: '5x7', width: 5, height: 7, price: 11.99, cost: 4.25 },
+          { id: 3, productId: 1, name: '8x10', width: 8, height: 10, price: 14.99, cost: 5.50 },
+        ],
+      },
+      {
+        id: 2,
+        priceListId: 1,
+        name: 'Canvas Print',
+        description: 'Museum quality canvas',
+        isDigital: false,
+        sizes: [
+          { id: 4, productId: 2, name: '12x16', width: 12, height: 16, price: 29.99, cost: 12.00 },
+          { id: 5, productId: 2, name: '16x20', width: 16, height: 20, price: 39.99, cost: 16.00 },
+          { id: 6, productId: 2, name: '24x36', width: 24, height: 36, price: 59.99, cost: 24.00 },
+        ],
+      },
+      {
+        id: 3,
+        priceListId: 1,
+        name: 'Digital Download',
+        description: 'High-resolution digital file',
+        isDigital: true,
+        sizes: [
+          { id: 7, productId: 3, name: 'Original', width: 0, height: 0, price: 4.99, cost: 0.50 },
+          { id: 8, productId: 3, name: '4K', width: 3840, height: 2160, price: 6.99, cost: 0.75 },
+          { id: 9, productId: 3, name: '8K', width: 7680, height: 4320, price: 9.99, cost: 1.00 },
+        ],
+      },
+    ],
+  },
+  {
+    id: 2,
+    name: 'Discount Pricing',
+    description: 'Special pricing for volume orders',
+    isActive: true,
+    createdDate: '2025-12-15T00:00:00Z',
+    products: [
+      {
+        id: 1,
+        priceListId: 2,
+        name: 'Standard Print',
+        description: 'High quality photo print',
+        isDigital: false,
+        sizes: [
+          { id: 1, productId: 1, name: '4x6', width: 4, height: 6, price: 8.99, cost: 3.50 },
+          { id: 2, productId: 1, name: '5x7', width: 5, height: 7, price: 10.99, cost: 4.25 },
+          { id: 3, productId: 1, name: '8x10', width: 8, height: 10, price: 13.99, cost: 5.50 },
+        ],
+      },
+      {
+        id: 2,
+        priceListId: 2,
+        name: 'Canvas Print',
+        description: 'Museum quality canvas',
+        isDigital: false,
+        sizes: [
+          { id: 4, productId: 2, name: '12x16', width: 12, height: 16, price: 27.99, cost: 12.00 },
+          { id: 5, productId: 2, name: '16x20', width: 16, height: 20, price: 36.99, cost: 16.00 },
+          { id: 6, productId: 2, name: '24x36', width: 24, height: 36, price: 54.99, cost: 24.00 },
+        ],
+      },
+    ],
   },
 ];
 
@@ -683,15 +762,27 @@ export const adminMockApi = {
     async upload(albumId: number, filesWithMetadata: Array<{ file: File; metadata: any }>): Promise<Photo[]> {
       await delay(1000);
       console.log('Admin Mock API: Uploading', filesWithMetadata.length, 'photos with metadata to album', albumId);
-      const newPhotos = filesWithMetadata.map(({ file, metadata }) => ({
-        id: Math.floor(Math.random() * 100000) + 10000,
-        albumId,
-        fileName: file.name,
-        thumbnailUrl: URL.createObjectURL(file),
-        fullImageUrl: URL.createObjectURL(file),
-        description: '',
-        metadata,
-      }));
+      
+      // Convert files to data URLs for persistence
+      const photoPromises = filesWithMetadata.map(async ({ file, metadata }) => {
+        const dataUrl = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.readAsDataURL(file);
+        });
+        
+        return {
+          id: Math.floor(Math.random() * 100000) + 10000,
+          albumId,
+          fileName: file.name,
+          thumbnailUrl: dataUrl,
+          fullImageUrl: dataUrl,
+          description: '',
+          metadata,
+        };
+      });
+      
+      const newPhotos = await Promise.all(photoPromises);
       addMockPhotos(albumId, newPhotos);
       return newPhotos;
     },
@@ -723,44 +814,36 @@ export const adminMockApi = {
   },
 
   products: {
-    async getAll(): Promise<Product[]> {
+    // Products are now managed within price lists
+    // This section provides compatibility API for getting all products across all price lists
+    async getAll() {
       await delay(300);
-      console.log('Admin Mock API: Fetching products');
-      return mockProducts;
+      console.log('Admin Mock API: Fetching all products across price lists');
+      const allProducts: any[] = [];
+      const seenIds = new Set<number>();
+      
+      mockPriceLists.forEach(priceList => {
+        priceList.products.forEach(product => {
+          if (!seenIds.has(product.id)) {
+            seenIds.add(product.id);
+            allProducts.push(product);
+          }
+        });
+      });
+      
+      return allProducts;
     },
 
-    async create(data: Partial<Product>): Promise<Product> {
-      await delay(400);
-      console.log('Admin Mock API: Creating product', data);
-      const product: Product = {
-        id: mockProducts.length + 1,
-        name: data.name || '',
-        description: data.description || '',
-        basePrice: data.basePrice || 0,
-        sizes: data.sizes || [],
-        isActive: data.isActive ?? true,
-        popularity: 0,
-        isDigital: data.isDigital ?? false,
-      };
-      mockProducts.push(product);
-      return product;
+    async create() {
+      throw new Error('Products must be created within a price list. Use priceLists.addProduct() instead.');
     },
 
-    async update(id: number, data: Partial<Product>): Promise<Product> {
-      await delay(400);
-      console.log('Admin Mock API: Updating product', id, data);
-      const index = mockProducts.findIndex(p => p.id === id);
-      if (index !== -1) {
-        mockProducts[index] = { ...mockProducts[index], ...data };
-        return mockProducts[index];
-      }
-      throw new Error('Product not found');
+    async update() {
+      throw new Error('Products must be updated within a price list. Use priceLists.updateProduct() instead.');
     },
 
-    async delete(id: number): Promise<void> {
-      await delay(300);
-      console.log('Admin Mock API: Deleting product', id);
-      mockProducts = mockProducts.filter(p => p.id !== id);
+    async delete() {
+      throw new Error('Products must be deleted within a price list. Use priceLists.removeProduct() instead.');
     },
   },
 
@@ -957,9 +1040,9 @@ export const adminMockApi = {
       console.log('Admin Mock API: Fetching packages');
       return mockPackages.map(pkg => ({
         ...pkg,
-        items: pkg.items.map(item => {
+        items: pkg.items.map((item: PackageItem) => {
           const product = mockProducts.find(p => p.id === item.productId);
-          const productSize = product?.sizes.find(s => s.id === item.productSizeId);
+          const productSize = product?.sizes.find((s: any) => s.id === item.productSizeId);
           return {
             ...item,
             product,
@@ -976,9 +1059,9 @@ export const adminMockApi = {
       if (!pkg) throw new Error('Package not found');
       return {
         ...pkg,
-        items: pkg.items.map(item => {
+        items: pkg.items.map((item: PackageItem) => {
           const product = mockProducts.find(p => p.id === item.productId);
-          const productSize = product?.sizes.find(s => s.id === item.productSizeId);
+          const productSize = product?.sizes.find((s: any) => s.id === item.productSizeId);
           return {
             ...item,
             product,
@@ -1112,4 +1195,156 @@ export const adminMockApi = {
         mockDiscountCodes[index].usageCount++;
       }
     },
-  },};
+  },
+
+  priceLists: {
+    async getAll(): Promise<PriceList[]> {
+      await delay(300);
+      console.log('Admin Mock API: Fetching price lists');
+      return mockPriceLists;
+    },
+
+    async getById(id: number): Promise<PriceList> {
+      await delay(200);
+      console.log('Admin Mock API: Fetching price list', id);
+      const priceList = mockPriceLists.find(pl => pl.id === id);
+      if (!priceList) throw new Error('Price list not found');
+      return priceList;
+    },
+
+    async create(data: Partial<PriceList>): Promise<PriceList> {
+      await delay(400);
+      console.log('Admin Mock API: Creating price list', data);
+      const newPriceList: PriceList = {
+        id: Math.max(...mockPriceLists.map(pl => pl.id), 0) + 1,
+        name: data.name || '',
+        description: data.description,
+        products: data.products || [],
+        isActive: data.isActive ?? true,
+        createdDate: new Date().toISOString(),
+      };
+      mockPriceLists.push(newPriceList);
+      return newPriceList;
+    },
+
+    async update(id: number, data: Partial<PriceList>): Promise<PriceList> {
+      await delay(400);
+      console.log('Admin Mock API: Updating price list', id, data);
+      const index = mockPriceLists.findIndex(pl => pl.id === id);
+      if (index !== -1) {
+        mockPriceLists[index] = { 
+          ...mockPriceLists[index], 
+          ...data,
+          updatedDate: new Date().toISOString()
+        };
+        return mockPriceLists[index];
+      }
+      throw new Error('Price list not found');
+    },
+
+    async delete(id: number): Promise<void> {
+      await delay(300);
+      console.log('Admin Mock API: Deleting price list', id);
+      const index = mockPriceLists.findIndex(pl => pl.id === id);
+      if (index !== -1) {
+        mockPriceLists.splice(index, 1);
+      }
+    },
+
+    async addProduct(priceListId: number, product: any) {
+      await delay(300);
+      console.log('Admin Mock API: Adding product to price list', priceListId, product);
+      const priceList = mockPriceLists.find(pl => pl.id === priceListId);
+      if (!priceList) throw new Error('Price list not found');
+      
+      const newProduct = {
+        id: Math.max(...priceList.products.map(p => p.id), 0) + 1,
+        priceListId,
+        name: product.name || '',
+        description: product.description || '',
+        isDigital: product.isDigital ?? false,
+        sizes: product.sizes || [],
+      };
+      priceList.products.push(newProduct);
+      return newProduct;
+    },
+
+    async updateProduct(priceListId: number, productId: number, data: any) {
+      await delay(300);
+      console.log('Admin Mock API: Updating product in price list', priceListId, productId, data);
+      const priceList = mockPriceLists.find(pl => pl.id === priceListId);
+      if (!priceList) throw new Error('Price list not found');
+      
+      const product = priceList.products.find(p => p.id === productId);
+      if (!product) throw new Error('Product not found in price list');
+      
+      Object.assign(product, data);
+      return product;
+    },
+
+    async removeProduct(priceListId: number, productId: number): Promise<void> {
+      await delay(300);
+      console.log('Admin Mock API: Removing product from price list', priceListId, productId);
+      const priceList = mockPriceLists.find(pl => pl.id === priceListId);
+      if (!priceList) throw new Error('Price list not found');
+      
+      const index = priceList.products.findIndex(p => p.id === productId);
+      if (index !== -1) {
+        priceList.products.splice(index, 1);
+      }
+    },
+
+    async addSize(priceListId: number, productId: number, size: any) {
+      await delay(300);
+      console.log('Admin Mock API: Adding size to product', priceListId, productId, size);
+      const priceList = mockPriceLists.find(pl => pl.id === priceListId);
+      if (!priceList) throw new Error('Price list not found');
+      
+      const product = priceList.products.find(p => p.id === productId);
+      if (!product) throw new Error('Product not found');
+      
+      const newSize = {
+        id: Math.max(...product.sizes.map(s => s.id), 0) + 1,
+        productId,
+        name: size.name || '',
+        width: size.width ?? 0,
+        height: size.height ?? 0,
+        price: size.price || 0,
+        cost: size.cost ?? 0,
+      };
+      product.sizes.push(newSize);
+      return newSize;
+    },
+
+    async updateSize(priceListId: number, productId: number, sizeId: number, data: any) {
+      await delay(300);
+      console.log('Admin Mock API: Updating size', priceListId, productId, sizeId, data);
+      const priceList = mockPriceLists.find(pl => pl.id === priceListId);
+      if (!priceList) throw new Error('Price list not found');
+      
+      const product = priceList.products.find(p => p.id === productId);
+      if (!product) throw new Error('Product not found');
+      
+      const size = product.sizes.find(s => s.id === sizeId);
+      if (!size) throw new Error('Size not found');
+      
+      Object.assign(size, data);
+      return size;
+    },
+
+    async removeSize(priceListId: number, productId: number, sizeId: number): Promise<void> {
+      await delay(300);
+      console.log('Admin Mock API: Removing size', priceListId, productId, sizeId);
+      const priceList = mockPriceLists.find(pl => pl.id === priceListId);
+      if (!priceList) throw new Error('Price list not found');
+      
+      const product = priceList.products.find(p => p.id === productId);
+      if (!product) throw new Error('Product not found');
+      
+      const index = product.sizes.findIndex(s => s.id === sizeId);
+      if (index !== -1) {
+        product.sizes.splice(index, 1);
+      }
+    },
+  },
+};

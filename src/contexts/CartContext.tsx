@@ -40,7 +40,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const product = products.find(p => p.id === productId);
         const size = product?.sizes.find(s => s.id === productSizeId);
         if (product && size) {
-          price = product.basePrice + size.priceModifier;
+          price = size.price;
         }
       } catch (error) {
         console.error('Error fetching product price:', error);
