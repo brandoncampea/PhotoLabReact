@@ -1,5 +1,6 @@
 import express from 'express';
 import { db } from '../database.js';
+import { adminRequired } from '../middleware/auth.js';
 const router = express.Router();
 
 // Get all products
@@ -17,7 +18,7 @@ router.get('/', (req, res) => {
 });
 
 // Create product
-router.post('/', (req, res) => {
+router.post('/', adminRequired, (req, res) => {
   try {
     const { name, category, price, description, options } = req.body;
     const result = db.prepare(`

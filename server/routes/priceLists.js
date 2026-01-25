@@ -1,5 +1,6 @@
 import express from 'express';
 import { db } from '../database.js';
+import { adminRequired } from '../middleware/auth.js';
 const router = express.Router();
 
 // Get all price lists
@@ -71,7 +72,7 @@ router.get('/:id', (req, res) => {
 });
 
 // Create price list
-router.post('/', (req, res) => {
+router.post('/', adminRequired, (req, res) => {
   try {
     const { name, description, isDefault } = req.body;
     
@@ -98,7 +99,7 @@ router.post('/', (req, res) => {
 });
 
 // Update price list
-router.put('/:id', (req, res) => {
+router.put('/:id', adminRequired, (req, res) => {
   try {
     const { name, description, isDefault } = req.body;
 
@@ -125,7 +126,7 @@ router.put('/:id', (req, res) => {
 });
 
 // Set default price list
-router.post('/:id/setDefault', (req, res) => {
+router.post('/:id/setDefault', adminRequired, (req, res) => {
   try {
     db.prepare('UPDATE price_lists SET is_default = 0').run();
     db.prepare('UPDATE price_lists SET is_default = 1 WHERE id = ?').run(req.params.id);
@@ -143,7 +144,7 @@ router.post('/:id/setDefault', (req, res) => {
 });
 
 // Delete price list
-router.delete('/:id', (req, res) => {
+router.delete('/:id', adminRequired, (req, res) => {
   try {
     db.prepare('DELETE FROM price_lists WHERE id = ?').run(req.params.id);
     res.json({ message: 'Price list deleted successfully' });

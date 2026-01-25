@@ -1,18 +1,21 @@
 import express from 'express';
 import { db } from '../database.js';
+import { authRequired } from '../middleware/auth.js';
 const router = express.Router();
+
+// Protect all cart routes
+router.use(authRequired);
 
 // Get user cart
 router.get('/', (req, res) => {
   try {
-    const userId = req.query.userId || 0; // Default to anonymous user
-    const cart = db.prepare(`
-      SELECT cart_data as cartData
-      FROM user_cart
-      WHERE user_id = ? OR id = 1
-      LIMIT 1
-    `).get(userId);
-
+    const userId = req.user.id;
+    if (!userId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+    const cart = db.prepare(
+      'SELECT cart_data as cartData FROM user_cart WHERE user_id = ? LIMIT 1'
+    ).get(userId);
     if (cart && cart.cartData) {
       res.json(JSON.parse(cart.cartData));
     } else {
@@ -26,17 +29,19 @@ router.get('/', (req, res) => {
 // Save user cart
 router.post('/', (req, res) => {
   try {
-    const userId = req.body.userId || 0;
-    const cartData = JSON.stringify(req.body.items || []);
-
+    const userId = req.user.id;
+    const items = Array.isArray(req.body.items) ? req.body.items : [];
+    if (!userId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+    const cartData = JSON.stringify(items);
     db.prepare(`
       INSERT INTO user_cart (user_id, cart_data)
       VALUES (?, ?)
-      ON CONFLICT(id) DO UPDATE SET 
+      ON CONFLICT(user_id) DO UPDATE SET
         cart_data = excluded.cart_data,
         updated_at = CURRENT_TIMESTAMP
-    `).run(userId || null, cartData);
-
+    `).run(userId, cartData);
     res.json({ success: true, message: 'Cart saved' });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -46,7 +51,10 @@ router.post('/', (req, res) => {
 // Clear user cart
 router.delete('/', (req, res) => {
   try {
-    const userId = req.query.userId || 0;
+    const userId = req.user.id;
+    if (!userId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
     db.prepare('DELETE FROM user_cart WHERE user_id = ?').run(userId);
     res.json({ success: true, message: 'Cart cleared' });
   } catch (error) {

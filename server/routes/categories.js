@@ -1,5 +1,6 @@
 import express from 'express';
 import { db } from '../database.js';
+import { adminRequired } from '../middleware/auth.js';
 const router = express.Router();
 
 // Get all categories
@@ -20,7 +21,7 @@ router.get('/', (req, res) => {
 });
 
 // Create category (add to at least one album or just create it)
-router.post('/', (req, res) => {
+router.post('/', adminRequired, (req, res) => {
   try {
     const { category } = req.body;
     
@@ -36,7 +37,7 @@ router.post('/', (req, res) => {
 });
 
 // Delete category - removes it from all albums
-router.delete('/:category', (req, res) => {
+router.delete('/:category', adminRequired, (req, res) => {
   try {
     const { category } = req.params;
     

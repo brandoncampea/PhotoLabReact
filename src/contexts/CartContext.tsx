@@ -20,7 +20,12 @@ const saveCartToApi = async (items: CartItem[]) => {
   try {
     const user = localStorage.getItem('user');
     const userId = user ? JSON.parse(user).id : null;
-    await api.post('/cart', { userId, items });
+    if (!userId) {
+      // No logged-in user: persist locally only
+      localStorage.setItem('cart', JSON.stringify(items));
+      return;
+    }
+    await api.post('/cart', { items });
   } catch (error) {
     console.warn('Failed to sync cart to backend:', error);
     // Fallback to localStorage if API fails
@@ -32,7 +37,11 @@ const loadCartFromApi = async () => {
   try {
     const user = localStorage.getItem('user');
     const userId = user ? JSON.parse(user).id : null;
-    const response = await api.get('/cart', { params: { userId } });
+    if (!userId) {
+      const saved = localStorage.getItem('cart');
+      return saved ? JSON.parse(saved) : [];
+    }
+    const response = await api.get('/cart');
     return response.data;
   } catch (error) {
     console.warn('Failed to load cart from backend, using localStorage:', error);

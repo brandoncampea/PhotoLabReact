@@ -1,6 +1,6 @@
 import api from './api';
 import { adminMockApi } from './adminMockApi';
-import { ProfileConfig, Watermark, DiscountCode } from '../types';
+import { ProfileConfig, Watermark, DiscountCode, UserAccount } from '../types';
 
 const useMockApi = import.meta.env.VITE_USE_MOCK_API === 'true';
 
@@ -135,5 +135,69 @@ export const discountCodeService = {
       console.error('Error deleting discount code:', error);
       throw error;
     }
+  },
+};
+
+export const userAdminService = {
+  async getAll(): Promise<UserAccount[]> {
+    const response = await api.get('/users');
+    const users = response.data as Array<{ id: number; email: string; name: string; role: 'customer' | 'admin'; isActive: boolean; createdAt: string; lastLoginAt?: string; totalOrders: number; totalSpent: number }>;
+    return users.map(u => {
+      const parts = (u.name || '').trim().split(' ');
+      const firstName = parts.shift() || '';
+      const lastName = parts.join(' ').trim();
+      return {
+        id: u.id,
+        email: u.email,
+        firstName,
+        lastName,
+        role: u.role,
+        registeredDate: u.createdAt,
+        totalOrders: u.totalOrders || 0,
+        totalSpent: u.totalSpent || 0,
+        isActive: !!u.isActive,
+        lastLoginDate: u.lastLoginAt || undefined,
+      } as UserAccount;
+    });
+  },
+
+  async changeRole(id: number, role: 'customer' | 'admin'): Promise<UserAccount> {
+    const response = await api.put(`/users/${id}`, { role });
+    const u = response.data as { id: number; email: string; name: string; role: 'customer' | 'admin'; isActive: boolean; createdAt: string; lastLoginAt?: string; totalOrders?: number; totalSpent?: number };
+    const parts = (u.name || '').trim().split(' ');
+    const firstName = parts.shift() || '';
+    const lastName = parts.join(' ').trim();
+    return {
+      id: u.id,
+      email: u.email,
+      firstName,
+      lastName,
+      role: u.role,
+      registeredDate: u.createdAt,
+      totalOrders: u.totalOrders || 0,
+      totalSpent: u.totalSpent || 0,
+      isActive: !!u.isActive,
+      lastLoginDate: u.lastLoginAt || undefined,
+    } as UserAccount;
+  },
+
+  async toggleActive(id: number, isActive: boolean): Promise<UserAccount> {
+    const response = await api.put(`/users/${id}`, { isActive: !isActive });
+    const u = response.data as { id: number; email: string; name: string; role: 'customer' | 'admin'; isActive: boolean; createdAt: string; lastLoginAt?: string; totalOrders?: number; totalSpent?: number };
+    const parts = (u.name || '').trim().split(' ');
+    const firstName = parts.shift() || '';
+    const lastName = parts.join(' ').trim();
+    return {
+      id: u.id,
+      email: u.email,
+      firstName,
+      lastName,
+      role: u.role,
+      registeredDate: u.createdAt,
+      totalOrders: u.totalOrders || 0,
+      totalSpent: u.totalSpent || 0,
+      isActive: !!u.isActive,
+      lastLoginDate: u.lastLoginAt || undefined,
+    } as UserAccount;
   },
 };

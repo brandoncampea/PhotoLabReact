@@ -1,20 +1,26 @@
 import express from 'express';
 import { db } from '../database.js';
+import { authRequired } from '../middleware/auth.js';
 const router = express.Router();
 
-// Get user orders
+// Protect all order routes
+router.use(authRequired);
+
+// Get current user's orders
 router.get('/user/:userId', (req, res) => {
   try {
+    const userId = req.user.id;
     const orders = db.prepare(`
-      SELECT o.*, 
+      SELECT o.id, o.user_id as userId, o.total, o.shipping_address as shippingAddress,
+             o.created_at as createdAt,
              json_group_array(
                json_object(
                  'id', oi.id,
-                 'photo_id', oi.photo_id,
-                 'product_id', oi.product_id,
+                 'photoId', oi.photo_id,
+                 'productId', oi.product_id,
                  'quantity', oi.quantity,
                  'price', oi.price,
-                 'crop_data', oi.crop_data
+                 'cropData', oi.crop_data
                )
              ) as items
       FROM orders o
@@ -22,12 +28,13 @@ router.get('/user/:userId', (req, res) => {
       WHERE o.user_id = ?
       GROUP BY o.id
       ORDER BY o.created_at DESC
-    `).all(req.params.userId);
+    `).all(userId);
     
     // Parse JSON items
     const parsedOrders = orders.map(order => ({
       ...order,
-      items: JSON.parse(order.items)
+      shippingAddress: order.shippingAddress ? JSON.parse(order.shippingAddress) : null,
+      items: order.items ? JSON.parse(order.items) : []
     }));
     
     res.json(parsedOrders);
@@ -36,12 +43,13 @@ router.get('/user/:userId', (req, res) => {
   }
 });
 
-// Create order
+// Create order for current user
 router.post('/', (req, res) => {
   try {
-    const { userId, items, total, shippingAddress } = req.body;
+    const userId = req.user.id;
+    const { items, total, shippingAddress } = req.body;
 
-    // Insert order
+    // Insert order and get the returned id
     const orderResult = db.prepare(`
       INSERT INTO orders (user_id, total, shipping_address)
       VALUES (?, ?, ?)
@@ -50,13 +58,11 @@ router.post('/', (req, res) => {
     const orderId = orderResult.lastInsertRowid;
 
     // Insert order items
-    const insertItem = db.prepare(`
-      INSERT INTO order_items (order_id, photo_id, product_id, quantity, price, crop_data)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `);
-
-    items.forEach(item => {
-      insertItem.run(
+    for (const item of items) {
+      db.prepare(`
+        INSERT INTO order_items (order_id, photo_id, product_id, quantity, price, crop_data)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(
         orderId,
         item.photoId,
         item.productId,
@@ -64,7 +70,7 @@ router.post('/', (req, res) => {
         item.price,
         item.cropData ? JSON.stringify(item.cropData) : null
       );
-    });
+    }
 
     res.status(201).json({ orderId, message: 'Order created successfully' });
   } catch (error) {
@@ -72,16 +78,36 @@ router.post('/', (req, res) => {
   }
 });
 
-// Get all orders (admin)
+// Get current user's orders (customer view)
 router.get('/', (req, res) => {
   try {
+    const userId = req.user.id;
     const orders = db.prepare(`
-      SELECT o.*, u.name as user_name, u.email as user_email
+      SELECT o.id, o.user_id as userId, o.total, o.shipping_address as shippingAddress,
+             o.created_at as createdAt,
+             json_group_array(
+               json_object(
+                 'id', oi.id,
+                 'photoId', oi.photo_id,
+                 'productId', oi.product_id,
+                 'quantity', oi.quantity,
+                 'price', oi.price,
+                 'cropData', oi.crop_data
+               )
+             ) as items
       FROM orders o
-      JOIN users u ON o.user_id = u.id
+      LEFT JOIN order_items oi ON o.id = oi.order_id
+      WHERE o.user_id = ?
+      GROUP BY o.id
       ORDER BY o.created_at DESC
-    `).all();
-    res.json(orders);
+    `).all(userId);
+    
+    const parsedOrders = orders.map(order => ({
+      ...order,
+      shippingAddress: order.shippingAddress ? JSON.parse(order.shippingAddress) : null,
+      items: order.items ? JSON.parse(order.items) : []
+    }));
+    res.json(parsedOrders);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
