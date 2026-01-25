@@ -20,10 +20,14 @@ router.post('/track', (req, res) => {
 // Get analytics summary
 router.get('/summary', (req, res) => {
   try {
+    const totalVisitsResult = db.prepare("SELECT COUNT(*) as count FROM analytics WHERE event_type = 'site_visit'").get();
+    const albumViewsResult = db.prepare("SELECT COUNT(*) as count FROM analytics WHERE event_type = 'album_view'").get();
+    const photoViewsResult = db.prepare("SELECT COUNT(*) as count FROM analytics WHERE event_type = 'photo_view'").get();
+    
     const summary = {
-      totalVisits: db.prepare("SELECT COUNT(*) as count FROM analytics WHERE event_type = 'site_visit'").get().count,
-      albumViews: db.prepare("SELECT COUNT(*) as count FROM analytics WHERE event_type = 'album_view'").get().count,
-      photoViews: db.prepare("SELECT COUNT(*) as count FROM analytics WHERE event_type = 'photo_view'").get().count
+      totalVisits: parseInt(totalVisitsResult.count),
+      albumViews: parseInt(albumViewsResult.count),
+      photoViews: parseInt(photoViewsResult.count)
     };
     res.json(summary);
   } catch (error) {

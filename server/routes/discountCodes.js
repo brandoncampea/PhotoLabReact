@@ -1,5 +1,6 @@
 import express from 'express';
 import { db } from '../database.js';
+import { adminRequired } from '../middleware/auth.js';
 const router = express.Router();
 
 // Get all discount codes
@@ -15,17 +16,18 @@ router.get('/', (req, res) => {
     `).all();
 
     // Get applicable products for each code
-    const enriched = codes.map(code => {
+    const enriched = [];
+    for (const code of codes) {
       const products = db.prepare(`
         SELECT product_id as productId
         FROM discount_code_products
         WHERE discount_code_id = ?
       `).all(code.id);
-      return {
+      enriched.push({
         ...code,
         applicableProductIds: products.map(p => p.productId)
-      };
-    });
+      });
+    }
 
     res.json(enriched);
   } catch (error) {
@@ -65,7 +67,7 @@ router.get('/:id', (req, res) => {
 });
 
 // Create discount code
-router.post('/', (req, res) => {
+router.post('/', adminRequired, (req, res) => {
   try {
     const { code, description, discountType, discountValue, applicationType, expirationDate, 
             isOneTimeUse, maxUsages, isActive, applicableProductIds } = req.body;
@@ -81,13 +83,12 @@ router.post('/', (req, res) => {
 
     // Insert applicable products
     if (applicableProductIds && applicableProductIds.length > 0) {
-      const insertProduct = db.prepare(`
-        INSERT INTO discount_code_products (discount_code_id, product_id)
-        VALUES (?, ?)
-      `);
-      applicableProductIds.forEach(productId => {
-        insertProduct.run(codeId, productId);
-      });
+      for (const productId of applicableProductIds) {
+        db.prepare(`
+          INSERT INTO discount_code_products (discount_code_id, product_id)
+          VALUES (?, ?)
+        `).run(codeId, productId);
+      }
     }
 
     const newCode = db.prepare(`
@@ -109,7 +110,7 @@ router.post('/', (req, res) => {
 });
 
 // Update discount code
-router.put('/:id', (req, res) => {
+router.put('/:id', adminRequired, (req, res) => {
   try {
     const { description, discountType, discountValue, applicationType, expirationDate, 
             isOneTimeUse, maxUsages, isActive, applicableProductIds } = req.body;
@@ -125,13 +126,12 @@ router.put('/:id', (req, res) => {
     // Update applicable products
     db.prepare('DELETE FROM discount_code_products WHERE discount_code_id = ?').run(req.params.id);
     if (applicableProductIds && applicableProductIds.length > 0) {
-      const insertProduct = db.prepare(`
-        INSERT INTO discount_code_products (discount_code_id, product_id)
-        VALUES (?, ?)
-      `);
-      applicableProductIds.forEach(productId => {
-        insertProduct.run(req.params.id, productId);
-      });
+      for (const productId of applicableProductIds) {
+        db.prepare(`
+          INSERT INTO discount_code_products (discount_code_id, product_id)
+          VALUES (?, ?)
+        `).run(req.params.id, productId);
+      }
     }
 
     const updatedCode = db.prepare(`
@@ -153,7 +153,7 @@ router.put('/:id', (req, res) => {
 });
 
 // Delete discount code
-router.delete('/:id', (req, res) => {
+router.delete('/:id', adminRequired, (req, res) => {
   try {
     db.prepare('DELETE FROM discount_codes WHERE id = ?').run(req.params.id);
     res.json({ message: 'Discount code deleted successfully' });

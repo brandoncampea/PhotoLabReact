@@ -16,6 +16,7 @@ import profileRoutes from './routes/profile.js';
 import cartRoutes from './routes/cart.js';
 import watermarkRoutes from './routes/watermarks.js';
 import discountCodeRoutes from './routes/discountCodes.js';
+import userRoutes from './routes/users.js';
 import categoryRoutes from './routes/categories.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -28,9 +29,6 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-
-// Initialize database
-initDb();
 
 // Use routes
 app.use('/api/auth', authRoutes);
@@ -46,6 +44,7 @@ app.use('/api/cart', cartRoutes);
 app.use('/api/watermarks', watermarkRoutes);
 app.use('/api/discount-codes', discountCodeRoutes);
 app.use('/api/categories', categoryRoutes);
+app.use('/api/users', userRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -61,6 +60,8 @@ app.get('/', (req, res) => {
   });
 });
 
+// Initialize database and start server
+initDb();
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });

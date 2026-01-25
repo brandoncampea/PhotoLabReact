@@ -64,22 +64,24 @@ router.post('/upload', upload.array('photos', 50), (req, res) => {
     const { albumId, descriptions } = req.body;
     const parsedDescriptions = descriptions ? JSON.parse(descriptions) : [];
     
-    const photos = req.files.map((file, index) => {
+    const photos = [];
+    for (let index = 0; index < req.files.length; index++) {
+      const file = req.files[index];
       const photoUrl = `/uploads/${file.filename}`;
       const result = db.prepare(`
         INSERT INTO photos (album_id, file_name, thumbnail_url, full_image_url, description)
         VALUES (?, ?, ?, ?, ?)
       `).run(albumId, file.originalname, photoUrl, photoUrl, parsedDescriptions[index] || '');
       
-      return {
+      photos.push({
         id: result.lastInsertRowid,
         albumId: parseInt(albumId),
         fileName: file.originalname,
         thumbnailUrl: photoUrl,
         fullImageUrl: photoUrl,
         description: parsedDescriptions[index] || ''
-      };
-    });
+      });
+    }
 
     // Update album photo count
     db.prepare(`
@@ -151,6 +153,7 @@ router.delete('/:id', (req, res) => {
 router.get('/search', (req, res) => {
   try {
     const { q } = req.query;
+    const searchPattern = `%${q}%`;
     const photos = db.prepare(`
       SELECT p.id, p.album_id as albumId, p.file_name as fileName, 
              p.thumbnail_url as thumbnailUrl, p.full_image_url as fullImageUrl,
@@ -158,10 +161,12 @@ router.get('/search', (req, res) => {
              a.name as albumName
       FROM photos p
       JOIN albums a ON p.album_id = a.id
-      WHERE p.file_name LIKE ? OR p.description LIKE ? OR p.metadata LIKE ?
+      WHERE p.file_name LIKE ? COLLATE NOCASE 
+         OR p.description LIKE ? COLLATE NOCASE 
+         OR p.metadata LIKE ? COLLATE NOCASE
       ORDER BY p.created_at DESC
       LIMIT 100
-    `).all(`%${q}%`, `%${q}%`, `%${q}%`);
+    `).all(searchPattern, searchPattern, searchPattern);
     res.json(photos);
   } catch (error) {
     res.status(500).json({ error: error.message });

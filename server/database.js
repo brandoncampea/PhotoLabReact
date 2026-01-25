@@ -19,9 +19,29 @@ const initDb = () => {
       email TEXT UNIQUE NOT NULL,
       password TEXT NOT NULL,
       name TEXT NOT NULL,
+      role TEXT DEFAULT 'customer',
+      is_active BOOLEAN DEFAULT 1,
+      last_login_at DATETIME,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  // Migrate users table to add missing columns (role, is_active, last_login_at)
+  try {
+    const userCols = db.prepare("PRAGMA table_info(users)").all();
+    const colNames = userCols.map(c => c.name);
+    if (!colNames.includes('role')) {
+      db.exec("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'customer'");
+    }
+    if (!colNames.includes('is_active')) {
+      db.exec("ALTER TABLE users ADD COLUMN is_active BOOLEAN DEFAULT 1");
+    }
+    if (!colNames.includes('last_login_at')) {
+      db.exec("ALTER TABLE users ADD COLUMN last_login_at DATETIME");
+    }
+  } catch (e) {
+    // ignore
+  }
 
   // Albums table
   db.exec(`
@@ -175,15 +195,41 @@ const initDb = () => {
     )
   `);
 
-  // User Cart table
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS user_cart (
-      id INTEGER PRIMARY KEY CHECK (id = 1),
-      user_id INTEGER,
-      cart_data TEXT,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
+  // User Cart table (per-user carts)
+  const existingCartSchema = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='user_cart'").get();
+  if (!existingCartSchema) {
+    db.exec(`
+      CREATE TABLE user_cart (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL UNIQUE,
+        cart_data TEXT,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    `);
+  } else if (existingCartSchema.sql && existingCartSchema.sql.includes('CHECK (id = 1)')) {
+    // Migrate from single-row cart to per-user carts
+    db.exec('BEGIN');
+    db.exec(`
+      CREATE TABLE user_cart_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL UNIQUE,
+        cart_data TEXT,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    `);
+    // Attempt to migrate the existing single cart to a NULL user; if NULL, skip as we enforce NOT NULL
+    try {
+      const single = db.prepare('SELECT user_id, cart_data FROM user_cart WHERE id = 1').get();
+      if (single && single.user_id) {
+        db.prepare('INSERT INTO user_cart_new (user_id, cart_data) VALUES (?, ?)').run(single.user_id, single.cart_data || null);
+      }
+    } catch {}
+    db.exec('DROP TABLE user_cart');
+    db.exec('ALTER TABLE user_cart_new RENAME TO user_cart');
+    db.exec('COMMIT');
+  }
 
   // Watermarks table
   db.exec(`

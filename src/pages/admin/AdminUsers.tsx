@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { UserAccount } from '../../types';
 import { adminMockApi } from '../../services/adminMockApi';
+import { userAdminService } from '../../services/adminService';
+
+const useMockApi = import.meta.env.VITE_USE_MOCK_API === 'true';
 
 const AdminUsers: React.FC = () => {
   const [users, setUsers] = useState<UserAccount[]>([]);
@@ -13,7 +16,7 @@ const AdminUsers: React.FC = () => {
 
   const loadUsers = async () => {
     try {
-      const data = await adminMockApi.users.getAll();
+      const data = useMockApi ? await adminMockApi.users.getAll() : await userAdminService.getAll();
       setUsers(data);
     } catch (error) {
       console.error('Failed to load users:', error);
@@ -24,7 +27,13 @@ const AdminUsers: React.FC = () => {
 
   const handleToggleActive = async (id: number) => {
     try {
-      await adminMockApi.users.toggleActive(id);
+      if (useMockApi) {
+        await adminMockApi.users.toggleActive(id);
+      } else {
+        const user = users.find(u => u.id === id);
+        if (!user) return;
+        await userAdminService.toggleActive(id, user.isActive);
+      }
       loadUsers();
     } catch (error) {
       console.error('Failed to toggle user active status:', error);
@@ -35,7 +44,11 @@ const AdminUsers: React.FC = () => {
     const action = role === 'admin' ? 'promote to admin' : 'demote to customer';
     if (confirm(`Are you sure you want to ${action}?`)) {
       try {
-        await adminMockApi.users.changeRole(id, role);
+        if (useMockApi) {
+          await adminMockApi.users.changeRole(id, role);
+        } else {
+          await userAdminService.changeRole(id, role);
+        }
         loadUsers();
       } catch (error) {
         console.error('Failed to change user role:', error);

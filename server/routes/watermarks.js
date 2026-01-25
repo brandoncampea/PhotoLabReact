@@ -1,5 +1,6 @@
 import express from 'express';
 import { db } from '../database.js';
+import { adminRequired } from '../middleware/auth.js';
 const router = express.Router();
 
 // Get all watermarks
@@ -37,7 +38,7 @@ router.get('/:id', (req, res) => {
 });
 
 // Create watermark
-router.post('/', (req, res) => {
+router.post('/', adminRequired, (req, res) => {
   try {
     const { name, imageUrl, position, opacity, isDefault, tiled } = req.body;
     
@@ -64,7 +65,7 @@ router.post('/', (req, res) => {
 });
 
 // Update watermark
-router.put('/:id', (req, res) => {
+router.put('/:id', adminRequired, (req, res) => {
   try {
     const { name, imageUrl, position, opacity, isDefault, tiled } = req.body;
     
@@ -92,7 +93,7 @@ router.put('/:id', (req, res) => {
 });
 
 // Delete watermark
-router.delete('/:id', (req, res) => {
+router.delete('/:id', adminRequired, (req, res) => {
   try {
     db.prepare('DELETE FROM watermarks WHERE id = ?').run(req.params.id);
     res.json({ message: 'Watermark deleted successfully' });

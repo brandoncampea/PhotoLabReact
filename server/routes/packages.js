@@ -1,5 +1,6 @@
 import express from 'express';
 import { db } from '../database.js';
+import { adminRequired } from '../middleware/auth.js';
 const router = express.Router();
 
 // Get all packages for a price list
@@ -13,14 +14,15 @@ router.get('/pricelist/:priceListId', (req, res) => {
     `).all(req.params.priceListId);
 
     // Get items for each package
-    const enriched = packages.map(pkg => {
+    const enriched = [];
+    for (const pkg of packages) {
       const items = db.prepare(`
         SELECT product_id as productId, product_size_id as productSizeId, quantity
         FROM package_items
         WHERE package_id = ?
       `).all(pkg.id);
-      return { ...pkg, items };
-    });
+      enriched.push({ ...pkg, items });
+    }
 
     res.json(enriched);
   } catch (error) {
@@ -55,7 +57,7 @@ router.get('/:id', (req, res) => {
 });
 
 // Create package
-router.post('/', (req, res) => {
+router.post('/', adminRequired, (req, res) => {
   try {
     const { priceListId, name, description, packagePrice, items, isActive } = req.body;
 
@@ -68,13 +70,12 @@ router.post('/', (req, res) => {
 
     // Insert package items
     if (items && items.length > 0) {
-      const insertItem = db.prepare(`
-        INSERT INTO package_items (package_id, product_id, product_size_id, quantity)
-        VALUES (?, ?, ?, ?)
-      `);
-      items.forEach(item => {
-        insertItem.run(packageId, item.productId, item.productSizeId, item.quantity);
-      });
+      for (const item of items) {
+        db.prepare(`
+          INSERT INTO package_items (package_id, product_id, product_size_id, quantity)
+          VALUES (?, ?, ?, ?)
+        `).run(packageId, item.productId, item.productSizeId, item.quantity);
+      }
     }
 
     const pkg = db.prepare(`
@@ -91,7 +92,7 @@ router.post('/', (req, res) => {
 });
 
 // Update package
-router.put('/:id', (req, res) => {
+router.put('/:id', adminRequired, (req, res) => {
   try {
     const { name, description, packagePrice, items, isActive } = req.body;
 
@@ -106,13 +107,12 @@ router.put('/:id', (req, res) => {
 
     // Insert new items
     if (items && items.length > 0) {
-      const insertItem = db.prepare(`
-        INSERT INTO package_items (package_id, product_id, product_size_id, quantity)
-        VALUES (?, ?, ?, ?)
-      `);
-      items.forEach(item => {
-        insertItem.run(req.params.id, item.productId, item.productSizeId, item.quantity);
-      });
+      for (const item of items) {
+        db.prepare(`
+          INSERT INTO package_items (package_id, product_id, product_size_id, quantity)
+          VALUES (?, ?, ?, ?)
+        `).run(req.params.id, item.productId, item.productSizeId, item.quantity);
+      }
     }
 
     const pkg = db.prepare(`
@@ -129,7 +129,7 @@ router.put('/:id', (req, res) => {
 });
 
 // Delete package
-router.delete('/:id', (req, res) => {
+router.delete('/:id', adminRequired, (req, res) => {
   try {
     db.prepare('DELETE FROM packages WHERE id = ?').run(req.params.id);
     res.json({ message: 'Package deleted successfully' });
