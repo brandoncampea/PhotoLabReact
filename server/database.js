@@ -43,6 +43,23 @@ const initDb = () => {
     // ignore
   }
 
+  // Migrate photos table to add player_names column
+  try {
+    const photoCols = db.prepare("PRAGMA table_info(photos)").all();
+    const colNames = photoCols.map(c => c.name);
+    if (!colNames.includes('player_names')) {
+      db.exec("ALTER TABLE photos ADD COLUMN player_names TEXT");
+    }
+    if (!colNames.includes('width')) {
+      db.exec("ALTER TABLE photos ADD COLUMN width INTEGER");
+    }
+    if (!colNames.includes('height')) {
+      db.exec("ALTER TABLE photos ADD COLUMN height INTEGER");
+    }
+  } catch (e) {
+    // ignore
+  }
+
   // Albums table
   db.exec(`
     CREATE TABLE IF NOT EXISTS albums (

@@ -7,7 +7,8 @@ A modern React customer portal for photo ordering with cropping, cart management
 ### Customer Portal
 - 🔐 **Authentication** - User registration and login with JWT tokens
 - 📸 **Photo Albums** - Browse albums and view photos
-- 🔍 **Photo Search** - Search photos by name or EXIF metadata (camera, settings, date)
+- 🔍 **Photo Search** - Advanced search by filename, EXIF metadata (camera, ISO, aperture, shutter speed, focal length), date, or player names with field-specific filtering
+- 👤 **Player Tags** - Find photos by player/person names (via CSV upload)
 - 📊 **Photo Metadata** - View camera settings, date taken, and image details
 - ✂️ **Image Cropping** - Crop photos before ordering using react-cropper
 - 🛒 **Shopping Cart** - Add photos to cart with custom crops
@@ -21,7 +22,8 @@ A modern React customer portal for photo ordering with cropping, cart management
 ### Admin Portal
 - 📁 **Album Management** - Create and manage photo albums with album-specific pricing
 - 🖼️ **Photo Upload** - Upload photos with automatic EXIF metadata extraction
-- 🛍️ **Product Management** - Manage print products, sizes, and pricing
+- � **Player Tagging** - Upload CSV to tag photos with player/person names for easy discovery
+- �🛍️ **Product Management** - Manage print products, sizes, and pricing
 - 💰 **Price Lists** - Create and manage multiple price lists, import from CSV with smart product grouping
 - 📦 **Package System** - Create product packages with bundled pricing
 - 💰 **Discount Codes** - Create and manage promotional discount codes
@@ -229,9 +231,68 @@ npm run build
 - Delete `node_modules` and run `npm install` again
 - Clear Vite cache: `rm -rf node_modules/.vite`
 
-## License
+## Advanced Photo Search
 
-This project is for educational/portfolio purposes.
+### Overview
+Comprehensive search with support for EXIF metadata filtering and field-specific search capabilities.
+
+### Features
+- ✅ Search by filename, camera make/model, ISO, aperture, shutter speed, focal length, date
+- ✅ Field-specific filtering (search in specific EXIF properties)
+- ✅ Search player names and descriptions
+- ✅ Rich results display with complete EXIF metadata
+- ✅ Sort by filename, date taken, or album
+- ✅ Shows album name for context
+- ✅ Search across all albums globally
+
+### Quick Start
+1. Go to **Search** page
+2. Enter search term (e.g., "canon", "f/2.8", "400", player name)
+3. Optionally select **"Search in:"** filter for specific EXIF field
+4. View results with complete metadata grid
+
+### Search Examples
+- **"Canon"** + Camera filter → All Canon photos
+- **"f/2.8"** + Aperture filter → All f/2.8 aperture photos
+- **"400"** + ISO filter → All ISO 400 photos
+- **"1/1000"** + Shutter Speed → Fast action shots
+- **"50mm"** + Focal Length → All 50mm lens photos
+- **Player name** → All photos of that person
+- Album name → All photos in that album
+
+### Documentation
+- See [METADATA_SEARCH_GUIDE.md](./METADATA_SEARCH_GUIDE.md) for complete documentation
+
+## Player Names / CSV Tagging Feature
+
+### Overview
+Tag photos with player or person names via CSV upload, making them instantly searchable by customers.
+
+### Quick Start
+1. In an album, click **"📋 Upload Player Names"**
+2. Provide a CSV file with columns: `file_name` and `player_name`
+3. See success message showing how many photos were updated
+4. Customers can now search/filter by player name
+
+### CSV Format
+```csv
+file_name,player_name
+photo001.jpg,John Smith
+photo002.jpg,Jane Doe
+photo003.jpg,Michael Johnson
+```
+
+### Features
+- ✅ Flexible header matching (`file_name`, `fileName`, etc.)
+- ✅ Case-insensitive player name search
+- ✅ Player names display on photo cards with 👤 emoji
+- ✅ Search globally across all albums
+- ✅ Real-time upload feedback
+
+### Documentation
+- See [PLAYER_CSV_QUICKSTART.md](./PLAYER_CSV_QUICKSTART.md) for user guide
+- See [PLAYER_TAGS_FEATURE.md](./PLAYER_TAGS_FEATURE.md) for technical details
+- See [PLAYER_CSV_IMPLEMENTATION.md](./PLAYER_CSV_IMPLEMENTATION.md) for implementation summary
 
 ## Author
 

@@ -108,7 +108,9 @@ const AdminPhotos: React.FC = () => {
   const handleSetCover = async (photo: Photo) => {
     if (!albumId) return;
     try {
-      await adminMockApi.albums.update(albumId, { coverImageUrl: photo.thumbnailUrl || photo.fullImageUrl });
+      // Use a placeholder URL instead of large data URL to avoid localStorage quota issues
+      const coverUrl = `https://picsum.photos/seed/album${albumId}/400/300`;
+      await adminMockApi.albums.update(albumId, { coverImageUrl: coverUrl });
       await loadAlbums();
     } catch (error) {
       console.error('Failed to set album cover:', error);

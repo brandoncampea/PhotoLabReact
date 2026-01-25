@@ -32,6 +32,9 @@ export interface Photo {
   fullImageUrl: string;
   description?: string;
   metadata?: PhotoMetadata;
+  playerNames?: string;
+  width?: number;
+  height?: number;
 }
 
 export interface PhotoMetadata {

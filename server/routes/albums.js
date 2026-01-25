@@ -7,7 +7,7 @@ router.get('/', (req, res) => {
   try {
     const albums = db.prepare(`
       SELECT 
-        id, name, description, cover_image_url as coverImageUrl, 
+        id, title, description, cover_image_url as coverImageUrl, 
         photo_count as photoCount, category, price_list_id as priceListId,
         is_password_protected as isPasswordProtected, password, password_hint as passwordHint,
         created_at as createdDate
@@ -25,7 +25,7 @@ router.get('/:id', (req, res) => {
   try {
     const album = db.prepare(`
       SELECT 
-        id, name, description, cover_image_url as coverImageUrl, 
+        id, title, description, cover_image_url as coverImageUrl, 
         photo_count as photoCount, category, price_list_id as priceListId,
         is_password_protected as isPasswordProtected, password, password_hint as passwordHint,
         created_at as createdDate
@@ -43,12 +43,19 @@ router.get('/:id', (req, res) => {
 // Create album
 router.post('/', (req, res) => {
   try {
-    const { name, description, coverImageUrl, category, priceListId, isPasswordProtected, password, passwordHint } = req.body;
+    const { title, name, description, coverImageUrl, category, priceListId, isPasswordProtected, password, passwordHint } = req.body;
+    // Use title or name (title takes precedence)
+    const albumTitle = title || name || '';
+    
+    if (!albumTitle) {
+      return res.status(400).json({ error: 'Album title is required' });
+    }
+    
     const result = db.prepare(`
-      INSERT INTO albums (name, description, cover_image_url, category, price_list_id, is_password_protected, password, password_hint)
+      INSERT INTO albums (title, description, cover_image_url, category, price_list_id, is_password_protected, password, password_hint)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      name, 
+      albumTitle, 
       description || null, 
       coverImageUrl || null, 
       category || null,
@@ -60,7 +67,7 @@ router.post('/', (req, res) => {
     
     const album = db.prepare(`
       SELECT 
-        id, name, description, cover_image_url as coverImageUrl, 
+        id, title, description, cover_image_url as coverImageUrl, 
         photo_count as photoCount, category, price_list_id as priceListId,
         is_password_protected as isPasswordProtected, password, password_hint as passwordHint,
         created_at as createdDate
@@ -75,14 +82,16 @@ router.post('/', (req, res) => {
 // Update album
 router.put('/:id', (req, res) => {
   try {
-    const { name, description, coverImageUrl, category, priceListId, isPasswordProtected, password, passwordHint } = req.body;
+    const { title, name, description, coverImageUrl, category, priceListId, isPasswordProtected, password, passwordHint } = req.body;
+    const albumTitle = title || name;
+    
     db.prepare(`
       UPDATE albums 
-      SET name = ?, description = ?, cover_image_url = ?, category = ?, price_list_id = ?, 
+      SET title = ?, description = ?, cover_image_url = ?, category = ?, price_list_id = ?, 
           is_password_protected = ?, password = ?, password_hint = ?
       WHERE id = ?
     `).run(
-      name,
+      albumTitle,
       description || null,
       coverImageUrl || null,
       category || null,
@@ -95,7 +104,7 @@ router.put('/:id', (req, res) => {
     
     const album = db.prepare(`
       SELECT 
-        id, name, description, cover_image_url as coverImageUrl, 
+        id, title, description, cover_image_url as coverImageUrl, 
         photo_count as photoCount, category, price_list_id as priceListId,
         is_password_protected as isPasswordProtected, password, password_hint as passwordHint,
         created_at as createdDate

@@ -27,9 +27,17 @@ const initAlbums = (): Album[] => {
   const stored = localStorage.getItem('mockAlbums');
   if (stored) {
     try {
-      return JSON.parse(stored);
+      const parsed = JSON.parse(stored);
+      // Only use stored data if it has items, otherwise use defaults
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      } else if (Array.isArray(parsed) && parsed.length === 0) {
+        // Clear empty array from localStorage
+        localStorage.removeItem('mockAlbums');
+      }
     } catch (e) {
       console.error('Failed to parse stored albums:', e);
+      localStorage.removeItem('mockAlbums');
     }
   }
   return [
@@ -70,6 +78,48 @@ const initAlbums = (): Album[] => {
 };
 
 let mockAlbums: Album[] = initAlbums();
+
+// Emergency reset: if mockAlbums is empty, force load defaults
+if (mockAlbums.length === 0) {
+  console.warn('mockAlbums initialized as empty, reloading defaults');
+  localStorage.removeItem('mockAlbums');
+  mockAlbums = [
+    {
+      id: 1,
+      name: 'Summer Vacation 2025',
+      description: 'Beautiful moments from our summer trip',
+      coverImageUrl: 'https://picsum.photos/seed/album1/400/300',
+      photoCount: 12,
+      createdDate: '2025-07-15T00:00:00Z',
+      isPasswordProtected: false,
+      password: '',
+      passwordHint: '',
+    },
+    {
+      id: 2,
+      name: 'Family Portraits',
+      description: 'Professional family photos',
+      coverImageUrl: 'https://picsum.photos/seed/album2/400/300',
+      photoCount: 8,
+      createdDate: '2025-09-20T00:00:00Z',
+      isPasswordProtected: false,
+      password: '',
+      passwordHint: '',
+    },
+    {
+      id: 3,
+      name: 'Nature Photography',
+      description: 'Stunning landscapes and wildlife',
+      coverImageUrl: 'https://picsum.photos/seed/album3/400/300',
+      photoCount: 15,
+      createdDate: '2025-10-10T00:00:00Z',
+      isPasswordProtected: false,
+      password: '',
+      passwordHint: '',
+    },
+  ];
+  persistAlbums();
+}
 
 // Initialize photos from localStorage or use defaults
 const initPhotos = (): Record<number, Photo[]> => {
@@ -139,7 +189,16 @@ const mockOrders: Order[] = [];
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 const persistAlbums = () => {
-  localStorage.setItem('mockAlbums', JSON.stringify(mockAlbums));
+  try {
+    localStorage.setItem('mockAlbums', JSON.stringify(mockAlbums));
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('QuotaExceededError')) {
+      console.warn('localStorage quota exceeded for mockAlbums. Data may be lost on refresh.');
+      // Don't throw - let the operation continue with in-memory data
+    } else {
+      throw error;
+    }
+  }
 };
 
 // Persist photos cautiously to avoid localStorage quota issues with large data URLs
@@ -189,6 +248,8 @@ export const addMockAlbum = (album: Album) => {
     passwordHint: album.isPasswordProtected ? album.passwordHint || '' : '',
   };
   mockAlbums.push(normalized);
+  console.log('Album added to mockAlbums:', normalized);
+  console.log('Total albums now:', mockAlbums.length, mockAlbums);
   persistAlbums();
 };
 
@@ -315,7 +376,51 @@ export const mockApi = {
   albums: {
     async getAlbums(): Promise<Album[]> {
       await delay(300);
-      console.log('Mock API: Fetching albums');
+      // If mockAlbums is empty but localStorage has data, try to reload from defaults
+      if (mockAlbums.length === 0) {
+        const stored = localStorage.getItem('mockAlbums');
+        if (stored === '[]' || stored === null) {
+          localStorage.removeItem('mockAlbums');
+          // Reload default albums
+          mockAlbums = [
+            {
+              id: 1,
+              name: 'Summer Vacation 2025',
+              description: 'Beautiful moments from our summer trip',
+              coverImageUrl: 'https://picsum.photos/seed/album1/400/300',
+              photoCount: 12,
+              createdDate: '2025-07-15T00:00:00Z',
+              isPasswordProtected: false,
+              password: '',
+              passwordHint: '',
+            },
+            {
+              id: 2,
+              name: 'Family Portraits',
+              description: 'Professional family photos',
+              coverImageUrl: 'https://picsum.photos/seed/album2/400/300',
+              photoCount: 8,
+              createdDate: '2025-09-20T00:00:00Z',
+              isPasswordProtected: false,
+              password: '',
+              passwordHint: '',
+            },
+            {
+              id: 3,
+              name: 'Nature Photography',
+              description: 'Stunning landscapes and wildlife',
+              coverImageUrl: 'https://picsum.photos/seed/album3/400/300',
+              photoCount: 15,
+              createdDate: '2025-10-10T00:00:00Z',
+              isPasswordProtected: false,
+              password: '',
+              passwordHint: '',
+            },
+          ];
+          persistAlbums();
+        }
+      }
+      console.log('Mock API: Fetching albums', mockAlbums.length, 'albums:', mockAlbums);
       return mockAlbums;
     },
 
