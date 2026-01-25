@@ -3,8 +3,11 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Photo, Album } from '../../types';
 import { photoService } from '../../services/photoService';
 import { albumService } from '../../services/albumService';
+import { albumAdminService } from '../../services/albumAdminService';
 import { adminMockApi } from '../../services/adminMockApi';
 import { exifService } from '../../services/exifService';
+
+const useMockApi = import.meta.env.VITE_USE_MOCK_API === 'true';
 
 const AdminPhotos: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -14,6 +17,9 @@ const AdminPhotos: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [albumId, setAlbumId] = useState<number | null>(null);
+  const [coverMessage, setCoverMessage] = useState<string | null>(null);
+  const [coverLoadingId, setCoverLoadingId] = useState<number | null>(null);
+  const [coverSuccessId, setCoverSuccessId] = useState<number | null>(null);
 
   useEffect(() => {
     loadAlbums();
@@ -83,7 +89,12 @@ const AdminPhotos: React.FC = () => {
         })
       );
       
-      await adminMockApi.photos.upload(albumId, filesWithMetadata);
+      if (useMockApi) {
+        await adminMockApi.photos.upload(albumId, filesWithMetadata);
+      } else {
+        // Descriptions currently unused; we pass files only
+        await photoService.uploadPhotos(albumId, files);
+      }
       loadPhotos();
       loadAlbums(); // Reload albums to update photo count
     } catch (error) {
@@ -96,7 +107,11 @@ const AdminPhotos: React.FC = () => {
   const handleDelete = async (id: number) => {
     if (confirm('Are you sure you want to delete this photo?')) {
       try {
-        await adminMockApi.photos.delete(id);
+        if (useMockApi) {
+          await adminMockApi.photos.delete(id);
+        } else {
+          await photoService.deletePhoto(id);
+        }
         loadPhotos();
         loadAlbums(); // Reload albums to update photo count
       } catch (error) {
@@ -105,15 +120,58 @@ const AdminPhotos: React.FC = () => {
     }
   };
 
+  const handleDeleteAll = async () => {
+    if (photos.length === 0) {
+      alert('No photos to delete');
+      return;
+    }
+    
+    if (confirm(`Are you sure you want to delete all ${photos.length} photos from this album? This cannot be undone.`)) {
+      try {
+        // Delete all photos in parallel
+        if (useMockApi) {
+          await Promise.all(photos.map(photo => adminMockApi.photos.delete(photo.id)));
+        } else {
+          await Promise.all(photos.map(photo => photoService.deletePhoto(photo.id)));
+        }
+        // Immediately clear UI
+        setPhotos([]);
+        // Then reload to ensure sync
+        await loadPhotos();
+        await loadAlbums(); // Reload albums to update photo count
+      } catch (error) {
+        console.error('Failed to delete all photos:', error);
+      }
+    }
+  };
+
   const handleSetCover = async (photo: Photo) => {
     if (!albumId) return;
     try {
-      // Use a placeholder URL instead of large data URL to avoid localStorage quota issues
-      const coverUrl = `https://picsum.photos/seed/album${albumId}/400/300`;
-      await adminMockApi.albums.update(albumId, { coverImageUrl: coverUrl });
+      setCoverLoadingId(photo.id);
+      // Use the actual photo's full image URL as the cover
+      const coverUrl = photo.fullImageUrl || photo.thumbnailUrl;
+      if (!coverUrl) {
+        setCoverMessage('Photo URL not available');
+        setTimeout(() => setCoverMessage(null), 2500);
+        return;
+      }
+      if (useMockApi) {
+        await adminMockApi.albums.update(albumId, { coverImageUrl: coverUrl, coverPhotoId: photo.id });
+      } else {
+        await albumAdminService.updateAlbum(albumId, { coverImageUrl: coverUrl, coverPhotoId: photo.id });
+      }
       await loadAlbums();
+      setCoverMessage('Cover updated');
+      setCoverSuccessId(photo.id);
+      setTimeout(() => setCoverMessage(null), 2000);
+      setTimeout(() => setCoverSuccessId(null), 1500);
     } catch (error) {
       console.error('Failed to set album cover:', error);
+      setCoverMessage('Failed to update cover');
+      setTimeout(() => setCoverMessage(null), 2500);
+    } finally {
+      setCoverLoadingId(null);
     }
   };
 
@@ -178,6 +236,15 @@ const AdminPhotos: React.FC = () => {
             <label htmlFor="photo-upload" className="btn btn-primary">
               {uploading ? 'Uploading...' : '+ Upload Photos'}
             </label>
+            {photos.length > 0 && (
+              <button
+                onClick={handleDeleteAll}
+                className="btn btn-danger"
+                style={{ marginLeft: '0.5rem' }}
+              >
+                🗑️ Delete All ({photos.length})
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -193,6 +260,11 @@ const AdminPhotos: React.FC = () => {
           <p style={{ margin: 0, fontSize: '0.95rem', color: '#666' }}>
             <strong>Current Album:</strong> {currentAlbum.name} ({photos.length} photos)
           </p>
+          {coverMessage && (
+            <p style={{ margin: '0.35rem 0 0 0', fontSize: '0.85rem', color: coverMessage.includes('Failed') ? '#d32f2f' : '#2e7d32' }}>
+              {coverMessage}
+            </p>
+          )}
           <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.85rem', color: '#888' }}>
             All photos must belong to an album. Select an album above to upload or manage photos.
           </p>
@@ -206,7 +278,7 @@ const AdminPhotos: React.FC = () => {
             <div className="photo-info">
               <p className="photo-filename">{photo.fileName}</p>
             </div>
-            {currentAlbum && (currentAlbum.coverImageUrl === photo.thumbnailUrl || currentAlbum.coverImageUrl === photo.fullImageUrl) && (
+            {currentAlbum && currentAlbum.coverPhotoId === photo.id && (
               <div className="badge" style={{ backgroundColor: '#0d6efd', color: 'white', padding: '0.2rem 0.5rem', borderRadius: '12px', fontSize: '0.75rem', alignSelf: 'flex-start', margin: '0 0 0.5rem 0.5rem' }}>
                 Cover photo
               </div>
@@ -215,9 +287,18 @@ const AdminPhotos: React.FC = () => {
               <button
                 onClick={() => handleSetCover(photo)}
                 className="btn btn-secondary"
-                disabled={currentAlbum ? (currentAlbum.coverImageUrl === photo.thumbnailUrl || currentAlbum.coverImageUrl === photo.fullImageUrl) : false}
+                disabled={
+                  (currentAlbum ? currentAlbum.coverPhotoId === photo.id : false)
+                  || coverLoadingId === photo.id
+                }
               >
-                {currentAlbum && (currentAlbum.coverImageUrl === photo.thumbnailUrl || currentAlbum.coverImageUrl === photo.fullImageUrl) ? 'Current cover' : 'Set as cover'}
+                {coverLoadingId === photo.id
+                  ? 'Updating...'
+                  : coverSuccessId === photo.id
+                    ? '✓ Set'
+                    : currentAlbum && currentAlbum.coverPhotoId === photo.id
+                      ? 'Current cover'
+                      : 'Set as cover'}
               </button>
               <button
                 onClick={() => handleDelete(photo.id)}

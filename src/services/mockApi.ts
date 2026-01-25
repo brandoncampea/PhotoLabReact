@@ -188,7 +188,7 @@ const mockOrders: Order[] = [];
 // Simulate network delay
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-const persistAlbums = () => {
+function persistAlbums() {
   try {
     localStorage.setItem('mockAlbums', JSON.stringify(mockAlbums));
   } catch (error) {
@@ -199,7 +199,7 @@ const persistAlbums = () => {
       throw error;
     }
   }
-};
+}
 
 // Persist photos cautiously to avoid localStorage quota issues with large data URLs
 const MAX_DATA_URL_LENGTH = 150000; // ~150KB per string to keep storage reasonable
@@ -212,16 +212,21 @@ const sanitizePhotosForStorage = (): Record<number, Photo[]> => {
     if (Number.isNaN(albumIdNum)) continue;
     sanitized[albumIdNum] = photos.map((photo) => {
       const trimmed: Photo = { ...photo };
+      const placeholderThumb = `https://picsum.photos/seed/photo-${photo.id || albumIdNum}/300/300`;
+      const placeholderFull = `https://picsum.photos/seed/photo-${photo.id || albumIdNum}/1200/900`;
       const trimDataUrl = (value?: string): string => {
         if (!value) return '';
         const isDataUrl = value.startsWith('data:');
-        if (isDataUrl && value.length > MAX_DATA_URL_LENGTH) {
+        const isBlob = value.startsWith('blob:');
+        if ((isDataUrl && value.length > MAX_DATA_URL_LENGTH) || isBlob) {
           return '';
         }
         return value;
       };
       trimmed.thumbnailUrl = trimDataUrl(trimmed.thumbnailUrl);
       trimmed.fullImageUrl = trimDataUrl(trimmed.fullImageUrl);
+      if (!trimmed.thumbnailUrl) trimmed.thumbnailUrl = placeholderThumb;
+      if (!trimmed.fullImageUrl) trimmed.fullImageUrl = placeholderFull;
       return trimmed;
     });
   }
@@ -236,6 +241,11 @@ const persistPhotos = () => {
   } catch (error) {
     console.warn('Failed to persist photos to localStorage; using in-memory only.', error);
     photosPersistenceDisabled = true;
+    try {
+      localStorage.removeItem('mockPhotos');
+    } catch (e) {
+      // ignore secondary failures
+    }
   }
 };
 
@@ -437,7 +447,29 @@ export const mockApi = {
     async getPhotosByAlbum(albumId: number): Promise<Photo[]> {
       await delay(400);
       console.log('Mock API: Fetching photos for album', albumId);
-      return mockPhotos[albumId] || [];
+      const hasAnyPhotos = Object.values(mockPhotos).some(arr => arr && arr.length > 0);
+      if ((!mockPhotos[albumId] || mockPhotos[albumId].length === 0) && !hasAnyPhotos) {
+        console.warn('mockPhotos empty; reloading default photos');
+        mockPhotos = initPhotos();
+      }
+      // Sync album photo counts with current photos
+      const album = mockAlbums.find(a => a.id === albumId);
+      if (album) {
+        album.photoCount = mockPhotos[albumId]?.length || 0;
+        persistAlbums();
+      }
+      persistPhotos();
+      const photos = mockPhotos[albumId] || [];
+      // Ensure thumbnails/full URLs are present (in case storage trimming removed them)
+      return photos.map((photo) => {
+        const placeholderThumb = `https://picsum.photos/seed/photo-${photo.id || albumId}/300/300`;
+        const placeholderFull = `https://picsum.photos/seed/photo-${photo.id || albumId}/1200/900`;
+        return {
+          ...photo,
+          thumbnailUrl: photo.thumbnailUrl || placeholderThumb,
+          fullImageUrl: photo.fullImageUrl || placeholderFull,
+        };
+      });
     },
 
     async getPhoto(id: number): Promise<Photo> {

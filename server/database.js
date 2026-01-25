@@ -64,7 +64,8 @@ const initDb = () => {
   db.exec(`
     CREATE TABLE IF NOT EXISTS albums (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
+      name TEXT,
+      title TEXT,
       description TEXT,
       cover_image_url TEXT,
       photo_count INTEGER DEFAULT 0,
@@ -76,6 +77,24 @@ const initDb = () => {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  // Backfill name from legacy title column if needed
+  try {
+    const albumCols = db.prepare("PRAGMA table_info(albums)").all();
+    const colNames = albumCols.map(c => c.name);
+    if (!colNames.includes('name')) {
+      db.exec("ALTER TABLE albums ADD COLUMN name TEXT");
+    }
+    if (!colNames.includes('title')) {
+      // keep schema tolerant; no-op if title absent
+    }
+    if (!colNames.includes('cover_photo_id')) {
+      db.exec("ALTER TABLE albums ADD COLUMN cover_photo_id INTEGER");
+    }
+    db.exec("UPDATE albums SET name = COALESCE(name, title) WHERE name IS NULL AND title IS NOT NULL");
+  } catch (e) {
+    // ignore
+  }
 
   // Photos table
   db.exec(`

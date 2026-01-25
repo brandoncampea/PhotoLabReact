@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Album, Photo, PriceList } from '../../types';
+import { Album, PriceList } from '../../types';
 import { albumService } from '../../services/albumService';
-import { photoService } from '../../services/photoService';
 import { categoryService } from '../../services/categoryService';
 import { albumAdminService } from '../../services/albumAdminService';
 
@@ -11,15 +10,12 @@ const AdminAlbums: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingAlbum, setEditingAlbum] = useState<Album | null>(null);
-  const [albumPhotos, setAlbumPhotos] = useState<Photo[]>([]);
-  const [showPhotoSelector, setShowPhotoSelector] = useState(false);
   const [categories, setCategories] = useState<string[]>([]);
   const [showNewCategory, setShowNewCategory] = useState(false);
   const [newCategory, setNewCategory] = useState('');
   const [formData, setFormData] = useState({
     name: '',
     description: '',
-    coverImageUrl: '',
     category: '',
     priceListId: undefined as number | undefined,
     isPasswordProtected: false,
@@ -70,7 +66,7 @@ const AdminAlbums: React.FC = () => {
 
   const handleCreate = () => {
     setEditingAlbum(null);
-    setFormData({ name: '', description: '', coverImageUrl: '', category: '', priceListId: undefined, isPasswordProtected: false, password: '', passwordHint: '' });
+    setFormData({ name: '', description: '', category: '', priceListId: undefined, isPasswordProtected: false, password: '', passwordHint: '' });
     setShowNewCategory(false);
     setNewCategory('');
     setShowModal(true);
@@ -80,8 +76,7 @@ const AdminAlbums: React.FC = () => {
     setEditingAlbum(album);
     setFormData({
       name: album.name,
-      description: album.description,
-      coverImageUrl: album.coverImageUrl || '',
+      description: album.description || '',
       category: album.category || '',
       priceListId: album.priceListId,
       isPasswordProtected: !!album.isPasswordProtected,
@@ -91,25 +86,6 @@ const AdminAlbums: React.FC = () => {
     setShowNewCategory(false);
     setNewCategory('');
     setShowModal(true);
-    // Load photos for this album
-    if (album.id) {
-      loadAlbumPhotos(album.id);
-    }
-  };
-
-  const loadAlbumPhotos = async (albumId: number) => {
-    try {
-      const photos = await photoService.getPhotosByAlbum(albumId);
-      setAlbumPhotos(photos);
-    } catch (error) {
-      console.error('Failed to load album photos:', error);
-      setAlbumPhotos([]);
-    }
-  };
-
-  const handleSelectPhotoAsCover = (photoUrl: string) => {
-    setFormData({ ...formData, coverImageUrl: photoUrl });
-    setShowPhotoSelector(false);
   };
 
   const handleAddCategory = async () => {
@@ -284,7 +260,7 @@ const AdminAlbums: React.FC = () => {
               <div className="form-group">
                 <label>Description</label>
                 <textarea
-                  value={formData.description}
+                  value={formData.description || ''}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   rows={3}
                 />
@@ -385,68 +361,6 @@ const AdminAlbums: React.FC = () => {
                       value={formData.passwordHint}
                       onChange={(e) => setFormData({ ...formData, passwordHint: e.target.value })}
                     />
-                  </div>
-                )}
-              </div>
-              <div className="form-group">
-                <input
-                  type="url"
-                  value={formData.coverImageUrl}
-                  onChange={(e) => setFormData({ ...formData, coverImageUrl: e.target.value })}
-                  placeholder="Leave empty for default placeholder"
-                />
-                {editingAlbum && albumPhotos.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setShowPhotoSelector(!showPhotoSelector)}
-                    className="btn btn-secondary"
-                    style={{ marginTop: '0.5rem', width: '100%' }}
-                  >
-                    {showPhotoSelector ? 'Hide Photos' : 'Select from Album Photos'}
-                  </button>
-                )}
-                {showPhotoSelector && (
-                  <div style={{
-                    marginTop: '1rem',
-                    padding: '1rem',
-                    backgroundColor: '#f5f5f5',
-                    borderRadius: '8px',
-                    maxHeight: '300px',
-                    overflowY: 'auto'
-                  }}>
-                    <p style={{ marginBottom: '0.5rem', fontWeight: 500 }}>Select a photo as cover:</p>
-                    <div style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))',
-                      gap: '0.5rem'
-                    }}>
-                      {albumPhotos.map((photo) => (
-                        <div
-                          key={photo.id}
-                          onClick={() => handleSelectPhotoAsCover(photo.fullImageUrl)}
-                          style={{
-                            cursor: 'pointer',
-                            border: formData.coverImageUrl === photo.fullImageUrl ? '3px solid #4169E1' : '2px solid #ddd',
-                            borderRadius: '4px',
-                            overflow: 'hidden',
-                            aspectRatio: '1',
-                            transition: 'all 0.2s'
-                          }}
-                          onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
-                          onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                        >
-                          <img
-                            src={photo.thumbnailUrl}
-                            alt={photo.fileName}
-                            style={{
-                              width: '100%',
-                              height: '100%',
-                              objectFit: 'cover'
-                            }}
-                          />
-                        </div>
-                      ))}
-                    </div>
                   </div>
                 )}
               </div>

@@ -18,6 +18,26 @@ router.get('/', (req, res) => {
   }
 });
 
+// Get default watermark
+router.get('/default', (req, res) => {
+  try {
+    const watermark = db.prepare(`
+      SELECT id, name, image_url as imageUrl, position, opacity, 
+             is_default as isDefault, tiled, created_at as createdDate
+      FROM watermarks
+      WHERE is_default = 1
+      LIMIT 1
+    `).get();
+    
+    if (!watermark) {
+      return res.status(404).json({ error: 'No default watermark configured' });
+    }
+    res.json(watermark);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Get watermark by ID
 router.get('/:id', (req, res) => {
   try {
