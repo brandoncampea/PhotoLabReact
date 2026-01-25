@@ -134,7 +134,7 @@ const Albums: React.FC = () => {
           filteredAlbums.map((album) => (
             <Link to={`/albums/${album.id}`} key={album.id} className="album-card">
               <div className="album-cover">
-                <img src={album.coverImageUrl} alt={album.name} />
+                <img src={album.coverImageUrl || `https://picsum.photos/seed/album${album.id}/400/300`} alt={album.name} />
                 <div className="album-overlay">
                   <span className="photo-count">{album.photoCount} photos</span>
                 </div>

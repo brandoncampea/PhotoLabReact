@@ -277,11 +277,15 @@ const CropperModal: React.FC<CropperModalProps> = ({
                 <h3 style={{ marginBottom: '0.5rem', color: '#4169E1', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   ✨ Smart Recommendations
                 </h3>
-                {recommendations.photo && (
-                  <p style={{ fontSize: '0.875rem', color: '#666', marginBottom: '1rem' }}>
-                    Based on your photo's dimensions ({recommendations.photo.width} × {recommendations.photo.height}px, {recommendations.photo.aspectRatio?.toFixed(2)} ratio, {recommendations.photo.orientation})
-                  </p>
-                )}
+                {recommendations.photo && (() => {
+                  const aspect = recommendations.photo.aspectRatio;
+                  const aspectText = typeof aspect === 'number' ? aspect.toFixed(2) : (aspect || 'N/A');
+                  return (
+                    <p style={{ fontSize: '0.875rem', color: '#666', marginBottom: '1rem' }}>
+                      Based on your photo's dimensions ({recommendations.photo.width} × {recommendations.photo.height}px, {aspectText} ratio, {recommendations.photo.orientation})
+                    </p>
+                  );
+                })()}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem' }}>
                   {recommendations.recommendations.slice(0, 3).map((rec: any) => {
                     const qualityColors = {
