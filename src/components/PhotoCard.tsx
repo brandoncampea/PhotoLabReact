@@ -51,6 +51,11 @@ const PhotoCard: React.FC<PhotoCardProps> = ({ photo, onClick, onShare }) => {
       </div>
       <div className="photo-info">
         <p className="photo-filename">{photo.fileName}</p>
+        {photo.playerNames && (
+          <p style={{ color: '#ff6b35', fontWeight: '500', margin: '0.25rem 0' }}>
+            👤 {photo.playerNames}
+          </p>
+        )}
         {metadata && (
           <div className="photo-metadata">
             {metadata.cameraMake && (

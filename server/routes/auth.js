@@ -1,7 +1,7 @@
 import express from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { queryRow, query } from '../postgres.js';
+import { db } from '../database.js';
 const router = express.Router();
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
@@ -21,7 +21,7 @@ router.post('/register', async (req, res) => {
     }
     
     // Check if user exists
-    const existingUser = await queryRow('SELECT * FROM users WHERE email = $1', [email]);
+    const existingUser = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
     if (existingUser) {
       return res.status(400).json({ error: 'User already exists' });
     }
@@ -30,15 +30,14 @@ router.post('/register', async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // Create user
-    const result = await queryRow(`
+    const result = db.prepare(`
       INSERT INTO users (email, password, name, role, is_active)
-      VALUES ($1, $2, $3, 'customer', true)
-      RETURNING id
-    `, [email, hashedPassword, fullName]);
+      VALUES (?, ?, ?, 'customer', 1)
+    `).run(email, hashedPassword, fullName);
 
     // Build response user matching frontend expectations
     const responseUser = {
-      id: result.id,
+      id: result.lastInsertRowid,
       email,
       firstName: safeFirst || fullName,
       lastName: safeLast || '',
@@ -61,7 +60,7 @@ router.post('/login', async (req, res) => {
     const { email, password } = req.body;
 
     // Find user
-    const user = await queryRow('SELECT * FROM users WHERE email = $1', [email]);
+    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
@@ -73,7 +72,7 @@ router.post('/login', async (req, res) => {
     }
 
     // Update last login timestamp
-    await query('UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = $1', [user.id]);
+    db.prepare('UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = ?').run(user.id);
 
     // Split stored name into first/last for the frontend
     const nameParts = (user.name || '').trim().split(' ');

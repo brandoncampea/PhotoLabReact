@@ -5,6 +5,7 @@ import { Photo, CropData, Product, ProductSize, Watermark } from '../types';
 import { useCart } from '../contexts/CartContext';
 import { productService } from '../services/productService';
 import { watermarkService } from '../services/watermarkService';
+import { photoService } from '../services/photoService';
 import WatermarkedImage from './WatermarkedImage';
 
 interface CropperModalProps {
@@ -35,11 +36,14 @@ const CropperModal: React.FC<CropperModalProps> = ({
   const [loading, setLoading] = useState(true);
   const [photoAspectRatio, setPhotoAspectRatio] = useState<number | null>(null);
   const [watermark, setWatermark] = useState<Watermark | null>(null);
+  const [recommendations, setRecommendations] = useState<any>(null);
+  const [loadingRecommendations, setLoadingRecommendations] = useState(false);
 
   useEffect(() => {
     loadProducts();
     loadPhotoAspectRatio();
     loadWatermark();
+    loadRecommendations();
   }, []);
 
   const loadPhotoAspectRatio = () => {
@@ -56,6 +60,20 @@ const CropperModal: React.FC<CropperModalProps> = ({
       setWatermark(defaultWatermark);
     } catch (error) {
       console.error('Failed to load watermark:', error);
+    }
+  };
+
+  const loadRecommendations = async () => {
+    if (!photo.id) return;
+    
+    setLoadingRecommendations(true);
+    try {
+      const data = await photoService.getRecommendations(photo.id);
+      setRecommendations(data);
+    } catch (error) {
+      console.error('Failed to load recommendations:', error);
+    } finally {
+      setLoadingRecommendations(false);
     }
   };
 
@@ -252,6 +270,75 @@ const CropperModal: React.FC<CropperModalProps> = ({
                 )}
               </div>
             </div>
+
+            {/* Smart Recommendations Section */}
+            {!loadingRecommendations && recommendations && recommendations.recommendations && recommendations.recommendations.length > 0 && (
+              <div style={{ marginBottom: '2rem', padding: '1.5rem', backgroundColor: '#f0f7ff', borderRadius: '8px', border: '2px solid #4169E1' }}>
+                <h3 style={{ marginBottom: '0.5rem', color: '#4169E1', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  ✨ Smart Recommendations
+                </h3>
+                {recommendations.photo && (
+                  <p style={{ fontSize: '0.875rem', color: '#666', marginBottom: '1rem' }}>
+                    Based on your photo's dimensions ({recommendations.photo.width} × {recommendations.photo.height}px, {recommendations.photo.aspectRatio?.toFixed(2)} ratio, {recommendations.photo.orientation})
+                  </p>
+                )}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem' }}>
+                  {recommendations.recommendations.slice(0, 3).map((rec: any) => {
+                    const qualityColors = {
+                      excellent: { bg: '#dcfce7', border: '#22c55e', badge: '#16a34a' },
+                      good: { bg: '#dbeafe', border: '#3b82f6', badge: '#2563eb' },
+                      fair: { bg: '#fef3c7', border: '#f59e0b', badge: '#d97706' }
+                    };
+                    const colors = qualityColors[rec.matchQuality as keyof typeof qualityColors] || qualityColors.fair;
+                    
+                    return (
+                      <div
+                        key={rec.productId}
+                        onClick={() => {
+                          const product = products.find(p => p.id === rec.productId);
+                          if (product) handleProductSelect(product);
+                        }}
+                        style={{
+                          backgroundColor: colors.bg,
+                          border: `2px solid ${colors.border}`,
+                          borderRadius: '8px',
+                          padding: '1rem',
+                          cursor: 'pointer',
+                          transition: 'transform 0.2s',
+                          position: 'relative'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.transform = 'scale(1.02)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.transform = 'scale(1)';
+                        }}
+                      >
+                        <div style={{ position: 'absolute', top: '0.5rem', right: '0.5rem', backgroundColor: colors.badge, color: 'white', padding: '0.25rem 0.75rem', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase' }}>
+                          {rec.matchQuality}
+                        </div>
+                        <h4 style={{ marginBottom: '0.5rem', paddingRight: '5rem' }}>{rec.productName}</h4>
+                        <p style={{ fontSize: '1.125rem', fontWeight: 600, color: '#333', marginBottom: '0.75rem' }}>
+                          ${rec.basePrice.toFixed(2)}
+                        </p>
+                        <div style={{ fontSize: '0.875rem', color: '#666' }}>
+                          <p style={{ fontWeight: 600, marginBottom: '0.25rem' }}>Why recommended:</p>
+                          <ul style={{ margin: 0, paddingLeft: '1.25rem' }}>
+                            {rec.reasons.slice(0, 3).map((reason: string, idx: number) => (
+                              <li key={idx} style={{ marginBottom: '0.25rem' }}>{reason}</li>
+                            ))}
+                          </ul>
+                        </div>
+                        <div style={{ marginTop: '0.75rem', fontSize: '0.75rem', color: '#888' }}>
+                          Match Score: {rec.score}/100
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             <p style={{ marginBottom: '1.5rem', color: '#666' }}>
               Choose a product type to crop your photo to the correct proportions:
             </p>
@@ -260,17 +347,20 @@ const CropperModal: React.FC<CropperModalProps> = ({
               gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', 
               gap: '1rem' 
             }}>
-              {products.map(product => (
+              {products.map(product => {
+                const isRecommended = recommendations?.recommendations?.some((rec: any) => rec.productId === product.id);
+                
+                return (
                 <div 
                   key={product.id}
                   onClick={() => handleProductSelect(product)}
                   style={{
-                    border: '2px solid #e0e0e0',
+                    border: isRecommended ? '2px solid #4169E1' : '2px solid #e0e0e0',
                     borderRadius: '8px',
                     padding: '1.5rem',
                     cursor: 'pointer',
                     transition: 'all 0.2s',
-                    backgroundColor: '#fff',
+                    backgroundColor: isRecommended ? '#f0f7ff' : '#fff',
                     position: 'relative'
                   }}
                   onMouseEnter={(e) => {
@@ -279,11 +369,26 @@ const CropperModal: React.FC<CropperModalProps> = ({
                     e.currentTarget.style.boxShadow = '0 4px 8px rgba(0,0,0,0.1)';
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = '#e0e0e0';
+                    e.currentTarget.style.borderColor = isRecommended ? '#4169E1' : '#e0e0e0';
                     e.currentTarget.style.transform = 'translateY(0)';
                     e.currentTarget.style.boxShadow = 'none';
                   }}
                 >
+                  {isRecommended && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '0.5rem',
+                      left: '0.5rem',
+                      backgroundColor: '#4169E1',
+                      color: '#fff',
+                      padding: '0.25rem 0.5rem',
+                      borderRadius: '4px',
+                      fontSize: '0.75rem',
+                      fontWeight: 600
+                    }}>
+                      ⭐ Recommended
+                    </div>
+                  )}
                   {product.isDigital && (
                     <div style={{
                       position: 'absolute',
@@ -311,7 +416,8 @@ const CropperModal: React.FC<CropperModalProps> = ({
                     {product.isDigital && ' • Instant delivery'}
                   </p>
                 </div>
-              ))}
+              );
+            })}
             </div>
           </div>
         </div>

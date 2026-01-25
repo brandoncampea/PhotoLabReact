@@ -33,10 +33,16 @@ const AdminAlbums: React.FC = () => {
     loadPriceLists();
   }, []);
 
+  useEffect(() => {
+    console.log('AdminAlbums: albums state changed to', albums.length, 'albums');
+  }, [albums]);
+
   const loadAlbums = async () => {
     try {
       const data = await albumService.getAlbums();
+      console.log('AdminAlbums: Loaded', data.length, 'albums:', data);
       setAlbums(data);
+      console.log('AdminAlbums: State set to', data.length, 'albums');
     } catch (error) {
       console.error('Failed to load albums:', error);
     } finally {
@@ -133,8 +139,8 @@ const AdminAlbums: React.FC = () => {
       } else {
         await albumAdminService.createAlbum(payload);
       }
+      await loadAlbums();
       setShowModal(false);
-      loadAlbums();
     } catch (error) {
       console.error('Failed to save album:', error);
     }
@@ -144,7 +150,10 @@ const AdminAlbums: React.FC = () => {
     if (confirm('Are you sure you want to delete this album?')) {
       try {
         await albumAdminService.deleteAlbum(id);
-        loadAlbums();
+        // Immediately remove from UI
+        setAlbums(albums.filter(a => a.id !== id));
+        // Then reload to ensure sync with backend
+        await loadAlbums();
       } catch (error) {
         console.error('Failed to delete album:', error);
       }

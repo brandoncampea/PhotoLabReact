@@ -20,8 +20,12 @@ const AlbumDetails: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [playerFilter, setPlayerFilter] = useState('');
   const [sortBy, setSortBy] = useState<'name' | 'date'>('name');
   const [shareNotification, setShareNotification] = useState('');
+  const [uploadingCsv, setUploadingCsv] = useState(false);
+  const [csvMessage, setCsvMessage] = useState('');
+  const [showCsvUpload, setShowCsvUpload] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -30,10 +34,17 @@ const AlbumDetails: React.FC = () => {
   }, [id, searchParams]);
 
   useEffect(() => {
-    // Filter and sort photos based on search term and sort option
+    // Filter and sort photos based on search term, player filter, and sort option
     let filtered = photos.filter(photo => 
       exifService.searchInMetadata(photo, searchTerm)
     );
+
+    // Apply player name filter
+    if (playerFilter) {
+      filtered = filtered.filter(photo => 
+        photo.playerNames?.toLowerCase().includes(playerFilter.toLowerCase())
+      );
+    }
 
     // Sort photos
     if (sortBy === 'name') {
@@ -49,7 +60,7 @@ const AlbumDetails: React.FC = () => {
     }
 
     setFilteredPhotos(filtered);
-  }, [photos, searchTerm, sortBy]);
+  }, [photos, searchTerm, playerFilter, sortBy]);
 
   const loadAlbumDetails = async (albumId: number) => {
     try {
@@ -141,6 +152,30 @@ const AlbumDetails: React.FC = () => {
     }
   };
 
+  const handleCsvUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !id) return;
+
+    setUploadingCsv(true);
+    setCsvMessage('');
+
+    try {
+      const result = await photoService.uploadPlayerNamesCsv(parseInt(id), file);
+      setCsvMessage(`✓ Success! Updated ${result.photosUpdated} of ${result.totalPhotos} photos with player names`);
+      
+      // Reload photos to show player names
+      const updatedPhotos = await photoService.getPhotosByAlbum(parseInt(id));
+      setPhotos(updatedPhotos);
+      
+      setShowCsvUpload(false);
+      setTimeout(() => setCsvMessage(''), 4000);
+    } catch (err: any) {
+      setCsvMessage(`✗ Error: ${err.response?.data?.error || 'Failed to upload player names'}`);
+    } finally {
+      setUploadingCsv(false);
+    }
+  };
+
   if (loading) {
     return <div className="loading">Loading album...</div>;
   }
@@ -206,6 +241,15 @@ const AlbumDetails: React.FC = () => {
             className="search-input"
           />
         </div>
+        <div className="search-box">
+          <input
+            type="text"
+            placeholder="Filter by player name..."
+            value={playerFilter}
+            onChange={(e) => setPlayerFilter(e.target.value)}
+            className="search-input"
+          />
+        </div>
         <div className="sort-controls">
           <label htmlFor="sort-by">Sort by:</label>
           <select
@@ -218,7 +262,60 @@ const AlbumDetails: React.FC = () => {
             <option value="date">Date Taken</option>
           </select>
         </div>
+        <button
+          onClick={() => setShowCsvUpload(!showCsvUpload)}
+          className="btn btn-secondary"
+          style={{ padding: '0.5rem 1rem' }}
+        >
+          📋 {showCsvUpload ? 'Cancel' : 'Upload Player Names'}
+        </button>
       </div>
+
+      {showCsvUpload && (
+        <div style={{
+          padding: '1rem',
+          backgroundColor: '#f5f5f5',
+          borderRadius: '8px',
+          marginBottom: '1.5rem',
+          border: '1px solid #e0e0e0'
+        }}>
+          <h3>Upload Player Names CSV</h3>
+          <p style={{ marginBottom: '1rem', color: '#666' }}>
+            CSV should have columns: <code>file_name</code> (or <code>fileName</code>) and <code>player_name</code> (or <code>playerName</code>)
+          </p>
+          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+            <input
+              type="file"
+              accept=".csv"
+              onChange={handleCsvUpload}
+              disabled={uploadingCsv}
+              className="file-input"
+            />
+            {uploadingCsv && <span>Uploading...</span>}
+          </div>
+          {csvMessage && (
+            <div style={{
+              marginTop: '1rem',
+              padding: '0.75rem',
+              backgroundColor: csvMessage.includes('Error') ? '#fee' : '#efe',
+              color: csvMessage.includes('Error') ? '#c33' : '#3c3',
+              borderRadius: '4px'
+            }}>
+              {csvMessage}
+            </div>
+          )}
+          <div style={{ marginTop: '1rem', color: '#666', fontSize: '0.9rem' }}>
+            <strong>Example CSV format:</strong>
+            <pre style={{ backgroundColor: '#fff', padding: '0.5rem', borderRadius: '4px', overflow: 'auto' }}>
+file_name,player_name
+photo001.jpg,John Smith
+photo002.jpg,Jane Doe
+photo003.jpg,John Smith
+            </pre>
+          </div>
+        </div>
+      )}
+      
       
       <div className="photos-grid">
         {filteredPhotos.length === 0 ? (

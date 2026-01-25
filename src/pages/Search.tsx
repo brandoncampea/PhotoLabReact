@@ -19,6 +19,7 @@ const Search: React.FC = () => {
   const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState<'name' | 'date' | 'album'>('name');
+  const [metadataFilter, setMetadataFilter] = useState<'all' | 'camera' | 'iso' | 'aperture' | 'shutterSpeed' | 'focalLength'>('all');
   const [shareNotification, setShareNotification] = useState('');
 
   useEffect(() => {
@@ -33,7 +34,7 @@ const Search: React.FC = () => {
       setSearchParams({});
     }
     filterPhotos();
-  }, [searchQuery, sortBy, allPhotos]);
+  }, [searchQuery, sortBy, metadataFilter, allPhotos]);
 
   const loadAllData = async () => {
     try {
@@ -60,9 +61,33 @@ const Search: React.FC = () => {
 
     // Filter by search query
     if (searchQuery.trim()) {
-      filtered = filtered.filter(photo =>
-        exifService.searchInMetadata(photo, searchQuery)
-      );
+      filtered = filtered.filter(photo => {
+        // Apply metadata filter if specified
+        if (metadataFilter !== 'all') {
+          const metadata = photo.metadata;
+          if (!metadata) return false;
+          
+          switch(metadataFilter) {
+            case 'camera':
+              const cameraTerm = searchQuery.toLowerCase();
+              return (metadata.cameraMake?.toLowerCase().includes(cameraTerm) || 
+                      metadata.cameraModel?.toLowerCase().includes(cameraTerm));
+            case 'iso':
+              return metadata.iso?.toLowerCase().includes(searchQuery.toLowerCase());
+            case 'aperture':
+              return metadata.aperture?.toLowerCase().includes(searchQuery.toLowerCase());
+            case 'shutterSpeed':
+              return metadata.shutterSpeed?.toLowerCase().includes(searchQuery.toLowerCase());
+            case 'focalLength':
+              return metadata.focalLength?.toLowerCase().includes(searchQuery.toLowerCase());
+            default:
+              return true;
+          }
+        }
+        
+        // Default: search all fields
+        return exifService.searchInMetadata(photo, searchQuery);
+      });
     }
 
     // Sort photos
@@ -159,6 +184,22 @@ const Search: React.FC = () => {
           />
         </div>
         <div className="sort-controls">
+          <label htmlFor="metadata-filter">Search in:</label>
+          <select
+            id="metadata-filter"
+            value={metadataFilter}
+            onChange={(e) => setMetadataFilter(e.target.value as any)}
+            className="sort-select"
+          >
+            <option value="all">All Fields</option>
+            <option value="camera">Camera Make/Model</option>
+            <option value="iso">ISO</option>
+            <option value="aperture">Aperture</option>
+            <option value="shutterSpeed">Shutter Speed</option>
+            <option value="focalLength">Focal Length</option>
+          </select>
+        </div>
+        <div className="sort-controls">
           <label htmlFor="sort-by">Sort by:</label>
           <select
             id="sort-by"
@@ -178,6 +219,7 @@ const Search: React.FC = () => {
           <p>
             {filteredPhotos.length} {filteredPhotos.length === 1 ? 'photo' : 'photos'} found
             {searchQuery && ` for "${searchQuery}"`}
+            {metadataFilter !== 'all' && ` in ${metadataFilter}`}
           </p>
         </div>
       )}
@@ -203,28 +245,50 @@ const Search: React.FC = () => {
             )}
           </div>
         ) : (
-          filteredPhotos.map((photo) => (
-            <div key={photo.id} style={{ position: 'relative' }}>
-              <PhotoCard
-                photo={photo}
-                onClick={() => handlePhotoClick(photo)}
-                onShare={(e) => handleSharePhoto(e, photo)}
-              />
-              <div style={{
-                position: 'absolute',
-                top: '8px',
-                right: '8px',
-                backgroundColor: 'rgba(0, 0, 0, 0.7)',
-                color: 'white',
-                padding: '4px 8px',
-                borderRadius: '4px',
-                fontSize: '0.75rem',
-                fontWeight: 500,
-              }}>
-                {getAlbumName(photo.albumId)}
+          filteredPhotos.map((photo) => {
+            const metadataDisplay = exifService.getMetadataDisplay(photo.metadata);
+            return (
+              <div key={photo.id} style={{ position: 'relative' }}>
+                <PhotoCard
+                  photo={photo}
+                  onClick={() => handlePhotoClick(photo)}
+                  onShare={(e) => handleSharePhoto(e, photo)}
+                />
+                <div style={{
+                  position: 'absolute',
+                  top: '8px',
+                  right: '8px',
+                  backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                  color: 'white',
+                  padding: '4px 8px',
+                  borderRadius: '4px',
+                  fontSize: '0.75rem',
+                  fontWeight: 500,
+                }}>
+                  {getAlbumName(photo.albumId)}
+                </div>
+                {metadataDisplay.length > 0 && (
+                  <div style={{
+                    backgroundColor: '#f9f9f9',
+                    padding: '0.75rem',
+                    fontSize: '0.85rem',
+                    color: '#666',
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+                    gap: '0.5rem',
+                    borderTop: '1px solid #eee'
+                  }}>
+                    {metadataDisplay.map((field) => (
+                      <div key={field.label} style={{ minWidth: '140px' }}>
+                        <span style={{ fontWeight: 500 }}>{field.label}:</span>
+                        <span style={{ marginLeft: '0.5rem' }}>{field.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
 
