@@ -84,7 +84,7 @@ const WatermarkedImage: React.FC<WatermarkedImageProps> = ({ src, alt, className
   };
 
   return (
-    <div style={{ position: 'relative', display: 'inline-block', width: '100%', height: '100%' }}>
+    <div style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
       <img src={src} alt={alt} className={className} style={style} />
       {watermark && (
         <div style={getWatermarkStyle()}>

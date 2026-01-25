@@ -11,8 +11,13 @@ export const watermarkService = {
       const watermarks = await adminMockApi.watermarks.getAll();
       return watermarks.find(w => w.isDefault) || null;
     } else {
-      const response = await axios.get(`${API_URL}/watermarks/default`);
-      return response.data;
+        try {
+          const response = await axios.get(`${API_URL}/watermarks/default`);
+          return response.data;
+        } catch (error) {
+          // No default watermark configured
+          return null;
+        }
     }
   },
 };
