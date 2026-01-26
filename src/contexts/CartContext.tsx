@@ -74,7 +74,7 @@ const loadCartFromApi = async () => {
           );
 
           const photos = [...existingPhotos, ...fetchedPhotos.filter(Boolean)];
-          const primaryPhoto = photos.find(p => p.id === photoIds[0]) || photos[0] || item.photo;
+          const primaryPhoto = photos.find(p => p && p.id === photoIds[0]) || photos[0] || item.photo;
 
           return {
             ...item,
