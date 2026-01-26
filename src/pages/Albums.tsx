@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Album } from '../types';
 import { albumService } from '../services/albumService';
 import { analyticsService } from '../services/analyticsService';
+import WatermarkedImage from '../components/WatermarkedImage';
 
 const Albums: React.FC = () => {
   const [albums, setAlbums] = useState<Album[]>([]);
@@ -134,7 +135,11 @@ const Albums: React.FC = () => {
           filteredAlbums.map((album) => (
             <Link to={`/albums/${album.id}`} key={album.id} className="album-card">
               <div className="album-cover">
-                <img src={album.coverImageUrl || `https://picsum.photos/seed/album${album.id}/400/300`} alt={album.name} />
+                <WatermarkedImage
+                  src={album.coverImageUrl || `https://picsum.photos/seed/album${album.id}/400/300`}
+                  alt={album.name}
+                  fill
+                />
                 <div className="album-overlay">
                   <span className="photo-count">{album.photoCount} photos</span>
                 </div>

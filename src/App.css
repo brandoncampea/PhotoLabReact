@@ -382,6 +382,7 @@
   justify-content: center;
   opacity: 0;
   transition: opacity 0.2s;
+  z-index: 2;
 }
 
 .photo-card:hover .photo-overlay {

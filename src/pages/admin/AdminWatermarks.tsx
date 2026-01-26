@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Watermark } from '../../types';
-import { adminMockApi } from '../../services/adminMockApi';
+import { watermarkService } from '../../services/watermarkService';
 
 const AdminWatermarks: React.FC = () => {
   const [watermarks, setWatermarks] = useState<Watermark[]>([]);
@@ -8,6 +8,7 @@ const AdminWatermarks: React.FC = () => {
   const [showModal, setShowModal] = useState(false);
   const [editingWatermark, setEditingWatermark] = useState<Watermark | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string>('');
+  const [imageFile, setImageFile] = useState<File | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     imageUrl: '',
@@ -23,7 +24,7 @@ const AdminWatermarks: React.FC = () => {
 
   const loadWatermarks = async () => {
     try {
-      const data = await adminMockApi.watermarks.getAll();
+      const data = await watermarkService.getAll();
       setWatermarks(data);
     } catch (error) {
       console.error('Failed to load watermarks:', error);
@@ -35,6 +36,7 @@ const AdminWatermarks: React.FC = () => {
   const handleCreate = () => {
     setEditingWatermark(null);
     setPreviewUrl('');
+    setImageFile(null);
     setFormData({
       name: '',
       imageUrl: '',
@@ -49,9 +51,10 @@ const AdminWatermarks: React.FC = () => {
   const handleEdit = (watermark: Watermark) => {
     setEditingWatermark(watermark);
     setPreviewUrl(watermark.imageUrl);
+    setImageFile(null);
     setFormData({
       name: watermark.name,
-      imageUrl: watermark.imageUrl,
+      imageUrl: '',  // Clear URL so user can upload new file
       position: watermark.position,
       opacity: watermark.opacity,
       isDefault: watermark.isDefault,
@@ -68,12 +71,11 @@ const AdminWatermarks: React.FC = () => {
         return;
       }
       
-      // Create preview URL and convert to base64
+      setImageFile(file);
+      // Create preview URL
       const reader = new FileReader();
       reader.onloadend = () => {
-        const base64String = reader.result as string;
-        setPreviewUrl(base64String);
-        setFormData({ ...formData, imageUrl: base64String });
+        setPreviewUrl(reader.result as string);
       };
       reader.readAsDataURL(file);
     }
@@ -83,24 +85,31 @@ const AdminWatermarks: React.FC = () => {
     e.preventDefault();
     try {
       if (editingWatermark) {
-        await adminMockApi.watermarks.update(editingWatermark.id, formData);
+        await watermarkService.update(editingWatermark.id, formData, imageFile || undefined);
       } else {
-        await adminMockApi.watermarks.create(formData);
+        if (!imageFile) {
+          alert('Please select an image file');
+          return;
+        }
+        await watermarkService.create(formData as Omit<Watermark, 'id' | 'createdDate'>, imageFile);
       }
       setShowModal(false);
+      setImageFile(null);
       loadWatermarks();
     } catch (error) {
       console.error('Failed to save watermark:', error);
+      alert('Failed to save watermark. Please try again.');
     }
   };
 
   const handleDelete = async (id: number) => {
     if (confirm('Are you sure you want to delete this watermark?')) {
       try {
-        await adminMockApi.watermarks.delete(id);
+        await watermarkService.delete(id);
         loadWatermarks();
       } catch (error) {
         console.error('Failed to delete watermark:', error);
+        alert('Failed to delete watermark. Please try again.');
       }
     }
   };
@@ -155,23 +164,19 @@ const AdminWatermarks: React.FC = () => {
                 />
               </div>
               <div className="form-group">
-                <label>Upload Watermark Image</label>
+                <label>Watermark Image {!editingWatermark && <span style={{ color: '#d32f2f' }}>*</span>}</label>
                 <input
                   type="file"
                   accept="image/*"
                   onChange={handleFileUpload}
+                  required={!editingWatermark}
                   style={{ marginBottom: '0.5rem' }}
                 />
-                <p style={{ fontSize: '0.85rem', color: '#666', margin: '0.5rem 0' }}>Or enter an image URL:</p>
-                <input
-                  type="url"
-                  placeholder="https://example.com/watermark.png"
-                  value={formData.imageUrl}
-                  onChange={(e) => {
-                    setFormData({ ...formData, imageUrl: e.target.value });
-                    setPreviewUrl(e.target.value);
-                  }}
-                />
+                {editingWatermark && (
+                  <p style={{ fontSize: '0.85rem', color: '#666', margin: '0.5rem 0' }}>
+                    Leave empty to keep current image
+                  </p>
+                )}
                 {previewUrl && (
                   <div style={{ marginTop: '0.75rem', padding: '1rem', background: '#f5f5f5', borderRadius: '4px', textAlign: 'center' }}>
                     <p style={{ fontSize: '0.85rem', marginBottom: '0.5rem', fontWeight: 500 }}>Preview:</p>
@@ -184,6 +189,7 @@ const AdminWatermarks: React.FC = () => {
                         const errorMsg = document.createElement('p');
                         errorMsg.textContent = 'Failed to load preview';
                         errorMsg.style.color = '#d32f2f';
+                        errorMsg.style.fontSize = '0.85rem';
                         (e.target as HTMLImageElement).parentElement?.appendChild(errorMsg);
                       }}
                     />

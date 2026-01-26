@@ -7,13 +7,21 @@ interface WatermarkedImageProps {
   alt: string;
   className?: string;
   style?: React.CSSProperties;
+  fill?: boolean;
 }
 
-const WatermarkedImage: React.FC<WatermarkedImageProps> = ({ src, alt, className, style }) => {
+const WatermarkedImage: React.FC<WatermarkedImageProps> = ({ src, alt, className, style, fill = true }) => {
   const [watermark, setWatermark] = useState<Watermark | null>(null);
+  const [imageKey, setImageKey] = useState(Date.now());
 
   useEffect(() => {
     loadWatermark();
+    // Reload watermark every 60 seconds to catch updates
+    const interval = setInterval(() => {
+      loadWatermark();
+      setImageKey(Date.now());
+    }, 60000);
+    return () => clearInterval(interval);
   }, []);
 
   const loadWatermark = async () => {
@@ -82,14 +90,22 @@ const WatermarkedImage: React.FC<WatermarkedImageProps> = ({ src, alt, className
       };
     }
   };
+  const containerStyle: React.CSSProperties = fill
+    ? { position: 'absolute', inset: 0, width: '100%', height: '100%', overflow: 'hidden' }
+    : { position: 'relative', width: '100%', height: 'auto', overflow: 'hidden' };
+
+  const imageStyle: React.CSSProperties = fill
+    ? { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', ...style }
+    : { width: '100%', height: 'auto', display: 'block', objectFit: 'contain', ...style };
 
   return (
-    <div style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
-      <img src={src} alt={alt} className={className} style={style} />
+    <div style={containerStyle}>
+      <img src={src} alt={alt} className={className} style={imageStyle} />
       {watermark && (
         <div style={getWatermarkStyle()}>
           {!watermark.tiled && (
             <img 
+              key={imageKey}
               src={watermark.imageUrl} 
               alt="Watermark" 
               style={{ 

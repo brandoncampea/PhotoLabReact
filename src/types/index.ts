@@ -52,8 +52,10 @@ export interface PhotoMetadata {
 }
 
 export interface CartItem {
-  photoId: number;
-  photo: Photo;
+  photoId: number; // primary photo id (for legacy compatibility)
+  photo: Photo; // primary photo object
+  photoIds?: number[]; // all photos included in the product (multi-photo products)
+  photos?: Photo[]; // full photo objects for multi-photo products
   quantity: number;
   price: number;
   cropData?: CropData;
@@ -109,6 +111,8 @@ export interface OrderItem {
   id: number;
   photoId: number;
   photo: Photo;
+  photoIds?: number[];
+  photos?: Photo[];
   quantity: number;
   price: number;
   cost?: number;

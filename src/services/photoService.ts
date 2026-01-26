@@ -12,14 +12,15 @@ const normalizeRecommendations = (data: any) => {
       ? (scoreRaw <= 1 ? Math.round(scoreRaw * 100) : Math.round(scoreRaw))
       : 0;
     return {
-      productId: rec.productId ?? rec.id ?? rec.product_id ?? rec.product?.id ?? Math.random(),
-      productName: rec.productName ?? rec.name ?? rec.product?.name ?? 'Product',
-      basePrice: rec.basePrice ?? rec.price ?? rec.product?.price ?? 0,
+      id: rec.id ?? rec.productId ?? rec.product_id ?? rec.product?.id ?? Math.random(),
+      name: rec.name ?? rec.productName ?? rec.product?.name ?? 'Product',
+      price: rec.price ?? rec.basePrice ?? rec.product?.price ?? 0,
       reasons: rec.reasons ?? [],
       matchQuality: rec.matchQuality ?? 'good',
-      score,
-      // Keep originals for debugging if needed
+      recommendationScore: score,
+      category: rec.category ?? 'Other',
       description: rec.description,
+      options: rec.options,
     };
   };
 

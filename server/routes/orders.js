@@ -17,6 +17,7 @@ router.get('/user/:userId', (req, res) => {
                json_object(
                  'id', oi.id,
                  'photoId', oi.photo_id,
+                 'photoIds', oi.photo_ids,
                  'productId', oi.product_id,
                  'quantity', oi.quantity,
                  'price', oi.price,
@@ -34,7 +35,13 @@ router.get('/user/:userId', (req, res) => {
     const parsedOrders = orders.map(order => ({
       ...order,
       shippingAddress: order.shippingAddress ? JSON.parse(order.shippingAddress) : null,
-      items: order.items ? JSON.parse(order.items) : []
+      items: order.items
+        ? JSON.parse(order.items).map(item => ({
+            ...item,
+            cropData: item.cropData ? JSON.parse(item.cropData) : null,
+            photoIds: item.photoIds ? JSON.parse(item.photoIds) : item.photoId ? [item.photoId] : []
+          }))
+        : []
     }));
     
     res.json(parsedOrders);
@@ -59,12 +66,23 @@ router.post('/', (req, res) => {
 
     // Insert order items
     for (const item of items) {
+      const photoIds = Array.isArray(item.photoIds)
+        ? item.photoIds
+        : item.photoId
+        ? [item.photoId]
+        : [];
+      const primaryPhotoId = photoIds[0];
+      if (!primaryPhotoId) {
+        throw new Error('Order item missing photo');
+      }
+
       db.prepare(`
-        INSERT INTO order_items (order_id, photo_id, product_id, quantity, price, crop_data)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO order_items (order_id, photo_id, photo_ids, product_id, quantity, price, crop_data)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
       `).run(
         orderId,
-        item.photoId,
+        primaryPhotoId,
+        JSON.stringify(photoIds),
         item.productId,
         item.quantity,
         item.price,
@@ -89,6 +107,7 @@ router.get('/', (req, res) => {
                json_object(
                  'id', oi.id,
                  'photoId', oi.photo_id,
+                 'photoIds', oi.photo_ids,
                  'productId', oi.product_id,
                  'quantity', oi.quantity,
                  'price', oi.price,
@@ -105,7 +124,13 @@ router.get('/', (req, res) => {
     const parsedOrders = orders.map(order => ({
       ...order,
       shippingAddress: order.shippingAddress ? JSON.parse(order.shippingAddress) : null,
-      items: order.items ? JSON.parse(order.items) : []
+      items: order.items
+        ? JSON.parse(order.items).map(item => ({
+            ...item,
+            cropData: item.cropData ? JSON.parse(item.cropData) : null,
+            photoIds: item.photoIds ? JSON.parse(item.photoIds) : item.photoId ? [item.photoId] : []
+          }))
+        : []
     }));
     res.json(parsedOrders);
   } catch (error) {

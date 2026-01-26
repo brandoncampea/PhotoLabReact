@@ -130,6 +130,7 @@ const initDb = () => {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       order_id INTEGER NOT NULL,
       photo_id INTEGER NOT NULL,
+      photo_ids TEXT,
       product_id INTEGER NOT NULL,
       quantity INTEGER DEFAULT 1,
       price REAL NOT NULL,
@@ -138,6 +139,17 @@ const initDb = () => {
       FOREIGN KEY (photo_id) REFERENCES photos(id)
     )
   `);
+
+  // Migrate order_items to add photo_ids column for multi-photo products
+  try {
+    const orderItemCols = db.prepare("PRAGMA table_info(order_items)").all();
+    const colNames = orderItemCols.map(c => c.name);
+    if (!colNames.includes('photo_ids')) {
+      db.exec("ALTER TABLE order_items ADD COLUMN photo_ids TEXT");
+    }
+  } catch (e) {
+    // ignore
+  }
 
   // Products table
   db.exec(`
@@ -316,6 +328,71 @@ const initDb = () => {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       event_type TEXT NOT NULL,
       event_data TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Shipping config table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS shipping_config (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      batch_deadline TEXT DEFAULT '2099-12-31T23:59:59Z',
+      direct_shipping_charge REAL DEFAULT 10.00,
+      is_active BOOLEAN DEFAULT 1,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Stripe config table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS stripe_config (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      publishable_key TEXT,
+      secret_key TEXT,
+      is_live_mode BOOLEAN DEFAULT 0,
+      is_active BOOLEAN DEFAULT 1,
+      webhook_secret TEXT,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Seed shipping config if not exists
+  try {
+    const shippingExists = db.prepare('SELECT * FROM shipping_config WHERE id = 1').get();
+    if (!shippingExists) {
+      // Set batch deadline to next Sunday at 11:59 PM
+      const now = new Date();
+      const nextSunday = new Date(now);
+      nextSunday.setDate(now.getDate() + (7 - now.getDay()));
+      nextSunday.setHours(23, 59, 59, 0);
+      
+      db.prepare(`
+        INSERT INTO shipping_config (id, batch_deadline, direct_shipping_charge, is_active)
+        VALUES (1, ?, 10.00, 1)
+      `).run(nextSunday.toISOString());
+    }
+  } catch (e) {
+    console.error('Error seeding shipping config:', e);
+  }
+
+  // Seed stripe config if not exists
+  try {
+    const stripeExists = db.prepare('SELECT * FROM stripe_config WHERE id = 1').get();
+    if (!stripeExists) {
+      db.prepare(`
+        INSERT INTO stripe_config (id, publishable_key, secret_key, is_live_mode, is_active)
+        VALUES (1, 'pk_test_example', 'sk_test_example', 0, 1)
+      `).run();
+    }
+  } catch (e) {
+    console.error('Error seeding stripe config:', e);
+  }
+
+  // Categories table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS categories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT UNIQUE NOT NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);

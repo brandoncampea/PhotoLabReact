@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Order } from '../../types';
-import { adminMockApi } from '../../services/adminMockApi';
+import { Order, DashboardStats } from '../../types';
 import { analyticsService } from '../../services/analyticsService';
-import { DashboardStats } from '../../types';
+import { orderService } from '../../services/orderService';
+import { userAdminService } from '../../services/adminService';
+import { albumService } from '../../services/albumService';
 
 const AdminDashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -20,11 +21,76 @@ const AdminDashboard: React.FC = () => {
 
   const loadStats = async () => {
     try {
-      const [dashboardData, ordersData] = await Promise.all([
-        adminMockApi.dashboard.getStats(),
-        adminMockApi.orders.getAll(),
+      const useMock = import.meta.env.VITE_USE_MOCK_API === 'true';
+
+      if (useMock) {
+        const [dashboardData, ordersData] = await Promise.all([
+          (await import('../../services/adminMockApi')).adminMockApi.dashboard.getStats(),
+          (await import('../../services/adminMockApi')).adminMockApi.orders.getAll(),
+        ]);
+        setStats(dashboardData);
+        setOrders(ordersData);
+        return;
+      }
+
+      const [ordersResult, customersResult, albumsResult] = await Promise.allSettled([
+        orderService.getOrders(),
+        userAdminService.getAll(),
+        albumService.getAlbums(),
       ]);
-      setStats(dashboardData);
+
+      const ordersData = ordersResult.status === 'fulfilled' ? ordersResult.value : [];
+      if (ordersResult.status !== 'fulfilled') {
+        console.warn('Orders load failed:', ordersResult.reason);
+      }
+
+      const customers = customersResult.status === 'fulfilled' ? customersResult.value : [];
+      if (customersResult.status !== 'fulfilled') {
+        console.warn('Customers load failed (likely missing admin auth):', customersResult.reason);
+      }
+
+      const albums = albumsResult.status === 'fulfilled' ? albumsResult.value : [];
+      if (albumsResult.status !== 'fulfilled') {
+        console.warn('Albums load failed:', albumsResult.reason);
+      }
+
+      const totalRevenue = ordersData.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
+      const pendingOrders = ordersData.filter(order => (order.status || '').toLowerCase() === 'pending').length;
+      const totalOrders = ordersData.length;
+      const recentOrders = [...ordersData]
+        .sort((a, b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime())
+        .slice(0, 5);
+
+      const albumOrderCounts = new Map<number, { albumId: number; orderCount: number; albumName: string }>();
+      ordersData.forEach(order => {
+        order.items?.forEach(item => {
+          const albumId = item.photo?.albumId;
+          if (!albumId) return;
+          const albumName = albums.find(a => a.id === albumId)?.name || `Album #${albumId}`;
+          const existing = albumOrderCounts.get(albumId) || { albumId, orderCount: 0, albumName };
+          existing.orderCount += 1;
+          albumOrderCounts.set(albumId, existing);
+        });
+      });
+
+      const topAlbums = Array.from(albumOrderCounts.values())
+        .sort((a, b) => b.orderCount - a.orderCount)
+        .slice(0, 6)
+        .map(entry => {
+          const album = albums.find(a => a.id === entry.albumId);
+          if (!album) return null;
+          return { album, orderCount: entry.orderCount };
+        })
+        .filter((entry): entry is { album: typeof albums[number]; orderCount: number } => entry !== null);
+
+      setStats({
+        totalOrders,
+        totalRevenue,
+        totalCustomers: customers.length,
+        pendingOrders,
+        recentOrders,
+        topAlbums,
+      });
       setOrders(ordersData);
     } catch (error) {
       console.error('Failed to load stats:', error);
@@ -33,11 +99,27 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
-  const getAnalytics = () => {
-    return analyticsService.getAnalytics();
-  };
+  const [analytics, setAnalytics] = useState<{ totalVisitors: number; totalPageViews: number; albumViews: number; photoViews: number } | null>(null);
 
-  const analytics = getAnalytics();
+  useEffect(() => {
+    const loadAnalytics = async () => {
+      try {
+        const summary = await analyticsService.getSummary();
+        const totalPageViews = (summary.albumViews || 0) + (summary.photoViews || 0) + (summary.totalVisits || 0);
+        setAnalytics({
+          totalVisitors: summary.totalVisits || 0,
+          totalPageViews,
+          albumViews: summary.albumViews || 0,
+          photoViews: summary.photoViews || 0,
+        });
+      } catch (error) {
+        console.error('Failed to load analytics:', error);
+      }
+    };
+    loadAnalytics();
+    const interval = setInterval(loadAnalytics, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   if (loading) {
     return <div className="loading">Loading dashboard...</div>;
@@ -240,19 +322,19 @@ const AdminDashboard: React.FC = () => {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             <div style={{ padding: '1rem', backgroundColor: '#f8f9fa', borderRadius: '8px' }}>
               <div style={{ fontSize: '0.85rem', color: '#666', marginBottom: '0.5rem' }}>Total Visitors</div>
-              <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: '#4169E1' }}>{analytics.totalVisitors}</div>
+              <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: '#4169E1' }}>{analytics?.totalVisitors || 0}</div>
             </div>
             <div style={{ padding: '1rem', backgroundColor: '#f8f9fa', borderRadius: '8px' }}>
               <div style={{ fontSize: '0.85rem', color: '#666', marginBottom: '0.5rem' }}>Page Views</div>
-              <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: '#9c27b0' }}>{analytics.totalPageViews}</div>
+              <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: '#9c27b0' }}>{analytics?.totalPageViews || 0}</div>
             </div>
             <div style={{ padding: '1rem', backgroundColor: '#f8f9fa', borderRadius: '8px' }}>
               <div style={{ fontSize: '0.85rem', color: '#666', marginBottom: '0.5rem' }}>Albums Viewed</div>
-              <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: '#4caf50' }}>{analytics.albumViews.length}</div>
+              <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: '#4caf50' }}>{analytics?.albumViews || 0}</div>
             </div>
             <div style={{ padding: '1rem', backgroundColor: '#f8f9fa', borderRadius: '8px' }}>
               <div style={{ fontSize: '0.85rem', color: '#666', marginBottom: '0.5rem' }}>Photos Viewed</div>
-              <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: '#ff9800' }}>{analytics.photoViews.length}</div>
+              <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: '#ff9800' }}>{analytics?.photoViews || 0}</div>
             </div>
           </div>
         </div>
@@ -345,14 +427,14 @@ const AdminDashboard: React.FC = () => {
           <h2 style={{ fontSize: '1.2rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <span>🔥</span> Most Popular Albums
           </h2>
-          {analytics.albumViews.length === 0 ? (
+          {!stats?.topAlbums || stats.topAlbums.length === 0 ? (
             <p style={{ color: '#999', fontStyle: 'italic', textAlign: 'center', padding: '2rem' }}>
-              No album views yet. Start browsing albums to see statistics!
+              No album orders yet. Sales will appear here once customers purchase.
             </p>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1rem' }}>
-              {analytics.albumViews.slice(0, 6).map((album) => (
-                <div key={album.albumId} style={{
+              {stats.topAlbums.slice(0, 6).map((entry) => (
+                <div key={entry.album.id} style={{
                   padding: '1rem',
                   backgroundColor: '#f8f9fa',
                   borderRadius: '8px',
@@ -368,9 +450,9 @@ const AdminDashboard: React.FC = () => {
                   e.currentTarget.style.transform = 'translateY(0)';
                   e.currentTarget.style.boxShadow = 'none';
                 }}>
-                  <div style={{ fontSize: '0.85rem', color: '#666', marginBottom: '0.5rem' }}>📁 {album.albumName}</div>
-                  <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#4169E1' }}>{album.views}</div>
-                  <div style={{ fontSize: '0.75rem', color: '#999', marginTop: '0.25rem' }}>views</div>
+                  <div style={{ fontSize: '0.85rem', color: '#666', marginBottom: '0.5rem' }}>📁 {entry.album.name}</div>
+                  <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#4169E1' }}>{entry.orderCount}</div>
+                  <div style={{ fontSize: '0.75rem', color: '#999', marginTop: '0.25rem' }}>orders</div>
                 </div>
               ))}
             </div>

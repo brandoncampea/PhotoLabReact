@@ -1,15 +1,25 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 
 interface AdminProtectedRouteProps {
   children: React.ReactNode;
 }
 
 const AdminProtectedRoute: React.FC<AdminProtectedRouteProps> = ({ children }) => {
-  const token = localStorage.getItem('adminToken');
+  const { user, loading } = useAuth();
 
-  if (!token) {
+  if (loading) {
+    return <div className="loading">Loading...</div>;
+  }
+
+  // Require logged-in admin
+  if (!user) {
     return <Navigate to="/admin/login" replace />;
+  }
+
+  if (user && user.role !== 'admin') {
+    return <Navigate to="/login" replace />;
   }
 
   return <>{children}</>;

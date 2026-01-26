@@ -7,10 +7,29 @@ const router = express.Router();
 router.get('/', (req, res) => {
   try {
     const products = db.prepare('SELECT * FROM products ORDER BY category, name').all();
-    const parsedProducts = products.map(p => ({
-      ...p,
-      options: p.options ? JSON.parse(p.options) : null
-    }));
+    const parsedProducts = products.map(p => {
+      const opts = p.options ? JSON.parse(p.options) : null;
+      const sizes = Array.isArray(opts?.sizes)
+        ? opts.sizes.map((s, idx) => ({
+            id: Number.isFinite(Number(s.id)) ? Number(s.id) : (p.id * 1000 + idx + 1),
+            name: s.name,
+            width: Number(s.width) || 0,
+            height: Number(s.height) || 0,
+            price: Number(s.price) || 0,
+          }))
+        : [];
+      return {
+        id: p.id,
+        name: p.name,
+        category: p.category,
+        price: p.price,
+        description: p.description,
+        sizes,
+        isActive: opts?.isActive !== undefined ? !!opts.isActive : true,
+        popularity: Number(opts?.popularity) || 0,
+        isDigital: !!opts?.isDigital,
+      };
+    });
     res.json(parsedProducts);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -31,10 +50,29 @@ router.get('/active', (req, res) => {
     } catch {
       products = db.prepare('SELECT * FROM products ORDER BY category, name').all();
     }
-    const parsedProducts = products.map(p => ({
-      ...p,
-      options: p.options ? JSON.parse(p.options) : null
-    }));
+    const parsedProducts = products.map(p => {
+      const opts = p.options ? JSON.parse(p.options) : null;
+      const sizes = Array.isArray(opts?.sizes)
+        ? opts.sizes.map((s, idx) => ({
+            id: Number.isFinite(Number(s.id)) ? Number(s.id) : (p.id * 1000 + idx + 1),
+            name: s.name,
+            width: Number(s.width) || 0,
+            height: Number(s.height) || 0,
+            price: Number(s.price) || 0,
+          }))
+        : [];
+      return {
+        id: p.id,
+        name: p.name,
+        category: p.category,
+        price: p.price,
+        description: p.description,
+        sizes,
+        isActive: opts?.isActive !== undefined ? !!opts.isActive : true,
+        popularity: Number(opts?.popularity) || 0,
+        isDigital: !!opts?.isDigital,
+      };
+    });
     res.json(parsedProducts);
   } catch (error) {
     res.status(500).json({ error: error.message });
