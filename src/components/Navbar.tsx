@@ -2,7 +2,7 @@ import React, { useState, useEffect, KeyboardEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useCart } from '../contexts/CartContext';
-import { adminMockApi } from '../services/adminMockApi';
+import { profileService } from '../services/profileService';
 
 const Navbar: React.FC = () => {
   const { user, logout } = useAuth();
@@ -17,7 +17,7 @@ const Navbar: React.FC = () => {
 
   const loadLogo = async () => {
     try {
-      const config = await adminMockApi.profile.getConfig();
+      const config = await profileService.getConfig();
       setLogoUrl(config.logoUrl || '');
     } catch (error) {
       console.error('Failed to load logo:', error);
@@ -79,6 +79,11 @@ const Navbar: React.FC = () => {
                   <span className="cart-badge">{getTotalItems()}</span>
                 )}
               </Link>
+              {user.role === 'admin' && (
+                <Link to="/admin/dashboard" className="nav-link" style={{ color: '#ff6b35', fontWeight: '600' }}>
+                  ⚙️ Admin
+                </Link>
+              )}
               <div className="user-menu">
                 <span className="user-name">
                   {user.firstName} {user.lastName}

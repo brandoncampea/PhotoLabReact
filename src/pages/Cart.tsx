@@ -8,9 +8,9 @@ import { shippingService } from '../services/shippingService';
 import { stripeService } from '../services/stripeService';
 import { productService } from '../services/productService';
 import { downloadService } from '../services/downloadService';
+import { discountCodeService } from '../services/discountCodeService';
 import { ShippingConfig, StripeConfig, Product, DiscountCode, ShippingAddress, CartItem as CartItemType } from '../types';
 import { useAuth } from '../contexts/AuthContext';
-import { adminMockApi } from '../services/adminMockApi';
 
 const Cart: React.FC = () => {
   const { items, getTotalPrice, getTotalItems, clearCart } = useCart();
@@ -117,7 +117,7 @@ const Cart: React.FC = () => {
     
     setDiscountError('');
     try {
-      const code = await adminMockApi.discountCodes.getByCode(discountCode.trim());
+      const code = await discountCodeService.getByCode(discountCode.trim());
       
       if (!code) {
         setDiscountError('Invalid or expired discount code');
@@ -205,7 +205,7 @@ const Cart: React.FC = () => {
     try {
       // Increment discount usage if applied
       if (appliedDiscount) {
-        await adminMockApi.discountCodes.incrementUsage(appliedDiscount.id);
+        await discountCodeService.incrementUsage(appliedDiscount.id);
       }
 
       // Create payment intent with final total

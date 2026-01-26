@@ -40,17 +40,31 @@ const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop }) => {
   return (
     <div className="cart-item">
       <div className="cart-item-image" style={{ width: '100px', height: '100px', overflow: 'hidden', flexShrink: 0, position: 'relative' }}>
-        <WatermarkedImage 
-          src={item.photo.thumbnailUrl} 
-          alt={item.photo.fileName}
-          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-        />
-        {item.cropData && <div style={getCropStyle()!} />}
+        {item.photo ? (
+          <>
+            <WatermarkedImage 
+              src={item.photo.thumbnailUrl} 
+              alt={item.photo.fileName}
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            />
+            {item.cropData && <div style={getCropStyle()!} />}
+          </>
+        ) : (
+          <div style={{ width: '100%', height: '100%', backgroundColor: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <span style={{ color: '#9ca3af' }}>Loading...</span>
+          </div>
+        )}
       </div>
       
       <div className="cart-item-details">
-        <h3>{item.photo.fileName}</h3>
-        {item.photo.description && <p>{item.photo.description}</p>}
+        {item.photo ? (
+          <>
+            <h3>{item.photo.fileName}</h3>
+            {item.photo.description && <p>{item.photo.description}</p>}
+          </>
+        ) : (
+          <h3>Photo {item.photoId}</h3>
+        )}
         {item.cropData && (
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
             <span className="badge">Custom Crop</span>

@@ -394,18 +394,28 @@ router.get('/:id/recommendations', (req, res) => {
       
       // Check if product has size information
       if (productOptions && productOptions.sizes) {
-        const bestSize = productOptions.sizes.find(size => {
+        let closestMatch = null;
+        let closestDiff = Infinity;
+        
+        productOptions.sizes.forEach(size => {
           if (size.width && size.height) {
             const sizeRatio = size.width / size.height;
             const ratioDiff = Math.abs(sizeRatio - aspectRatio);
-            return ratioDiff < 0.2; // Within 20% aspect ratio match
+            
+            // Find the closest match (within 50% tolerance)
+            if (ratioDiff < closestDiff && ratioDiff < 0.5) {
+              closestMatch = size;
+              closestDiff = ratioDiff;
+            }
           }
-          return false;
         });
         
-        if (bestSize) {
-          score += 50;
-          reasons.push(`${bestSize.width}x${bestSize.height} matches your photo ratio`);
+        if (closestMatch) {
+          // Score based on how close the match is (0-50 points)
+          // Perfect match (diff=0) = 50pts, at tolerance (diff=0.5) = 0pts
+          const matchScore = Math.max(0, 50 * (1 - closestDiff / 0.5));
+          score += Math.round(matchScore);
+          reasons.push(`${closestMatch.width}x${closestMatch.height} is close to your photo ratio`);
         }
       }
       

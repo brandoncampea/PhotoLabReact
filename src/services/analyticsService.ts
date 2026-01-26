@@ -1,4 +1,5 @@
 import { AnalyticsData, ActivityLog, AlbumViewStats, PhotoViewStats } from '../types';
+import api from './api';
 
 // In-memory storage for demo purposes
 let totalVisitors = 0;
@@ -11,10 +12,20 @@ let activityIdCounter = 1;
 const MAX_ACTIVITY_LOGS = 100;
 
 export const analyticsService = {
+  // Track event on backend
+  async trackEvent(eventType: string, eventData?: any) {
+    try {
+      await api.post('/analytics/track', { eventType, eventData });
+    } catch (error) {
+      console.warn('Failed to track event:', error);
+    }
+  },
+
   // Track site visit
   trackVisit() {
     totalVisitors++;
     totalPageViews++;
+    this.trackEvent('site_visit');
     
     const activity: ActivityLog = {
       id: activityIdCounter++,
@@ -34,6 +45,7 @@ export const analyticsService = {
   // Track album view
   trackAlbumView(albumId: number, albumName: string) {
     totalPageViews++;
+    this.trackEvent('album_view', { albumId, albumName });
     
     const existing = albumViewsMap.get(albumId);
     if (existing) {
@@ -69,6 +81,7 @@ export const analyticsService = {
   // Track photo view
   trackPhotoView(photoId: number, photoFileName: string, albumId: number, albumName: string) {
     totalPageViews++;
+    this.trackEvent('photo_view', { photoId, photoFileName, albumId, albumName });
     
     const existing = photoViewsMap.get(photoId);
     if (existing) {
@@ -105,8 +118,25 @@ export const analyticsService = {
     console.log(`📊 Analytics: Photo view tracked - ${photoFileName}`);
   },
 
+  // Get analytics summary from backend
+  async getSummary() {
+    try {
+      const response = await api.get('/analytics/summary');
+      return response.data;
+    } catch (error) {
+      console.warn('Failed to load analytics summary:', error);
+      return {
+        totalVisits: 0,
+        albumViews: 0,
+        photoViews: 0,
+      };
+    }
+  },
+
   // Get all analytics data
-  getAnalytics(): AnalyticsData {
+  async getAnalytics(): Promise<AnalyticsData> {
+    const summary = await this.getSummary();
+    
     const albumViews: AlbumViewStats[] = Array.from(albumViewsMap.entries()).map(([albumId, data]) => ({
       albumId,
       albumName: data.albumName,
@@ -124,8 +154,8 @@ export const analyticsService = {
     })).sort((a, b) => b.views - a.views);
 
     return {
-      totalVisitors,
-      totalPageViews,
+      totalVisitors: summary.totalVisits || totalVisitors,
+      totalPageViews: summary.albumViews + summary.photoViews + summary.totalVisits || totalPageViews,
       albumViews,
       photoViews,
       recentActivity: activityLog.slice(0, 50), // Return last 50 activities

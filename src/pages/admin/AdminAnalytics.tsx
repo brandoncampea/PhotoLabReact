@@ -15,11 +15,15 @@ const AdminAnalytics: React.FC = () => {
 
   const loadAnalytics = () => {
     try {
-      const data = analyticsService.getAnalytics();
+      analyticsService.getAnalytics().then(data => {
       setAnalytics(data);
+        setLoading(false);
+      }).catch(error => {
+        console.error('Failed to load analytics:', error);
+        setLoading(false);
+      });
     } catch (error) {
       console.error('Failed to load analytics:', error);
-    } finally {
       setLoading(false);
     }
   };
@@ -259,17 +263,6 @@ const AdminAnalytics: React.FC = () => {
         )}
       </div>
 
-      <div style={{
-        marginTop: '2rem',
-        padding: '1rem',
-        backgroundColor: '#fff3cd',
-        borderRadius: '8px',
-        border: '1px solid #ffc107',
-        fontSize: '0.9rem'
-      }}>
-        <strong>📝 Note:</strong> Analytics data is stored in browser memory and will reset when the page is refreshed. 
-        In production, this data would be persisted to a database for long-term tracking.
-      </div>
     </div>
   );
 };

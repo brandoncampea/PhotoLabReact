@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { adminMockApi } from '../../services/adminMockApi';
+import { useAuth } from '../../contexts/AuthContext';
 
 const AdminLogin: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -9,6 +9,7 @@ const AdminLogin: React.FC = () => {
   const [loading, setLoading] = useState(false);
   
   const navigate = useNavigate();
+  const { login, logout } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -16,9 +17,14 @@ const AdminLogin: React.FC = () => {
     setLoading(true);
 
     try {
-      const response = await adminMockApi.auth.login(email, password);
-      localStorage.setItem('adminToken', response.token);
-      localStorage.setItem('adminUser', JSON.stringify(response.user));
+      const authResponse = await login({ email, password });
+
+      if (authResponse.role !== 'admin') {
+        setError('Admin access only. Please log in with an admin account.');
+        logout();
+        return;
+      }
+
       navigate('/admin/dashboard');
     } catch (err: any) {
       setError('Invalid admin credentials');

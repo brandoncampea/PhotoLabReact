@@ -18,8 +18,12 @@ export const orderService = {
     const response = await api.post<Order>('/orders', {
       items: items.map(item => ({
         photoId: item.photoId,
+        photoIds: item.photoIds,
         quantity: item.quantity,
         cropData: item.cropData,
+        productId: item.productId,
+        productSizeId: item.productSizeId,
+        price: item.price,
       })),
       shippingAddress,
       shippingOption,

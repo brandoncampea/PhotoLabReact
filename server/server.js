@@ -18,6 +18,8 @@ import watermarkRoutes from './routes/watermarks.js';
 import discountCodeRoutes from './routes/discountCodes.js';
 import userRoutes from './routes/users.js';
 import categoryRoutes from './routes/categories.js';
+import shippingRoutes from './routes/shipping.js';
+import stripeRoutes from './routes/stripe.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -27,7 +29,8 @@ const PORT = process.env.PORT || 3001;
 
 // Middleware
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb' }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Use routes
@@ -45,6 +48,8 @@ app.use('/api/watermarks', watermarkRoutes);
 app.use('/api/discount-codes', discountCodeRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/shipping', shippingRoutes);
+app.use('/api/stripe', stripeRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

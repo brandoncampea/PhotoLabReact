@@ -27,10 +27,16 @@ api.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
     if (error.response?.status === 401) {
-      // Clear auth token and redirect to login
-      localStorage.removeItem('authToken');
-      localStorage.removeItem('user');
-      window.location.href = '/login';
+      // Avoid redirect loops when the login/register request itself fails
+      const requestUrl = error.config?.url ?? '';
+      const isAuthEndpoint = /auth\/login|auth\/register/.test(requestUrl);
+
+      if (!isAuthEndpoint) {
+        // Clear auth token and redirect to login for protected routes
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('user');
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(error);
   }
