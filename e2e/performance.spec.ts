@@ -37,10 +37,11 @@ test.describe('Performance', () => {
     
     // Check memory usage hasn't spiked
     const metrics = await page.evaluate(() => {
-      if (performance.memory) {
+      const perfMemory = (performance as any).memory;
+      if (perfMemory) {
         return {
-          usedJSHeapSize: (performance.memory as any).usedJSHeapSize,
-          totalJSHeapSize: (performance.memory as any).totalJSHeapSize,
+          usedJSHeapSize: perfMemory.usedJSHeapSize,
+          totalJSHeapSize: perfMemory.totalJSHeapSize,
         };
       }
       return null;
