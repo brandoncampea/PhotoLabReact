@@ -11,7 +11,11 @@
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "seed:photos": "node server/seedPhotos.js",
-    "seed:products": "node server/seedProducts.js"
+    "seed:products": "node server/seedProducts.js",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:debug": "playwright test --debug",
+    "test:e2e:headed": "playwright test --headed"
   },
   "dependencies": {
     "@types/bcryptjs": "^3.0.0",
@@ -40,6 +44,7 @@
     "stripe": "^20.2.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.0",
     "@types/react": "^18.2.43",
     "@types/react-dom": "^18.2.17",
     "@typescript-eslint/eslint-plugin": "^6.14.0",
