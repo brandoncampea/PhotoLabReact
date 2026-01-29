@@ -151,6 +151,45 @@ const initDb = () => {
     // ignore
   }
 
+  // Migrate orders table to add batch shipping columns
+  try {
+    const orderCols = db.prepare("PRAGMA table_info(orders)").all();
+    const orderColNames = orderCols.map(c => c.name);
+    
+    if (!orderColNames.includes('shipping_option')) {
+      db.exec("ALTER TABLE orders ADD COLUMN shipping_option TEXT DEFAULT 'direct'");
+    }
+    if (!orderColNames.includes('shipping_cost')) {
+      db.exec("ALTER TABLE orders ADD COLUMN shipping_cost REAL DEFAULT 0");
+    }
+    if (!orderColNames.includes('discount_code')) {
+      db.exec("ALTER TABLE orders ADD COLUMN discount_code TEXT");
+    }
+    if (!orderColNames.includes('is_batch')) {
+      db.exec("ALTER TABLE orders ADD COLUMN is_batch INTEGER DEFAULT 0");
+    }
+    if (!orderColNames.includes('batch_shipping_address')) {
+      db.exec("ALTER TABLE orders ADD COLUMN batch_shipping_address TEXT");
+    }
+    if (!orderColNames.includes('lab_submitted')) {
+      db.exec("ALTER TABLE orders ADD COLUMN lab_submitted INTEGER DEFAULT 0");
+    }
+    if (!orderColNames.includes('lab_submitted_at')) {
+      db.exec("ALTER TABLE orders ADD COLUMN lab_submitted_at DATETIME");
+    }
+    if (!orderColNames.includes('subtotal')) {
+      db.exec("ALTER TABLE orders ADD COLUMN subtotal REAL DEFAULT 0");
+    }
+    if (!orderColNames.includes('tax_amount')) {
+      db.exec("ALTER TABLE orders ADD COLUMN tax_amount REAL DEFAULT 0");
+    }
+    if (!orderColNames.includes('tax_rate')) {
+      db.exec("ALTER TABLE orders ADD COLUMN tax_rate REAL DEFAULT 0");
+    }
+  } catch (e) {
+    console.error('Error migrating orders table:', e);
+  }
+
   // Products table
   db.exec(`
     CREATE TABLE IF NOT EXISTS products (
@@ -381,7 +420,7 @@ const initDb = () => {
     if (!stripeExists) {
       db.prepare(`
         INSERT INTO stripe_config (id, publishable_key, secret_key, is_live_mode, is_active)
-        VALUES (1, 'pk_test_example', 'sk_test_example', 0, 1)
+        VALUES (1, 'pk_test_example', 'sk_test_example', 0, 0)
       `).run();
     }
   } catch (e) {
