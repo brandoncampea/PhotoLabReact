@@ -54,13 +54,49 @@ router.get('/user/:userId', (req, res) => {
 router.post('/', (req, res) => {
   try {
     const userId = req.user.id;
-    const { items, total, shippingAddress } = req.body;
+    const { 
+      items, 
+      total, 
+      subtotal,
+      taxAmount,
+      taxRate,
+      shippingAddress, 
+      shippingOption, 
+      shippingCost, 
+      discountCode,
+      isBatch,
+      labSubmitted 
+    } = req.body;
 
     // Insert order and get the returned id
     const orderResult = db.prepare(`
-      INSERT INTO orders (user_id, total, shipping_address)
-      VALUES (?, ?, ?)
-    `).run(userId, total, JSON.stringify(shippingAddress));
+      INSERT INTO orders (
+        user_id, 
+        total, 
+        subtotal,
+        tax_amount,
+        tax_rate,
+        shipping_address, 
+        shipping_option, 
+        shipping_cost,
+        discount_code,
+        is_batch,
+        lab_submitted
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      userId, 
+      total,
+      subtotal || 0, 
+      taxAmount || 0,
+      taxRate || 0,
+      JSON.stringify(shippingAddress),
+      shippingOption || 'direct',
+      shippingCost || 0,
+      discountCode || null,
+      isBatch ? 1 : 0,
+      labSubmitted ? 1 : 0
+    );
 
     const orderId = orderResult.lastInsertRowid;
 
@@ -90,7 +126,25 @@ router.post('/', (req, res) => {
       );
     }
 
-    res.status(201).json({ orderId, message: 'Order created successfully' });
+    // Return the created order
+    const createdOrder = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
+    res.status(201).json({
+      id: createdOrder.id,
+      userId: createdOrder.user_id,
+      totalAmount: createdOrder.total,
+      subtotal: createdOrder.subtotal,
+      taxAmount: createdOrder.tax_amount,
+      taxRate: createdOrder.tax_rate,
+      status: createdOrder.status || 'Pending',
+      orderDate: createdOrder.created_at,
+      shippingAddress: createdOrder.shipping_address ? JSON.parse(createdOrder.shipping_address) : null,
+      shippingOption: createdOrder.shipping_option,
+      shippingCost: createdOrder.shipping_cost,
+      isBatch: Boolean(createdOrder.is_batch),
+      labSubmitted: Boolean(createdOrder.lab_submitted),
+      items: [],
+      message: 'Order created successfully'
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -101,19 +155,31 @@ router.get('/', (req, res) => {
   try {
     const userId = req.user.id;
     const orders = db.prepare(`
-      SELECT o.id, o.user_id as userId, o.total, o.shipping_address as shippingAddress,
-             o.created_at as createdAt,
-             json_group_array(
-               json_object(
-                 'id', oi.id,
-                 'photoId', oi.photo_id,
-                 'photoIds', oi.photo_ids,
-                 'productId', oi.product_id,
-                 'quantity', oi.quantity,
-                 'price', oi.price,
-                 'cropData', oi.crop_data
-               )
-             ) as items
+      SELECT 
+        o.id, 
+        o.user_id as userId, 
+        o.total as totalAmount,
+        o.subtotal,
+        o.tax_amount as taxAmount,
+        o.tax_rate as taxRate,
+        o.status,
+        o.shipping_address as shippingAddress,
+        o.shipping_option as shippingOption,
+        o.shipping_cost as shippingCost,
+        o.is_batch as isBatch,
+        o.lab_submitted as labSubmitted,
+        o.created_at as orderDate,
+        json_group_array(
+          json_object(
+            'id', oi.id,
+            'photoId', oi.photo_id,
+            'photoIds', oi.photo_ids,
+            'productId', oi.product_id,
+            'quantity', oi.quantity,
+            'price', oi.price,
+            'cropData', oi.crop_data
+          )
+        ) as items
       FROM orders o
       LEFT JOIN order_items oi ON o.id = oi.order_id
       WHERE o.user_id = ?
@@ -121,17 +187,123 @@ router.get('/', (req, res) => {
       ORDER BY o.created_at DESC
     `).all(userId);
     
-    const parsedOrders = orders.map(order => ({
-      ...order,
-      shippingAddress: order.shippingAddress ? JSON.parse(order.shippingAddress) : null,
-      items: order.items
-        ? JSON.parse(order.items).map(item => ({
-            ...item,
-            cropData: item.cropData ? JSON.parse(item.cropData) : null,
-            photoIds: item.photoIds ? JSON.parse(item.photoIds) : item.photoId ? [item.photoId] : []
-          }))
-        : []
-    }));
+    const parsedOrders = orders.map(order => {
+      const parsedItems = order.items ? JSON.parse(order.items).filter(item => item.id !== null) : [];
+      
+      // Get actual photo URLs from photos table
+      const itemsWithPhotos = parsedItems.map(item => {
+        const photo = db.prepare(`
+          SELECT id, file_name as fileName, thumbnail_url as thumbnailUrl, full_image_url as fullImageUrl
+          FROM photos WHERE id = ?
+        `).get(item.photoId);
+        
+        return {
+          ...item,
+          price: item.price || 0,
+          cropData: item.cropData ? JSON.parse(item.cropData) : null,
+          photoIds: item.photoIds ? JSON.parse(item.photoIds) : item.photoId ? [item.photoId] : [],
+          photo: photo ? {
+            id: photo.id,
+            fileName: photo.fileName,
+            thumbnailUrl: photo.thumbnailUrl,
+            url: photo.fullImageUrl
+          } : {
+            id: item.photoId,
+            fileName: `Photo #${item.photoId}`,
+            thumbnailUrl: `https://picsum.photos/seed/photo${item.photoId}/300/300`,
+            url: `https://picsum.photos/seed/photo${item.photoId}/1200/900`
+          }
+        };
+      });
+      
+      return {
+        ...order,
+        status: order.status || 'Pending',
+        isBatch: Boolean(order.isBatch),
+        labSubmitted: Boolean(order.labSubmitted),
+        shippingAddress: order.shippingAddress ? JSON.parse(order.shippingAddress) : null,
+        items: itemsWithPhotos
+      };
+    });
+    res.json(parsedOrders);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get all orders (admin view)
+router.get('/admin/all-orders', (req, res) => {
+  try {
+    const orders = db.prepare(`
+      SELECT 
+        o.id, 
+        o.user_id as userId, 
+        o.total as totalAmount,
+        o.subtotal,
+        o.tax_amount as taxAmount,
+        o.tax_rate as taxRate,
+        o.status,
+        o.shipping_address as shippingAddress,
+        o.shipping_option as shippingOption,
+        o.shipping_cost as shippingCost,
+        o.is_batch as isBatch,
+        o.lab_submitted as labSubmitted,
+        o.created_at as orderDate,
+        json_group_array(
+          json_object(
+            'id', oi.id,
+            'photoId', oi.photo_id,
+            'photoIds', oi.photo_ids,
+            'productId', oi.product_id,
+            'quantity', oi.quantity,
+            'price', oi.price,
+            'cropData', oi.crop_data
+          )
+        ) as items
+      FROM orders o
+      LEFT JOIN order_items oi ON o.id = oi.order_id
+      GROUP BY o.id
+      ORDER BY o.created_at DESC
+    `).all();
+    
+    const parsedOrders = orders.map(order => {
+      const parsedItems = order.items ? JSON.parse(order.items).filter(item => item.id !== null) : [];
+      
+      // Get actual photo URLs from photos table
+      const itemsWithPhotos = parsedItems.map(item => {
+        const photo = db.prepare(`
+          SELECT id, file_name as fileName, thumbnail_url as thumbnailUrl, full_image_url as fullImageUrl
+          FROM photos WHERE id = ?
+        `).get(item.photoId);
+        
+        return {
+          ...item,
+          price: item.price || 0,
+          cropData: item.cropData ? JSON.parse(item.cropData) : null,
+          photoIds: item.photoIds ? JSON.parse(item.photoIds) : item.photoId ? [item.photoId] : [],
+          photo: photo ? {
+            id: photo.id,
+            fileName: photo.fileName,
+            thumbnailUrl: photo.thumbnailUrl,
+            url: photo.fullImageUrl
+          } : {
+            id: item.photoId,
+            fileName: `Photo #${item.photoId}`,
+            thumbnailUrl: `https://picsum.photos/seed/photo${item.photoId}/300/300`,
+            url: `https://picsum.photos/seed/photo${item.photoId}/1200/900`
+          }
+        };
+      });
+      
+      return {
+        ...order,
+        status: order.status || 'Pending',
+        isBatch: Boolean(order.isBatch),
+        labSubmitted: Boolean(order.labSubmitted),
+        shippingAddress: order.shippingAddress ? JSON.parse(order.shippingAddress) : null,
+        items: itemsWithPhotos
+      };
+    });
     res.json(parsedOrders);
   } catch (error) {
     res.status(500).json({ error: error.message });

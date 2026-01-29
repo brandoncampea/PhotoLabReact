@@ -27,6 +27,52 @@ router.get('/config', (req, res) => {
   }
 });
 
+// Test Stripe connection
+router.post('/test-connection', async (req, res) => {
+  try {
+    const { secretKey } = req.body;
+    
+    if (!secretKey || !secretKey.trim()) {
+      return res.status(400).json({ error: 'Secret key is required' });
+    }
+
+    const trimmedKey = secretKey.trim();
+    
+    // Check for placeholder keys
+    if (trimmedKey.includes('example') || trimmedKey.includes('***') || trimmedKey === 'your-stripe-secret-key') {
+      return res.status(400).json({ error: 'Please provide a valid Stripe secret key' });
+    }
+
+    // Dynamically import Stripe with the provided key
+    const stripe = (await import('stripe')).default(trimmedKey);
+
+    // Test the connection by retrieving the account
+    const account = await stripe.accounts.retrieve();
+    
+    res.json({
+      success: true,
+      message: `Connected successfully to Stripe account: ${account.email || account.id}`,
+      accountId: account.id,
+      accountEmail: account.email,
+      isLive: !trimmedKey.startsWith('sk_test_')
+    });
+  } catch (error) {
+    console.error('Stripe test connection error:', error);
+    
+    if (error.type === 'StripeAuthenticationError') {
+      return res.status(401).json({ 
+        success: false, 
+        error: 'Invalid Stripe API key. Please check your credentials.' 
+      });
+    }
+    
+    res.status(500).json({ 
+      success: false, 
+      error: error.message || 'Failed to connect to Stripe' 
+    });
+  }
+});
+
 // Update Stripe configuration (admin only)
 router.put('/config', (req, res) => {
   try {
