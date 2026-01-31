@@ -1,13 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { PriceList, Package } from '../../types';
 import { adminMockApi } from '../../services/adminMockApi';
+import { priceListAdminService } from '../../services/priceListAdminService';
+import { packageService } from '../../services/packageService';
 import { parseCSVData, createPriceListFromImport, detectColumnsFromCSV, ColumnSuggestion, ColumnMapping } from '../../services/priceListService';
+import { siteConfigService } from '../../services/siteConfigService';
+import { isUseMockApi } from '../../utils/mockApiConfig';
+import AdminWhccImport from '../../components/AdminWhccImport';
+import AdminMpixImport from '../../components/AdminMpixImport';
 
 const AdminPriceLists: React.FC = () => {
   const [priceLists, setPriceLists] = useState<PriceList[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [showImportDialog, setShowImportDialog] = useState(false);
+  const [showWhccImport, setShowWhccImport] = useState(false);
+  const [showMpixImport, setShowMpixImport] = useState(false);
   const [selectedPriceList, setSelectedPriceList] = useState<PriceList | null>(null);
   const [packages, setPackages] = useState<Package[]>([]);
   const [packagesLoading, setPackagesLoading] = useState(false);
@@ -51,7 +59,9 @@ const AdminPriceLists: React.FC = () => {
 
   const loadData = async () => {
     try {
-      const lists = await adminMockApi.priceLists.getAll();
+      const lists = isUseMockApi()
+        ? await adminMockApi.priceLists.getAll()
+        : await priceListAdminService.getAll();
       setPriceLists(lists);
     } catch (error) {
       console.error('Failed to load data:', error);
@@ -63,7 +73,9 @@ const AdminPriceLists: React.FC = () => {
   const loadPackages = async (priceListId: number) => {
     setPackagesLoading(true);
     try {
-      const pkgData = await adminMockApi.packages.getAll(priceListId);
+      const pkgData = isUseMockApi()
+        ? await adminMockApi.packages.getAll(priceListId)
+        : await packageService.getAll(priceListId);
       setPackages(pkgData);
     } catch (error) {
       console.error('Failed to load packages:', error);
@@ -77,11 +89,17 @@ const AdminPriceLists: React.FC = () => {
     if (!newListName.trim()) return;
 
     try {
-      const newList = await adminMockApi.priceLists.create({
-        name: newListName,
-        description: newListDesc,
-        products: [],
-      });
+      const newList = isUseMockApi()
+        ? await adminMockApi.priceLists.create({
+            name: newListName,
+            description: newListDesc,
+            products: [],
+          })
+        : await priceListAdminService.create({
+            name: newListName,
+            description: newListDesc,
+            products: [],
+          });
       setPriceLists([...priceLists, newList]);
       setNewListName('');
       setNewListDesc('');
@@ -94,7 +112,9 @@ const AdminPriceLists: React.FC = () => {
   const handleDeletePriceList = async (id: number) => {
     if (confirm('Are you sure you want to delete this price list?')) {
       try {
-        await adminMockApi.priceLists.delete(id);
+        isUseMockApi()
+          ? await adminMockApi.priceLists.delete(id)
+          : await priceListAdminService.delete(id);
         setPriceLists(priceLists.filter(pl => pl.id !== id));
         if (selectedPriceList?.id === id) {
           setSelectedPriceList(null);
@@ -107,8 +127,12 @@ const AdminPriceLists: React.FC = () => {
 
   const handleSetDefault = async (id: number) => {
     try {
-      await adminMockApi.priceLists.setDefault(id);
-      const updated = await adminMockApi.priceLists.getAll();
+      isUseMockApi()
+        ? await adminMockApi.priceLists.setDefault(id)
+        : await priceListAdminService.setDefault(id);
+      const updated = isUseMockApi()
+        ? await adminMockApi.priceLists.getAll()
+        : await priceListAdminService.getAll();
       setPriceLists(updated);
       if (selectedPriceList) {
         const refreshed = updated.find(pl => pl.id === selectedPriceList.id);
@@ -186,7 +210,7 @@ const AdminPriceLists: React.FC = () => {
 
     setImportLoading(true);
     try {
-      await createPriceListFromImport(importName, importDesc, importedData);
+      await createPriceListFromImport(importName, importDesc);
       await loadData();
       setShowImportDialog(false);
       setImportStep('upload');
@@ -250,7 +274,9 @@ const AdminPriceLists: React.FC = () => {
     if (!selectedPriceList) return;
     if (confirm('Are you sure you want to delete this package?')) {
       try {
-        await adminMockApi.packages.delete(id);
+        isUseMockApi()
+          ? await adminMockApi.packages.delete(id)
+          : await packageService.delete(id);
         loadPackages(selectedPriceList.id);
       } catch (error) {
         console.error('Failed to delete package:', error);
@@ -327,6 +353,16 @@ const AdminPriceLists: React.FC = () => {
           <button onClick={() => setShowImportDialog(true)} className="btn btn-secondary">
             📥 Import from CSV
           </button>
+          {siteConfigService.isSiteEnabled('whcc') && (
+            <button onClick={() => setShowWhccImport(true)} className="btn btn-secondary" title="Import products from WHCC">
+              📦 Import from WHCC
+            </button>
+          )}
+          {siteConfigService.isSiteEnabled('mpix') && (
+            <button onClick={() => setShowMpixImport(true)} className="btn btn-secondary" title="Import products from Mpix">
+              📸 Import from Mpix
+            </button>
+          )}
         </div>
       </div>
 
@@ -662,7 +698,7 @@ const AdminPriceLists: React.FC = () => {
               {priceList.description || 'No description'}
             </p>
             <p style={{ fontSize: '0.85rem', color: '#999', margin: '0.5rem 0' }}>
-              {priceList.products.length} product(s)
+              {Array.isArray(priceList.products) ? priceList.products.length : 0} product(s)
             </p>
             {priceList.isDefault && (
               <span className="status-badge active" style={{ marginTop: '0.25rem', display: 'inline-block' }}>
@@ -997,6 +1033,28 @@ const AdminPriceLists: React.FC = () => {
           fontSize: 0.85rem;
         }
       `}</style>
+
+      {/* WHCC Import Modal */}
+      {showWhccImport && (
+        <AdminWhccImport
+          onClose={() => setShowWhccImport(false)}
+          onImportComplete={() => {
+            setShowWhccImport(false);
+            loadData(); // Refresh the price lists
+          }}
+        />
+      )}
+
+      {/* Mpix Import Modal */}
+      {showMpixImport && (
+        <AdminMpixImport
+          onClose={() => setShowMpixImport(false)}
+          onImportComplete={() => {
+            setShowMpixImport(false);
+            loadData(); // Refresh the price lists
+          }}
+        />
+      )}
     </div>
   );
 };

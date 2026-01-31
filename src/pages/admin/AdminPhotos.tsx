@@ -4,10 +4,9 @@ import { Photo, Album } from '../../types';
 import { photoService } from '../../services/photoService';
 import { albumService } from '../../services/albumService';
 import { albumAdminService } from '../../services/albumAdminService';
-import { adminMockApi } from '../../services/adminMockApi';
-import { exifService } from '../../services/exifService';
 
-const useMockApi = import.meta.env.VITE_USE_MOCK_API === 'true';
+
+
 
 const AdminPhotos: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -82,19 +81,10 @@ const AdminPhotos: React.FC = () => {
     setUploading(true);
     try {
       // Extract metadata from each file
-      const filesWithMetadata = await Promise.all(
-        files.map(async (file) => {
-          const metadata = await exifService.extractMetadata(file);
-          return { file, metadata };
-        })
-      );
+      // Metadata extraction is currently unused
       
-      if (useMockApi) {
-        await adminMockApi.photos.upload(albumId, filesWithMetadata);
-      } else {
-        // Descriptions currently unused; we pass files only
-        await photoService.uploadPhotos(albumId, files);
-      }
+      // Descriptions currently unused; we pass files only
+      await photoService.uploadPhotos(albumId, files);
       loadPhotos();
       loadAlbums(); // Reload albums to update photo count
     } catch (error) {
@@ -107,11 +97,7 @@ const AdminPhotos: React.FC = () => {
   const handleDelete = async (id: number) => {
     if (confirm('Are you sure you want to delete this photo?')) {
       try {
-        if (useMockApi) {
-          await adminMockApi.photos.delete(id);
-        } else {
-          await photoService.deletePhoto(id);
-        }
+        await photoService.deletePhoto(id);
         loadPhotos();
         loadAlbums(); // Reload albums to update photo count
       } catch (error) {
@@ -129,11 +115,7 @@ const AdminPhotos: React.FC = () => {
     if (confirm(`Are you sure you want to delete all ${photos.length} photos from this album? This cannot be undone.`)) {
       try {
         // Delete all photos in parallel
-        if (useMockApi) {
-          await Promise.all(photos.map(photo => adminMockApi.photos.delete(photo.id)));
-        } else {
-          await Promise.all(photos.map(photo => photoService.deletePhoto(photo.id)));
-        }
+        await Promise.all(photos.map(photo => photoService.deletePhoto(photo.id)));
         // Immediately clear UI
         setPhotos([]);
         // Then reload to ensure sync
@@ -156,11 +138,7 @@ const AdminPhotos: React.FC = () => {
         setTimeout(() => setCoverMessage(null), 2500);
         return;
       }
-      if (useMockApi) {
-        await adminMockApi.albums.update(albumId, { coverImageUrl: coverUrl, coverPhotoId: photo.id });
-      } else {
-        await albumAdminService.updateAlbum(albumId, { coverImageUrl: coverUrl, coverPhotoId: photo.id });
-      }
+      await albumAdminService.updateAlbum(albumId, { coverImageUrl: coverUrl, coverPhotoId: photo.id });
       await loadAlbums();
       setCoverMessage('Cover updated');
       setCoverSuccessId(photo.id);

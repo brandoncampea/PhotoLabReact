@@ -1,12 +1,12 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { CartItem, Photo, CropData } from '../types';
-import { productService } from '../services/productService';
+import { CartItem, Photo, CropData, Package, Product, ProductSize } from '../types';
 import { photoService } from '../services/photoService';
 import api from '../services/api';
 
 interface CartContextType {
   items: CartItem[];
-  addToCart: (photo: Photo, quantity?: number, cropData?: CropData, productId?: number, productSizeId?: number, additionalPhotos?: Photo[]) => Promise<void>;
+  addToCart: (photo: Photo, cropData: CropData, product: Product, size: ProductSize, quantity?: number, photoIds?: number[], photos?: { photo: Photo; cropData: CropData; position: number }[]) => Promise<void>;
+  addPackageToCart: (pkg: Package, photo: Photo, cropData: CropData) => Promise<void>;
   removeFromCart: (photoId: number) => void;
   updateQuantity: (photoId: number, quantity: number) => void;
   updateCropData: (photoId: number, cropData: CropData) => void;
@@ -19,18 +19,19 @@ const CartContext = createContext<CartContextType | undefined>(undefined);
 
 const saveCartToApi = async (items: CartItem[]) => {
   try {
+    // Always save to localStorage as a backup
+    localStorage.setItem('cart', JSON.stringify(items));
+    
     const user = localStorage.getItem('user');
     const userId = user ? JSON.parse(user).id : null;
     if (!userId) {
-      // No logged-in user: persist locally only
-      localStorage.setItem('cart', JSON.stringify(items));
+      // No logged-in user: already persisted locally
       return;
     }
     await api.post('/cart', { items });
   } catch (error) {
     console.warn('Failed to sync cart to backend:', error);
-    // Fallback to localStorage if API fails
-    localStorage.setItem('cart', JSON.stringify(items));
+    // Already saved to localStorage above
   }
 };
 
@@ -38,10 +39,22 @@ const loadCartFromApi = async () => {
   try {
     const user = localStorage.getItem('user');
     const userId = user ? JSON.parse(user).id : null;
-    if (!userId) {
-      const saved = localStorage.getItem('cart');
-      return saved ? JSON.parse(saved) : [];
+    
+    // First try localStorage (works for both logged-in and guest users)
+    const saved = localStorage.getItem('cart');
+    const localCart = saved ? JSON.parse(saved) : [];
+    
+    // If we have items in localStorage, return them directly
+    // They already have full photo data embedded
+    if (localCart.length > 0) {
+      return localCart;
     }
+    
+    // If no local cart and user is logged in, try to fetch from backend
+    if (!userId) {
+      return [];
+    }
+    
     const response = await api.get('/cart');
     let items = response.data || [];
     
@@ -91,7 +104,7 @@ const loadCartFromApi = async () => {
     
     return items;
   } catch (error) {
-    console.warn('Failed to load cart from backend, using localStorage:', error);
+    console.warn('Failed to load cart from backend:', error);
     // Fallback to localStorage
     const saved = localStorage.getItem('cart');
     return saved ? JSON.parse(saved) : [];
@@ -100,58 +113,97 @@ const loadCartFromApi = async () => {
 
 export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [items, setItems] = useState<CartItem[]>([]);
+  const [isLoaded, setIsLoaded] = useState(false);
 
-  // Load cart from API on mount
+  // Load cart from API/localStorage on mount
   useEffect(() => {
-    loadCartFromApi().then(cart => setItems(cart || []));
+    loadCartFromApi().then(cart => {
+      setItems(cart || []);
+      setIsLoaded(true);
+    });
   }, []);
 
-  // Save cart to API whenever it changes
+  // Save cart to API/localStorage whenever it changes (only after initial load)
   useEffect(() => {
-    if (items.length > 0 || localStorage.getItem('cart')) {
+    if (isLoaded) {
       saveCartToApi(items);
     }
-  }, [items]);
+  }, [items, isLoaded]);
 
-  const addToCart = async (photo: Photo, quantity = 1, cropData?: CropData, productId?: number, productSizeId?: number, additionalPhotos?: Photo[]) => {
-    // Require crop data, product, and size
-    if (!cropData || !productId || !productSizeId) {
-      console.error('Cannot add to cart: Missing required crop data, product, or size');
-      throw new Error('Photo must be cropped with a selected product and size before adding to cart');
-    }
-
-    // Calculate price from product and size
-    let price = 0;
-    try {
-      const products = await productService.getActiveProducts();
-      const product = products.find(p => p.id === productId);
-      const size = product?.sizes.find(s => s.id === productSizeId);
-      if (product && size) {
-        price = size.price;
-      } else {
-        throw new Error('Invalid product or size');
-      }
-    } catch (error) {
-      console.error('Error fetching product price:', error);
-      throw error;
-    }
-
-    const additionalPhotoIds = additionalPhotos?.map(p => p.id) ?? [];
-    const photoIds = [photo.id, ...additionalPhotoIds];
-    const photos = [photo, ...(additionalPhotos ?? [])];
+  const addToCart = async (
+    photo: Photo,
+    cropData: CropData,
+    product: Product,
+    size: ProductSize,
+    quantity = 1,
+    photoIds?: number[],
+    photos?: { photo: Photo; cropData: CropData; position: number }[]
+  ) => {
+    const price = size.price;
+    const allPhotoIds = photoIds || [photo.id];
+    const allPhotos = photos || [{ photo, cropData, position: 1 }];
 
     setItems((prevItems) => {
-      const existingItem = prevItems.find((item) => item.photoId === photo.id);
+      const existingItem = prevItems.find((item) => item.photoId === photo.id && item.productId === product.id && item.productSizeId === size.id);
       
       if (existingItem) {
         return prevItems.map((item) =>
-          item.photoId === photo.id
-            ? { ...item, quantity: item.quantity + quantity, cropData, productId, productSizeId, price, photoIds, photos }
+          item.photoId === photo.id && item.productId === product.id && item.productSizeId === size.id
+            ? { ...item, quantity: item.quantity + quantity, cropData, price, photoIds: allPhotoIds, photos: allPhotos }
             : item
         );
       }
-      return [...prevItems, { photoId: photo.id, photo, photoIds, photos, quantity, cropData, productId, productSizeId, price }];
+      return [...prevItems, { 
+        photoId: photo.id, 
+        photo, 
+        photoIds: allPhotoIds, 
+        photos: allPhotos, 
+        quantity, 
+        cropData, 
+        productId: product.id, 
+        productSizeId: size.id, 
+        price 
+      }];
     });
+  };
+
+  const addPackageToCart = async (pkg: Package, photo: Photo, cropData: CropData) => {
+    if (!pkg.items || pkg.items.length === 0) {
+      throw new Error('Package has no items');
+    }
+
+    // Expand package into individual cart items
+    // Each package item becomes a separate cart item with the same photo and crop data
+    const newItems: CartItem[] = [];
+
+    for (const pkgItem of pkg.items) {
+      if (!pkgItem.productId || !pkgItem.productSizeId) {
+        console.warn('Skipping package item with missing product/size:', pkgItem);
+        continue;
+      }
+
+      // Use the productSize price from the package item (already loaded)
+      const price = pkgItem.productSize?.price || 0;
+
+      newItems.push({
+        photoId: photo.id,
+        photo,
+        photoIds: [photo.id],
+        photos: [{ photo, cropData, position: 1 }],
+        quantity: pkgItem.quantity,
+        cropData,
+        productId: pkgItem.productId,
+        productSizeId: pkgItem.productSizeId,
+        price,
+      });
+    }
+
+    if (newItems.length === 0) {
+      throw new Error('No valid items in package');
+    }
+
+    // Add all package items to cart
+    setItems((prevItems) => [...prevItems, ...newItems]);
   };
 
   const removeFromCart = (photoId: number) => {
@@ -196,6 +248,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       value={{
         items,
         addToCart,
+        addPackageToCart,
         removeFromCart,
         updateQuantity,
         updateCropData,

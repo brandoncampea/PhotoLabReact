@@ -1,0 +1,6 @@
+1. Delete src/services/adminMockApi.ts
+2. Delete src/services/mockApi.ts
+3. Delete src/utils/mockApiConfig.ts
+4. Remove all imports and usage of adminMockApi, mockApi, isUseMockApi from src/
+5. Remove any UI toggles for mock API
+6. Test build and run

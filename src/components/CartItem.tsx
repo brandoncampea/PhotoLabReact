@@ -40,7 +40,55 @@ const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop }) => {
   return (
     <div className="cart-item">
       <div className="cart-item-image" style={{ width: '100px', height: '100px', overflow: 'hidden', flexShrink: 0, position: 'relative' }}>
-        {item.photo ? (
+        {item.photos && item.photos.length > 1 ? (
+          // Multi-photo grid display
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: item.photos.length === 2 ? '1fr 1fr' : item.photos.length === 3 ? '1fr 1fr 1fr' : '1fr 1fr',
+            gridTemplateRows: item.photos.length > 2 ? '1fr 1fr' : '1fr',
+            gap: '2px',
+            width: '100%',
+            height: '100%',
+            backgroundColor: '#f3f4f6'
+          }}>
+            {item.photos.slice(0, 4).map((photoItem, idx) => (
+              <div key={idx} style={{ position: 'relative', overflow: 'hidden' }}>
+                <WatermarkedImage 
+                  src={photoItem.photo.thumbnailUrl} 
+                  alt={`Photo ${photoItem.position}`}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                />
+                <div style={{
+                  position: 'absolute',
+                  bottom: '2px',
+                  right: '2px',
+                  backgroundColor: 'rgba(0,0,0,0.7)',
+                  color: 'white',
+                  fontSize: '10px',
+                  padding: '1px 3px',
+                  borderRadius: '2px'
+                }}>
+                  #{photoItem.position}
+                </div>
+              </div>
+            ))}
+            {item.photos.length > 4 && (
+              <div style={{
+                position: 'absolute',
+                bottom: '4px',
+                right: '4px',
+                backgroundColor: 'rgba(0,0,0,0.8)',
+                color: 'white',
+                fontSize: '12px',
+                padding: '2px 6px',
+                borderRadius: '3px'
+              }}>
+                +{item.photos.length - 4}
+              </div>
+            )}
+          </div>
+        ) : item.photo ? (
+          // Single photo display
           <>
             <WatermarkedImage 
               src={item.photo.thumbnailUrl} 
@@ -57,7 +105,14 @@ const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop }) => {
       </div>
       
       <div className="cart-item-details">
-        {item.photo ? (
+        {item.photos && item.photos.length > 1 ? (
+          <>
+            <h3>Multi-Photo Product</h3>
+            <p style={{ fontSize: '0.85rem', color: '#666' }}>
+              📸 {item.photos.length} photos included
+            </p>
+          </>
+        ) : item.photo ? (
           <>
             <h3>{item.photo.fileName}</h3>
             {item.photo.description && <p>{item.photo.description}</p>}

@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { Album, Photo } from '../types';
+import { Album, Photo, Package } from '../types';
 import { albumService } from '../services/albumService';
 import { photoService } from '../services/photoService';
 import { analyticsService } from '../services/analyticsService';
 import { exifService } from '../services/exifService';
+import { packageService } from '../services/packageService';
 import PhotoCard from '../components/PhotoCard';
 import CropperModal from '../components/CropperModal';
 
@@ -23,9 +24,10 @@ const AlbumDetails: React.FC = () => {
   const [playerFilter, setPlayerFilter] = useState('');
   const [sortBy, setSortBy] = useState<'name' | 'date'>('name');
   const [shareNotification, setShareNotification] = useState('');
-  const [uploadingCsv, setUploadingCsv] = useState(false);
-  const [csvMessage, setCsvMessage] = useState('');
-  const [showCsvUpload, setShowCsvUpload] = useState(false);
+  const [packages, setPackages] = useState<Package[]>([]);
+  const [showPackages, setShowPackages] = useState(false);
+  const [selectedPackageForOrder, setSelectedPackageForOrder] = useState<Package | null>(null);
+  const [selectedPhotoForPackage, setSelectedPhotoForPackage] = useState<Photo | null>(null);
 
   useEffect(() => {
     if (id) {
@@ -74,6 +76,17 @@ const AlbumDetails: React.FC = () => {
       // Track album view
       analyticsService.trackAlbumView(albumId, albumData.name);
       
+      // Load packages if album has a price list
+      if (albumData.priceListId) {
+        try {
+          const packagesData = await packageService.getAll(albumData.priceListId);
+          const activePackages = packagesData.filter(p => p.isActive);
+          setPackages(activePackages);
+        } catch (err) {
+          console.error('Failed to load packages:', err);
+        }
+      }
+      
       // Check if a specific photo is linked via URL parameter
       const photoId = searchParams.get('photo');
       if (photoId) {
@@ -98,8 +111,19 @@ const AlbumDetails: React.FC = () => {
     setSelectedPhoto(photo);
   };
 
+  const handlePackagePhotoClick = (pkg: Package, photo: Photo) => {
+    // Track photo view for package
+    if (album) {
+      analyticsService.trackPhotoView(photo.id, photo.fileName, album.id, album.name);
+    }
+    setSelectedPackageForOrder(pkg);
+    setSelectedPhotoForPackage(photo);
+  };
+
   const handleCloseCropper = () => {
     setSelectedPhoto(null);
+    setSelectedPackageForOrder(null);
+    setSelectedPhotoForPackage(null);
   };
 
   const handleShareAlbum = async () => {
@@ -149,30 +173,6 @@ const AlbumDetails: React.FC = () => {
       } catch (err) {
         console.error('Failed to copy link:', err);
       }
-    }
-  };
-
-  const handleCsvUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !id) return;
-
-    setUploadingCsv(true);
-    setCsvMessage('');
-
-    try {
-      const result = await photoService.uploadPlayerNamesCsv(parseInt(id), file);
-      setCsvMessage(`✓ Success! Updated ${result.photosUpdated} of ${result.totalPhotos} photos with player names`);
-      
-      // Reload photos to show player names
-      const updatedPhotos = await photoService.getPhotosByAlbum(parseInt(id));
-      setPhotos(updatedPhotos);
-      
-      setShowCsvUpload(false);
-      setTimeout(() => setCsvMessage(''), 4000);
-    } catch (err: any) {
-      setCsvMessage(`✗ Error: ${err.response?.data?.error || 'Failed to upload player names'}`);
-    } finally {
-      setUploadingCsv(false);
     }
   };
 
@@ -262,56 +262,116 @@ const AlbumDetails: React.FC = () => {
             <option value="date">Date Taken</option>
           </select>
         </div>
-        <button
-          onClick={() => setShowCsvUpload(!showCsvUpload)}
-          className="btn btn-secondary"
-          style={{ padding: '0.5rem 1rem' }}
-        >
-          📋 {showCsvUpload ? 'Cancel' : 'Upload Player Names'}
-        </button>
+        {packages.length > 0 && (
+          <button
+            onClick={() => setShowPackages(!showPackages)}
+            className="btn btn-primary"
+            style={{ padding: '0.5rem 1rem' }}
+          >
+            📦 {showPackages ? 'Hide' : 'View'} Packages ({packages.length})
+          </button>
+        )}
       </div>
 
-      {showCsvUpload && (
+      {showPackages && packages.length > 0 && (
         <div style={{
-          padding: '1rem',
+          padding: '1.5rem',
           backgroundColor: '#f5f5f5',
           borderRadius: '8px',
           marginBottom: '1.5rem',
           border: '1px solid #e0e0e0'
         }}>
-          <h3>Upload Player Names CSV</h3>
-          <p style={{ marginBottom: '1rem', color: '#666' }}>
-            CSV should have columns: <code>file_name</code> (or <code>fileName</code>) and <code>player_name</code> (or <code>playerName</code>)
+          <h3 style={{ marginTop: 0 }}>📦 Available Packages</h3>
+          <p style={{ color: '#666', marginBottom: '1.5rem' }}>
+            Select a package, then choose a photo to apply it to. The package will be expanded into individual products in your cart.
           </p>
-          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-            <input
-              type="file"
-              accept=".csv"
-              onChange={handleCsvUpload}
-              disabled={uploadingCsv}
-              className="file-input"
-            />
-            {uploadingCsv && <span>Uploading...</span>}
-          </div>
-          {csvMessage && (
-            <div style={{
-              marginTop: '1rem',
-              padding: '0.75rem',
-              backgroundColor: csvMessage.includes('Error') ? '#fee' : '#efe',
-              color: csvMessage.includes('Error') ? '#c33' : '#3c3',
-              borderRadius: '4px'
-            }}>
-              {csvMessage}
-            </div>
-          )}
-          <div style={{ marginTop: '1rem', color: '#666', fontSize: '0.9rem' }}>
-            <strong>Example CSV format:</strong>
-            <pre style={{ backgroundColor: '#fff', padding: '0.5rem', borderRadius: '4px', overflow: 'auto' }}>
-file_name,player_name
-photo001.jpg,John Smith
-photo002.jpg,Jane Doe
-photo003.jpg,John Smith
-            </pre>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1rem' }}>
+            {packages.map((pkg) => {
+              const retailValue = packageService.calculateRetailValue(pkg);
+              const savings = packageService.calculateSavings(pkg);
+              const savingsPercent = packageService.getSavingsPercentage(pkg);
+              
+              return (
+                <div
+                  key={pkg.id}
+                  style={{
+                    backgroundColor: 'white',
+                    border: '2px solid #ff6b35',
+                    borderRadius: '8px',
+                    padding: '1rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = 'scale(1.02)';
+                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(255, 107, 53, 0.3)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'scale(1)';
+                    e.currentTarget.style.boxShadow = 'none';
+                  }}
+                >
+                  <h4 style={{ margin: '0 0 0.5rem 0', color: '#ff6b35' }}>{pkg.name}</h4>
+                  <p style={{ fontSize: '0.9rem', color: '#666', marginBottom: '0.75rem' }}>{pkg.description}</p>
+                  
+                  <div style={{ borderTop: '1px solid #e0e0e0', paddingTop: '0.75rem', marginBottom: '0.75rem' }}>
+                    <strong>Includes:</strong>
+                    <ul style={{ margin: '0.5rem 0', paddingLeft: '1.5rem', fontSize: '0.9rem' }}>
+                      {pkg.items.map((item, idx) => (
+                        <li key={idx}>
+                          {item.quantity}x {item.product?.name} - {item.productSize?.name}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                    <div>
+                      <div style={{ fontSize: '0.85rem', color: '#999', textDecoration: 'line-through' }}>
+                        Retail: ${retailValue.toFixed(2)}
+                      </div>
+                      <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#4caf50' }}>
+                        ${pkg.packagePrice.toFixed(2)}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: '1rem', fontWeight: 'bold', color: '#ff6b35' }}>
+                        Save {savingsPercent}%
+                      </div>
+                      <div style={{ fontSize: '0.85rem', color: '#666' }}>
+                        (${savings.toFixed(2)})
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <button
+                    onClick={() => {
+                      setShowPackages(false);
+                      // Scroll to photos section
+                      document.querySelector('.photos-grid')?.scrollIntoView({ behavior: 'smooth' });
+                      alert(`Now select a photo to apply "${pkg.name}" package to.`);
+                      // Store package in state, modify photo click handler
+                      const originalPhotoCards = document.querySelectorAll('.photo-card');
+                      originalPhotoCards.forEach(card => {
+                        card.addEventListener('click', (e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          const photoIndex = Array.from(originalPhotoCards).indexOf(card);
+                          const photo = filteredPhotos[photoIndex];
+                          if (photo) {
+                            handlePackagePhotoClick(pkg, photo);
+                          }
+                        }, { once: true });
+                      });
+                    }}
+                    className="btn btn-primary"
+                    style={{ width: '100%' }}
+                  >
+                    Select Photo for This Package
+                  </button>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -339,7 +399,17 @@ photo003.jpg,John Smith
       {selectedPhoto && (
         <CropperModal
           photo={selectedPhoto}
+          albumPhotos={photos}
           onClose={handleCloseCropper}
+        />
+      )}
+
+      {selectedPhotoForPackage && selectedPackageForOrder && (
+        <CropperModal
+          photo={selectedPhotoForPackage}
+          albumPhotos={photos}
+          onClose={handleCloseCropper}
+          selectedPackage={selectedPackageForOrder}
         />
       )}
     </div>

@@ -2,32 +2,43 @@ import React, { useState, useEffect } from 'react';
 import { UserAccount } from '../../types';
 import { adminMockApi } from '../../services/adminMockApi';
 import { userAdminService } from '../../services/adminService';
+import { isUseMockApi } from '../../utils/mockApiConfig';
 
-const useMockApi = import.meta.env.VITE_USE_MOCK_API === 'true';
+
 
 const AdminUsers: React.FC = () => {
   const [users, setUsers] = useState<UserAccount[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<'all' | 'customer' | 'admin'>('all');
 
   useEffect(() => {
     loadUsers();
+    // Set up auto-refresh every 30 seconds
+    const interval = setInterval(() => {
+      loadUsers(true);
+    }, 30000);
+    
+    return () => clearInterval(interval);
   }, []);
 
-  const loadUsers = async () => {
+  const loadUsers = async (silent = false) => {
     try {
-      const data = useMockApi ? await adminMockApi.users.getAll() : await userAdminService.getAll();
+      if (!silent) setLoading(true);
+      setRefreshing(true);
+      const data = isUseMockApi() ? await adminMockApi.users.getAll() : await userAdminService.getAll();
       setUsers(data);
     } catch (error) {
       console.error('Failed to load users:', error);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
   const handleToggleActive = async (id: number) => {
     try {
-      if (useMockApi) {
+      if (isUseMockApi()) {
         await adminMockApi.users.toggleActive(id);
       } else {
         const user = users.find(u => u.id === id);
@@ -44,7 +55,7 @@ const AdminUsers: React.FC = () => {
     const action = role === 'admin' ? 'promote to admin' : 'demote to customer';
     if (confirm(`Are you sure you want to ${action}?`)) {
       try {
-        if (useMockApi) {
+        if (isUseMockApi()) {
           await adminMockApi.users.changeRole(id, role);
         } else {
           await userAdminService.changeRole(id, role);
@@ -69,7 +80,7 @@ const AdminUsers: React.FC = () => {
     <div className="admin-page">
       <div className="page-header">
         <h1>User Accounts</h1>
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
           <button
             onClick={() => setFilter('all')}
             className={`btn ${filter === 'all' ? 'btn-primary' : 'btn-secondary'}`}
@@ -90,6 +101,15 @@ const AdminUsers: React.FC = () => {
             style={{ fontSize: '0.9rem', padding: '0.5rem 1rem' }}
           >
             Admins ({users.filter(u => u.role === 'admin').length})
+          </button>
+          <button
+            onClick={() => loadUsers()}
+            className="btn btn-secondary"
+            disabled={refreshing}
+            style={{ fontSize: '0.9rem', padding: '0.5rem 1rem', marginLeft: 'auto' }}
+            title="Refresh user list"
+          >
+            {refreshing ? '⟳ Refreshing...' : '⟳ Refresh'}
           </button>
         </div>
       </div>

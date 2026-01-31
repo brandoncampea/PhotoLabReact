@@ -58,8 +58,8 @@ const Orders: React.FC = () => {
                   </p>
                 </div>
                 <div className="order-status">
-                  <span className={`status-badge status-${order.status.toLowerCase()}`}>
-                    {order.status}
+                  <span className={`status-badge status-${(order.status || 'pending').toLowerCase()}`}>
+                    {order.status || 'Pending'}
                   </span>
                   <p className="order-total">${order.totalAmount.toFixed(2)}</p>
                 </div>

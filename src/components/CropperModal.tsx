@@ -1,34 +1,39 @@
 import React, { useRef, useState, useEffect } from 'react';
 import Cropper, { ReactCropperElement } from 'react-cropper';
 import 'cropperjs/dist/cropper.css';
-import { Photo, CropData, Product, ProductSize, Watermark } from '../types';
+import { Photo, CropData, Product, ProductSize, Watermark, Package } from '../types';
 import { useCart } from '../contexts/CartContext';
 import { productService } from '../services/productService';
 import { watermarkService } from '../services/watermarkService';
 import { photoService } from '../services/photoService';
 import WatermarkedImage from './WatermarkedImage';
+import MultiPhotoSelector from './MultiPhotoSelector';
 
 interface CropperModalProps {
   photo: Photo;
+  albumPhotos?: Photo[]; // All photos from album for multi-photo selection
   onClose: () => void;
   editMode?: boolean;
   existingCropData?: CropData;
   existingQuantity?: number;
   existingProductId?: number;
   existingProductSizeId?: number;
+  selectedPackage?: Package | null;
 }
 
 const CropperModal: React.FC<CropperModalProps> = ({ 
-  photo, 
+  photo,
+  albumPhotos = [],
   onClose, 
   editMode = false,
   existingCropData,
   existingQuantity = 1,
   existingProductId,
-  existingProductSizeId
+  existingProductSizeId,
+  selectedPackage
 }) => {
   const cropperRef = useRef<ReactCropperElement>(null);
-  const { addToCart, updateCropData } = useCart();
+  const { addToCart, addPackageToCart, updateCropData } = useCart();
   const [quantity, setQuantity] = useState(existingQuantity);
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -38,6 +43,7 @@ const CropperModal: React.FC<CropperModalProps> = ({
   const [watermark, setWatermark] = useState<Watermark | null>(null);
   const [recommendations, setRecommendations] = useState<any>(null);
   const [tab, setTab] = useState<'recommended' | 'all'>('recommended');
+  const [showMultiPhotoSelector, setShowMultiPhotoSelector] = useState(false);
 
   useEffect(() => {
     loadProducts();
@@ -141,6 +147,11 @@ const CropperModal: React.FC<CropperModalProps> = ({
 
   const handleSizeSelect = (size: ProductSize) => {
     setSelectedSize(size);
+    
+    // Check if selected product requires multiple photos
+    if (selectedProduct && (selectedProduct.minPhotos || selectedProduct.maxPhotos)) {
+      setShowMultiPhotoSelector(true);
+    }
   };
 
   useEffect(() => {
@@ -183,7 +194,35 @@ const CropperModal: React.FC<CropperModalProps> = ({
 
   const handleAddToCart = () => {
     const cropper = cropperRef.current?.cropper;
-    if (!cropper || !selectedProduct || !selectedSize) {
+    if (!cropper) {
+      alert('Cropper not initialized');
+      return;
+    }
+
+    // If package is selected, use package flow
+    if (selectedPackage) {
+      const rawCropData = cropper.getData();
+      const imageData = cropper.getImageData();
+      
+      // Normalize crop data to percentages
+      const toPercent = (value: number, dimension: number) => (value / dimension) * 100;
+      const normalizedCropData: CropData = {
+        x: toPercent(rawCropData.x, imageData.naturalWidth),
+        y: toPercent(rawCropData.y, imageData.naturalHeight),
+        width: toPercent(rawCropData.width, imageData.naturalWidth),
+        height: toPercent(rawCropData.height, imageData.naturalHeight),
+        rotate: rawCropData.rotate,
+        scaleX: rawCropData.scaleX,
+        scaleY: rawCropData.scaleY,
+      };
+
+      addPackageToCart(selectedPackage, photo, normalizedCropData);
+      onClose();
+      return;
+    }
+
+    // Standard product flow
+    if (!selectedProduct || !selectedSize) {
       alert('Please select a product and size');
       return;
     }
@@ -223,7 +262,7 @@ const CropperModal: React.FC<CropperModalProps> = ({
       updateCropData(photo.id, normalizedCropData);
     } else {
       // Add new item to cart
-      addToCart(photo, quantity, normalizedCropData, selectedProduct.id, selectedSize.id);
+      addToCart(photo, normalizedCropData, selectedProduct, selectedSize, quantity);
     }
     
     onClose();
@@ -258,7 +297,14 @@ const CropperModal: React.FC<CropperModalProps> = ({
             </button>
           </div>
 
-          <div className="modal-body" style={{ display: 'grid', gridTemplateColumns: '40% 1fr', gap: '2rem', padding: '2rem' }}>
+          <div className="modal-body" style={{ 
+            display: 'grid', 
+            gridTemplateColumns: '40% 1fr', 
+            gap: '2rem', 
+            padding: '2rem',
+            maxHeight: 'calc(90vh - 140px)',
+            overflow: 'hidden'
+          }}>
             {/* LEFT COLUMN: Photo Preview & Metadata */}
             <div style={{ marginBottom: '1rem' }}>
               <div
@@ -309,10 +355,10 @@ const CropperModal: React.FC<CropperModalProps> = ({
             </div>
 
             {/* RIGHT COLUMN: Recommendations & Products */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', minHeight: 0 }}>
               {/* Tabs */}
               {products.length > 0 && (
-                <div style={{ display: 'flex', gap: '0.5rem', borderBottom: '2px solid #e0e0e0' }}>
+                <div style={{ display: 'flex', gap: '0.5rem', borderBottom: '2px solid #e0e0e0', flexShrink: 0 }}>
                   {recommendedProducts.length > 0 && (
                     <button
                       onClick={() => setTab('recommended')}
@@ -351,7 +397,15 @@ const CropperModal: React.FC<CropperModalProps> = ({
               )}
 
               {/* Product Grid */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.75rem', maxHeight: '70vh', overflowY: 'auto' }}>
+              <div style={{ 
+                display: 'grid', 
+                gridTemplateColumns: '1fr', 
+                gap: '0.75rem', 
+                overflowY: 'auto',
+                flex: 1,
+                minHeight: 0,
+                paddingRight: '0.5rem'
+              }}>
                 {allProducts.length === 0 ? (
                   <div style={{ padding: '2rem', textAlign: 'center', color: '#999' }}>
                     {tab === 'recommended' ? 'No recommended products' : 'No products available'}
@@ -430,15 +484,53 @@ const CropperModal: React.FC<CropperModalProps> = ({
     );
   }
 
+  // Multi-photo selector screen
+  if (showMultiPhotoSelector && selectedProduct && selectedSize) {
+    const handleMultiPhotoComplete = (photos: { photo: Photo; cropData: CropData; position: number }[]) => {
+      // Add multi-photo item to cart
+      addToCart(
+        photos[0].photo, // Primary photo
+        photos[0].cropData,
+        selectedProduct,
+        selectedSize,
+        quantity,
+        photos.map(p => p.photo.id), // All photo IDs
+        photos // All photos with crop data
+      );
+      onClose();
+    };
+
+    return (
+      <div className="modal-overlay" onClick={onClose}>
+        <div className="modal-content cropper-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '1000px', width: '95%', height: '90vh' }}>
+          <MultiPhotoSelector
+            product={selectedProduct}
+            selectedSize={selectedSize}
+            availablePhotos={albumPhotos}
+            initialPhoto={photo}
+            onComplete={handleMultiPhotoComplete}
+            onCancel={onClose}
+          />
+        </div>
+      </div>
+    );
+  }
+
   // Cropper screen
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content cropper-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <div>
-            <h2>{editMode ? 'Edit Crop' : 'Crop & Order Photo'}</h2>
+            <h2>{editMode ? 'Edit Crop' : selectedPackage ? 'Crop Photo for Package' : 'Crop & Order Photo'}</h2>
             <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.9rem', color: '#666' }}>
-              {selectedProduct.name} - {selectedSize?.name}
+              {selectedPackage ? (
+                <span style={{ color: '#ff6b35', fontWeight: 'bold' }}>
+                  Package: {selectedPackage.name} (${selectedPackage.packagePrice.toFixed(2)})
+                </span>
+              ) : (
+                <>{selectedProduct.name} - {selectedSize?.name}</>
+              )}
             </p>
           </div>
           <button onClick={onClose} className="btn-close">
@@ -447,7 +539,31 @@ const CropperModal: React.FC<CropperModalProps> = ({
         </div>
 
         <div className="modal-body">
-          <div style={{ marginBottom: '1rem', display: 'flex', gap: '1rem', alignItems: 'center' }}>
+          {selectedPackage && (
+            <div style={{
+              backgroundColor: '#fff3e0',
+              border: '2px solid #ff6b35',
+              borderRadius: '8px',
+              padding: '1rem',
+              marginBottom: '1rem'
+            }}>
+              <h4 style={{ margin: '0 0 0.5rem 0', color: '#ff6b35' }}>📦 {selectedPackage.name}</h4>
+              <p style={{ fontSize: '0.85rem', color: '#666', margin: '0 0 0.5rem 0' }}>{selectedPackage.description}</p>
+              <div style={{ fontSize: '0.85rem', color: '#333' }}>
+                <strong>This package includes:</strong>
+                <ul style={{ margin: '0.25rem 0 0 0', paddingLeft: '1.5rem' }}>
+                  {selectedPackage.items.map((item, idx) => (
+                    <li key={idx}>
+                      {item.quantity}x {item.product?.name} - {item.productSize?.name}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+
+          {!selectedPackage && (
+            <div style={{ marginBottom: '1rem', display: 'flex', gap: '1rem', alignItems: 'center' }}>
             <button 
               onClick={() => setSelectedProduct(null)}
               className="btn btn-secondary"
@@ -490,7 +606,8 @@ const CropperModal: React.FC<CropperModalProps> = ({
                 );
               })}
             </div>
-          </div>
+            </div>
+            )}
 
           <div className="cropper-container" style={{ position: 'relative', overflow: 'hidden' }}>
             <Cropper

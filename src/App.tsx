@@ -27,6 +27,10 @@ import AdminPayments from './pages/admin/AdminStripe';
 import AdminUsers from './pages/admin/AdminUsers';
 import AdminProfile from './pages/admin/AdminProfile';
 import AdminDiscountCodes from './pages/admin/AdminDiscountCodes';
+import AdminLabs from './pages/admin/AdminLabs';
+import AdminRoesConfig from './pages/admin/AdminRoesConfig';
+import AdminWhccConfig from './pages/admin/AdminWhccConfig';
+import AdminMpixConfig from './pages/admin/AdminMpixConfig';
 import './App.css';
 import './AdminStyles.css';
 
@@ -110,6 +114,10 @@ function App() {
                           <Route path="users" element={<AdminUsers />} />
                           <Route path="profile" element={<AdminProfile />} />
                           <Route path="discount-codes" element={<AdminDiscountCodes />} />
+                          <Route path="labs" element={<AdminLabs />} />
+                          <Route path="roes-config" element={<AdminRoesConfig />} />
+                          <Route path="whcc-config" element={<AdminWhccConfig />} />
+                          <Route path="mpix-config" element={<AdminMpixConfig />} />
                           <Route path="*" element={<Navigate to="/admin/dashboard" replace />} />
                         </Routes>
                       </AdminLayout>

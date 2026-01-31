@@ -55,7 +55,7 @@ export interface CartItem {
   photoId: number; // primary photo id (for legacy compatibility)
   photo: Photo; // primary photo object
   photoIds?: number[]; // all photos included in the product (multi-photo products)
-  photos?: Photo[]; // full photo objects for multi-photo products
+  photos?: Array<{ photo: Photo; cropData: CropData; position: number }>; // full photo objects with crop data for multi-photo products
   quantity: number;
   price: number;
   cropData?: CropData;
@@ -84,6 +84,13 @@ export interface Order {
   items: OrderItem[];
   downloadUrls?: DownloadUrl[];
   shippingAddress: ShippingAddress;
+  isBatch?: boolean; // True if order is for batch shipping
+  batchShippingAddress?: ShippingAddress; // Batch address set by admin
+  labSubmitted?: boolean; // True if batch order has been submitted to lab
+  labSubmittedAt?: string; // Timestamp when submitted to lab
+  taxAmount?: number; // Tax calculated based on shipping address
+  taxRate?: number; // Tax rate percentage applied
+  subtotal?: number; // Total before tax and shipping
 }
 
 export interface ShippingAddress {
@@ -161,6 +168,8 @@ export interface Product {
   isActive: boolean;
   popularity: number;
   isDigital: boolean;
+  minPhotos?: number; // Minimum photos required for multi-photo products
+  maxPhotos?: number; // Maximum photos allowed for multi-photo products
 }
 
 export interface ProductSize {

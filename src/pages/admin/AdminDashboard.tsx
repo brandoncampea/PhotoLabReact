@@ -6,6 +6,7 @@ import { orderService } from '../../services/orderService';
 import { userAdminService } from '../../services/adminService';
 import { albumService } from '../../services/albumService';
 
+
 const AdminDashboard: React.FC = () => {
   const navigate = useNavigate();
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -21,18 +22,6 @@ const AdminDashboard: React.FC = () => {
 
   const loadStats = async () => {
     try {
-      const useMock = import.meta.env.VITE_USE_MOCK_API === 'true';
-
-      if (useMock) {
-        const [dashboardData, ordersData] = await Promise.all([
-          (await import('../../services/adminMockApi')).adminMockApi.dashboard.getStats(),
-          (await import('../../services/adminMockApi')).adminMockApi.orders.getAll(),
-        ]);
-        setStats(dashboardData);
-        setOrders(ordersData);
-        return;
-      }
-
       const [ordersResult, customersResult, albumsResult] = await Promise.allSettled([
         orderService.getOrders(),
         userAdminService.getAll(),

@@ -1,9 +1,7 @@
+
 import api from './api';
-import { mockApi } from './mockApi';
-import { adminMockApi } from './adminMockApi';
 import { Photo } from '../types';
 
-const useMockApi = import.meta.env.VITE_USE_MOCK_API === 'true';
 
 const normalizeRecommendations = (data: any) => {
   const mapRec = (rec: any) => {
@@ -32,55 +30,9 @@ const normalizeRecommendations = (data: any) => {
   };
 };
 
-const buildMockRecommendations = (photoId: number) => normalizeRecommendations({
-  photo: {
-    id: photoId,
-    fileName: `photo-${photoId}.jpg`,
-    width: 3000,
-    height: 2000,
-    aspectRatio: '3:2',
-    orientation: 'landscape',
-    megapixels: '6 MP',
-  },
-  recommendations: [
-    {
-      id: 201,
-      name: '8x10 Print',
-      category: 'Prints',
-      price: 9.99,
-      description: 'Classic matte finish',
-      recommendationScore: 0.92,
-      reasons: ['Fits 3:2 crop well', 'Great for portraits and teams'],
-      matchQuality: 'excellent',
-    },
-    {
-      id: 202,
-      name: '5x7 Print',
-      category: 'Prints',
-      price: 6.99,
-      description: 'Lustre paper',
-      recommendationScore: 0.83,
-      reasons: ['Minimal cropping needed'],
-      matchQuality: 'good',
-    },
-    {
-      id: 203,
-      name: 'Digital Download',
-      category: 'Digital',
-      price: 14.99,
-      description: 'Full-resolution file',
-      recommendationScore: 0.78,
-      reasons: ['Best for sharing and archiving'],
-      matchQuality: 'good',
-    },
-  ],
-});
 
 export const photoService = {
   async getPhotosByAlbum(albumId: number, playerName?: string): Promise<Photo[]> {
-    if (useMockApi) {
-      return mockApi.photos.getPhotosByAlbum(albumId);
-    }
     const url = playerName 
       ? `/photos/album/${albumId}?playerName=${encodeURIComponent(playerName)}`
       : `/photos/album/${albumId}`;
@@ -89,9 +41,6 @@ export const photoService = {
   },
 
   async getPhoto(id: number): Promise<Photo> {
-    if (useMockApi) {
-      return mockApi.photos.getPhoto(id);
-    }
     const response = await api.get<Photo>(`/photos/${id}`);
     return response.data;
   },
@@ -113,14 +62,6 @@ export const photoService = {
   },
 
   async uploadPhotos(albumId: number, files: File[], descriptions?: string[]): Promise<Photo[]> {
-    if (useMockApi) {
-      const filesWithMeta = files.map((file, idx) => ({ file, metadata: undefined, description: descriptions?.[idx] }));
-      // adminMockApi has the upload helper
-      // @ts-ignore
-      const { adminMockApi } = await import('./adminMockApi');
-      // @ts-ignore
-      return adminMockApi.photos.upload(albumId, filesWithMeta);
-    }
     const formData = new FormData();
     formData.append('albumId', String(albumId));
     files.forEach((file) => formData.append('photos', file));
@@ -134,10 +75,6 @@ export const photoService = {
   },
 
   async deletePhoto(id: number): Promise<void> {
-    if (useMockApi) {
-      await adminMockApi.photos.delete(id);
-      return;
-    }
     await api.delete(`/photos/${id}`);
   },
 
@@ -162,16 +99,7 @@ export const photoService = {
       matchQuality: 'excellent' | 'good' | 'fair';
     }>;
   }> {
-    try {
-      const response = await api.get(`/photos/${photoId}/recommendations`);
-      return normalizeRecommendations(response.data);
-    } catch (error: any) {
-      const is404 = error?.response?.status === 404;
-      if (useMockApi || is404) {
-        console.warn('Using mock recommendations for photo', photoId, '(mock API or 404)');
-        return buildMockRecommendations(photoId);
-      }
-      throw error;
-    }
+    const response = await api.get(`/photos/${photoId}/recommendations`);
+    return normalizeRecommendations(response.data);
   },
 };
