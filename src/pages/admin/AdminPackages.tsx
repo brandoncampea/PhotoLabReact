@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Package, PriceListProduct } from '../../types';
 import { adminMockApi } from '../../services/adminMockApi';
+import { packageService } from '../../services/packageService';
+import { isUseMockApi } from '../../utils/mockApiConfig';
 
 const AdminPackages: React.FC = () => {
   const [packages, setPackages] = useState<Package[]>([]);
@@ -24,12 +26,25 @@ const AdminPackages: React.FC = () => {
 
   const loadData = async () => {
     try {
-      const [packagesData, productsData] = await Promise.all([
-        adminMockApi.packages.getAll(),
-        adminMockApi.products.getAll(),
-      ]);
+      let packagesData: Package[];
+      let productsData: any[];
+
+      if (isUseMockApi()) {
+        [packagesData, productsData] = await Promise.all([
+          adminMockApi.packages.getAll(),
+          adminMockApi.products.getAll(),
+        ]);
+      } else {
+        // For real API, use packageService and get products from mock API
+        // (since products are managed within price lists in the real API)
+        [packagesData, productsData] = await Promise.all([
+          packageService.getAll(),
+          adminMockApi.products.getAll(),
+        ]);
+      }
+
       setPackages(packagesData);
-      setProducts(productsData);
+      setProducts(productsData as PriceListProduct[]);
     } catch (error) {
       console.error('Failed to load data:', error);
     } finally {
@@ -67,10 +82,18 @@ const AdminPackages: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      if (editingPackage) {
-        await adminMockApi.packages.update(editingPackage.id, formData);
+      if (isUseMockApi()) {
+        if (editingPackage) {
+          await adminMockApi.packages.update(editingPackage.id, formData);
+        } else {
+          await adminMockApi.packages.create(formData);
+        }
       } else {
-        await adminMockApi.packages.create(formData);
+        if (editingPackage) {
+          await packageService.update(editingPackage.id, formData);
+        } else {
+          await packageService.create(formData);
+        }
       }
       setShowModal(false);
       loadData();
@@ -82,7 +105,11 @@ const AdminPackages: React.FC = () => {
   const handleDelete = async (id: number) => {
     if (confirm('Are you sure you want to delete this package?')) {
       try {
-        await adminMockApi.packages.delete(id);
+        if (isUseMockApi()) {
+          await adminMockApi.packages.delete(id);
+        } else {
+          await packageService.delete(id);
+        }
         loadData();
       } catch (error) {
         console.error('Failed to delete package:', error);
@@ -137,6 +164,24 @@ const AdminPackages: React.FC = () => {
       }
     });
     return total;
+  };
+
+  const calculateTotalCost = (items: typeof formData.items) => {
+    let total = 0;
+    items.forEach(item => {
+      const product = products.find(p => p.id === item.productId);
+      const size = product?.sizes.find(s => s.id === item.productSizeId);
+      if (product && size) {
+        total += size.cost * item.quantity;
+      }
+    });
+    return total;
+  };
+
+  const suggestPackagePrice = (items: typeof formData.items) => {
+    const retailValue = calculateRetailValue(items);
+    // Suggest 15% discount from retail
+    return Math.round(retailValue * 0.85 * 100) / 100;
   };
 
   if (loading) {
@@ -250,37 +295,48 @@ const AdminPackages: React.FC = () => {
                   <div style={{ border: '1px solid #ddd', borderRadius: '4px', padding: '0.5rem' }}>
                     {formData.items.map((item, index) => {
                       const selectedProduct = products.find(p => p.id === item.productId);
+                      const selectedSize = selectedProduct?.sizes.find(s => s.id === item.productSizeId);
+                      const itemCost = selectedSize ? selectedSize.cost * item.quantity : 0;
+                      const itemPrice = selectedSize ? selectedSize.price * item.quantity : 0;
+                      
                       return (
-                        <div key={index} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'center' }}>
-                          <select
-                            value={item.productId}
-                            onChange={(e) => updatePackageItem(index, 'productId', parseInt(e.target.value))}
-                            style={{ flex: 2 }}
-                          >
-                            {products.map(product => (
-                              <option key={product.id} value={product.id}>{product.name}</option>
-                            ))}
-                          </select>
-                          <select
-                            value={item.productSizeId}
-                            onChange={(e) => updatePackageItem(index, 'productSizeId', parseInt(e.target.value))}
-                            style={{ flex: 1 }}
-                          >
-                            {selectedProduct?.sizes.map(size => (
-                              <option key={size.id} value={size.id}>{size.name}</option>
-                            ))}
-                          </select>
-                          <input
-                            type="number"
-                            value={item.quantity}
-                            onChange={(e) => updatePackageItem(index, 'quantity', parseInt(e.target.value))}
-                            min="1"
-                            style={{ width: '70px' }}
-                            placeholder="Qty"
-                          />
-                          <button type="button" onClick={() => removePackageItem(index)} className="btn-icon" style={{ fontSize: '1.2rem' }}>
-                            🗑️
-                          </button>
+                        <div key={index} style={{ marginBottom: '1rem', padding: '0.75rem', background: '#f9f9f9', borderRadius: '4px' }}>
+                          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'center' }}>
+                            <select
+                              value={item.productId}
+                              onChange={(e) => updatePackageItem(index, 'productId', parseInt(e.target.value))}
+                              style={{ flex: 2 }}
+                            >
+                              {products.map(product => (
+                                <option key={product.id} value={product.id}>{product.name}</option>
+                              ))}
+                            </select>
+                            <select
+                              value={item.productSizeId}
+                              onChange={(e) => updatePackageItem(index, 'productSizeId', parseInt(e.target.value))}
+                              style={{ flex: 1 }}
+                            >
+                              {selectedProduct?.sizes.map(size => (
+                                <option key={size.id} value={size.id}>{size.name}</option>
+                              ))}
+                            </select>
+                            <input
+                              type="number"
+                              value={item.quantity}
+                              onChange={(e) => updatePackageItem(index, 'quantity', parseInt(e.target.value))}
+                              min="1"
+                              style={{ width: '70px' }}
+                              placeholder="Qty"
+                            />
+                            <button type="button" onClick={() => removePackageItem(index)} className="btn-icon" style={{ fontSize: '1.2rem' }}>
+                              🗑️
+                            </button>
+                          </div>
+                          <div style={{ fontSize: '0.85rem', color: '#666', display: 'flex', justifyContent: 'space-between', paddingLeft: '0.25rem' }}>
+                            <span>Cost: <strong style={{ color: '#d32f2f' }}>${itemCost.toFixed(2)}</strong></span>
+                            <span>Price: <strong style={{ color: '#4caf50' }}>${itemPrice.toFixed(2)}</strong></span>
+                            <span>Profit: <strong>${(itemPrice - itemCost).toFixed(2)}</strong></span>
+                          </div>
                         </div>
                       );
                     })}
@@ -289,6 +345,10 @@ const AdminPackages: React.FC = () => {
               </div>
 
               <div style={{ background: '#f5f5f5', padding: '1rem', borderRadius: '4px', marginBottom: '1rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                  <span>Total Cost:</span>
+                  <strong style={{ color: '#d32f2f' }}>${calculateTotalCost(formData.items).toFixed(2)}</strong>
+                </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                   <span>Retail Value:</span>
                   <strong>${calculateRetailValue(formData.items).toFixed(2)}</strong>
@@ -306,10 +366,30 @@ const AdminPackages: React.FC = () => {
                     </strong>
                   </div>
                 )}
+                {formData.packagePrice > 0 && calculateTotalCost(formData.items) > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.25rem' }}>
+                    <span>Your Profit:</span>
+                    <strong style={{ color: '#1976d2' }}>
+                      ${(formData.packagePrice - calculateTotalCost(formData.items)).toFixed(2)}
+                    </strong>
+                  </div>
+                )}
               </div>
 
               <div className="form-group">
-                <label>Package Price ($)</label>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <label style={{ margin: 0 }}>Package Price ($)</label>
+                  {formData.items.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, packagePrice: suggestPackagePrice(formData.items) })}
+                      className="btn btn-secondary"
+                      style={{ fontSize: '0.85rem', padding: '0.25rem 0.75rem' }}
+                    >
+                      💡 Suggest Price (15% off)
+                    </button>
+                  )}
+                </div>
                 <input
                   type="number"
                   value={formData.packagePrice}

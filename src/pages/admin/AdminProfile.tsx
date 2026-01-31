@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { ProfileConfig } from '../../types';
 import { adminMockApi } from '../../services/adminMockApi';
+import { profileService } from '../../services/profileService';
+import { isUseMockApi } from '../../utils/mockApiConfig';
 
 const AdminProfile: React.FC = () => {
   const [config, setConfig] = useState<ProfileConfig | null>(null);
@@ -13,6 +15,7 @@ const AdminProfile: React.FC = () => {
   const [logoUrl, setLogoUrl] = useState('');
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState('');
+  const [useMockApi, setUseMockApi] = useState(import.meta.env.VITE_USE_MOCK_API === 'true');
 
   useEffect(() => {
     loadConfig();
@@ -20,7 +23,9 @@ const AdminProfile: React.FC = () => {
 
   const loadConfig = async () => {
     try {
-      const data = await adminMockApi.profile.getConfig();
+      const data = isUseMockApi()
+        ? await adminMockApi.profile.getConfig()
+        : await profileService.getConfig();
       setConfig(data);
       setOwnerName(data.ownerName);
       setBusinessName(data.businessName);
@@ -40,15 +45,24 @@ const AdminProfile: React.FC = () => {
     try {
       // If a new logo was uploaded, use the preview URL
       const finalLogoUrl = logoFile ? logoPreview : logoUrl;
-      
-      const updatedConfig = await adminMockApi.profile.updateConfig({
-        ownerName,
-        businessName,
-        email,
-        receiveOrderNotifications,
-        logoUrl: finalLogoUrl,
-      });
+      const updatedConfig = isUseMockApi()
+        ? await adminMockApi.profile.updateConfig({
+            ownerName,
+            businessName,
+            email,
+            receiveOrderNotifications,
+            logoUrl: finalLogoUrl,
+          })
+        : await profileService.updateConfig({
+            ownerName,
+            businessName,
+            email,
+            receiveOrderNotifications,
+            logoUrl: finalLogoUrl,
+          });
       setConfig(updatedConfig);
+      // Update mock API setting in localStorage
+      localStorage.setItem('VITE_USE_MOCK_API', useMockApi ? 'true' : 'false');
       alert('Profile saved successfully!');
     } catch (error) {
       console.error('Failed to save profile:', error);
@@ -203,6 +217,22 @@ const AdminProfile: React.FC = () => {
           </p>
         </div>
 
+        <div className="form-group">
+          <label htmlFor="useMockApi">
+            <input
+              type="checkbox"
+              id="useMockApi"
+              checked={useMockApi}
+              onChange={(e) => setUseMockApi(e.target.checked)}
+              style={{ marginRight: '0.5rem' }}
+            />
+            Use Mock API (Development)
+          </label>
+          <p style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.25rem' }}>
+            When enabled, the app uses simulated data instead of connecting to the real backend API
+          </p>
+        </div>
+
         <div style={{
           padding: '1rem',
           backgroundColor: '#e3f2fd',
@@ -211,10 +241,9 @@ const AdminProfile: React.FC = () => {
           fontSize: '0.9rem',
           border: '1px solid #90caf9'
         }}>
-          <h4 style={{ marginTop: 0, color: '#1565c0' }}>ℹ️ Notification Settings</h4>
+          <h4 style={{ marginTop: 0, color: '#1565c0' }}>ℹ️ API Settings</h4>
           <p style={{ margin: '0.5rem 0 0 0', color: '#1565c0' }}>
-            When enabled, you'll receive an email at <strong>{email}</strong> whenever a customer places an order. 
-            This helps you stay informed and respond quickly to new business.
+            <strong>Mock API {useMockApi ? '✓ ENABLED' : '✗ DISABLED'}:</strong> {useMockApi ? 'Using simulated data' : 'Using real backend API'}
           </p>
         </div>
 
@@ -236,12 +265,13 @@ const AdminProfile: React.FC = () => {
             borderRadius: '8px',
             fontSize: '0.9rem'
           }}>
-            <h4 style={{ marginTop: 0 }}>Current Profile:</h4>
+            <h4 style={{ marginTop: 0 }}>Current Configuration:</h4>
             <ul style={{ marginBottom: 0, paddingLeft: '1.5rem' }}>
               <li>Owner: <strong>{ownerName}</strong></li>
               <li>Business: <strong>{businessName}</strong></li>
               <li>Email: <strong>{email}</strong></li>
               <li>Order Notifications: <strong>{receiveOrderNotifications ? 'Enabled ✓' : 'Disabled'}</strong></li>
+              <li>Mock API: <strong>{useMockApi ? 'Enabled ✓' : 'Disabled'}</strong></li>
             </ul>
           </div>
         )}

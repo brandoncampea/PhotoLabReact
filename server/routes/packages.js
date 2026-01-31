@@ -1,7 +1,40 @@
 import express from 'express';
 import { db } from '../database.js';
 import { adminRequired } from '../middleware/auth.js';
+
 const router = express.Router();
+
+// Compatibility: GET /api/packages?priceListId=1
+router.get('/', (req, res) => {
+  const priceListId = req.query.priceListId;
+  if (!priceListId) {
+    return res.status(400).json({ error: 'Missing priceListId parameter' });
+  }
+  try {
+    const packages = db.prepare(`
+      SELECT id, price_list_id as priceListId, name, description, 
+             package_price as packagePrice, is_active as isActive, created_at as createdDate
+      FROM packages
+      WHERE price_list_id = ?
+    `).all(priceListId);
+
+    // Get items for each package
+    const enriched = [];
+    for (const pkg of packages) {
+      const items = db.prepare(`
+        SELECT product_id as productId, product_size_id as productSizeId, quantity
+        FROM package_items
+        WHERE package_id = ?
+      `).all(pkg.id);
+      enriched.push({ ...pkg, items });
+    }
+
+    res.json(enriched);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 
 // Get all packages for a price list
 router.get('/pricelist/:priceListId', (req, res) => {

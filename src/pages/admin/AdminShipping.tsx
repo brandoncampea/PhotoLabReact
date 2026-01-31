@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { ShippingConfig } from '../../types';
 import { adminMockApi } from '../../services/adminMockApi';
+import { shippingService } from '../../services/shippingService';
+import { isUseMockApi } from '../../utils/mockApiConfig';
 
 const AdminShipping: React.FC = () => {
   const [config, setConfig] = useState<ShippingConfig | null>(null);
@@ -16,7 +18,9 @@ const AdminShipping: React.FC = () => {
 
   const loadConfig = async () => {
     try {
-      const data = await adminMockApi.shipping.getConfig();
+      const data = isUseMockApi()
+        ? await adminMockApi.shipping.getConfig()
+        : await shippingService.getConfig();
       setConfig(data);
       setBatchDeadline(data.batchDeadline.split('T')[0]);
       setDirectShippingCharge(data.directShippingCharge.toString());

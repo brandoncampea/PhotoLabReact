@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { PriceList, PriceListProduct, PriceListProductSize, Package } from '../../types';
-import { adminMockApi } from '../../services/adminMockApi';
+import api from '../../services/api';
 
 const AdminProducts: React.FC = () => {
   const [priceLists, setPriceLists] = useState<PriceList[]>([]);
@@ -51,7 +51,8 @@ const AdminProducts: React.FC = () => {
 
   const loadPriceLists = async () => {
     try {
-      const data = await adminMockApi.priceLists.getAll();
+      const response = await api.get('/price-lists');
+      const data = response.data;
       setPriceLists(data);
       if (data.length > 0) {
         setSelectedPriceList(data[0]);
@@ -66,8 +67,8 @@ const AdminProducts: React.FC = () => {
   const loadPackages = async (priceListId: number) => {
     setPackagesLoading(true);
     try {
-      const pkgData = await adminMockApi.packages.getAll(priceListId);
-      setPackages(pkgData);
+      const response = await api.get(`/packages?priceListId=${priceListId}`);
+      setPackages(response.data);
     } catch (error) {
       console.error('Failed to load packages:', error);
     } finally {
@@ -97,14 +98,14 @@ const AdminProducts: React.FC = () => {
 
     try {
       if (editingProduct) {
-        await adminMockApi.priceLists.updateProduct(selectedPriceList.id, editingProduct.id, productForm);
+        await api.put(`/price-lists/${selectedPriceList.id}/products/${editingProduct.id}`, productForm);
       } else {
-        await adminMockApi.priceLists.addProduct(selectedPriceList.id, productForm);
+        await api.post(`/price-lists/${selectedPriceList.id}/products`, productForm);
       }
       setShowProductModal(false);
       await loadPriceLists();
-      const updated = await adminMockApi.priceLists.getById(selectedPriceList.id);
-      setSelectedPriceList(updated);
+      const updated = await api.get(`/price-lists/${selectedPriceList.id}`);
+      setSelectedPriceList(updated.data);
     } catch (error) {
       console.error('Failed to save product:', error);
     }
@@ -114,9 +115,9 @@ const AdminProducts: React.FC = () => {
     if (!selectedPriceList || !confirm('Delete this product?')) return;
 
     try {
-      await adminMockApi.priceLists.removeProduct(selectedPriceList.id, productId);
-      const updated = await adminMockApi.priceLists.getById(selectedPriceList.id);
-      setSelectedPriceList(updated);
+      await api.delete(`/price-lists/${selectedPriceList.id}/products/${productId}`);
+      const updated = await api.get(`/price-lists/${selectedPriceList.id}`);
+      setSelectedPriceList(updated.data);
     } catch (error) {
       console.error('Failed to delete product:', error);
     }
@@ -142,13 +143,13 @@ const AdminProducts: React.FC = () => {
 
     try {
       if (editingSize) {
-        await adminMockApi.priceLists.updateSize(selectedPriceList.id, editingProduct.id, editingSize.size.id, sizeForm);
+        await api.put(`/price-lists/${selectedPriceList.id}/products/${editingProduct.id}/sizes/${editingSize.size.id}`, sizeForm);
       } else {
-        await adminMockApi.priceLists.addSize(selectedPriceList.id, editingProduct.id, sizeForm);
+        await api.post(`/price-lists/${selectedPriceList.id}/products/${editingProduct.id}/sizes`, sizeForm);
       }
       setShowSizeModal(false);
-      const updated = await adminMockApi.priceLists.getById(selectedPriceList.id);
-      setSelectedPriceList(updated);
+      const updated = await api.get(`/price-lists/${selectedPriceList.id}`);
+      setSelectedPriceList(updated.data);
     } catch (error) {
       console.error('Failed to save size:', error);
     }
@@ -158,9 +159,9 @@ const AdminProducts: React.FC = () => {
     if (!selectedPriceList || !confirm('Delete this size?')) return;
 
     try {
-      await adminMockApi.priceLists.removeSize(selectedPriceList.id, productId, sizeId);
-      const updated = await adminMockApi.priceLists.getById(selectedPriceList.id);
-      setSelectedPriceList(updated);
+      await api.delete(`/price-lists/${selectedPriceList.id}/products/${productId}/sizes/${sizeId}`);
+      const updated = await api.get(`/price-lists/${selectedPriceList.id}`);
+      setSelectedPriceList(updated.data);
     } catch (error) {
       console.error('Failed to delete size:', error);
     }
@@ -195,7 +196,7 @@ const AdminProducts: React.FC = () => {
     if (!selectedPriceList) return;
     if (confirm('Delete this package?')) {
       try {
-        await adminMockApi.packages.delete(id);
+        await api.delete(`/packages/${id}`);
         loadPackages(selectedPriceList.id);
       } catch (error) {
         console.error('Failed to delete package:', error);
@@ -240,15 +241,9 @@ const AdminProducts: React.FC = () => {
     if (!selectedPriceList) return;
     try {
       if (editingPackage) {
-        await adminMockApi.packages.update(editingPackage.id, {
-          ...packageForm,
-          priceListId: selectedPriceList.id,
-        });
+        await api.put(`/packages/${editingPackage.id}`, { ...packageForm, priceListId: selectedPriceList.id });
       } else {
-        await adminMockApi.packages.create({
-          ...packageForm,
-          priceListId: selectedPriceList.id,
-        });
+        await api.post(`/packages`, { ...packageForm, priceListId: selectedPriceList.id });
       }
       setShowPackageModal(false);
       loadPackages(selectedPriceList.id);
@@ -315,7 +310,7 @@ const AdminProducts: React.FC = () => {
         <div>
           <h2 style={{ marginBottom: '1.5rem' }}>{selectedPriceList.name} - Products</h2>
           
-          {selectedPriceList.products.length === 0 ? (
+          {(selectedPriceList.products?.length ?? 0) === 0 ? (
             <div className="empty-state">
               <p>No products in this price list</p>
             </div>

@@ -104,6 +104,14 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           >
             🎟️ Discount Codes
           </Link>
+
+          {/* Photo Lab Section */}
+          <Link
+            to="/admin/labs"
+            className={`admin-nav-link ${isActive('/admin/labs') ? 'active' : ''}`}
+          >
+            🖼️ Lab Configuration
+          </Link>
         </nav>
         <div className="admin-sidebar-footer">
           <Link to="/" className="admin-nav-link">🏠 Customer Site</Link>

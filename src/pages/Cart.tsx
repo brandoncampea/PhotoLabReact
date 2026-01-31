@@ -9,6 +9,7 @@ import { stripeService } from '../services/stripeService';
 import { productService } from '../services/productService';
 import { downloadService } from '../services/downloadService';
 import { discountCodeService } from '../services/discountCodeService';
+import { taxService } from '../services/taxService';
 import { ShippingConfig, StripeConfig, Product, DiscountCode, ShippingAddress, CartItem as CartItemType } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -170,11 +171,22 @@ const Cart: React.FC = () => {
     }
   };
 
+  const getTaxAmount = () => {
+    const subtotal = getTotalPrice();
+    const shipping = getShippingCost();
+    const discount = getDiscountAmount();
+    const subtotalAfterDiscount = subtotal + shipping - discount;
+    
+    const { taxAmount } = taxService.calculateTax(subtotalAfterDiscount, shippingAddress);
+    return taxAmount;
+  };
+
   const getFinalTotal = () => {
     const subtotal = getTotalPrice();
     const shipping = getShippingCost();
     const discount = getDiscountAmount();
-    return Math.max(0, subtotal + shipping - discount);
+    const tax = getTaxAmount();
+    return Math.max(0, subtotal + shipping - discount + tax);
   };
 
   const getDaysUntilDeadline = () => {
@@ -609,6 +621,13 @@ const Cart: React.FC = () => {
             <div className="summary-row" style={{ color: '#4caf50' }}>
               <span>Discount ({appliedDiscount.code})</span>
               <span>-${getDiscountAmount().toFixed(2)}</span>
+            </div>
+          )}
+          
+          {shippingAddress.state && (
+            <div className="summary-row">
+              <span>Tax ({shippingAddress.state.toUpperCase()})</span>
+              <span>${getTaxAmount().toFixed(2)}</span>
             </div>
           )}
           

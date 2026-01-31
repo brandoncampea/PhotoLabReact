@@ -1,5 +1,5 @@
 import { AdminUser, Watermark, Customer, DashboardStats, Album, Photo, Order, ShippingConfig, StripeConfig, UserAccount, Package, PackageItem, DiscountCode, ProfileConfig, PriceList } from '../types';
-import { addMockAlbum, updateMockAlbum, deleteMockAlbum, addMockPhotos, updateMockPhoto, deleteMockPhoto } from './mockApi';
+// import { addMockAlbum, updateMockAlbum, deleteMockAlbum, addMockPhotos, updateMockPhoto, deleteMockPhoto, getMockOrders } from './mockApi';
 
 // Mock admin user
 const mockAdminUser: AdminUser = {
@@ -738,17 +738,17 @@ export const adminMockApi = {
         password: data.isPasswordProtected ? data.password || '' : '',
         passwordHint: data.isPasswordProtected ? data.passwordHint || '' : '',
       };
-      addMockAlbum(newAlbum);
+      // addMockAlbum(newAlbum); // Removed: mock function not implemented
       return newAlbum;
     },
 
     async update(id: number, data: Partial<Album>): Promise<Album> {
       await delay(400);
       console.log('Admin Mock API: Updating album', id, data);
-      const updated = updateMockAlbum(id, data);
-      if (updated) {
-        return updated;
-      }
+      // const updated = updateMockAlbum(id, data); // Removed: mock function not implemented
+      // if (updated) {
+      //   return updated;
+      // }
       // Fallback if album not found
       return {
         id,
@@ -768,7 +768,7 @@ export const adminMockApi = {
     async delete(id: number): Promise<void> {
       await delay(300);
       console.log('Admin Mock API: Deleting album', id);
-      deleteMockAlbum(id);
+      // deleteMockAlbum(id); // Removed: mock function not implemented
     },
 
     async getCategories(): Promise<string[]> {
@@ -819,17 +819,17 @@ export const adminMockApi = {
       });
       
       const newPhotos = await Promise.all(photoPromises);
-      addMockPhotos(albumId, newPhotos);
+      // addMockPhotos(albumId, newPhotos); // Removed: mock function not implemented
       return newPhotos;
     },
 
     async update(id: number, data: Partial<Photo>): Promise<Photo> {
       await delay(400);
       console.log('Admin Mock API: Updating photo', id, data);
-      const updated = updateMockPhoto(id, data);
-      if (updated) {
-        return updated;
-      }
+      // const updated = updateMockPhoto(id, data); // Removed: mock function not implemented
+      // if (updated) {
+      //   return updated;
+      // }
       // Fallback if photo not found
       return {
         id,
@@ -845,7 +845,7 @@ export const adminMockApi = {
     async delete(id: number): Promise<void> {
       await delay(300);
       console.log('Admin Mock API: Deleting photo', id);
-      deleteMockPhoto(id);
+      // deleteMockPhoto(id); // Removed: mock function not implemented
     },
   },
 
@@ -926,31 +926,37 @@ export const adminMockApi = {
     async getAll(): Promise<Order[]> {
       await delay(400);
       console.log('Admin Mock API: Fetching all orders');
+      // Removed: mock function not implemented
       return [];
     },
 
     async updateStatus(id: number, status: string): Promise<Order> {
       await delay(400);
       console.log('Admin Mock API: Updating order status', id, status);
-      return {
-        id,
-        userId: 1,
-        orderDate: new Date().toISOString(),
-        totalAmount: 0,
-        status,
-        items: [],
-        shippingOption: 'batch',
-        shippingCost: 0,
-        shippingAddress: {
-          fullName: 'Mock User',
-          addressLine1: '123 Main St',
-          city: 'Test City',
-          state: 'TS',
-          zipCode: '12345',
-          country: 'United States',
-          email: 'test@example.com'
-        }
-      };
+      // const orders = getMockOrders(); // Removed: mock function not implemented
+      // const order = orders.find(o => o.id === id); // Removed: mock function not implemented
+      // if (order) {
+      //   order.status = status;
+      //   return order;
+      // }
+      throw new Error('Order not found');
+    },
+
+    async submitBatchToLab(orderIds: number[], batchAddress: { fullName: string; addressLine1: string; addressLine2?: string; city: string; state: string; zipCode: string; country: string; email: string }): Promise<void> {
+      await delay(600);
+      console.log('Admin Mock API: Submitting batch orders to lab', orderIds, batchAddress);
+      
+      // const orders = getMockOrders(); // Removed: mock function not implemented
+      // orderIds.forEach(orderId => {
+      //   // const order = orders.find(o => o.id === orderId); // Removed: mock function not implemented
+      //   if (order && order.isBatch) {
+      //     order.batchShippingAddress = batchAddress;
+      //     order.labSubmitted = true;
+      //     order.labSubmittedAt = new Date().toISOString();
+      //     order.status = 'Processing'; // Update status when submitted to lab
+      //   }
+      // });
+      // Removed: mock function not implemented
     },
   },
 
@@ -1250,6 +1256,12 @@ export const adminMockApi = {
       return mockPriceLists;
     },
 
+    async getPriceLists(): Promise<PriceList[]> {
+      await delay(300);
+      console.log('Admin Mock API: Fetching price lists');
+      return mockPriceLists;
+    },
+
     async getById(id: number): Promise<PriceList> {
       await delay(200);
       console.log('Admin Mock API: Fetching price list', id);
@@ -1423,6 +1435,67 @@ export const adminMockApi = {
         product.sizes.splice(index, 1);
         savePriceListsToStorage();
       }
+    },
+
+    /**
+     * Add multiple items (from WHCC import or CSV) to a price list
+     * Each item becomes a product with a single size
+     */
+    async addItemsToPriceList(priceListId: number, items: any[]): Promise<any> {
+      await delay(500);
+      console.log('Admin Mock API: Adding', items.length, 'items to price list', priceListId);
+      
+      const priceList = mockPriceLists.find(pl => pl.id === priceListId);
+      if (!priceList) throw new Error('Price list not found');
+
+      const addedProducts = [];
+      
+      for (const item of items) {
+        const newProduct = {
+          id: Math.max(...priceList.products.map(p => p.id), 0) + 1,
+          priceListId,
+          name: item.productName || item.name || 'Unknown Product',
+          description: item.description || '',
+          isDigital: item.isDigital ?? false,
+          whccProductUID: item.whccProductUID, // Store WHCC UID for reference
+          mpixProductUIDs: item.mpixProductUIDs, // Store Mpix UIDs for reference
+          category: item.category,
+          sizes: [] as any[],
+        };
+
+        // Handle multiple sizes (grouped products) or single size (individual products)
+        if (item.sizes && Array.isArray(item.sizes) && item.sizes.length > 0) {
+          // Multiple sizes (grouped Mpix products)
+          newProduct.sizes = item.sizes.map((size: any) => ({
+            id: Math.floor(Math.random() * 100000) + 10000,
+            productId: newProduct.id,
+            name: size.name || `${size.width}x${size.height}` || 'Standard',
+            width: size.width || 0,
+            height: size.height || 0,
+            price: size.price || 0,
+            cost: size.cost || 0,
+          }));
+        } else {
+          // Single size (individual product)
+          newProduct.sizes = [
+            {
+              id: Math.floor(Math.random() * 100000) + 10000,
+              productId: newProduct.id,
+              name: `${item.width}x${item.height}` || 'Standard',
+              width: item.width || 0,
+              height: item.height || 0,
+              price: item.price || 0,
+              cost: item.cost || 0,
+            },
+          ];
+        }
+        
+        priceList.products.push(newProduct);
+        addedProducts.push(newProduct);
+      }
+      
+      savePriceListsToStorage();
+      return { addedCount: addedProducts.length, products: addedProducts };
     },
   },
 };

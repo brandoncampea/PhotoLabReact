@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { StripeConfig } from '../../types';
 import { adminMockApi } from '../../services/adminMockApi';
+import { isUseMockApi } from '../../utils/mockApiConfig';
+import { stripeService } from '../../services/stripeService';
 
 const AdminPayments: React.FC = () => {
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'stripe' | null>('stripe');
   const [config, setConfig] = useState<StripeConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
   const [publishableKey, setPublishableKey] = useState('');
   const [secretKey, setSecretKey] = useState('');
   const [webhookSecret, setWebhookSecret] = useState('');
@@ -20,10 +23,12 @@ const AdminPayments: React.FC = () => {
 
   const loadConfig = async () => {
     try {
-      const data = await adminMockApi.stripe.getConfig();
+      const data = isUseMockApi()
+        ? await adminMockApi.stripe.getConfig()
+        : await stripeService.getConfig();
       setConfig(data);
       setPublishableKey(data.publishableKey);
-      setSecretKey(data.secretKey);
+      setSecretKey(data.secretKey || '');
       setWebhookSecret(data.webhookSecret || '');
       setIsLiveMode(data.isLiveMode);
       setIsActive(data.isActive);
@@ -55,7 +60,32 @@ const AdminPayments: React.FC = () => {
   };
 
   const handleTestConnection = async () => {
-    alert('Testing Stripe connection...\n\nIn a real implementation, this would verify the API keys with Stripe.');
+    if (!secretKey || !secretKey.trim()) {
+      alert('Please enter a secret key first');
+      return;
+    }
+
+    setTesting(true);
+    try {
+      const result = await stripeService.testConnection(secretKey);
+      
+      if (result.success) {
+        const liveStatus = result.isLive ? '🔴 LIVE MODE' : '🟢 TEST MODE';
+        alert(
+          `✅ ${result.message}\n\n` +
+          `Mode: ${liveStatus}\n` +
+          (result.accountEmail ? `Email: ${result.accountEmail}\n` : '') +
+          `Account ID: ${result.accountId}`
+        );
+      } else {
+        alert(`❌ Connection failed:\n\n${result.message}`);
+      }
+    } catch (error) {
+      console.error('Test connection error:', error);
+      alert('Failed to test connection. Please check your API key.');
+    } finally {
+      setTesting(false);
+    }
   };
 
   if (loading) {
@@ -263,9 +293,9 @@ const AdminPayments: React.FC = () => {
           <button 
             onClick={handleTestConnection}
             className="btn btn-secondary"
-            disabled={!isActive}
+            disabled={testing || !isActive || !String(secretKey).trim()}
           >
-            Test Connection
+            {testing ? '⏳ Testing...' : '🔗 Test Connection'}
           </button>
         </div>
 
