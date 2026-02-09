@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { mpixService } from '../services/mpixService';
-import { adminMockApi } from '../services/adminMockApi';
+import { priceListAdminService } from '../services/priceListAdminService';
 import { PriceList } from '../types';
 
 interface MpixProduct {
@@ -41,7 +41,7 @@ const AdminMpixImport: React.FC<{ onClose: () => void; onImportComplete: () => v
     setLoading(true);
     setError(null);
     try {
-      const lists = await adminMockApi.priceLists.getAll();
+      const lists = await priceListAdminService.getAll();
       setPriceLists(lists);
     } catch (err) {
       setError('Failed to load price lists');
@@ -136,7 +136,7 @@ const AdminMpixImport: React.FC<{ onClose: () => void; onImportComplete: () => v
       );
 
       // Get existing price list to check for duplicates
-      const priceList = await adminMockApi.priceLists.getById(selectedPriceListId);
+      const priceList = await priceListAdminService.getById(selectedPriceListId);
       const existingProductNames = new Set(priceList?.products?.map(p => p.name.toLowerCase()) || []);
 
       // Group similar products by their base name (e.g., "Print", "Canvas", "Metal Print")
@@ -216,7 +216,8 @@ const AdminMpixImport: React.FC<{ onClose: () => void; onImportComplete: () => v
       }
 
       // Add to price list
-      await adminMockApi.priceLists.addItemsToPriceList(selectedPriceListId, itemsToAdd);
+      await priceListAdminService.addItemsToPriceList(selectedPriceListId!, itemsToAdd);
+  // TODO: Replace with real API call to add items to price list when implemented
 
       // Show confirmation message
       let confirmMsg = `✓ Successfully imported ${itemsToAdd.length} product group(s)`;
@@ -286,7 +287,7 @@ const AdminMpixImport: React.FC<{ onClose: () => void; onImportComplete: () => v
                   >
                     <option value="">-- Select a price list --</option>
                     {priceLists.map((list) => (
-                      <option key={list.id} value={list.id}>
+                      <option key={`pricelist-${list.id}`} value={list.id}>
                         {list.name} ({list.description})
                       </option>
                     ))}
@@ -399,9 +400,11 @@ const AdminMpixImport: React.FC<{ onClose: () => void; onImportComplete: () => v
                 const isSelected = selectedProducts.has(product.productUID);
                 const mapping = selectedProducts.get(product.productUID);
 
+                // Use both productUID and productId, fallback to index for uniqueness
+                const uniqueKey = `mpix-product-${product.productUID}-${product.productId}-${product.name}`;
                 return (
                   <div
-                    key={product.productUID}
+                    key={uniqueKey}
                     style={{
                       padding: '15px',
                       marginBottom: '10px',
@@ -563,7 +566,7 @@ const AdminMpixImport: React.FC<{ onClose: () => void; onImportComplete: () => v
                   const margin = ((retailPrice - cost) / cost * 100).toFixed(0);
                   
                   return (
-                    <li key={mapping.productUID} style={{ marginBottom: '8px', fontSize: '12px' }}>
+                    <li key={`mpix-summary-${mapping.productUID}`} style={{ marginBottom: '8px', fontSize: '12px' }}>
                       <strong>{product?.name}</strong>
                       {' — Cost: '}
                       <span style={{ color: '#d32f2f' }}>${cost.toFixed(2)}</span>

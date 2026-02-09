@@ -12,6 +12,19 @@ export const stripeService = {
     return response.data;
   },
 
+  async saveConfig(config: Partial<StripeConfig>): Promise<StripeConfig> {
+    // Save Stripe config to backend (use PUT to match backend)
+    const response = await api.put<StripeConfig>('/stripe/config', config);
+    return response.data;
+  },
+  async getConfig(): Promise<StripeConfig> {
+    if (isUseMockApi()) {
+      return adminMockApi.stripe.getConfig();
+    }
+    const response = await api.get<StripeConfig>('/stripe/config');
+    return response.data;
+  },
+
   async testConnection(secretKey: string): Promise<{ success: boolean; message: string; accountId?: string; accountEmail?: string; isLive?: boolean }> {
     try {
       const response = await api.post('/stripe/test-connection', { secretKey });

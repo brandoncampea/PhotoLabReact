@@ -96,7 +96,7 @@ class MpixService {
       }
 
       // Basic auth header (typical for Mpix API)
-      const auth = Buffer.from(`${config.apiKey}:${config.apiSecret}`).toString('base64');
+      const auth = btoa(`${config.apiKey}:${config.apiSecret}`);
 
       const response = await api.get(`${this.getApiUrl()}/Account`, {
         headers: {
@@ -180,7 +180,7 @@ class MpixService {
         };
       }
 
-      const auth = Buffer.from(`${config.apiKey}:${config.apiSecret}`).toString('base64');
+      const auth = btoa(`${config.apiKey}:${config.apiSecret}`);
 
       const response = await api.post(`${this.getApiUrl()}/Order`, orderData, {
         headers: {
@@ -245,22 +245,13 @@ class MpixService {
    */
   async getProductCatalog(): Promise<any> {
     try {
-      const config = this.getConfig();
-      const auth = Buffer.from(`${config.apiKey}:${config.apiSecret}`).toString('base64');
-
-      const response = await api.get(`${this.getApiUrl()}/Products`, {
-        headers: {
-          Authorization: `Basic ${auth}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
+      // Fetch from backend proxy to avoid CORS
+      const response = await api.get('/mpix/products');
       if (response.data && response.data.Products) {
         return {
           products: response.data.Products,
         };
       }
-
       return this.getDefaultProductCatalog();
     } catch (error) {
       console.error('Failed to fetch Mpix product catalog:', error);

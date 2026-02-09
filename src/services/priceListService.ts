@@ -81,7 +81,7 @@ export const parseCSVData = (csvText: string, mapping: ColumnMapping): ImportedP
   }
 
   const data: ImportedPriceData[] = [];
-  const seen = new Set<string>(); // Track (product, size) combinations
+  // Duplicate detection removed: allow all rows
 
   // Parse data rows (skip header)
   for (let i = 1; i < lines.length; i++) {
@@ -92,14 +92,7 @@ export const parseCSVData = (csvText: string, mapping: ColumnMapping): ImportedP
     
     const productName = cells[productIdx] || 'Unknown';
     const sizeName = sizeIdx >= 0 ? cells[sizeIdx] : 'Default';
-    const duplicateKey = `${productName.toLowerCase()}|${sizeName.toLowerCase()}`;
-
-    // Skip if we've already seen this product/size combination
-    if (seen.has(duplicateKey)) {
-      console.warn(`Row ${i + 1}: Duplicate "${productName}" / "${sizeName}", skipping`);
-      continue;
-    }
-    seen.add(duplicateKey);
+    // Duplicate detection removed
     
     const item: ImportedPriceData = {
       productName,

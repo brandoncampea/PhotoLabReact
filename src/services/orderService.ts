@@ -10,27 +10,58 @@ export const orderService = {
     shippingAddress: ShippingAddress,
     shippingOption: 'batch' | 'direct' | 'none',
     shippingCost: number,
-    discountCode?: string
+    discountCode?: string,
+    studioFeeType?: string,
+    studioFeeValue?: number
   ): Promise<Order> {
     if (isUseMockApi()) {
       // return mockApi.orders.createOrder(items, shippingAddress, shippingOption, shippingCost, discountCode); // Removed: mock function not implemented
     }
     
-    // Calculate subtotal, tax, and total
-    const itemsTotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    // Calculate subtotal with studio fees applied to each item
+    let itemsTotal = items.reduce((sum, item) => {
+      let itemPrice = item.price * item.quantity;
+      
+      // Apply studio fees to each item
+      if (studioFeeType && studioFeeValue !== undefined) {
+        if (studioFeeType === 'percentage') {
+          const feeAmount = (itemPrice * studioFeeValue) / 100;
+          itemPrice += feeAmount;
+        } else if (studioFeeType === 'fixed') {
+          itemPrice += studioFeeValue * item.quantity; // Add fixed fee per item
+        }
+      }
+      
+      return sum + itemPrice;
+    }, 0);
+    
     const subtotal = itemsTotal + shippingCost;
     const { taxAmount, taxRate, total } = taxService.calculateTotal(subtotal, shippingAddress);
     
     const response = await api.post<Order>('/orders', {
-      items: items.map(item => ({
-        photoId: item.photoId,
-        photoIds: item.photoIds,
-        quantity: item.quantity,
-        cropData: item.cropData,
-        productId: item.productId,
-        productSizeId: item.productSizeId,
-        price: item.price,
-      })),
+      items: items.map(item => {
+        let price = item.price;
+        
+        // Apply studio fees
+        if (studioFeeType && studioFeeValue !== undefined) {
+          if (studioFeeType === 'percentage') {
+            const feeAmount = (price * studioFeeValue) / 100;
+            price += feeAmount;
+          } else if (studioFeeType === 'fixed') {
+            price += studioFeeValue;
+          }
+        }
+        
+        return {
+          photoId: item.photoId,
+          photoIds: item.photoIds,
+          quantity: item.quantity,
+          cropData: item.cropData,
+          productId: item.productId,
+          productSizeId: item.productSizeId,
+          price: price,
+        };
+      }),
       subtotal,
       taxAmount,
       taxRate,
@@ -50,6 +81,11 @@ export const orderService = {
       // return mockApi.orders.getOrders(); // Removed: mock function not implemented
     }
     const response = await api.get<Order[]>('/orders');
+    return response.data;
+  },
+
+  async getAdminOrders(): Promise<Order[]> {
+    const response = await api.get<Order[]>('/orders/admin/all-orders');
     return response.data;
   },
 

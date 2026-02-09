@@ -4,7 +4,7 @@ import { adminRequired } from '../middleware/auth.js';
 const router = express.Router();
 
 // Get all price lists
-router.get('/', (req, res) => {
+router.get('/', adminRequired, (req, res) => {
   try {
     const priceLists = db.prepare(`
       SELECT id, name, description, is_default as isDefault, created_at as createdDate
@@ -18,7 +18,7 @@ router.get('/', (req, res) => {
 });
 
 // Get price list by ID with all products and packages
-router.get('/:id', (req, res) => {
+router.get('/:id', adminRequired, (req, res) => {
   try {
     const priceList = db.prepare(`
       SELECT id, name, description, is_default as isDefault, created_at as createdDate
@@ -45,6 +45,20 @@ router.get('/:id', (req, res) => {
       WHERE price_list_id = ?
     `).all(req.params.id);
 
+    // Attach sizes to each product, mapping sizeName -> name
+    const productsWithSizes = products.map(product => ({
+      ...product,
+      sizes: productSizes
+        .filter(size => size.productId === product.id)
+        .map(size => ({
+          ...size,
+          name: size.sizeName,
+          // Remove sizeName from the returned object
+          // (delete after spreading, so 'name' takes precedence)
+          ...(() => { const s = { ...size }; delete s.sizeName; return s; })()
+        }))
+    }));
+
     // Get packages for this price list
     const packages = db.prepare(`
       SELECT id, name, description, package_price as packagePrice, is_active as isActive, created_at as createdDate
@@ -58,8 +72,8 @@ router.get('/:id', (req, res) => {
       FROM package_items
     `).all();
 
-    priceList.products = products;
-    priceList.sizes = productSizes;
+    priceList.products = productsWithSizes;
+    // priceList.sizes = productSizes; // No longer needed by frontend
     priceList.packages = packages.map(pkg => ({
       ...pkg,
       items: packageItems.filter(item => item.packageId === pkg.id)

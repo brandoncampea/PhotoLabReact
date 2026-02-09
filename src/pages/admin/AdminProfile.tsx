@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { ProfileConfig } from '../../types';
-import { adminMockApi } from '../../services/adminMockApi';
 import { profileService } from '../../services/profileService';
-import { isUseMockApi } from '../../utils/mockApiConfig';
+import { useAuth } from '../../contexts/AuthContext';
 
 const AdminProfile: React.FC = () => {
+  const { user } = useAuth();
   const [config, setConfig] = useState<ProfileConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -15,17 +15,18 @@ const AdminProfile: React.FC = () => {
   const [logoUrl, setLogoUrl] = useState('');
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState('');
-  const [useMockApi, setUseMockApi] = useState(import.meta.env.VITE_USE_MOCK_API === 'true');
+  const [subscription, setSubscription] = useState<any>(null);
 
   useEffect(() => {
     loadConfig();
-  }, []);
+    if (user?.studioId) {
+      fetchSubscriptionInfo();
+    }
+  }, [user]);
 
   const loadConfig = async () => {
     try {
-      const data = isUseMockApi()
-        ? await adminMockApi.profile.getConfig()
-        : await profileService.getConfig();
+      const data = await profileService.getConfig();
       setConfig(data);
       setOwnerName(data.ownerName);
       setBusinessName(data.businessName);
@@ -40,20 +41,59 @@ const AdminProfile: React.FC = () => {
     }
   };
 
+  const fetchSubscriptionInfo = async () => {
+    try {
+      const token = localStorage.getItem('authToken');
+      const response = await fetch(
+        `http://localhost:3001/api/studios/${user?.studioId}/subscription`,
+        { headers: { 'Authorization': `Bearer ${token}` } }
+      );
+      if (response.ok) {
+        const data = await response.json();
+        setSubscription(data);
+      }
+    } catch (err: any) {
+      console.error('Failed to load subscription:', err);
+    }
+  };
+
+  const handleCancelSubscription = async () => {
+    if (!confirm('Cancel subscription? You keep access until the renewal date.')) return;
+    try {
+      const token = localStorage.getItem('authToken');
+      const response = await fetch(
+        `http://localhost:3001/api/studios/${user?.studioId}/subscription/cancel`,
+        { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } }
+      );
+      if (response.ok) {
+        await fetchSubscriptionInfo();
+      }
+    } catch (err: any) {
+      alert('Failed to cancel subscription');
+    }
+  };
+
+  const handleReactivateSubscription = async () => {
+    try {
+      const token = localStorage.getItem('authToken');
+      const response = await fetch(
+        `http://localhost:3001/api/studios/${user?.studioId}/subscription/reactivate`,
+        { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } }
+      );
+      if (response.ok) {
+        await fetchSubscriptionInfo();
+      }
+    } catch (err: any) {
+      alert('Failed to reactivate subscription');
+    }
+  };
+
   const handleSave = async () => {
     setSaving(true);
     try {
       // If a new logo was uploaded, use the preview URL
       const finalLogoUrl = logoFile ? logoPreview : logoUrl;
-      const updatedConfig = isUseMockApi()
-        ? await adminMockApi.profile.updateConfig({
-            ownerName,
-            businessName,
-            email,
-            receiveOrderNotifications,
-            logoUrl: finalLogoUrl,
-          })
-        : await profileService.updateConfig({
+      const updatedConfig = await profileService.updateConfig({
             ownerName,
             businessName,
             email,
@@ -61,8 +101,6 @@ const AdminProfile: React.FC = () => {
             logoUrl: finalLogoUrl,
           });
       setConfig(updatedConfig);
-      // Update mock API setting in localStorage
-      localStorage.setItem('VITE_USE_MOCK_API', useMockApi ? 'true' : 'false');
       alert('Profile saved successfully!');
     } catch (error) {
       console.error('Failed to save profile:', error);
@@ -217,36 +255,6 @@ const AdminProfile: React.FC = () => {
           </p>
         </div>
 
-        <div className="form-group">
-          <label htmlFor="useMockApi">
-            <input
-              type="checkbox"
-              id="useMockApi"
-              checked={useMockApi}
-              onChange={(e) => setUseMockApi(e.target.checked)}
-              style={{ marginRight: '0.5rem' }}
-            />
-            Use Mock API (Development)
-          </label>
-          <p style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.25rem' }}>
-            When enabled, the app uses simulated data instead of connecting to the real backend API
-          </p>
-        </div>
-
-        <div style={{
-          padding: '1rem',
-          backgroundColor: '#e3f2fd',
-          borderRadius: '8px',
-          marginBottom: '2rem',
-          fontSize: '0.9rem',
-          border: '1px solid #90caf9'
-        }}>
-          <h4 style={{ marginTop: 0, color: '#1565c0' }}>ℹ️ API Settings</h4>
-          <p style={{ margin: '0.5rem 0 0 0', color: '#1565c0' }}>
-            <strong>Mock API {useMockApi ? '✓ ENABLED' : '✗ DISABLED'}:</strong> {useMockApi ? 'Using simulated data' : 'Using real backend API'}
-          </p>
-        </div>
-
         <div className="form-actions">
           <button 
             onClick={handleSave} 
@@ -271,11 +279,139 @@ const AdminProfile: React.FC = () => {
               <li>Business: <strong>{businessName}</strong></li>
               <li>Email: <strong>{email}</strong></li>
               <li>Order Notifications: <strong>{receiveOrderNotifications ? 'Enabled ✓' : 'Disabled'}</strong></li>
-              <li>Mock API: <strong>{useMockApi ? 'Enabled ✓' : 'Disabled'}</strong></li>
             </ul>
           </div>
         )}
       </div>
+
+      {/* Subscription Section */}
+      {user?.studioId && subscription && (
+        <div style={{ marginTop: '2rem' }}>
+          <div className="page-header">
+            <h2>📋 Subscription Management</h2>
+            <p style={{ fontSize: '0.9rem', color: '#666', marginTop: '0.5rem' }}>
+              View and manage your subscription plan
+            </p>
+          </div>
+
+          {subscription.studio.cancellation_requested && (
+            <div style={{
+              backgroundColor: '#fff3cd',
+              border: '2px solid #ff9800',
+              borderRadius: '8px',
+              padding: '20px',
+              marginBottom: '20px'
+            }}>
+              <h3 style={{ color: '#e65100', margin: '0 0 10px 0' }}>
+                ⚠️ Subscription Cancellation Scheduled
+              </h3>
+              <p style={{ color: '#856404', margin: '0 0 15px 0' }}>
+                Your subscription will end on {subscription.studio.subscription_end 
+                  ? new Date(subscription.studio.subscription_end).toLocaleDateString()
+                  : 'the renewal date'}. 
+                You will continue to have full access until then.
+              </p>
+              {user?.role === 'studio_admin' && (
+                <button
+                  onClick={handleReactivateSubscription}
+                  style={{
+                    backgroundColor: '#4caf50',
+                    color: 'white',
+                    border: 'none',
+                    padding: '10px 25px',
+                    fontSize: '14px',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontWeight: 'bold'
+                  }}
+                >
+                  ✓ Reactivate Subscription
+                </button>
+              )}
+            </div>
+          )}
+
+          <div style={{
+            backgroundColor: '#f5f5f5',
+            padding: '20px',
+            borderRadius: '8px',
+            border: '2px solid #ddd'
+          }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', marginBottom: '20px' }}>
+              <div>
+                <h4>Current Plan</h4>
+                <p style={{ fontSize: '24px', fontWeight: 'bold', color: '#007bff' }}>
+                  {subscription.plan?.name || 'No Plan'}
+                </p>
+                {subscription.studio.is_free_subscription ? (
+                  <p style={{ color: '#4caf50', fontWeight: 'bold' }}>FREE (No Billing)</p>
+                ) : (
+                  <p style={{ color: '#666' }}>
+                    ${subscription.studio.billing_cycle === 'yearly' 
+                      ? subscription.plan?.yearlyPrice 
+                      : subscription.plan?.monthlyPrice}
+                    /{subscription.studio.billing_cycle === 'yearly' ? 'year' : 'month'}
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <h4>Status</h4>
+                <p style={{
+                  fontSize: '18px',
+                  fontWeight: 'bold',
+                  color: subscription.studio.cancellation_requested 
+                    ? '#ff9800' 
+                    : subscription.studio.subscription_status === 'active' ? '#4caf50' : '#f44336'
+                }}>
+                  {subscription.studio.cancellation_requested 
+                    ? `Active (Cancels ${subscription.studio.subscription_end 
+                        ? new Date(subscription.studio.subscription_end).toLocaleDateString()
+                        : 'at renewal'})`
+                    : subscription.studio.subscription_status}
+                </p>
+              </div>
+
+              <div>
+                <h4>Renewal Date</h4>
+                <p style={{ fontSize: '16px' }}>
+                  {subscription.studio.subscription_end 
+                    ? new Date(subscription.studio.subscription_end).toLocaleDateString()
+                    : 'Not set'}
+                </p>
+              </div>
+            </div>
+
+            <div style={{ paddingTop: '20px', borderTop: '1px solid #ddd' }}>
+              <h4>Actions</h4>
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                {user?.role === 'studio_admin' && subscription.studio.subscription_status === 'active' && !subscription.studio.is_free_subscription && !subscription.studio.cancellation_requested && (
+                  <button
+                    onClick={handleCancelSubscription}
+                    style={{
+                      backgroundColor: '#f44336',
+                      color: 'white',
+                      border: 'none',
+                      padding: '10px 20px',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      fontSize: '14px',
+                      fontWeight: 'bold'
+                    }}
+                  >
+                    Cancel Subscription
+                  </button>
+                )}
+                {user?.role !== 'studio_admin' && (
+                  <p style={{ color: '#999', fontSize: '14px', marginTop: '8px' }}>
+                    Only studio admins can manage subscription settings
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

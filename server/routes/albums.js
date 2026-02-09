@@ -1,5 +1,6 @@
 import express from 'express';
 import { db } from '../database.js';
+import { requireActiveSubscription } from '../middleware/subscription.js';
 const router = express.Router();
 
 // Get all albums
@@ -57,7 +58,8 @@ router.get('/:id', (req, res) => {
 });
 
 // Create album
-router.post('/', (req, res) => {
+// Create new album (requires active subscription)
+router.post('/', requireActiveSubscription, (req, res) => {
   try {
     const { title, name, description, coverImageUrl, coverPhotoId, category, priceListId, isPasswordProtected, password, passwordHint } = req.body;
     const albumName = title || name || '';

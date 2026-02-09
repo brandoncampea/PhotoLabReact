@@ -5,8 +5,9 @@ export interface User {
   email: string;
   firstName: string;
   lastName: string;
-  role: 'customer' | 'admin';
+  role: 'customer' | 'admin' | 'super_admin' | 'studio_admin';
   isActive: boolean;
+  studioId?: number;
   token?: string;
 }
 

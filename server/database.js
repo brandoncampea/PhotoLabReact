@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import bcrypt from 'bcryptjs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -26,7 +27,7 @@ const initDb = () => {
     )
   `);
 
-  // Migrate users table to add missing columns (role, is_active, last_login_at)
+  // Migrate users table to add missing columns (role, is_active, last_login_at, studio_id)
   try {
     const userCols = db.prepare("PRAGMA table_info(users)").all();
     const colNames = userCols.map(c => c.name);
@@ -38,6 +39,9 @@ const initDb = () => {
     }
     if (!colNames.includes('last_login_at')) {
       db.exec("ALTER TABLE users ADD COLUMN last_login_at DATETIME");
+    }
+    if (!colNames.includes('studio_id')) {
+      db.exec("ALTER TABLE users ADD COLUMN studio_id INTEGER");
     }
   } catch (e) {
     // ignore
@@ -55,6 +59,66 @@ const initDb = () => {
     }
     if (!colNames.includes('height')) {
       db.exec("ALTER TABLE photos ADD COLUMN height INTEGER");
+    }
+  } catch (e) {
+    // ignore
+  }
+
+  // Studios table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS studios (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      email TEXT UNIQUE,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      subscription_status TEXT DEFAULT 'inactive',
+      subscription_plan TEXT,
+      subscription_start DATETIME,
+      subscription_end DATETIME,
+      stripe_customer_id TEXT,
+      stripe_subscription_id TEXT
+    )
+  `);
+
+  // Migrate studios table to add subscription fields if missing
+  try {
+    const studioCols = db.prepare("PRAGMA table_info(studios)").all();
+    const colNames = studioCols.map(c => c.name);
+    if (!colNames.includes('subscription_status')) {
+      db.exec("ALTER TABLE studios ADD COLUMN subscription_status TEXT DEFAULT 'inactive'");
+    }
+    if (!colNames.includes('subscription_plan')) {
+      db.exec("ALTER TABLE studios ADD COLUMN subscription_plan TEXT");
+    }
+    if (!colNames.includes('subscription_start')) {
+      db.exec("ALTER TABLE studios ADD COLUMN subscription_start DATETIME");
+    }
+    if (!colNames.includes('subscription_end')) {
+      db.exec("ALTER TABLE studios ADD COLUMN subscription_end DATETIME");
+    }
+    if (!colNames.includes('stripe_customer_id')) {
+      db.exec("ALTER TABLE studios ADD COLUMN stripe_customer_id TEXT");
+    }
+    if (!colNames.includes('stripe_subscription_id')) {
+      db.exec("ALTER TABLE studios ADD COLUMN stripe_subscription_id TEXT");
+    }
+    if (!colNames.includes('fee_type')) {
+      db.exec("ALTER TABLE studios ADD COLUMN fee_type TEXT DEFAULT 'percentage'");
+    }
+    if (!colNames.includes('fee_value')) {
+      db.exec("ALTER TABLE studios ADD COLUMN fee_value REAL DEFAULT 0");
+    }
+    if (!colNames.includes('billing_cycle')) {
+      db.exec("ALTER TABLE studios ADD COLUMN billing_cycle TEXT DEFAULT 'monthly'");
+    }
+    if (!colNames.includes('is_free_subscription')) {
+      db.exec("ALTER TABLE studios ADD COLUMN is_free_subscription BOOLEAN DEFAULT 0");
+    }
+    if (!colNames.includes('cancellation_requested')) {
+      db.exec("ALTER TABLE studios ADD COLUMN cancellation_requested BOOLEAN DEFAULT 0");
+    }
+    if (!colNames.includes('cancellation_date')) {
+      db.exec("ALTER TABLE studios ADD COLUMN cancellation_date DATETIME");
     }
   } catch (e) {
     // ignore
@@ -435,6 +499,83 @@ const initDb = () => {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  // Subscription Plans table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS subscription_plans (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT UNIQUE NOT NULL,
+      description TEXT,
+      monthly_price REAL NOT NULL,
+      yearly_price REAL,
+      max_albums INTEGER,
+      max_storage_gb INTEGER,
+      features TEXT,
+      is_active BOOLEAN DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Migrate subscription_plans to add yearly_price
+  try {
+    const planCols = db.prepare("PRAGMA table_info(subscription_plans)").all();
+    const planColNames = planCols.map(c => c.name);
+    if (!planColNames.includes('yearly_price')) {
+      db.exec("ALTER TABLE subscription_plans ADD COLUMN yearly_price REAL");
+    }
+  } catch (e) {
+    // ignore
+  }
+
+  // Seed subscription plans if not exists
+  try {
+    const plansCount = db.prepare('SELECT COUNT(*) as count FROM subscription_plans').get();
+    if (plansCount.count === 0) {
+      // Yearly price = monthly * 10 (2 months free, ~17% discount)
+      db.prepare(`
+        INSERT INTO subscription_plans (name, description, monthly_price, yearly_price, max_albums, max_storage_gb, features)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run('Starter', 'Perfect for small studios', 29.99, 299.90, 10, 50, JSON.stringify(['Basic analytics', 'Up to 10 albums', '50GB storage', 'Email support']));
+      
+      db.prepare(`
+        INSERT INTO subscription_plans (name, description, monthly_price, yearly_price, max_albums, max_storage_gb, features)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run('Professional', 'For growing studios', 79.99, 799.90, 50, 500, JSON.stringify(['Advanced analytics', 'Up to 50 albums', '500GB storage', 'Priority support', 'Custom branding']));
+      
+      db.prepare(`
+        INSERT INTO subscription_plans (name, description, monthly_price, yearly_price, max_albums, max_storage_gb, features)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run('Enterprise', 'For large operations', 199.99, 1999.90, 500, 2000, JSON.stringify(['Full analytics', 'Unlimited albums', '2TB storage', '24/7 support', 'Custom integrations', 'Dedicated account manager']));
+      
+      console.log('Subscription plans seeded with yearly pricing');
+    } else {
+      // Update existing plans with yearly pricing if missing
+      const plans = db.prepare('SELECT * FROM subscription_plans').all();
+      plans.forEach(plan => {
+        if (!plan.yearly_price) {
+          const yearlyPrice = (plan.monthly_price * 10).toFixed(2);
+          db.prepare('UPDATE subscription_plans SET yearly_price = ? WHERE id = ?').run(yearlyPrice, plan.id);
+        }
+      });
+    }
+  } catch (e) {
+    console.error('Error seeding subscription plans:', e);
+  }
+
+  // Seed super admin user if not exists
+  try {
+    const superAdminExists = db.prepare('SELECT id FROM users WHERE role = ?').get('super_admin');
+    if (!superAdminExists) {
+      const hashedPassword = bcrypt.hashSync('SuperAdmin@123456', 10);
+      db.prepare(`
+        INSERT INTO users (email, password, name, role, is_active, created_at)
+        VALUES (?, ?, ?, ?, 1, datetime('now'))
+      `).run('super_admin@photolab.com', hashedPassword, 'Super Admin', 'super_admin');
+      console.log('Super admin user created: super_admin@photolab.com / SuperAdmin@123456');
+    }
+  } catch (e) {
+    console.error('Error seeding super admin:', e);
+  }
 
   console.log('Database initialized successfully');
 };

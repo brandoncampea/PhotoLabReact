@@ -44,6 +44,7 @@ const AdminPriceLists: React.FC = () => {
   const [importLoading, setImportLoading] = useState(false);
   const [importError, setImportError] = useState('');
   const [importStep, setImportStep] = useState<'upload' | 'mapping' | 'preview'>('upload');
+  const [importTargetPriceListId, setImportTargetPriceListId] = useState<number | null>(null);
 
   useEffect(() => {
     loadData();
@@ -206,11 +207,34 @@ const AdminPriceLists: React.FC = () => {
   };
 
   const handleConfirmImport = async () => {
-    if (!importedData.length || !importName.trim()) return;
+    if (!importedData.length || (importTargetPriceListId === null && !importName.trim())) return;
 
     setImportLoading(true);
     try {
-      await createPriceListFromImport(importName, importDesc);
+      // Flatten importedData to items array for backend
+      // Group items by product, each with a sizes array
+      const items = importedData.map(group => ({
+        productName: group.productName,
+        // Optionally add description/category if available
+        sizes: group.items.map(item => ({
+          sizeName: item.sizeName,
+          width: item.width,
+          height: item.height,
+          price: item.price,
+          cost: item.cost,
+        }))
+      }));
+
+      let targetPriceListId = importTargetPriceListId;
+      // If creating new price list
+      if (targetPriceListId === null) {
+        const newPriceList = await createPriceListFromImport(importName, importDesc);
+        targetPriceListId = newPriceList.id;
+      }
+
+      // Add items to the selected or new price list
+      await priceListAdminService.addItemsToPriceList(targetPriceListId, items);
+
       await loadData();
       setShowImportDialog(false);
       setImportStep('upload');
@@ -220,9 +244,10 @@ const AdminPriceLists: React.FC = () => {
       setImportDesc('');
       setColumnSuggestions(null);
       setColumnMapping(null);
+      setImportTargetPriceListId(null);
     } catch (error) {
-      console.error('Failed to create imported price list:', error);
-      setImportError('Failed to create price list from import');
+      console.error('Failed to import price list items:', error);
+      setImportError('Failed to import price list items');
     } finally {
       setImportLoading(false);
     }
@@ -341,6 +366,21 @@ const AdminPriceLists: React.FC = () => {
   if (loading) {
     return <div className="loading">Loading...</div>;
   }
+
+  // Fetch latest price list details (with products) when selected
+  const handleSelectPriceList = async (priceListId: number) => {
+    setLoading(true);
+    try {
+      const pl = isUseMockApi()
+        ? await adminMockApi.priceLists.getById(priceListId)
+        : await priceListAdminService.getById(priceListId);
+      setSelectedPriceList(pl);
+    } catch (error) {
+      console.error('Failed to fetch price list details:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="admin-page">
@@ -622,23 +662,39 @@ const AdminPriceLists: React.FC = () => {
                 </div>
 
                 <div className="form-group">
-                  <label>Price List Name *</label>
-                  <input
-                    type="text"
-                    value={importName}
-                    onChange={e => setImportName(e.target.value)}
-                    placeholder="e.g., Q1 2026 Pricing"
-                  />
+                  <label>Import into Price List</label>
+                  <select
+                    value={importTargetPriceListId ?? ''}
+                    onChange={e => setImportTargetPriceListId(e.target.value ? Number(e.target.value) : null)}
+                  >
+                    <option value="">Create New Price List</option>
+                    {priceLists.map(pl => (
+                      <option key={pl.id} value={pl.id}>{pl.name}</option>
+                    ))}
+                  </select>
                 </div>
-                <div className="form-group">
-                  <label>Description</label>
-                  <textarea
-                    value={importDesc}
-                    onChange={e => setImportDesc(e.target.value)}
-                    placeholder="Optional"
-                    rows={2}
-                  />
-                </div>
+                {importTargetPriceListId === null && (
+                  <>
+                    <div className="form-group">
+                      <label>Price List Name *</label>
+                      <input
+                        type="text"
+                        value={importName}
+                        onChange={e => setImportName(e.target.value)}
+                        placeholder="e.g., Q1 2026 Pricing"
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>Description</label>
+                      <textarea
+                        value={importDesc}
+                        onChange={e => setImportDesc(e.target.value)}
+                        placeholder="Optional"
+                        rows={2}
+                      />
+                    </div>
+                  </>
+                )}
 
                 <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
                   <button
@@ -691,7 +747,7 @@ const AdminPriceLists: React.FC = () => {
               cursor: 'pointer',
               transition: 'all 0.2s',
             }}
-            onClick={() => setSelectedPriceList(priceList)}
+            onClick={() => handleSelectPriceList(priceList.id)}
           >
             <h3 style={{ margin: '0 0 0.5rem 0' }}>{priceList.name}</h3>
             <p style={{ fontSize: '0.9rem', color: '#666', margin: '0.5rem 0' }}>
@@ -737,7 +793,7 @@ const AdminPriceLists: React.FC = () => {
         <div style={{ marginTop: '2rem', padding: '1.5rem', backgroundColor: '#f8f9fa', borderRadius: '8px' }}>
           <h2>{selectedPriceList.name} - Details</h2>
           <p style={{ color: '#666', marginBottom: '1rem' }}>
-            {selectedPriceList.products.length} product(s)
+            {(Array.isArray(selectedPriceList.products) ? selectedPriceList.products.length : 0)} product(s)
           </p>
 
           <div style={{ overflowX: 'auto' }}>
@@ -755,36 +811,83 @@ const AdminPriceLists: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {selectedPriceList.products.length === 0 ? (
+                {(Array.isArray(selectedPriceList.products) && selectedPriceList.products.length === 0) ? (
                   <tr>
                     <td colSpan={4} style={{ padding: '1rem', textAlign: 'center', color: '#999' }}>
                       No products yet. Use Products page to add them.
                     </td>
                   </tr>
                 ) : (
-                  selectedPriceList.products.map(product => (
-                    <tr key={product.id} style={{ borderBottom: '1px solid #dee2e6' }}>
-                      <td style={{ padding: '0.75rem' }}>{product.name}</td>
-                      <td style={{ padding: '0.75rem' }}>{product.isDigital ? 'Digital' : 'Physical'}</td>
-                      <td style={{ padding: '0.75rem' }}>{product.sizes.length} size(s)</td>
-                      <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                        <button
-                          onClick={() => handleRemoveProduct(selectedPriceList.id, product.id)}
-                          style={{
-                            padding: '0.25rem 0.5rem',
-                            fontSize: '0.8rem',
-                            backgroundColor: '#dc3545',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '4px',
-                            cursor: 'pointer',
-                          }}
-                        >
-                          Remove
-                        </button>
-                      </td>
-                    </tr>
-                  ))
+                  (Array.isArray(selectedPriceList.products) ? selectedPriceList.products : []).flatMap(product => {
+                    // Defensive: accept any product shape
+                    const sizes = Array.isArray(product.sizes) && product.sizes.length > 0
+                      ? product.sizes
+                      : (Array.isArray(product.sizes) ? product.sizes : []);
+                    if (sizes.length > 0) {
+                      return sizes.map((size, idx) => (
+                        <tr key={String(product.id) + '-' + String(size.id)} style={{ borderBottom: '1px solid #dee2e6' }}>
+                          <td style={{ padding: '0.75rem' }}>
+                            {idx === 0 ? (
+                              <>
+                                <strong>{product.name || product.productName || 'Unnamed Product'}</strong>
+                                <div style={{ fontSize: '0.8rem', color: '#999' }}>{product.isDigital ? 'Digital' : 'Physical'}</div>
+                              </>
+                            ) : null}
+                          </td>
+                          <td style={{ padding: '0.75rem' }}>{size.name || size.sizeName || ''}</td>
+                          <td style={{ padding: '0.75rem', textAlign: 'right' }}>
+                            {typeof size.price === 'number' ? `$${size.price.toFixed(2)}` : ''}
+                          </td>
+                          <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                            {idx === 0 ? (
+                              <button
+                                onClick={() => handleRemoveProduct(selectedPriceList.id, product.id)}
+                                style={{
+                                  padding: '0.25rem 0.5rem',
+                                  fontSize: '0.8rem',
+                                  backgroundColor: '#dc3545',
+                                  color: 'white',
+                                  border: 'none',
+                                  borderRadius: '4px',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                Remove
+                              </button>
+                            ) : null}
+                          </td>
+                        </tr>
+                      ));
+                    } else {
+                      return [
+                        <tr key={String(product.id) + '-no-sizes'} style={{ borderBottom: '1px solid #dee2e6' }}>
+                          <td style={{ padding: '0.75rem' }}>
+                            <strong>{product.name || product.productName || 'Unnamed Product'}</strong>
+                            <div style={{ fontSize: '0.8rem', color: '#999' }}>{product.isDigital ? 'Digital' : 'Physical'}</div>
+                          </td>
+                          <td style={{ padding: '0.75rem' }} colSpan={2}>
+                            <span style={{ color: '#999' }}>No sizes</span>
+                          </td>
+                          <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                            <button
+                              onClick={() => handleRemoveProduct(selectedPriceList.id, product.id)}
+                              style={{
+                                padding: '0.25rem 0.5rem',
+                                fontSize: '0.8rem',
+                                backgroundColor: '#dc3545',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '4px',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              Remove
+                            </button>
+                          </td>
+                        </tr>
+                      ];
+                    }
+                  })
                 )}
               </tbody>
             </table>
