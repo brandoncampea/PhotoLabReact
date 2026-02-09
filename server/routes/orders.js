@@ -1,6 +1,7 @@
 import express from 'express';
 import { db } from '../database.js';
-import { authRequired } from '../middleware/auth.js';
+import { authRequired, adminRequired } from '../middleware/auth.js';
+import { requireActiveSubscription } from '../middleware/subscription.js';
 const router = express.Router();
 
 // Protect all order routes
@@ -50,8 +51,8 @@ router.get('/user/:userId', (req, res) => {
   }
 });
 
-// Create order for current user
-router.post('/', (req, res) => {
+// Create order for current user (requires active subscription for studio selling)
+router.post('/', requireActiveSubscription, (req, res) => {
   try {
     const userId = req.user.id;
     const { 
@@ -232,9 +233,10 @@ router.get('/', (req, res) => {
 });
 
 // Get all orders (admin view)
-router.get('/admin/all-orders', (req, res) => {
+router.get('/admin/all-orders', adminRequired, (req, res) => {
   try {
-    const orders = db.prepare(`
+    // Studio admins should only see orders from their studio
+    let query = `
       SELECT 
         o.id, 
         o.user_id as userId, 
@@ -262,9 +264,25 @@ router.get('/admin/all-orders', (req, res) => {
         ) as items
       FROM orders o
       LEFT JOIN order_items oi ON o.id = oi.order_id
+    `;
+    
+    // Studio admins only see orders from their studio's customers
+    if (req.user.role === 'studio_admin') {
+      query += `
+        WHERE o.user_id IN (
+          SELECT u.id FROM users u WHERE u.studio_id = ?
+        )
+      `;
+    }
+    
+    query += `
       GROUP BY o.id
       ORDER BY o.created_at DESC
-    `).all();
+    `;
+    
+    const orders = req.user.role === 'studio_admin'
+      ? db.prepare(query).all(req.user.studio_id)
+      : db.prepare(query).all();
     
     const parsedOrders = orders.map(order => {
       const parsedItems = order.items ? JSON.parse(order.items).filter(item => item.id !== null) : [];

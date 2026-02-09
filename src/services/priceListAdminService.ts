@@ -32,10 +32,14 @@ export const priceListAdminService = {
   },
 
   async setDefault(id: number): Promise<void> {
-    await api.post(`/price-lists/${id}/set-default`);
+    await api.post(`/price-lists/${id}/setDefault`);
   },
 
   async removeProduct(priceListId: number, productId: number): Promise<void> {
     await api.delete(`/price-lists/${priceListId}/products/${productId}`);
+  },
+
+  async addItemsToPriceList(priceListId: number, items: any[]): Promise<void> {
+    await api.post(`/price-lists/${priceListId}/items`, { items });
   },
 };

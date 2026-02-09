@@ -117,8 +117,14 @@ const AdminAlbums: React.FC = () => {
       }
       await loadAlbums();
       setShowModal(false);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to save album:', error);
+      // Show user-friendly error if subscription is required
+      if (error.response?.data?.requiresSubscription) {
+        alert('Subscription Required: ' + error.response.data.error + '\n\nPlease subscribe to create albums.');
+      } else {
+        alert('Failed to save album. Please try again.');
+      }
     }
   };
 

@@ -6,7 +6,7 @@ const router = express.Router();
 // Admin: list users (basic fields only)
 router.get('/', adminRequired, (req, res) => {
   try {
-    const users = db.prepare(`
+    let query = `
       SELECT 
         u.id, 
         u.email, 
@@ -19,9 +19,19 @@ router.get('/', adminRequired, (req, res) => {
         COALESCE(SUM(o.total), 0) as totalSpent
       FROM users u
       LEFT JOIN orders o ON u.id = o.user_id
-      GROUP BY u.id
-      ORDER BY u.created_at DESC
-    `).all();
+    `;
+    
+    // studio_admin can only see users in their own studio
+    if (req.user.role === 'studio_admin') {
+      query += ` WHERE u.studio_id = ?`;
+    }
+    
+    query += ` GROUP BY u.id ORDER BY u.created_at DESC`;
+    
+    const users = req.user.role === 'studio_admin' 
+      ? db.prepare(query).all(req.user.studio_id)
+      : db.prepare(query).all();
+    
     res.json(users);
   } catch (error) {
     res.status(500).json({ error: error.message });

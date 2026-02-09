@@ -1,6 +1,7 @@
 import express from 'express';
 import { db } from '../database.js';
 import { adminRequired } from '../middleware/auth.js';
+import { requireActiveSubscription } from '../middleware/subscription.js';
 const router = express.Router();
 
 // Get all products
@@ -79,8 +80,8 @@ router.get('/active', (req, res) => {
   }
 });
 
-// Create product
-router.post('/', adminRequired, (req, res) => {
+// Create product (requires active subscription)
+router.post('/', adminRequired, requireActiveSubscription, (req, res) => {
   try {
     const { name, category, price, description, options } = req.body;
     const result = db.prepare(`

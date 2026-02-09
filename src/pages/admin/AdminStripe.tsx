@@ -42,13 +42,26 @@ const AdminPayments: React.FC = () => {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const updatedConfig = await adminMockApi.stripe.updateConfig({
-        publishableKey,
-        secretKey,
-        webhookSecret: webhookSecret || undefined,
-        isLiveMode,
-        isActive,
-      });
+      let updatedConfig: StripeConfig;
+      if (isUseMockApi()) {
+        updatedConfig = await adminMockApi.stripe.updateConfig({
+          publishableKey,
+          secretKey,
+          webhookSecret: webhookSecret || undefined,
+          isLiveMode,
+          isActive,
+        });
+      } else {
+        // Use the real backend for saving config
+        const response = await stripeService.saveConfig({
+          publishableKey,
+          secretKey,
+          webhookSecret: webhookSecret || undefined,
+          isLiveMode,
+          isActive,
+        });
+        updatedConfig = response;
+      }
       setConfig(updatedConfig);
       alert('Stripe configuration saved successfully!');
     } catch (error) {

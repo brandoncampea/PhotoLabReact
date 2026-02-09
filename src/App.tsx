@@ -31,6 +31,10 @@ import AdminLabs from './pages/admin/AdminLabs';
 import AdminRoesConfig from './pages/admin/AdminRoesConfig';
 import AdminWhccConfig from './pages/admin/AdminWhccConfig';
 import AdminMpixConfig from './pages/admin/AdminMpixConfig';
+import StudioSignup from './pages/StudioSignup';
+import SuperAdminDashboard from './pages/SuperAdminDashboard';
+import SuperAdminPricing from './pages/SuperAdminPricing';
+import CheckoutSuccess from './pages/CheckoutSuccess';
 import './App.css';
 import './AdminStyles.css';
 
@@ -50,6 +54,8 @@ function App() {
               <Routes>
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
+                <Route path="/studio-signup" element={<StudioSignup />} />
+                <Route path="/checkout-success" element={<CheckoutSuccess />} />
                 <Route
                   path="/albums"
                   element={
@@ -91,6 +97,30 @@ function App() {
                   }
                 />
                 <Route path="/" element={<Navigate to="/albums" replace />} />
+
+                {/* Studio Subscription Routes */}
+                <Route
+                  path="/studio-admin"
+                  element={<Navigate to="/admin/dashboard" replace />}
+                />
+
+                {/* Super Admin Routes */}
+                <Route
+                  path="/super-admin"
+                  element={
+                    <ProtectedRoute>
+                      <SuperAdminDashboard />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/super-admin-pricing"
+                  element={
+                    <ProtectedRoute>
+                      <SuperAdminPricing />
+                    </ProtectedRoute>
+                  }
+                />
 
                 {/* Admin Routes */}
                 <Route path="/admin/login" element={<AdminLogin />} />

@@ -13,12 +13,12 @@ const AdminProtectedRoute: React.FC<AdminProtectedRouteProps> = ({ children }) =
     return <div className="loading">Loading...</div>;
   }
 
-  // Require logged-in admin
+  // Require logged-in admin or studio_admin
   if (!user) {
     return <Navigate to="/admin/login" replace />;
   }
 
-  if (user && user.role !== 'admin') {
+  if (user && user.role !== 'admin' && user.role !== 'studio_admin') {
     return <Navigate to="/login" replace />;
   }
 

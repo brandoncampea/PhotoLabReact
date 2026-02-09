@@ -16,9 +16,11 @@ export const authRequired = (req, res, next) => {
       return res.status(401).json({ error: 'Invalid token' });
     }
     let role = 'customer';
+    let studio_id = null;
     try {
-      const userRow = db.prepare('SELECT role FROM users WHERE id = ?').get(userId);
+      const userRow = db.prepare('SELECT role, studio_id FROM users WHERE id = ?').get(userId);
       if (userRow && userRow.role) role = userRow.role;
+      if (userRow && userRow.studio_id) studio_id = userRow.studio_id;
     } catch {}
     // Allow env-based override (useful in dev) even when role column exists
     let admins = (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
@@ -26,7 +28,7 @@ export const authRequired = (req, res, next) => {
       admins = ['admin@photolab.com'];
     }
     if (admins.includes((payload.email || '').toLowerCase())) role = 'admin';
-    req.user = { id: userId, email: payload.email, role };
+    req.user = { id: userId, email: payload.email, role, studio_id };
     next();
   } catch (err) {
     return res.status(401).json({ error: 'Invalid token' });
@@ -35,7 +37,7 @@ export const authRequired = (req, res, next) => {
 
 export const adminRequired = (req, res, next) => {
   authRequired(req, res, () => {
-    if (req.user?.role !== 'admin') {
+    if (req.user?.role !== 'admin' && req.user?.role !== 'studio_admin') {
       return res.status(403).json({ error: 'Admin access required' });
     }
     next();

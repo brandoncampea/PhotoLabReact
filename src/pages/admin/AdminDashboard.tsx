@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
 import { Order, DashboardStats } from '../../types';
 import { analyticsService } from '../../services/analyticsService';
 import { orderService } from '../../services/orderService';
@@ -9,6 +10,7 @@ import { albumService } from '../../services/albumService';
 
 const AdminDashboard: React.FC = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -18,12 +20,12 @@ const AdminDashboard: React.FC = () => {
     // Refresh stats every 30 seconds
     const interval = setInterval(loadStats, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [user]);
 
   const loadStats = async () => {
     try {
       const [ordersResult, customersResult, albumsResult] = await Promise.allSettled([
-        orderService.getOrders(),
+        orderService.getAdminOrders(),
         userAdminService.getAll(),
         albumService.getAlbums(),
       ]);
@@ -147,6 +149,8 @@ const AdminDashboard: React.FC = () => {
           Welcome back! Here's what's happening with your business today.
         </p>
       </div>
+
+
       
       {/* Key Metrics */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.5rem', marginBottom: '2rem' }}>

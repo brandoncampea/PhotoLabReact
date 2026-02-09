@@ -28,6 +28,7 @@ const Cart: React.FC = () => {
   const [appliedDiscount, setAppliedDiscount] = useState<DiscountCode | null>(null);
   const [discountError, setDiscountError] = useState('');
   const [editingItem, setEditingItem] = useState<CartItemType | null>(null);
+  const [studioFees, setStudioFees] = useState<{ feeType: string; feeValue: number } | null>(null);
   const [shippingAddress, setShippingAddress] = useState<ShippingAddress>({
     fullName: '',
     addressLine1: '',
@@ -44,6 +45,7 @@ const Cart: React.FC = () => {
     loadShippingConfig();
     loadStripeConfig();
     loadProducts();
+    loadStudioFees();
   }, []);
 
   useEffect(() => {
@@ -52,6 +54,26 @@ const Cart: React.FC = () => {
       setShippingAddress(prev => ({ ...prev, email: user.email }));
     }
   }, [user]);
+
+  const loadStudioFees = async () => {
+    try {
+      // If user is a customer with studio_id, fetch the studio fees
+      if (user?.studioId) {
+        const token = localStorage.getItem('authToken');
+        const response = await fetch(`http://localhost:3001/api/studios/${user.studioId}/fees`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setStudioFees(data);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load studio fees:', error);
+    }
+  };
 
   const loadProducts = async () => {
     try {
@@ -175,7 +197,18 @@ const Cart: React.FC = () => {
     const subtotal = getTotalPrice();
     const shipping = getShippingCost();
     const discount = getDiscountAmount();
-    const subtotalAfterDiscount = subtotal + shipping - discount;
+    
+    // Calculate fees
+    let fees = 0;
+    if (studioFees && studioFees.feeValue > 0) {
+      if (studioFees.feeType === 'percentage') {
+        fees = (subtotal * studioFees.feeValue) / 100;
+      } else if (studioFees.feeType === 'fixed') {
+        fees = studioFees.feeValue * items.length;
+      }
+    }
+    
+    const subtotalAfterDiscount = subtotal + fees + shipping - discount;
     
     const { taxAmount } = taxService.calculateTax(subtotalAfterDiscount, shippingAddress);
     return taxAmount;
@@ -185,8 +218,20 @@ const Cart: React.FC = () => {
     const subtotal = getTotalPrice();
     const shipping = getShippingCost();
     const discount = getDiscountAmount();
-    const tax = getTaxAmount();
-    return Math.max(0, subtotal + shipping - discount + tax);
+    
+    // Calculate fees
+    let fees = 0;
+    if (studioFees && studioFees.feeValue > 0) {
+      if (studioFees.feeType === 'percentage') {
+        fees = (subtotal * studioFees.feeValue) / 100;
+      } else if (studioFees.feeType === 'fixed') {
+        fees = studioFees.feeValue * items.length;
+      }
+    }
+    
+    const subtotalWithFees = subtotal + fees + shipping - discount;
+    const { taxAmount } = taxService.calculateTax(subtotalWithFees, shippingAddress);
+    return Math.max(0, subtotalWithFees + taxAmount);
   };
 
   const getDaysUntilDeadline = () => {
@@ -259,7 +304,15 @@ const Cart: React.FC = () => {
 
         // Create order after successful payment
         const orderNumber = `ORD-${Date.now()}`;
-        await orderService.createOrder(items, shippingAddress, shippingOption, getShippingCost(), appliedDiscount?.code);
+        await orderService.createOrder(
+          items, 
+          shippingAddress, 
+          shippingOption, 
+          getShippingCost(), 
+          appliedDiscount?.code,
+          studioFees?.feeType,
+          studioFees?.feeValue
+        );
         
         // Send email receipt (in production, would call email service)
         console.log('📧 Email receipt sent to:', shippingAddress.email);

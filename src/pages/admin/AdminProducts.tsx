@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { PriceList, PriceListProduct, PriceListProductSize, Package } from '../../types';
 import api from '../../services/api';
+import { useAuth } from '../../contexts/AuthContext';
 
 const AdminProducts: React.FC = () => {
+  const { user } = useAuth();
   const [priceLists, setPriceLists] = useState<PriceList[]>([]);
   const [selectedPriceList, setSelectedPriceList] = useState<PriceList | null>(null);
   const [loading, setLoading] = useState(true);
@@ -14,6 +16,7 @@ const AdminProducts: React.FC = () => {
   const [packagesLoading, setPackagesLoading] = useState(false);
   const [showPackageModal, setShowPackageModal] = useState(false);
   const [editingPackage, setEditingPackage] = useState<Package | null>(null);
+  const [studioFees, setStudioFees] = useState<{ feeType: string; feeValue: number } | null>(null);
   
   const [productForm, setProductForm] = useState({
     name: '',
@@ -39,6 +42,7 @@ const AdminProducts: React.FC = () => {
 
   useEffect(() => {
     loadPriceLists();
+    loadStudioFees();
   }, []);
 
   useEffect(() => {
@@ -55,7 +59,9 @@ const AdminProducts: React.FC = () => {
       const data = response.data;
       setPriceLists(data);
       if (data.length > 0) {
-        setSelectedPriceList(data[0]);
+        // Fetch full details for the first price list (with products)
+        const full = await api.get(`/price-lists/${data[0].id}`);
+        setSelectedPriceList(full.data);
       }
     } catch (error) {
       console.error('Failed to load price lists:', error);
@@ -73,6 +79,27 @@ const AdminProducts: React.FC = () => {
       console.error('Failed to load packages:', error);
     } finally {
       setPackagesLoading(false);
+    }
+  };
+
+  const loadStudioFees = async () => {
+    try {
+      if (user?.studioId) {
+        const response = await api.get(`/studios/${user.studioId}/fees`);
+        setStudioFees(response.data);
+      }
+    } catch (error) {
+      console.error('Failed to load studio fees:', error);
+    }
+  };
+
+  const calculatePriceWithFees = (basePrice: number): number => {
+    if (!studioFees || studioFees.feeValue === 0) return basePrice;
+    
+    if (studioFees.feeType === 'percentage') {
+      return basePrice + (basePrice * studioFees.feeValue) / 100;
+    } else {
+      return basePrice + studioFees.feeValue;
     }
   };
 
@@ -286,9 +313,10 @@ const AdminProducts: React.FC = () => {
         </label>
         <select
           value={selectedPriceList?.id || ''}
-          onChange={e => {
-            const selected = priceLists.find(pl => pl.id === parseInt(e.target.value));
-            setSelectedPriceList(selected || null);
+          onChange={async e => {
+            const selectedId = parseInt(e.target.value);
+            const full = await api.get(`/price-lists/${selectedId}`);
+            setSelectedPriceList(full.data);
           }}
           style={{
             padding: '0.5rem',
@@ -304,6 +332,28 @@ const AdminProducts: React.FC = () => {
           ))}
         </select>
       </div>
+
+      {/* Studio Fees Info Banner */}
+      {studioFees && studioFees.feeValue > 0 && (
+        <div style={{
+          marginBottom: '2rem',
+          padding: '1rem',
+          backgroundColor: '#fff3cd',
+          border: '1px solid #ff9800',
+          borderRadius: '8px'
+        }}>
+          <strong style={{ color: '#856404' }}>💰 Product Fee Applied:</strong>
+          <p style={{ margin: '0.5rem 0 0 0', color: '#666' }}>
+            A <strong>
+              {studioFees.feeType === 'percentage'
+                ? `${studioFees.feeValue}%`
+                : `$${studioFees.feeValue.toFixed(2)}`
+              }
+            </strong> fee is automatically added to each product price. 
+            Customers will see the adjusted "Customer Price" shown below.
+          </p>
+        </div>
+      )}
 
       {/* Products List */}
       {selectedPriceList && (
@@ -396,7 +446,12 @@ const AdminProducts: React.FC = () => {
                               <strong>{size.name}</strong>
                               {size.width > 0 && ` (${size.width}x${size.height})`}
                               <div style={{ color: '#666', fontSize: '0.8rem' }}>
-                                ${size.price.toFixed(2)}
+                                Base: ${size.price.toFixed(2)}
+                                {studioFees && studioFees.feeValue > 0 && (
+                                  <span style={{ color: '#ff9800', fontWeight: 'bold' }}>
+                                    {' → Customer Price: $'}{calculatePriceWithFees(size.price).toFixed(2)}
+                                  </span>
+                                )}
                                 {size.cost > 0 && (
                                   <>
                                     {' | Cost: $'}{size.cost.toFixed(2)}{' | '}

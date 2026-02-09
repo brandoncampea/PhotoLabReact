@@ -90,6 +90,7 @@ router.post('/login', async (req, res) => {
         lastName: parsedLast,
         role: user.role || 'customer',
         isActive: user.is_active !== undefined ? !!user.is_active : true,
+        studioId: user.studio_id || undefined,
       },
       token 
     });

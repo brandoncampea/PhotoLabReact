@@ -11,6 +11,8 @@ import orderRoutes from './routes/orders.js';
 import productRoutes from './routes/products.js';
 import analyticsRoutes from './routes/analytics.js';
 import priceListRoutes from './routes/priceLists.js';
+import priceListItemsRoutes from './routes/priceListItems.js';
+import mpixProxyRoutes from './routes/mpixProxy.js';
 import packageRoutes from './routes/packages.js';
 import profileRoutes from './routes/profile.js';
 import cartRoutes from './routes/cart.js';
@@ -20,6 +22,9 @@ import userRoutes from './routes/users.js';
 import categoryRoutes from './routes/categories.js';
 import shippingRoutes from './routes/shipping.js';
 import stripeRoutes from './routes/stripe.js';
+import studiosRoutes from './routes/studios.js';
+import webhookRoutes from './routes/webhooks.js';
+import subscriptionPlansRoutes from './routes/subscriptionPlans.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -41,6 +46,8 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/price-lists', priceListRoutes);
+app.use('/api/price-lists', priceListItemsRoutes);
+app.use('/api', mpixProxyRoutes);
 app.use('/api/packages', packageRoutes);
 app.use('/api/profile', profileRoutes);
 app.use('/api/cart', cartRoutes);
@@ -50,6 +57,9 @@ app.use('/api/categories', categoryRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/shipping', shippingRoutes);
 app.use('/api/stripe', stripeRoutes);
+app.use('/api/studios', studiosRoutes);
+app.use('/api/webhooks', webhookRoutes);
+app.use('/api/subscription-plans', subscriptionPlansRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
