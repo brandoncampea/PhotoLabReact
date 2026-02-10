@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ProfileConfig } from '../../types';
 import { profileService } from '../../services/profileService';
 import { useAuth } from '../../contexts/AuthContext';
+import { SUBSCRIPTION_PLANS } from '../../services/subscriptionService';
 
 const AdminProfile: React.FC = () => {
   const { user } = useAuth();
@@ -16,6 +17,10 @@ const AdminProfile: React.FC = () => {
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState('');
   const [subscription, setSubscription] = useState<any>(null);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [selectedUpgradePlan, setSelectedUpgradePlan] = useState<string>('');
+  const [selectedBillingCycle, setSelectedBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
+  const [upgrading, setUpgrading] = useState(false);
 
   useEffect(() => {
     loadConfig();
@@ -85,6 +90,45 @@ const AdminProfile: React.FC = () => {
       }
     } catch (err: any) {
       alert('Failed to reactivate subscription');
+    }
+  };
+
+  const handleUpgrade = async () => {
+    if (!selectedUpgradePlan) {
+      alert('Please select a plan');
+      return;
+    }
+
+    try {
+      setUpgrading(true);
+      const token = localStorage.getItem('authToken');
+      const response = await fetch(
+        `http://localhost:3001/api/studios/${user?.studioId}/checkout`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            planId: selectedUpgradePlan,
+            billingCycle: selectedBillingCycle
+          })
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.checkoutUrl) {
+          window.location.href = data.checkoutUrl;
+        }
+      } else {
+        alert('Failed to create checkout session');
+      }
+    } catch (err: any) {
+      alert('Error: ' + err.message);
+    } finally {
+      setUpgrading(false);
     }
   };
 
@@ -285,7 +329,7 @@ const AdminProfile: React.FC = () => {
       </div>
 
       {/* Subscription Section */}
-      {user?.studioId && subscription && (
+      {user?.studioId && subscription ? (
         <div style={{ marginTop: '2rem' }}>
           <div className="page-header">
             <h2>📋 Subscription Management</h2>
@@ -294,7 +338,7 @@ const AdminProfile: React.FC = () => {
             </p>
           </div>
 
-          {subscription.studio.cancellation_requested && (
+          {subscription.studio.cancellation_requested ? (
             <div style={{
               backgroundColor: '#fff3cd',
               border: '2px solid #ff9800',
@@ -311,7 +355,7 @@ const AdminProfile: React.FC = () => {
                   : 'the renewal date'}. 
                 You will continue to have full access until then.
               </p>
-              {user?.role === 'studio_admin' && (
+              {user?.role === 'studio_admin' ? (
                 <button
                   onClick={handleReactivateSubscription}
                   style={{
@@ -327,9 +371,9 @@ const AdminProfile: React.FC = () => {
                 >
                   ✓ Reactivate Subscription
                 </button>
-              )}
+              ) : null}
             </div>
-          )}
+          ) : null}
 
           <div style={{
             backgroundColor: '#f5f5f5',
@@ -345,13 +389,15 @@ const AdminProfile: React.FC = () => {
                 </p>
                 {subscription.studio.is_free_subscription ? (
                   <p style={{ color: '#4caf50', fontWeight: 'bold' }}>FREE (No Billing)</p>
-                ) : (
+                ) : subscription.plan ? (
                   <p style={{ color: '#666' }}>
                     ${subscription.studio.billing_cycle === 'yearly' 
-                      ? subscription.plan?.yearlyPrice 
-                      : subscription.plan?.monthlyPrice}
+                      ? (subscription.plan.yearlyPrice || subscription.plan.monthlyPrice * 10)
+                      : subscription.plan.monthlyPrice}
                     /{subscription.studio.billing_cycle === 'yearly' ? 'year' : 'month'}
                   </p>
+                ) : (
+                  <p style={{ color: '#999' }}>Plan info not available</p>
                 )}
               </div>
 
@@ -385,29 +431,192 @@ const AdminProfile: React.FC = () => {
             <div style={{ paddingTop: '20px', borderTop: '1px solid #ddd' }}>
               <h4>Actions</h4>
               <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                {user?.role === 'studio_admin' && subscription.studio.subscription_status === 'active' && !subscription.studio.is_free_subscription && !subscription.studio.cancellation_requested && (
-                  <button
-                    onClick={handleCancelSubscription}
-                    style={{
-                      backgroundColor: '#f44336',
-                      color: 'white',
-                      border: 'none',
-                      padding: '10px 20px',
-                      borderRadius: '6px',
-                      cursor: 'pointer',
-                      fontSize: '14px',
-                      fontWeight: 'bold'
-                    }}
-                  >
-                    Cancel Subscription
-                  </button>
-                )}
-                {user?.role !== 'studio_admin' && (
+                {user?.role === 'studio_admin' ? (
+                  <>
+                    <button
+                      onClick={() => setShowUpgradeModal(true)}
+                      style={{
+                        backgroundColor: '#007bff',
+                        color: 'white',
+                        border: 'none',
+                        padding: '10px 20px',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        fontSize: '14px',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      {subscription.studio.subscription_status === 'active' && !subscription.studio.is_free_subscription ? 'Change Plan' : 'Subscribe'}
+                    </button>
+                    {subscription.studio.subscription_status === 'active' && !subscription.studio.is_free_subscription && !subscription.studio.cancellation_requested ? (
+                      <button
+                        onClick={handleCancelSubscription}
+                        style={{
+                          backgroundColor: '#f44336',
+                          color: 'white',
+                          border: 'none',
+                          padding: '10px 20px',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          fontSize: '14px',
+                          fontWeight: 'bold'
+                        }}
+                      >
+                        Cancel Subscription
+                      </button>
+                    ) : null}
+                  </>
+                ) : null}
+                {user?.role !== 'studio_admin' ? (
                   <p style={{ color: '#999', fontSize: '14px', marginTop: '8px' }}>
                     Only studio admins can manage subscription settings
                   </p>
-                )}
+                ) : null}
               </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Upgrade Modal */}
+      {showUpgradeModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            padding: '30px',
+            borderRadius: '8px',
+            maxWidth: '500px',
+            width: '90%',
+            maxHeight: '90vh',
+            overflowY: 'auto'
+          }}>
+            <h2>Select Your Plan</h2>
+            <p style={{ color: '#666', marginBottom: '20px' }}>
+              Choose a plan to upgrade or downgrade your subscription
+            </p>
+
+            <div style={{ marginBottom: '20px', display: 'grid', gap: '15px' }}>
+              {Object.entries(SUBSCRIPTION_PLANS).map(([id, plan]) => (
+                <div
+                  key={id}
+                  onClick={() => setSelectedUpgradePlan(id)}
+                  style={{
+                    padding: '15px',
+                    border: selectedUpgradePlan === id ? '2px solid #007bff' : '1px solid #ddd',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    backgroundColor: selectedUpgradePlan === id ? '#f0f7ff' : '#fff',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <h4 style={{ margin: '0 0 8px 0' }}>{plan.name}</h4>
+                  <p style={{ margin: '0 0 8px 0', fontWeight: 'bold', color: '#007bff', fontSize: '18px' }}>
+                    ${plan.monthlyPrice}/month
+                  </p>
+                  <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '13px' }}>
+                    {plan.features.slice(0, 3).map((feature, idx) => (
+                      <li key={idx} style={{ color: '#666' }}>{feature}</li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ marginBottom: '20px', marginTop: '20px' }}>
+              <label style={{ display: 'block', marginBottom: '10px', fontWeight: 'bold' }}>
+                Billing Cycle:
+              </label>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <label style={{
+                  flex: 1,
+                  padding: '10px',
+                  border: `2px solid ${selectedBillingCycle === 'monthly' ? '#007bff' : '#ddd'}`,
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  textAlign: 'center',
+                  backgroundColor: selectedBillingCycle === 'monthly' ? '#e3f2fd' : 'white'
+                }}>
+                  <input
+                    type="radio"
+                    name="billingCycle"
+                    value="monthly"
+                    checked={selectedBillingCycle === 'monthly'}
+                    onChange={() => setSelectedBillingCycle('monthly')}
+                    style={{ marginRight: '8px' }}
+                  />
+                  Monthly
+                </label>
+                <label style={{
+                  flex: 1,
+                  padding: '10px',
+                  border: `2px solid ${selectedBillingCycle === 'yearly' ? '#007bff' : '#ddd'}`,
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  textAlign: 'center',
+                  backgroundColor: selectedBillingCycle === 'yearly' ? '#e3f2fd' : 'white'
+                }}>
+                  <input
+                    type="radio"
+                    name="billingCycle"
+                    value="yearly"
+                    checked={selectedBillingCycle === 'yearly'}
+                    onChange={() => setSelectedBillingCycle('yearly')}
+                    style={{ marginRight: '8px' }}
+                  />
+                  Yearly
+                  <div style={{ fontSize: '12px', color: '#4caf50', marginTop: '4px' }}>
+                    Save ~17%
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
+              <button
+                onClick={handleUpgrade}
+                disabled={!selectedUpgradePlan || upgrading}
+                style={{
+                  flex: 1,
+                  padding: '12px',
+                  backgroundColor: selectedUpgradePlan ? '#007bff' : '#ccc',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: selectedUpgradePlan && !upgrading ? 'pointer' : 'not-allowed',
+                  fontWeight: 'bold',
+                  opacity: upgrading ? 0.7 : 1
+                }}
+              >
+                {upgrading ? 'Processing...' : 'Continue to Payment'}
+              </button>
+              <button
+                onClick={() => setShowUpgradeModal(false)}
+                disabled={upgrading}
+                style={{
+                  flex: 1,
+                  padding: '12px',
+                  backgroundColor: '#ccc',
+                  color: '#333',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: upgrading ? 'not-allowed' : 'pointer',
+                  fontWeight: 'bold',
+                  opacity: upgrading ? 0.7 : 1
+                }}
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>
