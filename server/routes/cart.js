@@ -1,6 +1,6 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
-import { db } from '../database.js';
+import { queryRow, query } from '../mssql.js';
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
@@ -19,7 +19,7 @@ const getOptionalUser = (req) => {
 };
 
 // Get user cart (optional auth)
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
     const user = getOptionalUser(req);
     const userId = user?.id;
@@ -30,14 +30,15 @@ router.get('/', (req, res) => {
     }
     
     // Verify user exists in database
-    const userExists = db.prepare('SELECT id FROM users WHERE id = ? LIMIT 1').get(userId);
+    const userExists = await queryRow('SELECT id FROM users WHERE id = $1 LIMIT 1', [userId]);
     if (!userExists) {
       return res.json([]);
     }
     
-    const cart = db.prepare(
-      'SELECT cart_data as cartData FROM user_cart WHERE user_id = ? LIMIT 1'
-    ).get(userId);
+    const cart = await queryRow(
+      'SELECT cart_data as cartData FROM user_cart WHERE user_id = $1 LIMIT 1',
+      [userId]
+    );
     if (cart && cart.cartData) {
       res.json(JSON.parse(cart.cartData));
     } else {
@@ -50,7 +51,7 @@ router.get('/', (req, res) => {
 });
 
 // Save user cart (optional auth)
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   try {
     const user = getOptionalUser(req);
     const userId = user?.id;
@@ -62,20 +63,27 @@ router.post('/', (req, res) => {
     }
     
     // Verify user exists in database before trying to insert cart
-    const userExists = db.prepare('SELECT id FROM users WHERE id = ? LIMIT 1').get(userId);
+    const userExists = await queryRow('SELECT id FROM users WHERE id = $1 LIMIT 1', [userId]);
     if (!userExists) {
       // User doesn't exist, just return success (frontend will use localStorage)
       return res.json({ success: true, message: 'Cart saved (user not verified, local only)' });
     }
     
     const cartData = JSON.stringify(items);
-    db.prepare(`
-      INSERT INTO user_cart (user_id, cart_data)
-      VALUES (?, ?)
-      ON CONFLICT(user_id) DO UPDATE SET
-        cart_data = excluded.cart_data,
-        updated_at = CURRENT_TIMESTAMP
-    `).run(userId, cartData);
+    await query(`
+      IF EXISTS (SELECT 1 FROM user_cart WHERE user_id = $1)
+      BEGIN
+        UPDATE user_cart
+        SET cart_data = $2,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = $1
+      END
+      ELSE
+      BEGIN
+        INSERT INTO user_cart (user_id, cart_data)
+        VALUES ($1, $2)
+      END
+    `, [userId, cartData]);
     res.json({ success: true, message: 'Cart saved' });
   } catch (error) {
     console.error('Cart POST error:', error);
@@ -84,7 +92,7 @@ router.post('/', (req, res) => {
 });
 
 // Clear user cart (optional auth)
-router.delete('/', (req, res) => {
+router.delete('/', async (req, res) => {
   try {
     const user = getOptionalUser(req);
     const userId = user?.id;
@@ -94,7 +102,7 @@ router.delete('/', (req, res) => {
       return res.json({ success: true, message: 'Cart cleared (local only)' });
     }
     
-    db.prepare('DELETE FROM user_cart WHERE user_id = ?').run(userId);
+    await query('DELETE FROM user_cart WHERE user_id = $1', [userId]);
     res.json({ success: true, message: 'Cart cleared' });
   } catch (error) {
     console.error('Cart DELETE error:', error);

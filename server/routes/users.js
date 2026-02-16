@@ -1,12 +1,12 @@
 import express from 'express';
-import { db } from '../database.js';
+import { queryRow, queryRows, query } from '../mssql.js';
 import { adminRequired } from '../middleware/auth.js';
 const router = express.Router();
 
 // Admin: list users (basic fields only)
-router.get('/', adminRequired, (req, res) => {
+router.get('/', adminRequired, async (req, res) => {
   try {
-    let query = `
+    let queryText = `
       SELECT 
         u.id, 
         u.email, 
@@ -23,14 +23,14 @@ router.get('/', adminRequired, (req, res) => {
     
     // studio_admin can only see users in their own studio
     if (req.user.role === 'studio_admin') {
-      query += ` WHERE u.studio_id = ?`;
+      queryText += ` WHERE u.studio_id = $1`;
     }
     
-    query += ` GROUP BY u.id ORDER BY u.created_at DESC`;
+    queryText += ` GROUP BY u.id ORDER BY u.created_at DESC`;
     
     const users = req.user.role === 'studio_admin' 
-      ? db.prepare(query).all(req.user.studio_id)
-      : db.prepare(query).all();
+      ? await queryRows(queryText, [req.user.studio_id])
+      : await queryRows(queryText);
     
     res.json(users);
   } catch (error) {
@@ -39,33 +39,35 @@ router.get('/', adminRequired, (req, res) => {
 });
 
 // Admin: update a user's role / status
-router.put('/:id', adminRequired, (req, res) => {
+router.put('/:id', adminRequired, async (req, res) => {
   try {
     const { role, isActive, name } = req.body;
     const updates = [];
     const params = [];
+    let idx = 1;
 
     if (typeof role === 'string' && role.trim()) {
-      updates.push('role = ?');
+      updates.push(`role = $${idx++}`);
       params.push(role.trim());
     }
     if (typeof isActive === 'boolean') {
-      updates.push('is_active = ?');
-      params.push(isActive ? 1 : 0);
+      updates.push(`is_active = $${idx++}`);
+      params.push(isActive);
     }
     if (typeof name === 'string' && name.trim()) {
-      updates.push('name = ?');
+      updates.push(`name = $${idx++}`);
       params.push(name.trim());
     }
     if (updates.length === 0) {
       return res.status(400).json({ error: 'No valid fields to update' });
     }
     params.push(req.params.id);
+    const idParam = `$${idx}`;
     
-    db.prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+    await query(`UPDATE users SET ${updates.join(', ')} WHERE id = ${idParam}`, params);
     
     // Fetch aggregated data
-    const aggregated = db.prepare(`
+    const aggregated = await queryRow(`
       SELECT 
         u.id, 
         u.email, 
@@ -78,9 +80,9 @@ router.put('/:id', adminRequired, (req, res) => {
         COALESCE(SUM(o.total), 0) as totalSpent
       FROM users u
       LEFT JOIN orders o ON u.id = o.user_id
-      WHERE u.id = ?
+      WHERE u.id = $1
       GROUP BY u.id
-    `).get(req.params.id);
+    `, [req.params.id]);
     
     res.json(aggregated);
   } catch (error) {

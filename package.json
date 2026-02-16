@@ -12,6 +12,7 @@
     "preview": "vite preview",
     "seed:photos": "node server/seedPhotos.js",
     "seed:products": "node server/seedProducts.js",
+    "migrate:sqlite": "node server/migrateSqliteToMssql.js",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:debug": "playwright test --debug",
@@ -20,13 +21,11 @@
   },
   "dependencies": {
     "@types/bcryptjs": "^3.0.0",
-    "@types/better-sqlite3": "^7.6.13",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^2.0.0",
     "axios": "^1.6.2",
-    "better-sqlite3": "^12.6.2",
     "concurrently": "^9.2.1",
     "cors": "^2.8.6",
     "cropperjs": "^1.6.1",
@@ -35,7 +34,7 @@
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.0.2",
-    "pg": "^8.17.2",
+    "mssql": "^11.0.1",
     "react": "^18.2.0",
     "react-cropper": "^2.3.3",
     "react-dom": "^18.2.0",
@@ -54,7 +53,6 @@
     "eslint": "^8.55.0",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.5",
-    "sqlite3": "^5.1.7",
     "typescript": "^5.2.2",
     "vite": "^7.3.1"
   }

@@ -1,13 +1,13 @@
 import express from 'express';
-import { db } from '../database.js';
+import { queryRow, queryRows, query } from '../mssql.js';
 import { adminRequired } from '../middleware/auth.js';
 import { requireActiveSubscription } from '../middleware/subscription.js';
 const router = express.Router();
 
 // Get all products
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
-    const products = db.prepare('SELECT * FROM products ORDER BY category, name').all();
+    const products = await queryRows('SELECT * FROM products ORDER BY category, name');
     const parsedProducts = products.map(p => {
       const opts = p.options ? JSON.parse(p.options) : null;
       const sizes = Array.isArray(opts?.sizes)
@@ -38,19 +38,9 @@ router.get('/', (req, res) => {
 });
 
 // Get active products (fallback to all if is_active column doesn't exist)
-router.get('/active', (req, res) => {
+router.get('/active', async (req, res) => {
   try {
-    let products = [];
-    try {
-      const cols = db.prepare("PRAGMA table_info(products)").all().map(c => c.name);
-      const hasIsActive = cols.includes('is_active');
-      const query = hasIsActive
-        ? 'SELECT * FROM products WHERE is_active = 1 ORDER BY category, name'
-        : 'SELECT * FROM products ORDER BY category, name';
-      products = db.prepare(query).all();
-    } catch {
-      products = db.prepare('SELECT * FROM products ORDER BY category, name').all();
-    }
+    const products = await queryRows('SELECT * FROM products ORDER BY category, name');
     const parsedProducts = products.map(p => {
       const opts = p.options ? JSON.parse(p.options) : null;
       const sizes = Array.isArray(opts?.sizes)
@@ -74,22 +64,23 @@ router.get('/active', (req, res) => {
         isDigital: !!opts?.isDigital,
       };
     });
-    res.json(parsedProducts);
+    res.json(parsedProducts.filter(p => p.isActive !== false));
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
 // Create product (requires active subscription)
-router.post('/', adminRequired, requireActiveSubscription, (req, res) => {
+router.post('/', adminRequired, requireActiveSubscription, async (req, res) => {
   try {
     const { name, category, price, description, options } = req.body;
-    const result = db.prepare(`
+    const result = await queryRow(`
       INSERT INTO products (name, category, price, description, options)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(name, category, price, description, options ? JSON.stringify(options) : null);
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING id
+    `, [name, category, price, description, options ? JSON.stringify(options) : null]);
     
-    const product = db.prepare('SELECT * FROM products WHERE id = ?').get(result.lastInsertRowid);
+    const product = await queryRow('SELECT * FROM products WHERE id = $1', [result.id]);
     res.status(201).json(product);
   } catch (error) {
     res.status(500).json({ error: error.message });

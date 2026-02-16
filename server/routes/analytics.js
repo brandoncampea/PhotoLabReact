@@ -1,15 +1,15 @@
 import express from 'express';
-import { db } from '../database.js';
+import { queryRow, query } from '../mssql.js';
 const router = express.Router();
 
 // Track event
-router.post('/track', (req, res) => {
+router.post('/track', async (req, res) => {
   try {
     const { eventType, eventData } = req.body;
-    db.prepare(`
+    await query(`
       INSERT INTO analytics (event_type, event_data)
-      VALUES (?, ?)
-    `).run(eventType, eventData ? JSON.stringify(eventData) : null);
+      VALUES ($1, $2)
+    `, [eventType, eventData ? JSON.stringify(eventData) : null]);
     
     res.status(201).json({ message: 'Event tracked' });
   } catch (error) {
@@ -18,11 +18,11 @@ router.post('/track', (req, res) => {
 });
 
 // Get analytics summary
-router.get('/summary', (req, res) => {
+router.get('/summary', async (req, res) => {
   try {
-    const totalVisitsResult = db.prepare("SELECT COUNT(*) as count FROM analytics WHERE event_type = 'site_visit'").get();
-    const albumViewsResult = db.prepare("SELECT COUNT(*) as count FROM analytics WHERE event_type = 'album_view'").get();
-    const photoViewsResult = db.prepare("SELECT COUNT(*) as count FROM analytics WHERE event_type = 'photo_view'").get();
+    const totalVisitsResult = await queryRow("SELECT COUNT(*) as count FROM analytics WHERE event_type = 'site_visit'");
+    const albumViewsResult = await queryRow("SELECT COUNT(*) as count FROM analytics WHERE event_type = 'album_view'");
+    const photoViewsResult = await queryRow("SELECT COUNT(*) as count FROM analytics WHERE event_type = 'photo_view'");
     
     const summary = {
       totalVisits: parseInt(totalVisitsResult.count),

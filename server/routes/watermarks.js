@@ -2,7 +2,7 @@ import express from 'express';
 import multer from 'multer';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { db } from '../database.js';
+import { queryRow, queryRows, query } from '../mssql.js';
 const router = express.Router();
 
 const __filename = fileURLToPath(import.meta.url);
@@ -32,14 +32,14 @@ const upload = multer({
 });
 
 // Get all watermarks
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
-    const watermarks = db.prepare(`
+    const watermarks = await queryRows(`
       SELECT id, name, image_url as imageUrl, position, opacity, 
              is_default as isDefault, tiled, created_at as createdDate
       FROM watermarks
       ORDER BY name ASC
-    `).all();
+    `);
     res.json(watermarks);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -47,15 +47,15 @@ router.get('/', (req, res) => {
 });
 
 // Get default watermark
-router.get('/default', (req, res) => {
+router.get('/default', async (req, res) => {
   try {
-    const watermark = db.prepare(`
+    const watermark = await queryRow(`
       SELECT id, name, image_url as imageUrl, position, opacity, 
              is_default as isDefault, tiled, created_at as createdDate
       FROM watermarks
       WHERE is_default = 1
       LIMIT 1
-    `).get();
+    `);
     
     if (!watermark) {
       return res.status(404).json({ error: 'No default watermark configured' });
@@ -67,14 +67,14 @@ router.get('/default', (req, res) => {
 });
 
 // Get watermark by ID
-router.get('/:id', (req, res) => {
+router.get('/:id', async (req, res) => {
   try {
-    const watermark = db.prepare(`
+    const watermark = await queryRow(`
       SELECT id, name, image_url as imageUrl, position, opacity, 
              is_default as isDefault, tiled, created_at as createdDate
       FROM watermarks
-      WHERE id = ?
-    `).get(req.params.id);
+      WHERE id = $1
+    `, [req.params.id]);
     
     if (!watermark) {
       return res.status(404).json({ error: 'Watermark not found' });
@@ -86,7 +86,7 @@ router.get('/:id', (req, res) => {
 });
 
 // Create watermark
-router.post('/', upload.single('image'), (req, res) => {
+router.post('/', upload.single('image'), async (req, res) => {
   try {
     console.log('POST /watermarks - body:', req.body, 'file:', req.file?.filename);
     
@@ -102,27 +102,28 @@ router.post('/', upload.single('image'), (req, res) => {
     }
     
     if (isDefault === 'true' || isDefault === true) {
-      db.prepare('UPDATE watermarks SET is_default = 0').run();
+      await query('UPDATE watermarks SET is_default = 0');
     }
 
-    const result = db.prepare(`
+    const result = await queryRow(`
       INSERT INTO watermarks (name, image_url, position, opacity, is_default, tiled)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING id
+    `, [
       name, 
       imageUrl, 
       position || 'bottom-right', 
       opacity ? parseFloat(opacity) : 0.5, 
-      (isDefault === 'true' || isDefault === true) ? 1 : 0, 
-      (tiled === 'true' || tiled === true) ? 1 : 0
-    );
+      (isDefault === 'true' || isDefault === true), 
+      (tiled === 'true' || tiled === true)
+    ]);
 
-    const watermark = db.prepare(`
+    const watermark = await queryRow(`
       SELECT id, name, image_url as imageUrl, position, opacity, 
              is_default as isDefault, tiled, created_at as createdDate
       FROM watermarks
-      WHERE id = ?
-    `).get(result.lastInsertRowid);
+      WHERE id = $1
+    `, [result.id]);
 
     res.status(201).json(watermark);
   } catch (error) {
@@ -132,7 +133,7 @@ router.post('/', upload.single('image'), (req, res) => {
 });
 
 // Update watermark
-router.put('/:id', upload.single('image'), (req, res) => {
+router.put('/:id', upload.single('image'), async (req, res) => {
   try {
     console.log('PUT /watermarks/:id - body:', req.body, 'file:', req.file?.filename);
     
@@ -148,29 +149,29 @@ router.put('/:id', upload.single('image'), (req, res) => {
     }
 
     if (isDefault === 'true' || isDefault === true) {
-      db.prepare('UPDATE watermarks SET is_default = 0').run();
+      await query('UPDATE watermarks SET is_default = 0');
     }
 
-    db.prepare(`
+    await query(`
       UPDATE watermarks
-      SET name = ?, image_url = ?, position = ?, opacity = ?, is_default = ?, tiled = ?
-      WHERE id = ?
-    `).run(
+      SET name = $1, image_url = $2, position = $3, opacity = $4, is_default = $5, tiled = $6
+      WHERE id = $7
+    `, [
       name, 
       imageUrl, 
       position, 
       opacity ? parseFloat(opacity) : 0.5, 
-      (isDefault === 'true' || isDefault === true) ? 1 : 0, 
-      (tiled === 'true' || tiled === true) ? 1 : 0, 
+      (isDefault === 'true' || isDefault === true), 
+      (tiled === 'true' || tiled === true), 
       req.params.id
-    );
+    ]);
 
-    const watermark = db.prepare(`
+    const watermark = await queryRow(`
       SELECT id, name, image_url as imageUrl, position, opacity, 
              is_default as isDefault, tiled, created_at as createdDate
       FROM watermarks
-      WHERE id = ?
-    `).get(req.params.id);
+      WHERE id = $1
+    `, [req.params.id]);
 
     res.json(watermark);
   } catch (error) {
@@ -180,9 +181,9 @@ router.put('/:id', upload.single('image'), (req, res) => {
 });
 
 // Delete watermark
-router.delete('/:id', (req, res) => {
+router.delete('/:id', async (req, res) => {
   try {
-    db.prepare('DELETE FROM watermarks WHERE id = ?').run(req.params.id);
+    await query('DELETE FROM watermarks WHERE id = $1', [req.params.id]);
     res.json({ message: 'Watermark deleted successfully' });
   } catch (error) {
     res.status(500).json({ error: error.message });

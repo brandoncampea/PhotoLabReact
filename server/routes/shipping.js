@@ -1,12 +1,12 @@
 import express from 'express';
-import { db } from '../database.js';
+import { queryRow, query } from '../mssql.js';
 
 const router = express.Router();
 
 // Get shipping configuration
-router.get('/config', (req, res) => {
+router.get('/config', async (req, res) => {
   try {
-    const config = db.prepare('SELECT * FROM shipping_config WHERE id = 1').get();
+    const config = await queryRow('SELECT * FROM shipping_config WHERE id = 1');
     
     if (!config) {
       return res.status(404).json({ error: 'Shipping config not found' });
@@ -26,29 +26,28 @@ router.get('/config', (req, res) => {
 });
 
 // Update shipping configuration
-router.put('/config', (req, res) => {
+router.put('/config', async (req, res) => {
   try {
     const { batchDeadline, directShippingCharge, isActive } = req.body;
     
-    // Ensure config exists
-    const existing = db.prepare('SELECT * FROM shipping_config WHERE id = 1').get();
-    
-    if (!existing) {
-      // Create if doesn't exist
-      db.prepare(`
-        INSERT INTO shipping_config (id, batch_deadline, direct_shipping_charge, is_active)
-        VALUES (1, ?, ?, ?)
-      `).run(batchDeadline, directShippingCharge, isActive ? 1 : 0);
-    } else {
-      // Update existing
-      db.prepare(`
+    await query(`
+      IF EXISTS (SELECT 1 FROM shipping_config WHERE id = 1)
+      BEGIN
         UPDATE shipping_config
-        SET batch_deadline = ?, direct_shipping_charge = ?, is_active = ?
+        SET batch_deadline = $1,
+            direct_shipping_charge = $2,
+            is_active = $3,
+            updated_at = CURRENT_TIMESTAMP
         WHERE id = 1
-      `).run(batchDeadline, directShippingCharge, isActive ? 1 : 0);
-    }
+      END
+      ELSE
+      BEGIN
+        INSERT INTO shipping_config (id, batch_deadline, direct_shipping_charge, is_active)
+        VALUES (1, $1, $2, $3)
+      END
+    `, [batchDeadline, directShippingCharge, !!isActive]);
     
-    const updated = db.prepare('SELECT * FROM shipping_config WHERE id = 1').get();
+    const updated = await queryRow('SELECT * FROM shipping_config WHERE id = 1');
     res.json(updated);
   } catch (error) {
     console.error('Error updating shipping config:', error);

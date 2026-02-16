@@ -1,13 +1,13 @@
 // Add items (products with sizes) to a price list
 import express from 'express';
-import { db } from '../database.js';
+import { queryRow, query } from '../mssql.js';
 import { adminRequired } from '../middleware/auth.js';
 const router = express.Router();
 
 // ...existing routes...
 
 // Add items to price list (products with sizes)
-router.post('/:id/items', adminRequired, (req, res) => {
+router.post('/:id/items', adminRequired, async (req, res) => {
   try {
     console.log('[PriceListItems] Received request:', { params: req.params, body: req.body });
     const priceListId = parseInt(req.params.id, 10);
@@ -17,7 +17,7 @@ router.post('/:id/items', adminRequired, (req, res) => {
       return res.status(400).json({ error: 'No items provided' });
     }
 
-    items.forEach(item => {
+    for (const item of items) {
       try {
         // Skip products with missing or empty name
         if (!item.productName || typeof item.productName !== 'string' || item.productName.trim() === '') {
@@ -39,25 +39,22 @@ router.post('/:id/items', adminRequired, (req, res) => {
         console.log('[PriceListItems] Computed product price:', price, 'for', item.productName);
 
         // Insert product if not exists
-        let product = db.prepare('SELECT id FROM products WHERE name = ?').get(item.productName);
+        let product = await queryRow('SELECT id FROM products WHERE name = $1', [item.productName]);
         if (!product) {
-          const sql = 'INSERT INTO products (name, description, category, price) VALUES (?, ?, ?, ?)';
+          const sql = 'INSERT INTO products (name, description, category, price) VALUES ($1, $2, $3, $4) RETURNING id';
           const sqlArgs = [item.productName, item.description || '', item.category || 'Other', price];
           console.log('[PriceListItems] SQL:', sql, 'ARGS:', sqlArgs);
-          const result = db.prepare(sql).run(...sqlArgs);
-          product = { id: result.lastInsertRowid };
+          product = await queryRow(sql, sqlArgs);
         }
 
         // Link product to price list if not already linked
-        const exists = db.prepare('SELECT 1 FROM price_list_products WHERE price_list_id = ? AND product_id = ?')
-          .get(priceListId, product.id);
+        const exists = await queryRow('SELECT 1 FROM price_list_products WHERE price_list_id = $1 AND product_id = $2', [priceListId, product.id]);
         if (!exists) {
-          db.prepare('INSERT INTO price_list_products (price_list_id, product_id) VALUES (?, ?)')
-            .run(priceListId, product.id);
+          await query('INSERT INTO price_list_products (price_list_id, product_id) VALUES ($1, $2)', [priceListId, product.id]);
         }
 
         // Insert sizes for this product
-        (item.sizes || []).forEach(size => {
+        for (const size of (item.sizes || [])) {
           try {
             // Always use size.name if present, fallback to size.sizeName, always trim
             const rawName = (size.name !== undefined ? String(size.name) : '').trim();
@@ -72,23 +69,21 @@ router.post('/:id/items', adminRequired, (req, res) => {
             const safePrice = (typeof size.price === 'number' && !isNaN(size.price)) ? size.price : 0;
             const safeCost = (typeof size.cost === 'number' && !isNaN(size.cost)) ? size.cost : 0;
             // Check if size exists for this product and price list
-            const sizeExists = db.prepare('SELECT 1 FROM product_sizes WHERE product_id = ? AND price_list_id = ? AND size_name = ?')
-              .get(product.id, priceListId, sizeName);
+            const sizeExists = await queryRow('SELECT 1 FROM product_sizes WHERE product_id = $1 AND price_list_id = $2 AND size_name = $3', [product.id, priceListId, sizeName]);
             if (!sizeExists) {
-              db.prepare('INSERT INTO product_sizes (product_id, price_list_id, size_name, price, cost) VALUES (?, ?, ?, ?, ?)')
-                .run(product.id, priceListId, sizeName, safePrice, safeCost);
+              await query('INSERT INTO product_sizes (product_id, price_list_id, size_name, price, cost) VALUES ($1, $2, $3, $4, $5)', [product.id, priceListId, sizeName, safePrice, safeCost]);
               console.log('[PriceListItems] Inserted size:', { productId: product.id, priceListId, sizeName, safePrice, safeCost });
             }
           } catch (sizeError) {
             console.error('[PriceListItems] Error inserting size:', size, sizeError);
             throw sizeError;
           }
-        });
+        }
       } catch (itemError) {
         console.error('[PriceListItems] Error processing item:', item, itemError);
         throw itemError;
       }
-    });
+    }
 
     res.json({ message: 'Items added to price list' });
   } catch (error) {

@@ -1,9 +1,9 @@
 import jwt from 'jsonwebtoken';
-import { db } from '../database.js';
+import { queryRow } from '../mssql.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
-export const authRequired = (req, res, next) => {
+export const authRequired = async (req, res, next) => {
   try {
     const auth = req.headers.authorization || '';
     const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
@@ -18,7 +18,7 @@ export const authRequired = (req, res, next) => {
     let role = 'customer';
     let studio_id = null;
     try {
-      const userRow = db.prepare('SELECT role, studio_id FROM users WHERE id = ?').get(userId);
+      const userRow = await queryRow('SELECT role, studio_id FROM users WHERE id = $1', [userId]);
       if (userRow && userRow.role) role = userRow.role;
       if (userRow && userRow.studio_id) studio_id = userRow.studio_id;
     } catch {}
@@ -35,8 +35,8 @@ export const authRequired = (req, res, next) => {
   }
 };
 
-export const adminRequired = (req, res, next) => {
-  authRequired(req, res, () => {
+export const adminRequired = async (req, res, next) => {
+  await authRequired(req, res, () => {
     if (req.user?.role !== 'admin' && req.user?.role !== 'studio_admin') {
       return res.status(403).json({ error: 'Admin access required' });
     }

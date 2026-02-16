@@ -1,17 +1,17 @@
 import express from 'express';
-import { db } from '../database.js';
+import { queryRows, query } from '../mssql.js';
 import { adminRequired } from '../middleware/auth.js';
 const router = express.Router();
 
 // Get all categories
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
     // Get all categories from categories table
-    const categories = db.prepare(`
+    const categories = await queryRows(`
       SELECT name
       FROM categories
       ORDER BY name ASC
-    `).all();
+    `);
     
     const categoryNames = categories.map(c => c.name);
     res.json(categoryNames);
@@ -21,7 +21,7 @@ router.get('/', (req, res) => {
 });
 
 // Create category
-router.post('/', adminRequired, (req, res) => {
+router.post('/', adminRequired, async (req, res) => {
   try {
     const { category } = req.body;
     
@@ -31,12 +31,15 @@ router.post('/', adminRequired, (req, res) => {
 
     // Insert the category into the categories table
     try {
-      db.prepare('INSERT INTO categories (name) VALUES (?)').run(category.trim());
+      await query(
+        `IF NOT EXISTS (SELECT 1 FROM categories WHERE name = $1)
+         BEGIN
+           INSERT INTO categories (name) VALUES ($1)
+         END`,
+        [category.trim()]
+      );
     } catch (e) {
-      // If duplicate, just return success
-      if (!e.message.includes('UNIQUE constraint failed')) {
-        throw e;
-      }
+      throw e;
     }
 
     res.status(201).json({ category: category.trim() });
@@ -46,20 +49,20 @@ router.post('/', adminRequired, (req, res) => {
 });
 
 // Delete category - removes it from table and all albums
-router.delete('/:category', adminRequired, (req, res) => {
+router.delete('/:category', adminRequired, async (req, res) => {
   try {
     const { category } = req.params;
     const decodedCategory = decodeURIComponent(category);
     
     // Remove from categories table
-    db.prepare('DELETE FROM categories WHERE name = ?').run(decodedCategory);
+    await query('DELETE FROM categories WHERE name = $1', [decodedCategory]);
     
     // Update all albums with this category to null
-    db.prepare(`
+    await query(`
       UPDATE albums
       SET category = NULL
-      WHERE category = ?
-    `).run(decodedCategory);
+      WHERE category = $1
+    `, [decodedCategory]);
     
     res.json({ message: 'Category deleted successfully' });
   } catch (error) {

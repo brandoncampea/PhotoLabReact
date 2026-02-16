@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { initDb } from './database.js';
+import { initializeDatabase } from './mssql.js';
 
 import authRoutes from './routes/auth.js';
 import albumRoutes from './routes/albums.js';
@@ -76,7 +76,13 @@ app.get('/', (req, res) => {
 });
 
 // Initialize database and start server
-initDb();
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-});
+initializeDatabase()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
+  })
+  .catch((error) => {
+    console.error('Failed to initialize database:', error);
+    process.exit(1);
+  });

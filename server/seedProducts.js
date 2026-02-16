@@ -1,8 +1,8 @@
-import { db, initDb } from './database.js';
+import { queryRow, transaction } from './mssql.js';
 
-const seed = () => {
-  initDb();
-  const count = db.prepare('SELECT COUNT(*) as c FROM products').get().c;
+const seed = async () => {
+  const countRow = await queryRow('SELECT COUNT(*)::int as c FROM products');
+  const count = Number(countRow?.c || 0);
   if (count > 0) {
     console.log(`Products already exist (${count}); skipping seed.`);
     return;
@@ -214,27 +214,19 @@ const seed = () => {
     },
   ];
 
-  const productCols = db.prepare("PRAGMA table_info(products)").all().map(c => c.name);
-  const hasCost = productCols.includes('cost');
-  const cols = hasCost
-    ? '(name, category, price, description, cost, options)'
-    : '(name, category, price, description, options)';
-  const placeholders = hasCost ? '(?, ?, ?, ?, ?, ?)' : '(?, ?, ?, ?, ?)';
-  const sql = `INSERT INTO products ${cols} VALUES ${placeholders}`;
-  const stmt = db.prepare(sql);
-
-  const insertMany = db.transaction((rows) => {
-    for (const p of rows) {
-      if (hasCost) {
-        stmt.run(p.name, p.category, p.price, p.description, p.cost, JSON.stringify(p.options));
-      } else {
-        stmt.run(p.name, p.category, p.price, p.description, JSON.stringify(p.options));
-      }
+  await transaction(async (client) => {
+    for (const p of products) {
+      await client.query(
+        'INSERT INTO products (name, category, price, description, cost, options) VALUES ($1, $2, $3, $4, $5, $6)',
+        [p.name, p.category, p.price, p.description, p.cost, JSON.stringify(p.options)]
+      );
     }
   });
-
-  insertMany(products);
   console.log('Seeded default products:', products.map(p => p.name).join(', '));
+  process.exit(0);
 };
 
-seed();
+seed().catch((error) => {
+  console.error('Seed failed:', error);
+  process.exit(1);
+});

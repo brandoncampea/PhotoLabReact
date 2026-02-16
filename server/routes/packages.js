@@ -1,31 +1,31 @@
 import express from 'express';
-import { db } from '../database.js';
+import { queryRow, queryRows, query } from '../mssql.js';
 import { adminRequired } from '../middleware/auth.js';
 
 const router = express.Router();
 
 // Compatibility: GET /api/packages?priceListId=1
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   const priceListId = req.query.priceListId;
   if (!priceListId) {
     return res.status(400).json({ error: 'Missing priceListId parameter' });
   }
   try {
-    const packages = db.prepare(`
+    const packages = await queryRows(`
       SELECT id, price_list_id as priceListId, name, description, 
              package_price as packagePrice, is_active as isActive, created_at as createdDate
       FROM packages
-      WHERE price_list_id = ?
-    `).all(priceListId);
+      WHERE price_list_id = $1
+    `, [priceListId]);
 
     // Get items for each package
     const enriched = [];
     for (const pkg of packages) {
-      const items = db.prepare(`
+      const items = await queryRows(`
         SELECT product_id as productId, product_size_id as productSizeId, quantity
         FROM package_items
-        WHERE package_id = ?
-      `).all(pkg.id);
+        WHERE package_id = $1
+      `, [pkg.id]);
       enriched.push({ ...pkg, items });
     }
 
@@ -37,23 +37,23 @@ router.get('/', (req, res) => {
 
 
 // Get all packages for a price list
-router.get('/pricelist/:priceListId', (req, res) => {
+router.get('/pricelist/:priceListId', async (req, res) => {
   try {
-    const packages = db.prepare(`
+    const packages = await queryRows(`
       SELECT id, price_list_id as priceListId, name, description, 
              package_price as packagePrice, is_active as isActive, created_at as createdDate
       FROM packages
-      WHERE price_list_id = ?
-    `).all(req.params.priceListId);
+      WHERE price_list_id = $1
+    `, [req.params.priceListId]);
 
     // Get items for each package
     const enriched = [];
     for (const pkg of packages) {
-      const items = db.prepare(`
+      const items = await queryRows(`
         SELECT product_id as productId, product_size_id as productSizeId, quantity
         FROM package_items
-        WHERE package_id = ?
-      `).all(pkg.id);
+        WHERE package_id = $1
+      `, [pkg.id]);
       enriched.push({ ...pkg, items });
     }
 
@@ -64,24 +64,24 @@ router.get('/pricelist/:priceListId', (req, res) => {
 });
 
 // Get package by ID
-router.get('/:id', (req, res) => {
+router.get('/:id', async (req, res) => {
   try {
-    const pkg = db.prepare(`
+    const pkg = await queryRow(`
       SELECT id, price_list_id as priceListId, name, description, 
              package_price as packagePrice, is_active as isActive, created_at as createdDate
       FROM packages
-      WHERE id = ?
-    `).get(req.params.id);
+      WHERE id = $1
+    `, [req.params.id]);
 
     if (!pkg) {
       return res.status(404).json({ error: 'Package not found' });
     }
 
-    const items = db.prepare(`
+    const items = await queryRows(`
       SELECT product_id as productId, product_size_id as productSizeId, quantity
       FROM package_items
-      WHERE package_id = ?
-    `).all(pkg.id);
+      WHERE package_id = $1
+    `, [pkg.id]);
 
     res.json({ ...pkg, items });
   } catch (error) {
@@ -90,33 +90,34 @@ router.get('/:id', (req, res) => {
 });
 
 // Create package
-router.post('/', adminRequired, (req, res) => {
+router.post('/', adminRequired, async (req, res) => {
   try {
     const { priceListId, name, description, packagePrice, items, isActive } = req.body;
 
-    const result = db.prepare(`
+    const result = await queryRow(`
       INSERT INTO packages (price_list_id, name, description, package_price, is_active)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(priceListId, name, description || null, packagePrice, isActive ? 1 : 0);
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING id
+    `, [priceListId, name, description || null, packagePrice, !!isActive]);
 
-    const packageId = result.lastInsertRowid;
+    const packageId = result.id;
 
     // Insert package items
     if (items && items.length > 0) {
       for (const item of items) {
-        db.prepare(`
+        await query(`
           INSERT INTO package_items (package_id, product_id, product_size_id, quantity)
-          VALUES (?, ?, ?, ?)
-        `).run(packageId, item.productId, item.productSizeId, item.quantity);
+          VALUES ($1, $2, $3, $4)
+        `, [packageId, item.productId, item.productSizeId || null, item.quantity]);
       }
     }
 
-    const pkg = db.prepare(`
+    const pkg = await queryRow(`
       SELECT id, price_list_id as priceListId, name, description, 
              package_price as packagePrice, is_active as isActive, created_at as createdDate
       FROM packages
-      WHERE id = ?
-    `).get(packageId);
+      WHERE id = $1
+    `, [packageId]);
 
     res.status(201).json({ ...pkg, items: items || [] });
   } catch (error) {
@@ -125,35 +126,35 @@ router.post('/', adminRequired, (req, res) => {
 });
 
 // Update package
-router.put('/:id', adminRequired, (req, res) => {
+router.put('/:id', adminRequired, async (req, res) => {
   try {
     const { name, description, packagePrice, items, isActive } = req.body;
 
-    db.prepare(`
+    await query(`
       UPDATE packages
-      SET name = ?, description = ?, package_price = ?, is_active = ?
-      WHERE id = ?
-    `).run(name, description || null, packagePrice, isActive ? 1 : 0, req.params.id);
+      SET name = $1, description = $2, package_price = $3, is_active = $4
+      WHERE id = $5
+    `, [name, description || null, packagePrice, !!isActive, req.params.id]);
 
     // Delete existing items
-    db.prepare('DELETE FROM package_items WHERE package_id = ?').run(req.params.id);
+    await query('DELETE FROM package_items WHERE package_id = $1', [req.params.id]);
 
     // Insert new items
     if (items && items.length > 0) {
       for (const item of items) {
-        db.prepare(`
+        await query(`
           INSERT INTO package_items (package_id, product_id, product_size_id, quantity)
-          VALUES (?, ?, ?, ?)
-        `).run(req.params.id, item.productId, item.productSizeId, item.quantity);
+          VALUES ($1, $2, $3, $4)
+        `, [req.params.id, item.productId, item.productSizeId || null, item.quantity]);
       }
     }
 
-    const pkg = db.prepare(`
+    const pkg = await queryRow(`
       SELECT id, price_list_id as priceListId, name, description, 
              package_price as packagePrice, is_active as isActive, created_at as createdDate
       FROM packages
-      WHERE id = ?
-    `).get(req.params.id);
+      WHERE id = $1
+    `, [req.params.id]);
 
     res.json({ ...pkg, items: items || [] });
   } catch (error) {
@@ -162,9 +163,9 @@ router.put('/:id', adminRequired, (req, res) => {
 });
 
 // Delete package
-router.delete('/:id', adminRequired, (req, res) => {
+router.delete('/:id', adminRequired, async (req, res) => {
   try {
-    db.prepare('DELETE FROM packages WHERE id = ?').run(req.params.id);
+    await query('DELETE FROM packages WHERE id = $1', [req.params.id]);
     res.json({ message: 'Package deleted successfully' });
   } catch (error) {
     res.status(500).json({ error: error.message });

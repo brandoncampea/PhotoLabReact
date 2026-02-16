@@ -1,16 +1,16 @@
 import express from 'express';
-import { db } from '../database.js';
+import { queryRow, queryRows, query } from '../mssql.js';
 import { adminRequired } from '../middleware/auth.js';
 const router = express.Router();
 
 // Get all price lists
-router.get('/', adminRequired, (req, res) => {
+router.get('/', adminRequired, async (req, res) => {
   try {
-    const priceLists = db.prepare(`
+    const priceLists = await queryRows(`
       SELECT id, name, description, is_default as isDefault, created_at as createdDate
       FROM price_lists
       ORDER BY name ASC
-    `).all();
+    `);
     res.json(priceLists);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -18,32 +18,32 @@ router.get('/', adminRequired, (req, res) => {
 });
 
 // Get price list by ID with all products and packages
-router.get('/:id', adminRequired, (req, res) => {
+router.get('/:id', adminRequired, async (req, res) => {
   try {
-    const priceList = db.prepare(`
+    const priceList = await queryRow(`
       SELECT id, name, description, is_default as isDefault, created_at as createdDate
       FROM price_lists
-      WHERE id = ?
-    `).get(req.params.id);
+      WHERE id = $1
+    `, [req.params.id]);
     
     if (!priceList) {
       return res.status(404).json({ error: 'Price list not found' });
     }
 
     // Get products for this price list
-    const products = db.prepare(`
+    const products = await queryRows(`
       SELECT DISTINCT p.id, p.name, p.category, p.price, p.description, p.cost
       FROM products p
       JOIN price_list_products plp ON p.id = plp.product_id
-      WHERE plp.price_list_id = ?
-    `).all(req.params.id);
+      WHERE plp.price_list_id = $1
+    `, [req.params.id]);
 
     // Get product sizes for this price list
-    const productSizes = db.prepare(`
+    const productSizes = await queryRows(`
       SELECT id, product_id as productId, size_name as sizeName, price, cost
       FROM product_sizes
-      WHERE price_list_id = ?
-    `).all(req.params.id);
+      WHERE price_list_id = $1
+    `, [req.params.id]);
 
     // Attach sizes to each product, mapping sizeName -> name
     const productsWithSizes = products.map(product => ({
@@ -60,17 +60,17 @@ router.get('/:id', adminRequired, (req, res) => {
     }));
 
     // Get packages for this price list
-    const packages = db.prepare(`
+    const packages = await queryRows(`
       SELECT id, name, description, package_price as packagePrice, is_active as isActive, created_at as createdDate
       FROM packages
-      WHERE price_list_id = ?
-    `).all(req.params.id);
+      WHERE price_list_id = $1
+    `, [req.params.id]);
 
     // Get package items
-    const packageItems = db.prepare(`
+    const packageItems = await queryRows(`
       SELECT id, package_id as packageId, product_id as productId, product_size_id as productSizeId, quantity
       FROM package_items
-    `).all();
+    `);
 
     priceList.products = productsWithSizes;
     // priceList.sizes = productSizes; // No longer needed by frontend
@@ -86,25 +86,26 @@ router.get('/:id', adminRequired, (req, res) => {
 });
 
 // Create price list
-router.post('/', adminRequired, (req, res) => {
+router.post('/', adminRequired, async (req, res) => {
   try {
     const { name, description, isDefault } = req.body;
     
     // If isDefault is true, unset default on other price lists
     if (isDefault) {
-      db.prepare('UPDATE price_lists SET is_default = 0').run();
+      await query('UPDATE price_lists SET is_default = 0');
     }
 
-    const result = db.prepare(`
+    const result = await queryRow(`
       INSERT INTO price_lists (name, description, is_default)
-      VALUES (?, ?, ?)
-    `).run(name, description || null, isDefault ? 1 : 0);
+      VALUES ($1, $2, $3)
+      RETURNING id
+    `, [name, description || null, !!isDefault]);
 
-    const priceList = db.prepare(`
+    const priceList = await queryRow(`
       SELECT id, name, description, is_default as isDefault, created_at as createdDate
       FROM price_lists
-      WHERE id = ?
-    `).get(result.lastInsertRowid);
+      WHERE id = $1
+    `, [result.id]);
 
     res.status(201).json(priceList);
   } catch (error) {
@@ -113,25 +114,25 @@ router.post('/', adminRequired, (req, res) => {
 });
 
 // Update price list
-router.put('/:id', adminRequired, (req, res) => {
+router.put('/:id', adminRequired, async (req, res) => {
   try {
     const { name, description, isDefault } = req.body;
 
     if (isDefault) {
-      db.prepare('UPDATE price_lists SET is_default = 0').run();
+      await query('UPDATE price_lists SET is_default = 0');
     }
 
-    db.prepare(`
+    await query(`
       UPDATE price_lists
-      SET name = ?, description = ?, is_default = ?
-      WHERE id = ?
-    `).run(name, description || null, isDefault ? 1 : 0, req.params.id);
+      SET name = $1, description = $2, is_default = $3
+      WHERE id = $4
+    `, [name, description || null, !!isDefault, req.params.id]);
 
-    const priceList = db.prepare(`
+    const priceList = await queryRow(`
       SELECT id, name, description, is_default as isDefault, created_at as createdDate
       FROM price_lists
-      WHERE id = ?
-    `).get(req.params.id);
+      WHERE id = $1
+    `, [req.params.id]);
 
     res.json(priceList);
   } catch (error) {
@@ -140,16 +141,16 @@ router.put('/:id', adminRequired, (req, res) => {
 });
 
 // Set default price list
-router.post('/:id/setDefault', adminRequired, (req, res) => {
+router.post('/:id/setDefault', adminRequired, async (req, res) => {
   try {
-    db.prepare('UPDATE price_lists SET is_default = 0').run();
-    db.prepare('UPDATE price_lists SET is_default = 1 WHERE id = ?').run(req.params.id);
+    await query('UPDATE price_lists SET is_default = 0');
+    await query('UPDATE price_lists SET is_default = 1 WHERE id = $1', [req.params.id]);
 
-    const priceList = db.prepare(`
+    const priceList = await queryRow(`
       SELECT id, name, description, is_default as isDefault, created_at as createdDate
       FROM price_lists
-      WHERE id = ?
-    `).get(req.params.id);
+      WHERE id = $1
+    `, [req.params.id]);
 
     res.json(priceList);
   } catch (error) {
@@ -158,9 +159,9 @@ router.post('/:id/setDefault', adminRequired, (req, res) => {
 });
 
 // Delete price list
-router.delete('/:id', adminRequired, (req, res) => {
+router.delete('/:id', adminRequired, async (req, res) => {
   try {
-    db.prepare('DELETE FROM price_lists WHERE id = ?').run(req.params.id);
+    await query('DELETE FROM price_lists WHERE id = $1', [req.params.id]);
     res.json({ message: 'Price list deleted successfully' });
   } catch (error) {
     res.status(500).json({ error: error.message });
