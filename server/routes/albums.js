@@ -1,12 +1,12 @@
 import express from 'express';
-import { db } from '../database.js';
+import { queryRow, queryRows, query } from '../mssql.js';
 import { requireActiveSubscription } from '../middleware/subscription.js';
 const router = express.Router();
 
 // Get all albums
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
-    const albums = db.prepare(`
+    const albums = await queryRows(`
       SELECT 
         id,
         COALESCE(name, title) as name,
@@ -22,7 +22,7 @@ router.get('/', (req, res) => {
         created_at as createdDate
       FROM albums 
       ORDER BY created_at DESC
-    `).all();
+    `);
     res.json(albums);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -30,9 +30,9 @@ router.get('/', (req, res) => {
 });
 
 // Get album by ID
-router.get('/:id', (req, res) => {
+router.get('/:id', async (req, res) => {
   try {
-    const album = db.prepare(`
+    const album = await queryRow(`
       SELECT 
         id,
         COALESCE(name, title) as name,
@@ -46,8 +46,8 @@ router.get('/:id', (req, res) => {
         password,
         password_hint as passwordHint,
         created_at as createdDate
-      FROM albums WHERE id = ?
-    `).get(req.params.id);
+      FROM albums WHERE id = $1
+    `, [req.params.id]);
     if (!album) {
       return res.status(404).json({ error: 'Album not found' });
     }
@@ -59,7 +59,7 @@ router.get('/:id', (req, res) => {
 
 // Create album
 // Create new album (requires active subscription)
-router.post('/', requireActiveSubscription, (req, res) => {
+router.post('/', requireActiveSubscription, async (req, res) => {
   try {
     const { title, name, description, coverImageUrl, coverPhotoId, category, priceListId, isPasswordProtected, password, passwordHint } = req.body;
     const albumName = title || name || '';
@@ -68,23 +68,24 @@ router.post('/', requireActiveSubscription, (req, res) => {
       return res.status(400).json({ error: 'Album name is required' });
     }
     
-    const result = db.prepare(`
+    const result = await queryRow(`
       INSERT INTO albums (name, title, description, cover_image_url, cover_photo_id, category, price_list_id, is_password_protected, password, password_hint)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      albumName, 
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      RETURNING id
+    `, [
       albumName,
-      description || null, 
+      albumName,
+      description || null,
       coverImageUrl || null,
       coverPhotoId || null,
       category || null,
       priceListId || null,
-      isPasswordProtected ? 1 : 0,
+      !!isPasswordProtected,
       isPasswordProtected ? password : null,
-      isPasswordProtected ? passwordHint : null
-    );
+      isPasswordProtected ? passwordHint : null,
+    ]);
     
-    const album = db.prepare(`
+    const album = await queryRow(`
       SELECT 
         id,
         COALESCE(name, title) as name,
@@ -98,8 +99,8 @@ router.post('/', requireActiveSubscription, (req, res) => {
         password,
         password_hint as passwordHint,
         created_at as createdDate
-      FROM albums WHERE id = ?
-    `).get(result.lastInsertRowid);
+      FROM albums WHERE id = $1
+    `, [result.id]);
     res.status(201).json(album);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -107,12 +108,12 @@ router.post('/', requireActiveSubscription, (req, res) => {
 });
 
 // Update album
-router.put('/:id', (req, res) => {
+router.put('/:id', async (req, res) => {
   try {
     const { title, name, description, coverImageUrl, coverPhotoId, category, priceListId, isPasswordProtected, password, passwordHint } = req.body;
     
     // Get the current album to preserve existing values
-    const currentAlbum = db.prepare('SELECT * FROM albums WHERE id = ?').get(req.params.id);
+    const currentAlbum = await queryRow('SELECT * FROM albums WHERE id = $1', [req.params.id]);
     if (!currentAlbum) {
       return res.status(404).json({ error: 'Album not found' });
     }
@@ -128,12 +129,12 @@ router.put('/:id', (req, res) => {
     const newPassword = newIsProtected ? (password !== undefined ? password : currentAlbum.password) : null;
     const newPasswordHint = newIsProtected ? (passwordHint !== undefined ? passwordHint : currentAlbum.password_hint) : null;
     
-    db.prepare(`
+    await query(`
       UPDATE albums 
-      SET name = ?, title = ?, description = ?, cover_image_url = ?, cover_photo_id = ?, category = ?, price_list_id = ?, 
-          is_password_protected = ?, password = ?, password_hint = ?
-      WHERE id = ?
-    `).run(
+      SET name = $1, title = $2, description = $3, cover_image_url = $4, cover_photo_id = $5, category = $6, price_list_id = $7, 
+          is_password_protected = $8, password = $9, password_hint = $10
+      WHERE id = $11
+    `, [
       albumName,
       albumName,
       newDescription,
@@ -141,13 +142,13 @@ router.put('/:id', (req, res) => {
       newCoverPhotoId,
       newCategory,
       newPriceListId,
-      newIsProtected ? 1 : 0,
+      !!newIsProtected,
       newPassword,
       newPasswordHint,
-      req.params.id
-    );
+      req.params.id,
+    ]);
     
-    const album = db.prepare(`
+    const album = await queryRow(`
       SELECT 
         id,
         COALESCE(name, title) as name,
@@ -161,8 +162,8 @@ router.put('/:id', (req, res) => {
         password,
         password_hint as passwordHint,
         created_at as createdDate
-      FROM albums WHERE id = ?
-    `).get(req.params.id);
+      FROM albums WHERE id = $1
+    `, [req.params.id]);
     res.json(album);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -170,9 +171,9 @@ router.put('/:id', (req, res) => {
 });
 
 // Delete album
-router.delete('/:id', (req, res) => {
+router.delete('/:id', async (req, res) => {
   try {
-    db.prepare('DELETE FROM albums WHERE id = ?').run(req.params.id);
+    await query('DELETE FROM albums WHERE id = $1', [req.params.id]);
     res.json({ message: 'Album deleted successfully' });
   } catch (error) {
     res.status(500).json({ error: error.message });

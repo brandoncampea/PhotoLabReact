@@ -1,28 +1,28 @@
 import express from 'express';
-import { db } from '../database.js';
+import { queryRow, queryRows, query } from '../mssql.js';
 import { adminRequired } from '../middleware/auth.js';
 const router = express.Router();
 
 // Get all discount codes
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
-    const codes = db.prepare(`
+    const codes = await queryRows(`
       SELECT id, code, description, discount_type as discountType, discount_value as discountValue,
              application_type as applicationType, expiration_date as expirationDate, 
              is_one_time_use as isOneTimeUse, usage_count as usageCount, max_usages as maxUsages,
              is_active as isActive, created_at as createdDate
       FROM discount_codes
       ORDER BY created_at DESC
-    `).all();
+    `);
 
     // Get applicable products for each code
     const enriched = [];
     for (const code of codes) {
-      const products = db.prepare(`
+      const products = await queryRows(`
         SELECT product_id as productId
         FROM discount_code_products
-        WHERE discount_code_id = ?
-      `).all(code.id);
+        WHERE discount_code_id = $1
+      `, [code.id]);
       enriched.push({
         ...code,
         applicableProductIds: products.map(p => p.productId)
@@ -36,26 +36,26 @@ router.get('/', (req, res) => {
 });
 
 // Get discount code by ID
-router.get('/:id', (req, res) => {
+router.get('/:id', async (req, res) => {
   try {
-    const code = db.prepare(`
+    const code = await queryRow(`
       SELECT id, code, description, discount_type as discountType, discount_value as discountValue,
              application_type as applicationType, expiration_date as expirationDate, 
              is_one_time_use as isOneTimeUse, usage_count as usageCount, max_usages as maxUsages,
              is_active as isActive, created_at as createdDate
       FROM discount_codes
-      WHERE id = ?
-    `).get(req.params.id);
+      WHERE id = $1
+    `, [req.params.id]);
 
     if (!code) {
       return res.status(404).json({ error: 'Discount code not found' });
     }
 
-    const products = db.prepare(`
+    const products = await queryRows(`
       SELECT product_id as productId
       FROM discount_code_products
-      WHERE discount_code_id = ?
-    `).all(code.id);
+      WHERE discount_code_id = $1
+    `, [code.id]);
 
     res.json({
       ...code,
@@ -67,38 +67,48 @@ router.get('/:id', (req, res) => {
 });
 
 // Create discount code
-router.post('/', adminRequired, (req, res) => {
+router.post('/', adminRequired, async (req, res) => {
   try {
     const { code, description, discountType, discountValue, applicationType, expirationDate, 
             isOneTimeUse, maxUsages, isActive, applicableProductIds } = req.body;
 
-    const result = db.prepare(`
+    const result = await queryRow(`
       INSERT INTO discount_codes (code, description, discount_type, discount_value, application_type, 
                                   expiration_date, is_one_time_use, max_usages, is_active)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(code, description, discountType, discountValue, applicationType, 
-           expirationDate || null, isOneTimeUse ? 1 : 0, maxUsages || null, isActive ? 1 : 0);
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      RETURNING id
+    `, [
+      code,
+      description,
+      discountType,
+      discountValue,
+      applicationType,
+      expirationDate || null,
+      !!isOneTimeUse,
+      maxUsages || null,
+      !!isActive
+    ]);
 
-    const codeId = result.lastInsertRowid;
+    const codeId = result.id;
 
     // Insert applicable products
     if (applicableProductIds && applicableProductIds.length > 0) {
       for (const productId of applicableProductIds) {
-        db.prepare(`
+        await query(`
           INSERT INTO discount_code_products (discount_code_id, product_id)
-          VALUES (?, ?)
-        `).run(codeId, productId);
+          VALUES ($1, $2)
+        `, [codeId, productId]);
       }
     }
 
-    const newCode = db.prepare(`
+    const newCode = await queryRow(`
       SELECT id, code, description, discount_type as discountType, discount_value as discountValue,
              application_type as applicationType, expiration_date as expirationDate, 
              is_one_time_use as isOneTimeUse, usage_count as usageCount, max_usages as maxUsages,
              is_active as isActive, created_at as createdDate
       FROM discount_codes
-      WHERE id = ?
-    `).get(codeId);
+      WHERE id = $1
+    `, [codeId]);
 
     res.status(201).json({
       ...newCode,
@@ -110,38 +120,47 @@ router.post('/', adminRequired, (req, res) => {
 });
 
 // Update discount code
-router.put('/:id', adminRequired, (req, res) => {
+router.put('/:id', adminRequired, async (req, res) => {
   try {
     const { description, discountType, discountValue, applicationType, expirationDate, 
             isOneTimeUse, maxUsages, isActive, applicableProductIds } = req.body;
 
-    db.prepare(`
+    await query(`
       UPDATE discount_codes
-      SET description = ?, discount_type = ?, discount_value = ?, application_type = ?, 
-          expiration_date = ?, is_one_time_use = ?, max_usages = ?, is_active = ?
-      WHERE id = ?
-    `).run(description, discountType, discountValue, applicationType, expirationDate || null,
-           isOneTimeUse ? 1 : 0, maxUsages || null, isActive ? 1 : 0, req.params.id);
+      SET description = $1, discount_type = $2, discount_value = $3, application_type = $4, 
+          expiration_date = $5, is_one_time_use = $6, max_usages = $7, is_active = $8
+      WHERE id = $9
+    `, [
+      description,
+      discountType,
+      discountValue,
+      applicationType,
+      expirationDate || null,
+      !!isOneTimeUse,
+      maxUsages || null,
+      !!isActive,
+      req.params.id
+    ]);
 
     // Update applicable products
-    db.prepare('DELETE FROM discount_code_products WHERE discount_code_id = ?').run(req.params.id);
+    await query('DELETE FROM discount_code_products WHERE discount_code_id = $1', [req.params.id]);
     if (applicableProductIds && applicableProductIds.length > 0) {
       for (const productId of applicableProductIds) {
-        db.prepare(`
+        await query(`
           INSERT INTO discount_code_products (discount_code_id, product_id)
-          VALUES (?, ?)
-        `).run(req.params.id, productId);
+          VALUES ($1, $2)
+        `, [req.params.id, productId]);
       }
     }
 
-    const updatedCode = db.prepare(`
+    const updatedCode = await queryRow(`
       SELECT id, code, description, discount_type as discountType, discount_value as discountValue,
              application_type as applicationType, expiration_date as expirationDate, 
              is_one_time_use as isOneTimeUse, usage_count as usageCount, max_usages as maxUsages,
              is_active as isActive, created_at as createdDate
       FROM discount_codes
-      WHERE id = ?
-    `).get(req.params.id);
+      WHERE id = $1
+    `, [req.params.id]);
 
     res.json({
       ...updatedCode,
@@ -153,9 +172,9 @@ router.put('/:id', adminRequired, (req, res) => {
 });
 
 // Delete discount code
-router.delete('/:id', adminRequired, (req, res) => {
+router.delete('/:id', adminRequired, async (req, res) => {
   try {
-    db.prepare('DELETE FROM discount_codes WHERE id = ?').run(req.params.id);
+    await query('DELETE FROM discount_codes WHERE id = $1', [req.params.id]);
     res.json({ message: 'Discount code deleted successfully' });
   } catch (error) {
     res.status(500).json({ error: error.message });

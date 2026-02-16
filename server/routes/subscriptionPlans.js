@@ -1,18 +1,18 @@
 import express from 'express';
-import { db } from '../database.js';
+import { queryRow, queryRows, query } from '../mssql.js';
 import { authRequired } from '../middleware/auth.js';
 import { SUBSCRIPTION_PLANS } from '../constants/subscriptions.js';
 
 const router = express.Router();
 
 // Get all subscription plans with current pricing
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
-    const plans = db.prepare(`
+    const plans = await queryRows(`
       SELECT id, name, description, monthly_price, max_albums, max_storage_gb, features, is_active
       FROM subscription_plans
       ORDER BY monthly_price ASC
-    `).all();
+    `);
 
     const plansWithFeatures = plans.map(plan => ({
       ...plan,
@@ -27,14 +27,14 @@ router.get('/', (req, res) => {
 });
 
 // Get plan by ID
-router.get('/:planId', (req, res) => {
+router.get('/:planId', async (req, res) => {
   try {
     const { planId } = req.params;
-    const plan = db.prepare(`
+    const plan = await queryRow(`
       SELECT id, name, description, monthly_price, max_albums, max_storage_gb, features, is_active
       FROM subscription_plans
-      WHERE id = ?
-    `).get(planId);
+      WHERE id = $1
+    `, [planId]);
 
     if (!plan) {
       return res.status(404).json({ error: 'Plan not found' });
@@ -51,7 +51,7 @@ router.get('/:planId', (req, res) => {
 });
 
 // Update subscription plan pricing (super admin only)
-router.patch('/:planId', authRequired, (req, res) => {
+router.patch('/:planId', authRequired, async (req, res) => {
   try {
     const { planId } = req.params;
     const { monthly_price, yearly_price, description, features, is_active } = req.body;
@@ -80,7 +80,7 @@ router.patch('/:planId', authRequired, (req, res) => {
     }
 
     // Check plan exists
-    const plan = db.prepare('SELECT id FROM subscription_plans WHERE id = ?').get(planId);
+    const plan = await queryRow('SELECT id FROM subscription_plans WHERE id = $1', [planId]);
     if (!plan) {
       return res.status(404).json({ error: 'Plan not found' });
     }
@@ -89,17 +89,17 @@ router.patch('/:planId', authRequired, (req, res) => {
     const updateValues = [];
 
     if (monthly_price !== undefined) {
-      updateFields.push('monthly_price = ?');
+      updateFields.push('monthly_price = $' + (updateFields.length + 1));
       updateValues.push(monthly_price);
     }
 
     if (yearly_price !== undefined) {
-      updateFields.push('yearly_price = ?');
+      updateFields.push('yearly_price = $' + (updateFields.length + 1));
       updateValues.push(yearly_price);
     }
 
     if (description !== undefined) {
-      updateFields.push('description = ?');
+      updateFields.push('description = $' + (updateFields.length + 1));
       updateValues.push(description);
     }
 
@@ -107,13 +107,13 @@ router.patch('/:planId', authRequired, (req, res) => {
       if (!Array.isArray(features)) {
         return res.status(400).json({ error: 'features must be an array' });
       }
-      updateFields.push('features = ?');
+      updateFields.push('features = $' + (updateFields.length + 1));
       updateValues.push(JSON.stringify(features));
     }
 
     if (is_active !== undefined) {
-      updateFields.push('is_active = ?');
-      updateValues.push(is_active ? 1 : 0);
+      updateFields.push('is_active = $' + (updateFields.length + 1));
+      updateValues.push(!!is_active);
     }
 
     if (updateFields.length === 0) {
@@ -122,17 +122,17 @@ router.patch('/:planId', authRequired, (req, res) => {
 
     updateValues.push(planId);
 
-    db.prepare(`
+    await query(`
       UPDATE subscription_plans
       SET ${updateFields.join(', ')}
-      WHERE id = ?
-    `).run(...updateValues);
+      WHERE id = $${updateValues.length}
+    `, updateValues);
 
-    const updatedPlan = db.prepare(`
+    const updatedPlan = await queryRow(`
       SELECT id, name, description, monthly_price, max_albums, max_storage_gb, features, is_active
       FROM subscription_plans
-      WHERE id = ?
-    `).get(planId);
+      WHERE id = $1
+    `, [planId]);
 
     res.json({
       message: 'Plan updated successfully',

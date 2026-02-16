@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import sharp from 'sharp';
-import { db, initDb } from './database.js';
+import { queryRow, query } from './mssql.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -25,7 +25,6 @@ if (!sourceDir) {
 const allowedExtensions = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp']);
 
 const main = async () => {
-  initDb();
   fs.mkdirSync(uploadsDir, { recursive: true });
 
   if (!fs.existsSync(sourceDir) || !fs.statSync(sourceDir).isDirectory()) {
@@ -46,14 +45,18 @@ const main = async () => {
   }
 
   let albumId;
-  const existingAlbum = db.prepare('SELECT id, cover_image_url FROM albums WHERE name = ?').get(albumName);
+  const existingAlbum = await queryRow(
+    'SELECT id, cover_image_url FROM albums WHERE name = $1',
+    [albumName]
+  );
   if (existingAlbum) {
     albumId = existingAlbum.id;
   } else {
-    const result = db
-      .prepare('INSERT INTO albums (name, description) VALUES (?, ?)')
-      .run(albumName, 'Seeded photos');
-    albumId = result.lastInsertRowid;
+    const result = await queryRow(
+      'INSERT INTO albums (name, description) VALUES ($1, $2) RETURNING id',
+      [albumName, 'Seeded photos']
+    );
+    albumId = result.id;
   }
 
   let added = 0;
@@ -63,7 +66,10 @@ const main = async () => {
     const ext = path.extname(file).toLowerCase();
     const srcPath = path.join(sourceDir, file);
 
-    const already = db.prepare('SELECT id FROM photos WHERE album_id = ? AND file_name = ?').get(albumId, file);
+    const already = await queryRow(
+      'SELECT id FROM photos WHERE album_id = $1 AND file_name = $2',
+      [albumId, file]
+    );
     if (already) {
       skipped += 1;
       continue;
@@ -83,29 +89,33 @@ const main = async () => {
     const destPath = path.join(uploadsDir, destName);
     fs.copyFileSync(srcPath, destPath);
 
-    db.prepare(
+    await query(
       `INSERT INTO photos (album_id, file_name, thumbnail_url, full_image_url, description, width, height)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
-    ).run(albumId, file, `/uploads/${destName}`, `/uploads/${destName}`, '', width, height);
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [albumId, file, `/uploads/${destName}`, `/uploads/${destName}`, '', width, height]
+    );
 
     added += 1;
   }
 
-  db.prepare(
-    `UPDATE albums SET photo_count = (SELECT COUNT(*) FROM photos WHERE album_id = ?) WHERE id = ?`
-  ).run(albumId, albumId);
+  await query(
+    `UPDATE albums SET photo_count = (SELECT COUNT(*) FROM photos WHERE album_id = $1) WHERE id = $2`,
+    [albumId, albumId]
+  );
 
-  const coverRow = db.prepare('SELECT cover_image_url FROM albums WHERE id = ?').get(albumId);
+  const coverRow = await queryRow('SELECT cover_image_url FROM albums WHERE id = $1', [albumId]);
   if (!coverRow?.cover_image_url) {
-    const firstPhoto = db
-      .prepare('SELECT full_image_url FROM photos WHERE album_id = ? ORDER BY id LIMIT 1')
-      .get(albumId);
+    const firstPhoto = await queryRow(
+      'SELECT full_image_url FROM photos WHERE album_id = $1 ORDER BY id LIMIT 1',
+      [albumId]
+    );
     if (firstPhoto?.full_image_url) {
-      db.prepare('UPDATE albums SET cover_image_url = ? WHERE id = ?').run(firstPhoto.full_image_url, albumId);
+      await query('UPDATE albums SET cover_image_url = $1 WHERE id = $2', [firstPhoto.full_image_url, albumId]);
     }
   }
 
   console.log(`Seed complete. Album: ${albumName} (id: ${albumId}). Added: ${added}. Skipped existing: ${skipped}.`);
+  process.exit(0);
 };
 
 main().catch((err) => {

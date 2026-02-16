@@ -1,13 +1,5 @@
-import sqlite3 from 'sqlite3';
 import bcrypt from 'bcryptjs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const dbPath = path.join(__dirname, 'photolab.db');
-const db = new sqlite3.Database(dbPath);
+import { queryRow, query } from './mssql.js';
 
 const testUsers = [
   {
@@ -32,12 +24,7 @@ async function createTestUsers() {
   for (const user of testUsers) {
     try {
       // Check if user exists
-      const existing = await new Promise((resolve, reject) => {
-        db.get('SELECT id FROM users WHERE email = ?', [user.email], (err, row) => {
-          if (err) reject(err);
-          else resolve(row);
-        });
-      });
+      const existing = await queryRow('SELECT id FROM users WHERE email = $1', [user.email]);
 
       if (existing) {
         console.log(`User ${user.email} already exists, skipping...`);
@@ -48,16 +35,10 @@ async function createTestUsers() {
       const hashedPassword = await bcrypt.hash(user.password, 10);
 
       // Insert user
-      await new Promise((resolve, reject) => {
-        db.run(
-          'INSERT INTO users (email, password, name, role, studio_id) VALUES (?, ?, ?, ?, ?)',
-          [user.email, hashedPassword, user.name, user.role, user.studio_id],
-          function(err) {
-            if (err) reject(err);
-            else resolve(this.lastID);
-          }
-        );
-      });
+      await query(
+        'INSERT INTO users (email, password, name, role, studio_id) VALUES ($1, $2, $3, $4, $5)',
+        [user.email, hashedPassword, user.name, user.role, user.studio_id]
+      );
 
       console.log(`✓ Created user: ${user.email} (${user.role})`);
     } catch (error) {
@@ -66,7 +47,7 @@ async function createTestUsers() {
   }
 
   console.log('Done!');
-  db.close();
+  process.exit(0);
 }
 
 createTestUsers();

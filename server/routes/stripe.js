@@ -1,13 +1,13 @@
 import express from 'express';
-import { db } from '../database.js';
+import { queryRow, query } from '../mssql.js';
 import { authRequired } from '../middleware/auth.js';
 
 const router = express.Router();
 
 // Get Stripe configuration
-router.get('/config', (req, res) => {
+router.get('/config', async (req, res) => {
   try {
-    const config = db.prepare('SELECT * FROM stripe_config WHERE id = 1').get();
+    const config = await queryRow('SELECT * FROM stripe_config WHERE id = 1');
     
     if (!config) {
       return res.status(404).json({ error: 'Stripe config not found' });
@@ -74,29 +74,30 @@ router.post('/test-connection', async (req, res) => {
 });
 
 // Update Stripe configuration (admin only)
-router.put('/config', (req, res) => {
+router.put('/config', async (req, res) => {
   try {
     const { publishableKey, secretKey, isLiveMode, isActive, webhookSecret } = req.body;
     
-    // Ensure config exists
-    const existing = db.prepare('SELECT * FROM stripe_config WHERE id = 1').get();
-    
-    if (!existing) {
-      // Create if doesn't exist
-      db.prepare(`
-        INSERT INTO stripe_config (id, publishable_key, secret_key, is_live_mode, is_active, webhook_secret)
-        VALUES (1, ?, ?, ?, ?, ?)
-      `).run(publishableKey, secretKey, isLiveMode ? 1 : 0, isActive ? 1 : 0, webhookSecret || null);
-    } else {
-      // Update existing
-      db.prepare(`
+    await query(`
+      IF EXISTS (SELECT 1 FROM stripe_config WHERE id = 1)
+      BEGIN
         UPDATE stripe_config
-        SET publishable_key = ?, secret_key = ?, is_live_mode = ?, is_active = ?, webhook_secret = ?
+        SET publishable_key = $1,
+            secret_key = $2,
+            is_live_mode = $3,
+            is_active = $4,
+            webhook_secret = $5,
+            updated_at = CURRENT_TIMESTAMP
         WHERE id = 1
-      `).run(publishableKey, secretKey, isLiveMode ? 1 : 0, isActive ? 1 : 0, webhookSecret || null);
-    }
+      END
+      ELSE
+      BEGIN
+        INSERT INTO stripe_config (id, publishable_key, secret_key, is_live_mode, is_active, webhook_secret)
+        VALUES (1, $1, $2, $3, $4, $5)
+      END
+    `, [publishableKey, secretKey, !!isLiveMode, !!isActive, webhookSecret || null]);
     
-    const updated = db.prepare('SELECT * FROM stripe_config WHERE id = 1').get();
+    const updated = await queryRow('SELECT * FROM stripe_config WHERE id = 1');
     // Don't expose secret key
     const { secret_key, ...safeConfig } = updated;
     res.json(safeConfig);
@@ -126,7 +127,7 @@ router.post('/create-payment-intent', authRequired, async (req, res) => {
     }
 
     // Get Stripe config
-    const config = db.prepare('SELECT * FROM stripe_config WHERE id = 1').get();
+    const config = await queryRow('SELECT * FROM stripe_config WHERE id = 1');
     
     if (!config || !config.secret_key || !config.is_active) {
       return res.status(503).json({ error: 'Stripe is not configured or inactive' });

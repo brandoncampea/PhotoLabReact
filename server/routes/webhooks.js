@@ -1,5 +1,5 @@
 import express from 'express';
-import { db } from '../database.js';
+import { queryRow, query } from '../mssql.js';
 import stripeService from '../services/stripeService.js';
 import { SUBSCRIPTION_STATUSES } from '../constants/subscriptions.js';
 
@@ -78,26 +78,26 @@ async function handleSubscriptionCreated(subscription) {
   }
 
   try {
-    const studio = db.prepare('SELECT id FROM studios WHERE id = ?').get(studioId);
+    const studio = await queryRow('SELECT id FROM studios WHERE id = $1', [studioId]);
     if (!studio) {
       console.log(`Studio ${studioId} not found`);
       return;
     }
 
     // Update studio with subscription info
-    db.prepare(`
+    await query(`
       UPDATE studios
-      SET stripe_customer_id = ?, 
-          stripe_subscription_id = ?, 
-          subscription_status = ?,
-          subscription_start = datetime('now')
-      WHERE id = ?
-    `).run(
+      SET stripe_customer_id = $1, 
+          stripe_subscription_id = $2, 
+          subscription_status = $3,
+          subscription_start = CURRENT_TIMESTAMP
+      WHERE id = $4
+    `, [
       subscription.customer,
       subscription.id,
       SUBSCRIPTION_STATUSES.active,
       studioId
-    );
+    ]);
 
     console.log(`Subscription created for studio ${studioId}:`, subscription.id);
   } catch (error) {
@@ -131,12 +131,12 @@ async function handleSubscriptionUpdated(subscription) {
     // Calculate next billing date
     const nextBillingDate = new Date(subscription.current_period_end * 1000).toISOString();
 
-    db.prepare(`
+    await query(`
       UPDATE studios
-      SET subscription_status = ?,
-          subscription_end = ?
-      WHERE id = ?
-    `).run(status, nextBillingDate, studioId);
+      SET subscription_status = $1,
+          subscription_end = $2
+      WHERE id = $3
+    `, [status, nextBillingDate, studioId]);
 
     console.log(`Subscription updated for studio ${studioId}:`, subscription.id);
   } catch (error) {
@@ -156,12 +156,12 @@ async function handleSubscriptionDeleted(subscription) {
   }
 
   try {
-    db.prepare(`
+    await query(`
       UPDATE studios
-      SET subscription_status = ?,
+      SET subscription_status = $1,
           stripe_subscription_id = NULL
-      WHERE id = ?
-    `).run(SUBSCRIPTION_STATUSES.canceled, studioId);
+      WHERE id = $2
+    `, [SUBSCRIPTION_STATUSES.canceled, studioId]);
 
     console.log(`Subscription deleted for studio ${studioId}:`, subscription.id);
   } catch (error) {
@@ -177,16 +177,16 @@ async function handlePaymentSucceeded(invoice) {
   
   try {
     // Find studio with this subscription
-    const studio = db.prepare(`
-      SELECT id FROM studios WHERE stripe_subscription_id = ?
-    `).get(subscriptionId);
+    const studio = await queryRow(`
+      SELECT id FROM studios WHERE stripe_subscription_id = $1
+    `, [subscriptionId]);
 
     if (studio) {
-      db.prepare(`
+      await query(`
         UPDATE studios
-        SET subscription_status = ?
-        WHERE id = ?
-      `).run(SUBSCRIPTION_STATUSES.active, studio.id);
+        SET subscription_status = $1
+        WHERE id = $2
+      `, [SUBSCRIPTION_STATUSES.active, studio.id]);
 
       console.log(`Payment succeeded for studio ${studio.id}`);
     }
@@ -203,16 +203,16 @@ async function handlePaymentFailed(invoice) {
   
   try {
     // Find studio with this subscription
-    const studio = db.prepare(`
-      SELECT id FROM studios WHERE stripe_subscription_id = ?
-    `).get(subscriptionId);
+    const studio = await queryRow(`
+      SELECT id FROM studios WHERE stripe_subscription_id = $1
+    `, [subscriptionId]);
 
     if (studio) {
-      db.prepare(`
+      await query(`
         UPDATE studios
-        SET subscription_status = ?
-        WHERE id = ?
-      `).run(SUBSCRIPTION_STATUSES.past_due, studio.id);
+        SET subscription_status = $1
+        WHERE id = $2
+      `, [SUBSCRIPTION_STATUSES.past_due, studio.id]);
 
       console.log(`Payment failed for studio ${studio.id}`);
     }

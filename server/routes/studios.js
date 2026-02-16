@@ -1,5 +1,5 @@
 import express from 'express';
-import { db } from '../database.js';
+import { queryRow, queryRows, query, transaction } from '../mssql.js';
 import { SUBSCRIPTION_PLANS, SUBSCRIPTION_STATUSES } from '../constants/subscriptions.js';
 import { authRequired } from '../middleware/auth.js';
 import stripeService from '../services/stripeService.js';
@@ -22,37 +22,35 @@ router.post('/signup', async (req, res) => {
     }
 
     // Check if studio email already exists
-    const existingStudio = db.prepare('SELECT id FROM studios WHERE email = ?').get(studioEmail);
+    const existingStudio = await queryRow('SELECT id FROM studios WHERE email = $1', [studioEmail]);
     if (existingStudio) {
       return res.status(409).json({ error: 'Studio email already exists' });
     }
 
     // Check if admin email already exists
-    const existingUser = db.prepare('SELECT id FROM users WHERE email = ?').get(adminEmail);
+    const existingUser = await queryRow('SELECT id FROM users WHERE email = $1', [adminEmail]);
     if (existingUser) {
       return res.status(409).json({ error: 'Email already registered' });
     }
 
     // Begin transaction
-    const insert = db.transaction(() => {
-      // Create studio with inactive status (no plan = inactive)
-      const studioResult = db.prepare(`
+    const { studioId, userId } = await transaction(async (client) => {
+      const studioResult = await client.query(`
         INSERT INTO studios (name, email, subscription_plan, subscription_status, created_at)
-        VALUES (?, ?, ?, ?, datetime('now'))
-      `).run(studioName, studioEmail, subscriptionPlan || null, SUBSCRIPTION_STATUSES.inactive);
+        VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+        RETURNING id
+      `, [studioName, studioEmail, subscriptionPlan || null, SUBSCRIPTION_STATUSES.inactive]);
 
-      const studioId = studioResult.lastInsertRowid;
+      const createdStudioId = studioResult.rows[0].id;
 
-      // Create admin user for studio
-      const userResult = db.prepare(`
+      const userResult = await client.query(`
         INSERT INTO users (email, password, name, role, studio_id, is_active, created_at)
-        VALUES (?, ?, ?, ?, ?, 1, datetime('now'))
-      `).run(adminEmail, adminPassword, adminName, 'studio_admin', studioId);
+        VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
+        RETURNING id
+      `, [adminEmail, adminPassword, adminName, 'studio_admin', createdStudioId, 1]);
 
-      return { studioId, userId: userResult.lastInsertRowid };
+      return { studioId: createdStudioId, userId: userResult.rows[0].id };
     });
-
-    const { studioId, userId } = insert();
 
     res.status(201).json({
       message: 'Studio created successfully',
@@ -73,13 +71,13 @@ router.post('/signup', async (req, res) => {
 });
 
 // Get all studios (super admin only)
-router.get('/', authRequired, (req, res) => {
+router.get('/', authRequired, async (req, res) => {
   try {
     if (req.user.role !== 'super_admin') {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
-    const studios = db.prepare(`
+    const studios = await queryRows(`
       SELECT 
         s.*,
         COUNT(DISTINCT u.id) as userCount
@@ -87,7 +85,7 @@ router.get('/', authRequired, (req, res) => {
       LEFT JOIN users u ON u.studio_id = s.id AND u.role != 'super_admin'
       GROUP BY s.id
       ORDER BY s.created_at DESC
-    `).all();
+    `);
 
     res.json(studios);
   } catch (error) {
@@ -97,7 +95,7 @@ router.get('/', authRequired, (req, res) => {
 });
 
 // Get studio by ID
-router.get('/:studioId', authRequired, (req, res) => {
+router.get('/:studioId', authRequired, async (req, res) => {
   try {
     const { studioId } = req.params;
 
@@ -106,15 +104,15 @@ router.get('/:studioId', authRequired, (req, res) => {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
-    const studio = db.prepare(`
+    const studio = await queryRow(`
       SELECT 
         s.*,
         COUNT(DISTINCT u.id) as userCount
       FROM studios s
       LEFT JOIN users u ON u.studio_id = s.id AND u.role != 'super_admin'
-      WHERE s.id = ?
+      WHERE s.id = $1
       GROUP BY s.id
-    `).get(studioId);
+    `, [studioId]);
 
     if (!studio) {
       return res.status(404).json({ error: 'Studio not found' });
@@ -128,7 +126,7 @@ router.get('/:studioId', authRequired, (req, res) => {
 });
 
 // Get subscription info
-router.get('/:studioId/subscription', authRequired, (req, res) => {
+router.get('/:studioId/subscription', authRequired, async (req, res) => {
   try {
     const { studioId } = req.params;
 
@@ -137,7 +135,7 @@ router.get('/:studioId/subscription', authRequired, (req, res) => {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
-    const studio = db.prepare(`
+    const studio = await queryRow(`
       SELECT 
         id,
         name,
@@ -150,8 +148,8 @@ router.get('/:studioId/subscription', authRequired, (req, res) => {
         cancellation_date,
         billing_cycle
       FROM studios
-      WHERE id = ?
-    `).get(studioId);
+      WHERE id = $1
+    `, [studioId]);
 
     if (!studio) {
       return res.status(404).json({ error: 'Studio not found' });
@@ -182,7 +180,7 @@ router.post('/:studioId/subscription/cancel', authRequired, async (req, res) => 
       }
     }
 
-    const studio = db.prepare('SELECT * FROM studios WHERE id = ?').get(studioId);
+    const studio = await queryRow('SELECT * FROM studios WHERE id = $1', [studioId]);
     if (!studio) {
       return res.status(404).json({ error: 'Studio not found' });
     }
@@ -196,11 +194,11 @@ router.post('/:studioId/subscription/cancel', authRequired, async (req, res) => 
     }
 
     // Mark for cancellation at end of billing period
-    db.prepare(`
+    await query(`
       UPDATE studios
-      SET cancellation_requested = 1, cancellation_date = datetime('now')
-      WHERE id = ?
-    `).run(studioId);
+      SET cancellation_requested = $1, cancellation_date = CURRENT_TIMESTAMP
+      WHERE id = $2
+    `, [1, studioId]);
 
     // If using Stripe, cancel at period end
     if (studio.stripe_subscription_id) {
@@ -215,7 +213,7 @@ router.post('/:studioId/subscription/cancel', authRequired, async (req, res) => 
       }
     }
 
-    const updated = db.prepare('SELECT * FROM studios WHERE id = ?').get(studioId);
+    const updated = await queryRow('SELECT * FROM studios WHERE id = $1', [studioId]);
     res.json({
       message: 'Subscription will be cancelled at the end of your billing period',
       studio: updated,
@@ -239,7 +237,7 @@ router.post('/:studioId/subscription/reactivate', authRequired, async (req, res)
       }
     }
 
-    const studio = db.prepare('SELECT * FROM studios WHERE id = ?').get(studioId);
+    const studio = await queryRow('SELECT * FROM studios WHERE id = $1', [studioId]);
     if (!studio) {
       return res.status(404).json({ error: 'Studio not found' });
     }
@@ -249,11 +247,11 @@ router.post('/:studioId/subscription/reactivate', authRequired, async (req, res)
     }
 
     // Remove cancellation flag
-    db.prepare(`
+    await query(`
       UPDATE studios
-      SET cancellation_requested = 0, cancellation_date = NULL
-      WHERE id = ?
-    `).run(studioId);
+      SET cancellation_requested = $1, cancellation_date = NULL
+      WHERE id = $2
+    `, [0, studioId]);
 
     // If using Stripe, update subscription
     if (studio.stripe_subscription_id) {
@@ -267,7 +265,7 @@ router.post('/:studioId/subscription/reactivate', authRequired, async (req, res)
       }
     }
 
-    const updated = db.prepare('SELECT * FROM studios WHERE id = ?').get(studioId);
+    const updated = await queryRow('SELECT * FROM studios WHERE id = $1', [studioId]);
     res.json({
       message: 'Subscription reactivated successfully',
       studio: updated
@@ -299,7 +297,7 @@ router.patch('/:studioId/subscription', authRequired, async (req, res) => {
     if (stripeCustomerId) updateData.stripe_customer_id = stripeCustomerId;
     if (stripeSubscriptionId) updateData.stripe_subscription_id = stripeSubscriptionId;
     if (billingCycle) updateData.billing_cycle = billingCycle;
-    if (isFreeSubscription !== undefined) updateData.is_free_subscription = isFreeSubscription ? 1 : 0;
+    if (isFreeSubscription !== undefined) updateData.is_free_subscription = !!isFreeSubscription;
     
     // If activating subscription, clear any pending cancellation
     if (subscriptionStatus === 'active') {
@@ -311,16 +309,18 @@ router.patch('/:studioId/subscription', authRequired, async (req, res) => {
       return res.status(400).json({ error: 'No fields to update' });
     }
 
-    const setClauses = Object.keys(updateData).map(key => `${key} = ?`).join(', ');
-    const values = Object.values(updateData);
+    const updateKeys = Object.keys(updateData);
+    const setClauses = updateKeys.map((key, index) => `${key} = $${index + 1}`).join(', ');
+    const values = updateKeys.map(key => updateData[key]);
+    values.push(studioId);
 
-    db.prepare(`
+    await query(`
       UPDATE studios
       SET ${setClauses}
-      WHERE id = ?
-    `).run(...values, studioId);
+      WHERE id = $${values.length}
+    `, values);
 
-    const updatedStudio = db.prepare('SELECT * FROM studios WHERE id = ?').get(studioId);
+    const updatedStudio = await queryRow('SELECT * FROM studios WHERE id = $1', [studioId]);
     res.json(updatedStudio);
   } catch (error) {
     console.error('Update subscription error:', error);
@@ -334,7 +334,7 @@ router.get('/plans/list', (req, res) => {
 });
 
 // Get studio fees
-router.get('/:studioId/fees', authRequired, (req, res) => {
+router.get('/:studioId/fees', authRequired, async (req, res) => {
   try {
     const { studioId } = req.params;
 
@@ -343,11 +343,11 @@ router.get('/:studioId/fees', authRequired, (req, res) => {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
-    const studio = db.prepare(`
+    const studio = await queryRow(`
       SELECT id, name, fee_type, fee_value
       FROM studios
-      WHERE id = ?
-    `).get(studioId);
+      WHERE id = $1
+    `, [studioId]);
 
     if (!studio) {
       return res.status(404).json({ error: 'Studio not found' });
@@ -366,7 +366,7 @@ router.get('/:studioId/fees', authRequired, (req, res) => {
 });
 
 // Update studio fees (super admin only)
-router.put('/:studioId/fees', authRequired, (req, res) => {
+router.put('/:studioId/fees', authRequired, async (req, res) => {
   try {
     const { studioId } = req.params;
     const { feeType, feeValue } = req.body;
@@ -390,23 +390,23 @@ router.put('/:studioId/fees', authRequired, (req, res) => {
     }
 
     // Check studio exists
-    const studio = db.prepare('SELECT id FROM studios WHERE id = ?').get(studioId);
+    const studio = await queryRow('SELECT id FROM studios WHERE id = $1', [studioId]);
     if (!studio) {
       return res.status(404).json({ error: 'Studio not found' });
     }
 
     // Update fees
-    db.prepare(`
+    await query(`
       UPDATE studios
-      SET fee_type = ?, fee_value = ?
-      WHERE id = ?
-    `).run(feeType, feeValue, studioId);
+      SET fee_type = $1, fee_value = $2
+      WHERE id = $3
+    `, [feeType, feeValue, studioId]);
 
-    const updated = db.prepare(`
+    const updated = await queryRow(`
       SELECT id, name, fee_type, fee_value
       FROM studios
-      WHERE id = ?
-    `).get(studioId);
+      WHERE id = $1
+    `, [studioId]);
 
     res.json({
       message: 'Studio fees updated successfully',
@@ -443,13 +443,13 @@ router.post('/:studioId/checkout', authRequired, async (req, res) => {
     }
 
     // Get studio
-    const studio = db.prepare('SELECT * FROM studios WHERE id = ?').get(studioId);
+    const studio = await queryRow('SELECT * FROM studios WHERE id = $1', [studioId]);
     if (!studio) {
       return res.status(404).json({ error: 'Studio not found' });
     }
 
     // Update billing cycle in studio record
-    db.prepare('UPDATE studios SET billing_cycle = ? WHERE id = ?').run(billingCycle, studioId);
+    await query('UPDATE studios SET billing_cycle = $1 WHERE id = $2', [billingCycle, studioId]);
 
     // Build success and cancel URLs
     const baseUrl = process.env.FRONTEND_URL || 'http://localhost:5173';

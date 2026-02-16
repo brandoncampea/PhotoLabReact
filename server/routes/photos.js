@@ -3,7 +3,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { db } from '../database.js';
+import { queryRow, queryRows, query } from '../mssql.js';
 import csv from 'csv-parser';
 import sharp from 'sharp';
 const router = express.Router();
@@ -43,7 +43,7 @@ const upload = multer({
 });
 
 // Get photos by album
-router.get('/album/:albumId', (req, res) => {
+router.get('/album/:albumId', async (req, res) => {
   try {
     const { playerName } = req.query;
     let query = `
@@ -53,20 +53,20 @@ router.get('/album/:albumId', (req, res) => {
         description, metadata, player_names as playerNames, 
         width, height, created_at as createdDate
       FROM photos 
-      WHERE album_id = ?
+      WHERE album_id = $1
     `;
     
     const params = [req.params.albumId];
     
     // Filter by player name if provided
     if (playerName) {
-      query += ` AND player_names LIKE ?`;
+      query += ` AND player_names ILIKE $2`;
       params.push(`%${playerName}%`);
     }
     
     query += ` ORDER BY created_at DESC`;
     
-    const photos = db.prepare(query).all(...params);
+    const photos = await queryRows(query, params);
     res.json(photos);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -95,13 +95,14 @@ router.post('/upload', upload.array('photos', 50), async (req, res) => {
         console.error('Failed to extract image dimensions:', err);
       }
       
-      const result = db.prepare(`
+      const result = await queryRow(`
         INSERT INTO photos (album_id, file_name, thumbnail_url, full_image_url, description, width, height)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(albumId, file.originalname, photoUrl, photoUrl, parsedDescriptions[index] || '', width, height);
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING id
+      `, [albumId, file.originalname, photoUrl, photoUrl, parsedDescriptions[index] || '', width, height]);
       
       photos.push({
-        id: result.lastInsertRowid,
+        id: result.id,
         albumId: parseInt(albumId),
         fileName: file.originalname,
         thumbnailUrl: photoUrl,
@@ -113,11 +114,11 @@ router.post('/upload', upload.array('photos', 50), async (req, res) => {
     }
 
     // Update album photo count
-    db.prepare(`
+    await query(`
       UPDATE albums 
-      SET photo_count = (SELECT COUNT(*) FROM photos WHERE album_id = ?)
-      WHERE id = ?
-    `).run(albumId, albumId);
+      SET photo_count = (SELECT COUNT(*) FROM photos WHERE album_id = $1)
+      WHERE id = $1
+    `, [albumId]);
 
     res.status(201).json(photos);
   } catch (error) {
@@ -126,23 +127,23 @@ router.post('/upload', upload.array('photos', 50), async (req, res) => {
 });
 
 // Update photo
-router.put('/:id', (req, res) => {
+router.put('/:id', async (req, res) => {
   try {
     const { description, metadata } = req.body;
-    db.prepare(`
+    await query(`
       UPDATE photos 
-      SET description = ?, metadata = ?
-      WHERE id = ?
-    `).run(description, metadata ? JSON.stringify(metadata) : null, req.params.id);
+      SET description = $1, metadata = $2
+      WHERE id = $3
+    `, [description, metadata ? JSON.stringify(metadata) : null, req.params.id]);
     
-    const photo = db.prepare(`
+    const photo = await queryRow(`
       SELECT 
         id, album_id as albumId, file_name as fileName, 
         thumbnail_url as thumbnailUrl, full_image_url as fullImageUrl,
         description, metadata, player_names as playerNames, created_at as createdDate
       FROM photos 
-      WHERE id = ?
-    `).get(req.params.id);
+      WHERE id = $1
+    `, [req.params.id]);
     res.json(photo);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -150,9 +151,9 @@ router.put('/:id', (req, res) => {
 });
 
 // Delete photo
-router.delete('/:id', (req, res) => {
+router.delete('/:id', async (req, res) => {
   try {
-    const photo = db.prepare('SELECT * FROM photos WHERE id = ?').get(req.params.id);
+    const photo = await queryRow('SELECT * FROM photos WHERE id = $1', [req.params.id]);
     if (!photo) {
       return res.status(404).json({ error: 'Photo not found' });
     }
@@ -163,14 +164,14 @@ router.delete('/:id', (req, res) => {
       fs.unlinkSync(filePath);
     }
 
-    db.prepare('DELETE FROM photos WHERE id = ?').run(req.params.id);
+    await query('DELETE FROM photos WHERE id = $1', [req.params.id]);
 
     // Update album photo count
-    db.prepare(`
+    await query(`
       UPDATE albums 
-      SET photo_count = (SELECT COUNT(*) FROM photos WHERE album_id = ?)
-      WHERE id = ?
-    `).run(photo.album_id, photo.album_id);
+      SET photo_count = (SELECT COUNT(*) FROM photos WHERE album_id = $1)
+      WHERE id = $1
+    `, [photo.album_id]);
 
     res.json({ message: 'Photo deleted successfully' });
   } catch (error) {
@@ -179,7 +180,7 @@ router.delete('/:id', (req, res) => {
 });
 
 // Search photos
-router.get('/search', (req, res) => {
+router.get('/search', async (req, res) => {
   try {
     const { q, field } = req.query;
     const searchPattern = `%${q}%`;
@@ -197,35 +198,34 @@ router.get('/search', (req, res) => {
     if (field && ['filename', 'camera', 'iso', 'aperture', 'shutterSpeed', 'focalLength', 'player', 'description'].includes(field)) {
       switch(field) {
         case 'filename':
-          query += ` p.file_name LIKE ? COLLATE NOCASE`;
+          query += ` p.file_name ILIKE $1`;
           break;
         case 'camera':
-          query += ` (p.metadata LIKE ? OR p.metadata LIKE ?)`;
-          query = query.replace(' (p.metadata LIKE ? OR p.metadata LIKE ?)', ` (p.metadata LIKE ? OR p.metadata LIKE ?)`);
+          query += ` (p.metadata ILIKE $1 OR p.metadata ILIKE $2)`;
           break;
         case 'player':
-          query += ` p.player_names LIKE ? COLLATE NOCASE`;
+          query += ` p.player_names ILIKE $1`;
           break;
         case 'description':
-          query += ` p.description LIKE ? COLLATE NOCASE`;
+          query += ` p.description ILIKE $1`;
           break;
         default:
-          query += ` p.metadata LIKE ? COLLATE NOCASE`;
+          query += ` p.metadata ILIKE $1`;
       }
       const result = field === 'camera' 
-        ? db.prepare(query).all(searchPattern, searchPattern)
-        : db.prepare(query).all(searchPattern);
+        ? await queryRows(query, [searchPattern, searchPattern])
+        : await queryRows(query, [searchPattern]);
       res.json(result);
     } else {
       // Search all fields (default)
-      query += ` p.file_name LIKE ? COLLATE NOCASE 
-         OR p.description LIKE ? COLLATE NOCASE 
-         OR p.metadata LIKE ? COLLATE NOCASE
-         OR p.player_names LIKE ? COLLATE NOCASE
+      query += ` p.file_name ILIKE $1 
+         OR p.description ILIKE $2 
+         OR p.metadata ILIKE $3
+         OR p.player_names ILIKE $4
       ORDER BY p.created_at DESC
       LIMIT 100`;
       
-      const photos = db.prepare(query).all(searchPattern, searchPattern, searchPattern, searchPattern);
+      const photos = await queryRows(query, [searchPattern, searchPattern, searchPattern, searchPattern]);
       res.json(photos);
     }
   } catch (error) {
@@ -234,13 +234,13 @@ router.get('/search', (req, res) => {
 });
 
 // Search photos by metadata (advanced)
-router.get('/search/metadata', (req, res) => {
+router.get('/search/metadata', async (req, res) => {
   try {
     const { q, type } = req.query;
     const searchPattern = `%${q}%`;
     
     // Parse metadata JSON and search specific fields
-    const photos = db.prepare(`
+    const photos = await queryRows(`
       SELECT p.id, p.album_id as albumId, p.file_name as fileName, 
              p.thumbnail_url as thumbnailUrl, p.full_image_url as fullImageUrl,
              p.description, p.metadata, p.player_names as playerNames, p.created_at as createdDate,
@@ -248,7 +248,7 @@ router.get('/search/metadata', (req, res) => {
       FROM photos p
       JOIN albums a ON p.album_id = a.id
       WHERE 1=1
-    `).all();
+    `);
     
     // Client-side filtering of parsed JSON metadata
     const filtered = photos.filter(photo => {
@@ -317,12 +317,12 @@ router.post('/album/:albumId/upload-players', upload.single('csv'), (req, res) =
       .on('end', () => {
         // Update photos with player names
         let updatedCount = 0;
-        const photos = db.prepare('SELECT id, file_name FROM photos WHERE album_id = ?').all(albumId);
+        const photos = await queryRows('SELECT id, file_name FROM photos WHERE album_id = $1', [albumId]);
         
         for (const photo of photos) {
           const matchingPlayerName = playerMapping[photo.file_name];
           if (matchingPlayerName) {
-            db.prepare('UPDATE photos SET player_names = ? WHERE id = ?').run(matchingPlayerName, photo.id);
+            await query('UPDATE photos SET player_names = $1 WHERE id = $2', [matchingPlayerName, photo.id]);
             updatedCount++;
           }
         }
@@ -347,16 +347,16 @@ router.post('/album/:albumId/upload-players', upload.single('csv'), (req, res) =
 });
 
 // Get product recommendations based on photo dimensions
-router.get('/:id/recommendations', (req, res) => {
+router.get('/:id/recommendations', async (req, res) => {
   try {
     const photoId = req.params.id;
     
     // Get photo dimensions
-    const photo = db.prepare(`
+    const photo = await queryRow(`
       SELECT id, width, height, file_name as fileName
       FROM photos 
-      WHERE id = ?
-    `).get(photoId);
+      WHERE id = $1
+    `, [photoId]);
     
     if (!photo) {
       return res.status(404).json({ error: 'Photo not found' });
@@ -377,7 +377,7 @@ router.get('/:id/recommendations', (req, res) => {
     const isSquare = Math.abs(aspectRatio - 1) < 0.1;
     
     // Get all products
-    const products = db.prepare('SELECT * FROM products ORDER BY category, name').all();
+    const products = await queryRows('SELECT * FROM products ORDER BY category, name');
     
     // Recommendation algorithm
     const recommendations = products.map(product => {

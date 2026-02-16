@@ -1,4 +1,4 @@
-import { db } from '../database.js';
+import { queryRow } from '../mssql.js';
 import jwt from 'jsonwebtoken';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
@@ -7,7 +7,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
  * Middleware to check if the user's studio has an active subscription
  * Blocks free/inactive studios from using protected features
  */
-export const requireActiveSubscription = (req, res, next) => {
+export const requireActiveSubscription = async (req, res, next) => {
   try {
     // Get user from token
     const token = req.headers.authorization?.split(' ')[1];
@@ -19,7 +19,7 @@ export const requireActiveSubscription = (req, res, next) => {
     const userId = decoded.userId;
 
     // Get user's studio
-    const user = db.prepare('SELECT studio_id, role FROM users WHERE id = ?').get(userId);
+    const user = await queryRow('SELECT studio_id, role FROM users WHERE id = $1', [userId]);
     
     if (!user) {
       return res.status(401).json({ error: 'User not found' });
@@ -47,18 +47,18 @@ export const requireActiveSubscription = (req, res, next) => {
       });
     }
 
-    const studio = db.prepare(`
+    const studio = await queryRow(`
       SELECT subscription_status, is_free_subscription 
       FROM studios 
-      WHERE id = ?
-    `).get(user.studio_id);
+      WHERE id = $1
+    `, [user.studio_id]);
 
     if (!studio) {
       return res.status(403).json({ error: 'Studio not found' });
     }
 
     // Check if subscription is active and not free
-    if (studio.subscription_status !== 'active' || studio.is_free_subscription === 1) {
+    if (studio.subscription_status !== 'active' || studio.is_free_subscription === true) {
       return res.status(403).json({ 
         error: 'Active subscription required. Please subscribe to use this feature.',
         requiresSubscription: true,
