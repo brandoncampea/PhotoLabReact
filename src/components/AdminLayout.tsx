@@ -15,7 +15,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
   return (
     <div className="admin-layout">
-      <aside className="admin-sidebar">
+      <aside className="admin-panel">
         <div className="admin-brand">
           <h2>📸 Photo Lab Admin</h2>
         </div>
@@ -107,13 +107,13 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
           {/* Photo Lab Section */}
           <Link
-            to="/admin/labs"
-            className={`admin-nav-link ${isActive('/admin/labs') ? 'active' : ''}`}
+            to="/admin/configuration"
+            className={`admin-nav-link ${isActive('/admin/configuration') ? 'active' : ''}`}
           >
             🖼️ Lab Configuration
           </Link>
         </nav>
-        <div className="admin-sidebar-footer">
+        <div className="admin-panel-footer">
           <Link to="/" className="admin-nav-link">🏠 Customer Site</Link>
           <button onClick={handleLogout} className="admin-nav-link logout-btn">
             🚪 Logout

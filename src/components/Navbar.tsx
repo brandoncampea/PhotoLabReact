@@ -17,10 +17,15 @@ const Navbar: React.FC = () => {
 
   const loadLogo = async () => {
     try {
+      const token = localStorage.getItem('authToken');
+      if (!token) {
+        setLogoUrl('');
+        return;
+      }
       const config = await profileService.getConfig();
       setLogoUrl(config.logoUrl || '');
     } catch (error) {
-      console.error('Failed to load logo:', error);
+      console.warn('Failed to load logo:', error);
     }
   };
 
@@ -37,31 +42,31 @@ const Navbar: React.FC = () => {
   };
 
   return (
-    <nav className="navbar">
-      <div className="navbar-container">
-        <Link to="/albums" className="navbar-brand">
+    <header className="navbar" role="navigation">
+      <div className="nav-container">
+        <Link to="/albums" className="nav-brand">
           {logoUrl ? (
             <img 
               src={logoUrl} 
               alt="Site Logo" 
-              className="navbar-logo"
+              className="nav-logo"
             />
           ) : (
             <>📸 Photo Lab</>
           )}
         </Link>
 
-        <div className="navbar-menu">
-          {user && (
+        <div className="nav-links">
+          {user ? (
             <>
-              <div className="navbar-search">
+              <div className="nav-search">
                 <input
                   type="text"
                   placeholder="Quick search..."
                   value={quickSearch}
                   onChange={(e) => setQuickSearch(e.target.value)}
                   onKeyDown={handleQuickSearch}
-                  className="navbar-search-input"
+                  className="nav-search-input"
                 />
               </div>
               <Link to="/albums" className="nav-link">
@@ -94,7 +99,7 @@ const Navbar: React.FC = () => {
                   👑 Super Admin
                 </Link>
               )}
-              <div className="user-menu">
+              <div className="user-actions">
                 <span className="user-name">
                   {user.firstName} {user.lastName}
                 </span>
@@ -103,10 +108,25 @@ const Navbar: React.FC = () => {
                 </button>
               </div>
             </>
+          ) : (
+            <>
+              <Link to="/" className="nav-link">
+                Home
+              </Link>
+              <Link to="/albums" className="nav-link">
+                Albums
+              </Link>
+              <Link to="/login" className="nav-link">
+                Login
+              </Link>
+              <Link to="/register" className="nav-link">
+                Register
+              </Link>
+            </>
           )}
         </div>
       </div>
-    </nav>
+    </header>
   );
 };
 

@@ -4,6 +4,7 @@ import { CartProvider } from './contexts/CartContext';
 import Navbar from './components/Navbar';
 import ProtectedRoute from './components/ProtectedRoute';
 import AdminProtectedRoute from './components/AdminProtectedRoute';
+import SuperAdminProtectedRoute from './components/SuperAdminProtectedRoute';
 import AdminLayout from './components/AdminLayout';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -108,17 +109,17 @@ function App() {
                 <Route
                   path="/super-admin"
                   element={
-                    <ProtectedRoute>
+                    <SuperAdminProtectedRoute>
                       <SuperAdminDashboard />
-                    </ProtectedRoute>
+                    </SuperAdminProtectedRoute>
                   }
                 />
                 <Route
                   path="/super-admin-pricing"
                   element={
-                    <ProtectedRoute>
+                    <SuperAdminProtectedRoute>
                       <SuperAdminPricing />
-                    </ProtectedRoute>
+                    </SuperAdminProtectedRoute>
                   }
                 />
 
@@ -145,6 +146,7 @@ function App() {
                           <Route path="profile" element={<AdminProfile />} />
                           <Route path="discount-codes" element={<AdminDiscountCodes />} />
                           <Route path="labs" element={<AdminLabs />} />
+                          <Route path="configuration" element={<AdminLabs />} />
                           <Route path="roes-config" element={<AdminRoesConfig />} />
                           <Route path="whcc-config" element={<AdminWhccConfig />} />
                           <Route path="mpix-config" element={<AdminMpixConfig />} />

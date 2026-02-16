@@ -123,7 +123,7 @@ const AdminWatermarks: React.FC = () => {
       <div className="page-header">
         <h1>Manage Watermarks</h1>
         <button onClick={handleCreate} className="btn btn-primary">
-          + Create Watermark
+          + Add Watermark
         </button>
       </div>
 
