@@ -19,7 +19,7 @@ const AdminLogin: React.FC = () => {
     try {
       const authResponse = await login({ email, password });
 
-      if (authResponse.role !== 'admin' && authResponse.role !== 'studio_admin') {
+      if (authResponse.role !== 'admin' && authResponse.role !== 'studio_admin' && authResponse.role !== 'super_admin') {
         setError('Admin access only. Please log in with an admin or studio admin account.');
         logout();
         return;

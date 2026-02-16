@@ -145,12 +145,12 @@ const Register: React.FC = () => {
           </div>
           
           <button type="submit" className="btn btn-primary" disabled={loading}>
-            {loading ? 'Creating account...' : 'Create Account'}
+            {loading ? 'Creating account...' : 'Register'}
           </button>
         </form>
         
         <p className="auth-footer">
-          Already have an account? <Link to="/login">Sign in</Link>
+          Already have an account? <Link to="/login">Login</Link>
         </p>
       </div>
     </div>

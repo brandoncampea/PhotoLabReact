@@ -100,7 +100,7 @@ const Albums: React.FC = () => {
           ✓ {shareNotification}
         </div>
       )}
-      <div className="page-header">
+      <div className="page-title">
         <h1>Photo Albums</h1>
         <p>Browse and select photos from our collection</p>
       </div>

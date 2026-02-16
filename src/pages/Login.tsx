@@ -27,17 +27,20 @@ const Login: React.FC = () => {
       }
       
       // Redirect based on role
-      if (user.role === 'admin') {
+      if (user.role === 'admin' || user.role === 'studio_admin' || user.role === 'super_admin') {
         navigate('/admin/dashboard');
       } else {
         navigate('/albums');
       }
     } catch (err: any) {
       console.error('Login failed:', err);
-      const errorMessage = err.response?.data?.message 
-        || err.response?.data?.title
-        || (err.response?.status === 403 ? 'Access forbidden. Please check your backend configuration.' : '')
-        || 'Failed to login. Please check your credentials.';
+      const isNetworkError = err.code === 'ERR_NETWORK' || (!navigator.onLine && typeof navigator !== 'undefined');
+      const errorMessage = isNetworkError
+        ? 'Network error. Please try again.'
+        : err.response?.data?.message 
+          || err.response?.data?.title
+          || (err.response?.status === 403 ? 'Access forbidden. Please check your backend configuration.' : '')
+          || 'Failed to login. Please check your credentials.';
       setError(errorMessage);
     } finally {
       setLoading(false);
@@ -83,7 +86,7 @@ const Login: React.FC = () => {
         </form>
         
         <p className="auth-footer">
-          Don't have an account? <Link to="/register">Sign up</Link>
+          Don't have an account? <Link to="/register">Register</Link>
         </p>
       </div>
     </div>
