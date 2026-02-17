@@ -1,0 +1,66 @@
+name: Deploy Backend to Azure App Service
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'server/**'
+      - '.github/workflows/azure-backend.yml'
+  workflow_dispatch:
+
+env:
+  AZURE_WEBAPP_NAME: campeaphotolab-api
+  NODE_VERSION: '20.x'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+
+    - name: Install backend dependencies
+      run: |
+        cd server
+        npm ci --production
+
+    - name: Create deployment package
+      run: |
+        cd server
+        zip -r ../backend-deploy.zip . \
+          -x "*.db" \
+          -x "*.db-journal" \
+          -x "node_modules/*" \
+          -x ".DS_Store" \
+          -x "*.log"
+
+    - name: Deploy to Azure Web App
+      uses: azure/webapps-deploy@v2
+      with:
+        app-name: ${{ env.AZURE_WEBAPP_NAME }}
+        publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+        package: backend-deploy.zip
+
+    - name: Wait for deployment
+      run: sleep 30
+
+    - name: Test backend health
+      run: |
+        response=$(curl -s -o /dev/null -w "%{http_code}" https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/api/health || echo "000")
+        if [ "$response" = "200" ]; then
+          echo "✓ Backend is healthy"
+        else
+          echo "⚠ Backend returned status: $response"
+          exit 1
+        fi
+
+    - name: Cleanup
+      if: always()
+      run: rm -f backend-deploy.zip
