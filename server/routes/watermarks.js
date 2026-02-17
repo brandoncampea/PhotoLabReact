@@ -50,11 +50,10 @@ router.get('/', async (req, res) => {
 router.get('/default', async (req, res) => {
   try {
     const watermark = await queryRow(`
-      SELECT id, name, image_url as imageUrl, position, opacity, 
+      SELECT TOP 1 id, name, image_url as imageUrl, position, opacity, 
              is_default as isDefault, tiled, created_at as createdDate
       FROM watermarks
       WHERE is_default = 1
-      LIMIT 1
     `);
     
     if (!watermark) {

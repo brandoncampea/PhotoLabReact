@@ -7,14 +7,14 @@ const testUsers = [
     password: 'TestPassword@123',
     name: 'Test Customer',
     role: 'customer',
-    studio_id: 1
+    studio_id: null
   },
   {
     email: 'admin@example.com',
     password: 'AdminPassword@123',
     name: 'Test Admin',
     role: 'admin',
-    studio_id: 1
+    studio_id: null
   }
 ];
 

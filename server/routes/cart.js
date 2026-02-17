@@ -30,13 +30,13 @@ router.get('/', async (req, res) => {
     }
     
     // Verify user exists in database
-    const userExists = await queryRow('SELECT id FROM users WHERE id = $1 LIMIT 1', [userId]);
+    const userExists = await queryRow('SELECT TOP 1 id FROM users WHERE id = $1', [userId]);
     if (!userExists) {
       return res.json([]);
     }
     
     const cart = await queryRow(
-      'SELECT cart_data as cartData FROM user_cart WHERE user_id = $1 LIMIT 1',
+      'SELECT TOP 1 cart_data as cartData FROM user_cart WHERE user_id = $1',
       [userId]
     );
     if (cart && cart.cartData) {
@@ -63,7 +63,7 @@ router.post('/', async (req, res) => {
     }
     
     // Verify user exists in database before trying to insert cart
-    const userExists = await queryRow('SELECT id FROM users WHERE id = $1 LIMIT 1', [userId]);
+    const userExists = await queryRow('SELECT TOP 1 id FROM users WHERE id = $1', [userId]);
     if (!userExists) {
       // User doesn't exist, just return success (frontend will use localStorage)
       return res.json({ success: true, message: 'Cart saved (user not verified, local only)' });

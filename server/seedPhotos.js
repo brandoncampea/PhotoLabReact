@@ -106,7 +106,7 @@ const main = async () => {
   const coverRow = await queryRow('SELECT cover_image_url FROM albums WHERE id = $1', [albumId]);
   if (!coverRow?.cover_image_url) {
     const firstPhoto = await queryRow(
-      'SELECT full_image_url FROM photos WHERE album_id = $1 ORDER BY id LIMIT 1',
+      'SELECT TOP 1 full_image_url FROM photos WHERE album_id = $1 ORDER BY id',
       [albumId]
     );
     if (firstPhoto?.full_image_url) {

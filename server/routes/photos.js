@@ -60,7 +60,7 @@ router.get('/album/:albumId', async (req, res) => {
     
     // Filter by player name if provided
     if (playerName) {
-      query += ` AND player_names ILIKE $2`;
+      query += ` AND player_names LIKE $2`;
       params.push(`%${playerName}%`);
     }
     
@@ -198,19 +198,19 @@ router.get('/search', async (req, res) => {
     if (field && ['filename', 'camera', 'iso', 'aperture', 'shutterSpeed', 'focalLength', 'player', 'description'].includes(field)) {
       switch(field) {
         case 'filename':
-          query += ` p.file_name ILIKE $1`;
+          query += ` p.file_name LIKE $1`;
           break;
         case 'camera':
-          query += ` (p.metadata ILIKE $1 OR p.metadata ILIKE $2)`;
+          query += ` (p.metadata LIKE $1 OR p.metadata LIKE $2)`;
           break;
         case 'player':
-          query += ` p.player_names ILIKE $1`;
+          query += ` p.player_names LIKE $1`;
           break;
         case 'description':
-          query += ` p.description ILIKE $1`;
+          query += ` p.description LIKE $1`;
           break;
         default:
-          query += ` p.metadata ILIKE $1`;
+          query += ` p.metadata LIKE $1`;
       }
       const result = field === 'camera' 
         ? await queryRows(query, [searchPattern, searchPattern])
@@ -218,12 +218,12 @@ router.get('/search', async (req, res) => {
       res.json(result);
     } else {
       // Search all fields (default)
-      query += ` p.file_name ILIKE $1 
-         OR p.description ILIKE $2 
-         OR p.metadata ILIKE $3
-         OR p.player_names ILIKE $4
+      query += ` p.file_name LIKE $1 
+        OR p.description LIKE $2 
+        OR p.metadata LIKE $3
+        OR p.player_names LIKE $4
       ORDER BY p.created_at DESC
-      LIMIT 100`;
+      OFFSET 0 ROWS FETCH NEXT 100 ROWS ONLY`;
       
       const photos = await queryRows(query, [searchPattern, searchPattern, searchPattern, searchPattern]);
       res.json(photos);
@@ -314,7 +314,7 @@ router.post('/album/:albumId/upload-players', upload.single('csv'), (req, res) =
           rowCount++;
         }
       })
-      .on('end', () => {
+      .on('end', async () => {
         // Update photos with player names
         let updatedCount = 0;
         const photos = await queryRows('SELECT id, file_name FROM photos WHERE album_id = $1', [albumId]);
