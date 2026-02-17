@@ -164,7 +164,7 @@ router.get('/', async (req, res) => {
         o.shipping_cost as shippingCost,
         o.is_batch as isBatch,
         o.lab_submitted as labSubmitted,
-        o.created_at as orderDate,
+        o.created_at as orderDate
       FROM orders o
       WHERE o.user_id = $1
       ORDER BY o.created_at DESC
