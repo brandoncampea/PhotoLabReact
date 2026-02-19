@@ -4,24 +4,62 @@ This guide explains how to configure GitHub repository secrets for automated Azu
 
 ## Required Secrets
 
-### 1. AZURE_WEBAPP_PUBLISH_PROFILE (Backend)
+### 1. AZURE_CREDENTIALS (Backend)
 
-**What it is:** Authentication profile for deploying to Azure App Service
+**What it is:** Azure Service Principal credentials for deploying to Azure App Service
 
 **How to get it:**
-1. Go to [Azure Portal](https://portal.azure.com)
-2. Navigate to your App Service: `campeaphotolab-api`
-3. Click **"Get publish profile"** in the Overview section
-4. Download the `.PublishSettings` file
-5. Open the file and copy ALL its contents
+
+First, install Azure CLI:
+```bash
+# macOS
+curl -L https://aka.ms/installazureclimacos | bash
+
+# Or if you have brew installed:
+brew install azure-cli
+```
+
+Then create a service principal:
+```bash
+# Login to Azure
+az login
+
+# Get your subscription ID
+az account list --query "[].id" -o tsv
+
+# Create service principal (replace SUBSCRIPTION_ID)
+az ad sp create-for-rbac \
+  --name "github-photolab-deploy" \
+  --role contributor \
+  --scopes /subscriptions/SUBSCRIPTION_ID/resourceGroups/photolab-rg \
+  --sdk-auth
+```
+
+Copy the entire JSON output.
 
 **How to add to GitHub:**
 1. Go to your GitHub repository
 2. Settings → Secrets and variables → Actions
 3. Click "New repository secret"
-4. Name: `AZURE_WEBAPP_PUBLISH_PROFILE`
-5. Value: Paste the entire contents of the publish profile file
+4. Name: `AZURE_CREDENTIALS`
+5. Value: Paste the entire JSON output from the command above
 6. Click "Add secret"
+
+**Example JSON format:**
+```json
+{
+  "clientId": "...",
+  "clientSecret": "...",
+  "subscriptionId": "...",
+  "tenantId": "...",
+  "activeDirectoryEndpointUrl": "https://login.microsoftonline.com",
+  "resourceManagerEndpointUrl": "https://management.azure.com/",
+  "activeDirectoryGraphResourceId": "https://graph.windows.net/",
+  "sqlManagementEndpointUrl": "https://management.core.windows.net:8443/",
+  "galleryEndpointUrl": "https://gallery.azure.com/",
+  "managementEndpointUrl": "https://management.core.windows.net/"
+}
+```
 
 ---
 
@@ -104,7 +142,7 @@ Replace the `azure/webapps-deploy` step with:
 
 After adding all secrets, you should see:
 
-1. ✓ `AZURE_WEBAPP_PUBLISH_PROFILE`
+1. ✓ `AZURE_CREDENTIALS`
 2. ✓ `AZURE_STATIC_WEB_APPS_API_TOKEN`
 3. ✓ `VITE_API_URL`
 
