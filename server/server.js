@@ -76,13 +76,30 @@ app.get('/', (req, res) => {
 });
 
 // Initialize database and start server
+console.log('Starting server...');
+console.log('PORT:', PORT);
+console.log('NODE_ENV:', process.env.NODE_ENV);
+console.log('DB_HOST:', process.env.DB_HOST);
+
 initializeDatabase()
   .then(() => {
+    console.log('Database initialized successfully');
     app.listen(PORT, () => {
-      console.log(`Server running on http://localhost:${PORT}`);
+      console.log(`✓ Server running on port ${PORT}`);
+      console.log(`✓ API available at http://localhost:${PORT}/api`);
     });
   })
   .catch((error) => {
-    console.error('Failed to initialize database:', error);
-    process.exit(1);
+    console.error('✗ Failed to initialize database:', error.message);
+    console.error('Full error:', error);
+    // Still start the server but with health check endpoint
+    app.listen(PORT, () => {
+      console.log(`⚠ Server started on port ${PORT} (database connection failed)`);
+    });
   });
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('SIGTERM received, shutting down gracefully');
+  process.exit(0);
+});
