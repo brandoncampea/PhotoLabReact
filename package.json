@@ -8,6 +8,7 @@
     "server": "node server/server.js",
     "dev:all": "concurrently \"npm run dev\" \"npm run server\"",
     "build": "tsc && vite build",
+    "heroku-postbuild": "echo \"Skipping frontend build for Heroku\"",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "seed:photos": "node server/seedPhotos.js",
