@@ -10,6 +10,8 @@ const mssqlConfig = process.env.MSSQL_CONNECTION_STRING
       options: {
         encrypt: process.env.MSSQL_ENCRYPT !== 'false',
         trustServerCertificate: process.env.MSSQL_TRUST_CERT === 'true',
+        connectionTimeout: 5000, // 5 second connection timeout
+        requestTimeout: 10000, // 10 second request timeout
       },
     }
   : {
@@ -21,6 +23,8 @@ const mssqlConfig = process.env.MSSQL_CONNECTION_STRING
       options: {
         encrypt: process.env.MSSQL_ENCRYPT !== 'false',
         trustServerCertificate: process.env.MSSQL_TRUST_CERT === 'true',
+        connectionTimeout: 5000, // 5 second connection timeout
+        requestTimeout: 10000, // 10 second request timeout
       },
     };
 

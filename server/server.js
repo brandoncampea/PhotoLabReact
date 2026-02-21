@@ -86,21 +86,25 @@ console.log('PORT:', PORT);
 console.log('NODE_ENV:', process.env.NODE_ENV);
 console.log('DB_HOST:', process.env.DB_HOST);
 
+// Start server first, then try database
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`✓ Server listening on port ${PORT}`);
+  console.log(`✓ API available at http://localhost:${PORT}/api`);
+});
+
+// Try to initialize database in background with timeout
+const dbInitTimeout = setTimeout(() => {
+  console.warn('⚠ Database initialization timeout - proceeding without database');
+}, 8000);
+
 initializeDatabase()
   .then(() => {
-    console.log('Database initialized successfully');
-    app.listen(PORT, '0.0.0.0', () => {
-      console.log(`✓ Server running on port ${PORT}`);
-      console.log(`✓ API available at http://localhost:${PORT}/api`);
-    });
+    clearTimeout(dbInitTimeout);
+    console.log('✓ Database initialized successfully');
   })
   .catch((error) => {
+    clearTimeout(dbInitTimeout);
     console.error('✗ Failed to initialize database:', error.message);
-    console.error('Full error:', error);
-    // Still start the server but with health check endpoint
-    app.listen(PORT, '0.0.0.0', () => {
-      console.log(`⚠ Server started on port ${PORT} (database connection failed)`);
-    });
   });
 
 // Graceful shutdown
