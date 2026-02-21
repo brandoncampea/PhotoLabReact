@@ -84,7 +84,7 @@ console.log('DB_HOST:', process.env.DB_HOST);
 initializeDatabase()
   .then(() => {
     console.log('Database initialized successfully');
-    app.listen(PORT, () => {
+    app.listen(PORT, '0.0.0.0', () => {
       console.log(`✓ Server running on port ${PORT}`);
       console.log(`✓ API available at http://localhost:${PORT}/api`);
     });
@@ -93,7 +93,7 @@ initializeDatabase()
     console.error('✗ Failed to initialize database:', error.message);
     console.error('Full error:', error);
     // Still start the server but with health check endpoint
-    app.listen(PORT, () => {
+    app.listen(PORT, '0.0.0.0', () => {
       console.log(`⚠ Server started on port ${PORT} (database connection failed)`);
     });
   });
