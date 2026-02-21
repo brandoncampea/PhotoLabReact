@@ -12,7 +12,7 @@ on:
       - 'package.json'
 
 env:
-  AZURE_WEBAPP_NAME: campeaphotolab-api
+  AZURE_WEBAPP_NAME: CampeaPhotoLab
   NODE_VERSION: '20.x'
 
 jobs:
