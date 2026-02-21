@@ -66,6 +66,11 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'Photo Lab API is running' });
 });
 
+// Quick health check for Azure startup probe (responds immediately)
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok' });
+});
+
 // Root handler for convenience
 app.get('/', (req, res) => {
   res.json({
