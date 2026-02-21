@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 env:
-  AZURE_WEBAPP_NAME: campeaphotolab-api
+  AZURE_WEBAPP_NAME: CampeaPhotoLab
   NODE_VERSION: '20.x'
 
 jobs:
