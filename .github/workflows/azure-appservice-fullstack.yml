@@ -48,7 +48,7 @@ jobs:
             dist \
             package.json \
             package-lock.json \
-            -x "**/.DS_Store" "**/*.log" "**/node_modules/**" "**/test-results/**" "**/playwright-report/**"
+            -x "**/.DS_Store" "**/*.log" "**/node_modules/**" "**/test-results/**" "**/playwright-report/**" "server/uploads/**" "server/*.db" "server/*.db.*"
 
       - name: Azure Login
         uses: azure/login@v1

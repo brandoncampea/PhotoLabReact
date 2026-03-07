@@ -112,7 +112,7 @@ zip -r appservice-deploy.zip \
   dist \
   package.json \
   package-lock.json \
-  -x "**/.DS_Store" "**/*.log" "**/node_modules/**" "**/test-results/**" "**/playwright-report/**" >/dev/null
+  -x "**/.DS_Store" "**/*.log" "**/node_modules/**" "**/test-results/**" "**/playwright-report/**" "server/uploads/**" "server/*.db" "server/*.db.*" >/dev/null
 
 echo "Deploying zip package..."
 az webapp deployment source config-zip \
