@@ -49,13 +49,14 @@ fi
 echo "Building frontend..."
 npm ci
 VITE_API_URL="${VITE_API_URL:-/api}" npm run build:appservice
+npm prune --omit=dev
 
 echo "Configuring App Service runtime settings..."
 
 APP_URL="https://${AZURE_WEBAPP_NAME}.azurewebsites.net"
 SETTINGS=(
-  "SCM_DO_BUILD_DURING_DEPLOYMENT=true"
-  "ENABLE_ORYX_BUILD=true"
+  "SCM_DO_BUILD_DURING_DEPLOYMENT=false"
+  "ENABLE_ORYX_BUILD=false"
   "NODE_ENV=production"
   "NODE_OPTIONS=--no-deprecation"
   "PORT=8080"
@@ -110,15 +111,17 @@ rm -f appservice-deploy.zip
 zip -r appservice-deploy.zip \
   server \
   dist \
+  node_modules \
   package.json \
   package-lock.json \
-  -x "**/.DS_Store" "**/*.log" "**/node_modules/**" "**/test-results/**" "**/playwright-report/**" "server/uploads/**" "server/*.db" "server/*.db.*" >/dev/null
+  -x "**/.DS_Store" "**/*.log" "**/test-results/**" "**/playwright-report/**" "server/uploads/**" "server/*.db" "server/*.db.*" >/dev/null
 
 echo "Deploying zip package..."
-az webapp deployment source config-zip \
+az webapp deploy \
   --name "$AZURE_WEBAPP_NAME" \
   --resource-group "$AZURE_RESOURCE_GROUP" \
-  --src appservice-deploy.zip \
+  --src-path appservice-deploy.zip \
+  --type zip \
   --output none
 
 echo "Deployment submitted."

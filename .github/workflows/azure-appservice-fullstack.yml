@@ -41,14 +41,18 @@ jobs:
           VITE_API_URL: /api
           VITE_USE_MOCK_API: false
 
+      - name: Prepare production dependencies
+        run: npm prune --omit=dev
+
       - name: Create deployment zip
         run: |
           zip -r appservice-deploy.zip \
             server \
             dist \
+            node_modules \
             package.json \
             package-lock.json \
-            -x "**/.DS_Store" "**/*.log" "**/node_modules/**" "**/test-results/**" "**/playwright-report/**" "server/uploads/**" "server/*.db" "server/*.db.*"
+            -x "**/.DS_Store" "**/*.log" "**/test-results/**" "**/playwright-report/**" "server/uploads/**" "server/*.db" "server/*.db.*"
 
       - name: Azure Login
         uses: azure/login@v1
@@ -83,8 +87,8 @@ jobs:
 
           APP_URL="https://${APP_HOST}"
           SETTINGS=(
-            "SCM_DO_BUILD_DURING_DEPLOYMENT=true"
-            "ENABLE_ORYX_BUILD=true"
+            "SCM_DO_BUILD_DURING_DEPLOYMENT=false"
+            "ENABLE_ORYX_BUILD=false"
             "NODE_ENV=production"
             "NODE_OPTIONS=--no-deprecation"
             "PORT=8080"
@@ -141,10 +145,11 @@ jobs:
         run: |
           for attempt in 1 2 3; do
             echo "Deploy attempt ${attempt}/3"
-            if az webapp deployment source config-zip \
+            if az webapp deploy \
               --name ${{ env.AZURE_WEBAPP_NAME }} \
               --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-              --src appservice-deploy.zip; then
+              --src-path appservice-deploy.zip \
+              --type zip; then
               echo "Deployment succeeded"
               break
             fi
