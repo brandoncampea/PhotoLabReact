@@ -16,7 +16,7 @@ on:
 env:
   NODE_VERSION: '20.x'
   AZURE_WEBAPP_NAME: CampeaPhotoLab
-  AZURE_RESOURCE_GROUP: photolab-rg
+  AZURE_RESOURCE_GROUP: PhotoLab
 
 jobs:
   build-and-deploy:
