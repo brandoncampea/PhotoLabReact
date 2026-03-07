@@ -34,9 +34,18 @@ if [[ -z "${JWT_SECRET:-}" ]]; then
   exit 1
 fi
 
-if [[ -z "${MSSQL_CONNECTION_STRING:-}" ]]; then
+HAS_VALID_CONN_STRING=0
+if [[ -n "${MSSQL_CONNECTION_STRING:-}" ]]; then
+  if echo "$MSSQL_CONNECTION_STRING" | grep -Eiq '(^|;)[[:space:]]*(server|data source)[[:space:]]*='; then
+    HAS_VALID_CONN_STRING=1
+  else
+    echo "Warning: MSSQL_CONNECTION_STRING appears invalid; it will be ignored in favor of DB_* settings"
+  fi
+fi
+
+if [[ "$HAS_VALID_CONN_STRING" -ne 1 ]]; then
   if [[ -z "${DB_HOST:-}" || -z "${DB_NAME:-}" || -z "${DB_USER:-}" || -z "${DB_PASSWORD:-}" ]]; then
-    echo "Missing DB settings. Provide MSSQL_CONNECTION_STRING or DB_HOST/DB_NAME/DB_USER/DB_PASSWORD"
+    echo "Missing DB settings. Provide valid MSSQL_CONNECTION_STRING or DB_HOST/DB_NAME/DB_USER/DB_PASSWORD"
     exit 1
   fi
 fi
@@ -64,19 +73,20 @@ SETTINGS=(
   "FRONTEND_URL=${FRONTEND_URL:-$APP_URL}"
 )
 
-if [[ -n "${MSSQL_CONNECTION_STRING:-}" ]]; then
+if [[ "$HAS_VALID_CONN_STRING" -eq 1 ]]; then
   SETTINGS+=("MSSQL_CONNECTION_STRING=${MSSQL_CONNECTION_STRING}")
-  SETTINGS+=("MSSQL_ENCRYPT=${MSSQL_ENCRYPT:-true}")
-  SETTINGS+=("MSSQL_TRUST_CERT=${MSSQL_TRUST_CERT:-false}")
-else
+fi
+
+if [[ -n "${DB_HOST:-}" && -n "${DB_NAME:-}" && -n "${DB_USER:-}" && -n "${DB_PASSWORD:-}" ]]; then
   SETTINGS+=("DB_HOST=${DB_HOST}")
   SETTINGS+=("DB_PORT=${DB_PORT:-1433}")
   SETTINGS+=("DB_NAME=${DB_NAME}")
   SETTINGS+=("DB_USER=${DB_USER}")
   SETTINGS+=("DB_PASSWORD=${DB_PASSWORD}")
-  SETTINGS+=("MSSQL_ENCRYPT=${MSSQL_ENCRYPT:-true}")
-  SETTINGS+=("MSSQL_TRUST_CERT=${MSSQL_TRUST_CERT:-false}")
 fi
+
+SETTINGS+=("MSSQL_ENCRYPT=${MSSQL_ENCRYPT:-true}")
+SETTINGS+=("MSSQL_TRUST_CERT=${MSSQL_TRUST_CERT:-false}")
 
 if [[ -n "${STRIPE_SECRET_KEY:-}" ]]; then
   SETTINGS+=("STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}")
