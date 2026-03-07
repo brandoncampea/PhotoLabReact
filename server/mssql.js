@@ -4,9 +4,12 @@ import bcrypt from 'bcryptjs';
 
 dotenv.config({ path: '.env.local' });
 
-const mssqlConfig = process.env.MSSQL_CONNECTION_STRING
+const rawConnectionString = (process.env.MSSQL_CONNECTION_STRING || '').trim();
+const hasValidConnectionString = /(?:^|;)\s*(server|data source)\s*=\s*/i.test(rawConnectionString);
+
+const mssqlConfig = hasValidConnectionString
   ? {
-      connectionString: process.env.MSSQL_CONNECTION_STRING,
+      connectionString: rawConnectionString,
       options: {
         encrypt: process.env.MSSQL_ENCRYPT !== 'false',
         trustServerCertificate: process.env.MSSQL_TRUST_CERT === 'true',
@@ -27,6 +30,10 @@ const mssqlConfig = process.env.MSSQL_CONNECTION_STRING
         requestTimeout: 10000, // 10 second request timeout
       },
     };
+
+if (rawConnectionString && !hasValidConnectionString) {
+  console.warn('MSSQL_CONNECTION_STRING is set but appears invalid. Falling back to DB_HOST/DB_PORT/DB_NAME/DB_USER.');
+}
 
 const pool = new sql.ConnectionPool(mssqlConfig);
 const poolPromise = pool.connect();
