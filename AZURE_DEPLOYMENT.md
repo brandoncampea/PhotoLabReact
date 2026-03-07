@@ -207,8 +207,8 @@ VITE_USE_MOCK_API=false
 2. **View Backend Logs:**
    ```bash
    az webapp log tail \
-     --name campeaphotolab-api \
-     --resource-group photolab-rg
+     --name CampeaPhotoLab \
+     --resource-group PhotoLab
    ```
 
 3. **Check Frontend:**
@@ -223,20 +223,18 @@ VITE_USE_MOCK_API=false
 
 ✅ **GitHub Actions workflows have been created!**
 
-Three workflow files are ready in `.github/workflows/`:
+Active workflow in `.github/workflows/`:
 
-1. **azure-backend.yml** - Deploys backend API on server changes
-2. **azure-frontend.yml** - Deploys frontend on src/public changes
-3. **azure-full-deploy.yml** - Deploys both backend and frontend together
+1. **azure-appservice-fullstack.yml** - Deploys frontend + API to one Azure App Service
 
 ### Quick Setup
 
 1. **Set up GitHub Secrets** - Follow the guide in [.github/GITHUB_SECRETS_SETUP.md](.github/GITHUB_SECRETS_SETUP.md)
    
    Required secrets:
-   - `AZURE_WEBAPP_PUBLISH_PROFILE` - From Azure App Service
-   - `AZURE_STATIC_WEB_APPS_API_TOKEN` - From Azure Static Web Apps
-   - `VITE_API_URL` - Your production API URL
+  - `AZURE_CREDENTIALS` - Service principal JSON for `azure/login`
+  - `JWT_SECRET` - App JWT secret
+  - `MSSQL_CONNECTION_STRING` *or* `DB_HOST`/`DB_NAME`/`DB_USER`/`DB_PASSWORD`
 
 2. **Commit and push workflows:**
    ```bash
@@ -251,17 +249,9 @@ Three workflow files are ready in `.github/workflows/`:
 
 ### Workflow Triggers
 
-- **Backend workflow** triggers on:
-  - Changes to `server/**`
+- **Full stack App Service workflow** triggers on:
+  - Changes to backend/frontend files
   - Manual trigger via Actions tab
-
-- **Frontend workflow** triggers on:
-  - Changes to `src/**`, `public/**`, `index.html`
-  - Manual trigger via Actions tab
-
-- **Full stack workflow** triggers on:
-  - Changes to either backend or frontend
-  - Manual trigger (recommended for initial deployment)
 
 For detailed setup instructions, see [.github/GITHUB_SECRETS_SETUP.md](.github/GITHUB_SECRETS_SETUP.md)
 

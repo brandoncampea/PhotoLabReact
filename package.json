@@ -6,8 +6,10 @@
   "scripts": {
     "dev": "vite",
     "server": "node server/server.js",
+    "start": "node server/server.js",
     "dev:all": "concurrently \"npm run dev\" \"npm run server\"",
     "build": "tsc && vite build",
+    "build:appservice": "vite build",
     "heroku-postbuild": "echo \"Skipping frontend build for Heroku\"",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
@@ -18,7 +20,8 @@
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:debug": "playwright test --debug",
     "test:e2e:headed": "playwright test --headed",
-    "deploy:aws": "./scripts/deploy-aws.sh"
+    "deploy:aws": "./scripts/deploy-aws.sh",
+    "deploy:azure:appservice": "./scripts/deploy-azure-appservice.sh"
   },
   "dependencies": {
     "@types/bcryptjs": "^3.0.0",
