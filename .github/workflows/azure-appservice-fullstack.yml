@@ -76,7 +76,12 @@ jobs:
             exit 1
           fi
 
-          APP_URL="https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net"
+          APP_HOST=$(az webapp show \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --query defaultHostName -o tsv)
+
+          APP_URL="https://${APP_HOST}"
           SETTINGS=(
             "SCM_DO_BUILD_DURING_DEPLOYMENT=true"
             "ENABLE_ORYX_BUILD=true"
@@ -140,4 +145,8 @@ jobs:
       - name: Verify health endpoint
         run: |
           sleep 20
-          curl -f "https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/api/health"
+          APP_HOST=$(az webapp show \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --query defaultHostName -o tsv)
+          curl -f "https://${APP_HOST}/api/health"
