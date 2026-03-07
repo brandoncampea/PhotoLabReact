@@ -70,7 +70,7 @@ heroku logs --tail --app campeaphotolab-api
 
 ## Update GitHub Actions Workflow
 
-Update `.github/workflows/azure-backend.yml` to deploy to Heroku instead:
+Create a dedicated Heroku workflow (or adapt your active deployment workflow) to deploy to Heroku:
 
 ```yaml
 name: Deploy Backend to Heroku

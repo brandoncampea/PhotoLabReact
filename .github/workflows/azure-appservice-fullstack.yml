@@ -1,0 +1,143 @@
+name: Deploy Full Stack to Azure App Service
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'server/**'
+      - 'src/**'
+      - 'public/**'
+      - 'index.html'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/azure-appservice-fullstack.yml'
+
+env:
+  NODE_VERSION: '20.x'
+  AZURE_WEBAPP_NAME: CampeaPhotoLab
+  AZURE_RESOURCE_GROUP: photolab-rg
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build:appservice
+        env:
+          VITE_API_URL: /api
+          VITE_USE_MOCK_API: false
+
+      - name: Create deployment zip
+        run: |
+          zip -r appservice-deploy.zip \
+            server \
+            dist \
+            package.json \
+            package-lock.json \
+            -x "**/.DS_Store" "**/*.log" "**/node_modules/**" "**/test-results/**" "**/playwright-report/**"
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Configure App Service runtime
+        env:
+          JWT_SECRET: ${{ secrets['JWT_SECRET'] }}
+          MSSQL_CONNECTION_STRING: ${{ secrets['MSSQL_CONNECTION_STRING'] }}
+          DB_HOST: ${{ secrets['DB_HOST'] }}
+          DB_PORT: ${{ secrets['DB_PORT'] }}
+          DB_NAME: ${{ secrets['DB_NAME'] }}
+          DB_USER: ${{ secrets['DB_USER'] }}
+          DB_PASSWORD: ${{ secrets['DB_PASSWORD'] }}
+          MSSQL_ENCRYPT: ${{ secrets['MSSQL_ENCRYPT'] }}
+          MSSQL_TRUST_CERT: ${{ secrets['MSSQL_TRUST_CERT'] }}
+          STRIPE_SECRET_KEY: ${{ secrets['STRIPE_SECRET_KEY'] }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets['STRIPE_WEBHOOK_SECRET'] }}
+          MPIX_API_KEY: ${{ secrets['MPIX_API_KEY'] }}
+          MPIX_API_SECRET: ${{ secrets['MPIX_API_SECRET'] }}
+        run: |
+          if [ -z "$JWT_SECRET" ]; then
+            echo "Missing required secret: JWT_SECRET"
+            exit 1
+          fi
+
+          APP_URL="https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net"
+          SETTINGS=(
+            "SCM_DO_BUILD_DURING_DEPLOYMENT=true"
+            "ENABLE_ORYX_BUILD=true"
+            "NODE_ENV=production"
+            "PORT=8080"
+            "JWT_SECRET=$JWT_SECRET"
+            "FRONTEND_URL=$APP_URL"
+          )
+
+          if [ -n "$MSSQL_CONNECTION_STRING" ]; then
+            SETTINGS+=("MSSQL_CONNECTION_STRING=$MSSQL_CONNECTION_STRING")
+            SETTINGS+=("MSSQL_ENCRYPT=${MSSQL_ENCRYPT:-true}")
+            SETTINGS+=("MSSQL_TRUST_CERT=${MSSQL_TRUST_CERT:-false}")
+          else
+            if [ -z "$DB_HOST" ] || [ -z "$DB_NAME" ] || [ -z "$DB_USER" ] || [ -z "$DB_PASSWORD" ]; then
+              echo "Missing DB secrets. Provide MSSQL_CONNECTION_STRING or DB_HOST/DB_NAME/DB_USER/DB_PASSWORD"
+              exit 1
+            fi
+
+            SETTINGS+=("DB_HOST=$DB_HOST")
+            SETTINGS+=("DB_PORT=${DB_PORT:-1433}")
+            SETTINGS+=("DB_NAME=$DB_NAME")
+            SETTINGS+=("DB_USER=$DB_USER")
+            SETTINGS+=("DB_PASSWORD=$DB_PASSWORD")
+            SETTINGS+=("MSSQL_ENCRYPT=${MSSQL_ENCRYPT:-true}")
+            SETTINGS+=("MSSQL_TRUST_CERT=${MSSQL_TRUST_CERT:-false}")
+          fi
+
+          if [ -n "$STRIPE_SECRET_KEY" ]; then
+            SETTINGS+=("STRIPE_SECRET_KEY=$STRIPE_SECRET_KEY")
+          fi
+
+          if [ -n "$STRIPE_WEBHOOK_SECRET" ]; then
+            SETTINGS+=("STRIPE_WEBHOOK_SECRET=$STRIPE_WEBHOOK_SECRET")
+          fi
+
+          if [ -n "$MPIX_API_KEY" ]; then
+            SETTINGS+=("MPIX_API_KEY=$MPIX_API_KEY")
+          fi
+
+          if [ -n "$MPIX_API_SECRET" ]; then
+            SETTINGS+=("MPIX_API_SECRET=$MPIX_API_SECRET")
+          fi
+
+          az webapp config appsettings set \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --settings "${SETTINGS[@]}"
+
+          az webapp config set \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --startup-file "npm start"
+
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          package: appservice-deploy.zip
+
+      - name: Verify health endpoint
+        run: |
+          sleep 20
+          curl -f "https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/api/health"

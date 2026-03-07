@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { initializeDatabase } from './mssql.js';
 
@@ -31,6 +32,8 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+const clientDistPath = path.resolve(__dirname, '../dist');
+const hasClientBuild = fs.existsSync(path.join(clientDistPath, 'index.html'));
 
 // Middleware
 app.use(cors());
@@ -66,19 +69,38 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'Photo Lab API is running' });
 });
 
-// Quick health check for Azure startup probe (responds immediately)
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok' });
-});
-
-// Root handler for convenience
-app.get('/', (req, res) => {
+// API root handler
+app.get('/api', (req, res) => {
   res.json({
     status: 'ok',
     message: 'Photo Lab API root',
     docs: '/api/health'
   });
 });
+
+// Quick health check for Azure startup probe (responds immediately)
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok' });
+});
+
+// Serve built frontend when available (single App Service deployment)
+if (hasClientBuild) {
+  app.use(express.static(clientDistPath));
+
+  // SPA fallback for non-API routes
+  app.get(/^(?!\/api|\/uploads).*/, (req, res) => {
+    res.sendFile(path.join(clientDistPath, 'index.html'));
+  });
+} else {
+  // Root handler for API-only deployments/local debugging
+  app.get('/', (req, res) => {
+    res.json({
+      status: 'ok',
+      message: 'Photo Lab API root',
+      docs: '/api/health'
+    });
+  });
+}
 
 // Initialize database and start server
 console.log('Starting server...');

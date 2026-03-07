@@ -3,9 +3,7 @@
 ## What Was Created
 
 ### GitHub Actions Workflows (`.github/workflows/`)
-1. **azure-backend.yml** - Automated backend deployment
-2. **azure-frontend.yml** - Automated frontend deployment  
-3. **azure-full-deploy.yml** - Combined deployment with verification
+1. **azure-appservice-fullstack.yml** - Automated full-stack deployment to Azure App Service
 
 ### Documentation
 1. **AZURE_DEPLOYMENT.md** - Complete deployment guide
@@ -13,7 +11,7 @@
 3. **.github/GITHUB_SECRETS_SETUP.md** - Secrets configuration guide
 
 ### Scripts
-1. **scripts/deploy-azure.sh** - Manual deployment script (alternative to GitHub Actions)
+1. **scripts/deploy-azure-appservice.sh** - Manual deployment script (alternative to GitHub Actions)
 
 ## ✅ Committed to Git
 All files committed in: `6ec7afb`
@@ -32,24 +30,24 @@ All files committed in: `6ec7afb`
 az login
 
 # Create App Service
-az group create --name photolab-rg --location eastus
+az group create --name PhotoLab --location eastus
 
 az appservice plan create \
   --name photolab-backend-plan \
-  --resource-group photolab-rg \
+  --resource-group PhotoLab \
   --sku B1 \
   --is-linux
 
 az webapp create \
-  --name campeaphotolab-api \
-  --resource-group photolab-rg \
+  --name CampeaPhotoLab \
+  --resource-group PhotoLab \
   --plan photolab-backend-plan \
   --runtime "NODE:20-lts"
 
 # Configure environment
 az webapp config appsettings set \
-  --name campeaphotolab-api \
-  --resource-group photolab-rg \
+  --name CampeaPhotoLab \
+  --resource-group PhotoLab \
   --settings \
     DB_HOST=campeaphotolabsql.database.windows.net \
     DB_PORT=1433 \
@@ -66,7 +64,7 @@ az webapp config appsettings set \
 ```bash
 az staticwebapp create \
   --name campeaphotolab-frontend \
-  --resource-group photolab-rg \
+  --resource-group PhotoLab \
   --location eastus2
 ```
 
@@ -119,15 +117,15 @@ git push origin main
 ### View Backend Logs
 ```bash
 az webapp log tail \
-  --name campeaphotolab-api \
-  --resource-group photolab-rg
+  --name CampeaPhotoLab \
+  --resource-group PhotoLab
 ```
 
 ### Restart Backend
 ```bash
 az webapp restart \
-  --name campeaphotolab-api \
-  --resource-group photolab-rg
+  --name CampeaPhotoLab \
+  --resource-group PhotoLab
 ```
 
 ---
