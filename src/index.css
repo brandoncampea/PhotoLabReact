@@ -5,29 +5,31 @@
 }
 
 :root {
-  --primary-color: #2563eb;
-  --primary-hover: #1d4ed8;
-  --secondary-color: #64748b;
-  --success-color: #10b981;
+  --primary-color: #7c5cff;
+  --primary-hover: #6948f2;
+  --secondary-color: #8b93a7;
+  --success-color: #22c55e;
   --error-color: #ef4444;
-  --border-color: #e2e8f0;
-  --text-primary: #1e293b;
-  --text-secondary: #64748b;
-  --bg-primary: #ffffff;
-  --bg-secondary: #f8fafc;
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  --border-color: #2a2f3b;
+  --text-primary: #f3f4f6;
+  --text-secondary: #9ca3af;
+  --bg-primary: #161a22;
+  --bg-secondary: #0f1115;
+  --bg-tertiary: #1c212b;
+  --focus-ring: rgba(124, 92, 255, 0.4);
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 8px 20px -12px rgba(0, 0, 0, 0.55);
+  --shadow-lg: 0 20px 30px -16px rgba(0, 0, 0, 0.65);
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto',
+    'Helvetica Neue', Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   color: var(--text-primary);
   background-color: var(--bg-secondary);
+  line-height: 1.5;
 }
 
 .app {
@@ -38,8 +40,8 @@ body {
 
 .main-content {
   flex: 1;
-  padding: 2rem 1rem;
-  max-width: 1400px;
+  padding: 2rem 1.25rem;
+  max-width: 1200px;
   width: 100%;
   margin: 0 auto;
 }
@@ -53,21 +55,21 @@ body {
 }
 
 .error-message {
-  background-color: #fee;
+  background-color: rgba(239, 68, 68, 0.12);
   color: var(--error-color);
   padding: 1rem;
-  border-radius: 0.5rem;
+  border-radius: 0.75rem;
   margin-bottom: 1rem;
-  border: 1px solid var(--error-color);
+  border: 1px solid rgba(239, 68, 68, 0.45);
 }
 
 .success-message {
-  background-color: #efe;
+  background-color: rgba(34, 197, 94, 0.12);
   color: var(--success-color);
   padding: 1rem;
-  border-radius: 0.5rem;
+  border-radius: 0.75rem;
   margin-bottom: 1rem;
-  border: 1px solid var(--success-color);
+  border: 1px solid rgba(34, 197, 94, 0.45);
 }
 
 .empty-state {
@@ -80,11 +82,11 @@ body {
 .btn {
   padding: 0.75rem 1.5rem;
   border: none;
-  border-radius: 0.5rem;
+  border-radius: 0.75rem;
   font-size: 1rem;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.2s ease-out;
   display: inline-block;
   text-decoration: none;
   text-align: center;
@@ -98,20 +100,22 @@ body {
 .btn-primary {
   background-color: var(--primary-color);
   color: white;
+  box-shadow: 0 8px 20px -10px rgba(124, 92, 255, 0.65);
 }
 
 .btn-primary:hover:not(:disabled) {
   background-color: var(--primary-hover);
+  transform: translateY(-1px);
 }
 
 .btn-secondary {
-  background-color: var(--bg-primary);
+  background-color: var(--bg-tertiary);
   color: var(--text-primary);
   border: 1px solid var(--border-color);
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background-color: var(--bg-secondary);
+  background-color: #232938;
 }
 
 .btn-back {
@@ -143,6 +147,7 @@ body {
 .page-title h1 {
   font-size: 2rem;
   margin-bottom: 0.5rem;
+  letter-spacing: -0.02em;
 }
 
 .page-header p,
