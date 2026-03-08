@@ -7,6 +7,14 @@ dotenv.config({ path: '.env.local' });
 const rawConnectionString = (process.env.MSSQL_CONNECTION_STRING || '').trim();
 const hasValidConnectionString = /(?:^|;)\s*(server|data source)\s*=\s*/i.test(rawConnectionString);
 
+console.log('MSSQL Config Debug:');
+console.log('- MSSQL_CONNECTION_STRING present:', !!rawConnectionString);
+console.log('- MSSQL_CONNECTION_STRING valid:', hasValidConnectionString);
+console.log('- DB_HOST:', process.env.DB_HOST);
+console.log('- DB_NAME:', process.env.DB_NAME);
+console.log('- DB_USER:', process.env.DB_USER ? '***set***' : 'not set');
+console.log('- DB_PASSWORD:', process.env.DB_PASSWORD ? '***set***' : 'not set');
+
 const mssqlConfig = hasValidConnectionString
   ? {
       connectionString: rawConnectionString,
@@ -34,6 +42,12 @@ const mssqlConfig = hasValidConnectionString
 if (rawConnectionString && !hasValidConnectionString) {
   console.warn('MSSQL_CONNECTION_STRING is set but appears invalid. Falling back to DB_HOST/DB_PORT/DB_NAME/DB_USER.');
 }
+
+console.log('Final mssqlConfig:', {
+  ...mssqlConfig,
+  password: mssqlConfig.password ? '***' : undefined,
+  connectionString: mssqlConfig.connectionString ? '***set***' : undefined
+});
 
 const pool = new sql.ConnectionPool(mssqlConfig);
 const poolPromise = pool.connect();
