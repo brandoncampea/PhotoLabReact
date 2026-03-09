@@ -32,7 +32,7 @@ export default function SuperAdminPricing() {
   const fetchPlans = async () => {
     setLoading(true);
     try {
-      const response = await fetch('http://localhost:3001/api/subscription-plans');
+      const response = await fetch('/api/subscription-plans');
       if (response.ok) {
         const data = await response.json();
         setPlans(data);
@@ -86,7 +86,7 @@ export default function SuperAdminPricing() {
     try {
       const token = localStorage.getItem('token');
       const response = await fetch(
-        `http://localhost:3001/api/subscription-plans/${editingPlan}`,
+        `/api/subscription-plans/${editingPlan}`,
         {
           method: 'PATCH',
           headers: {
