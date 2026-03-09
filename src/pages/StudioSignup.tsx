@@ -31,7 +31,7 @@ export default function StudioSignup() {
 
   const fetchSubscriptionPlans = async () => {
     try {
-      const response = await fetch('http://localhost:3001/api/studios/plans/list');
+      const response = await fetch('/api/studios/plans/list');
       if (response.ok) {
         const data = await response.json();
         setPlans(Object.values(data));
@@ -75,7 +75,7 @@ export default function StudioSignup() {
     }
 
     try {
-      const response = await fetch('http://localhost:3001/api/studios/signup', {
+      const response = await fetch('/api/studios/signup', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

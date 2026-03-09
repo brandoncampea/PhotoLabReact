@@ -50,7 +50,7 @@ const AdminProfile: React.FC = () => {
     try {
       const token = localStorage.getItem('authToken');
       const response = await fetch(
-        `http://localhost:3001/api/studios/${user?.studioId}/subscription`,
+        `/api/studios/${user?.studioId}/subscription`,
         { headers: { 'Authorization': `Bearer ${token}` } }
       );
       if (response.ok) {
@@ -67,7 +67,7 @@ const AdminProfile: React.FC = () => {
     try {
       const token = localStorage.getItem('authToken');
       const response = await fetch(
-        `http://localhost:3001/api/studios/${user?.studioId}/subscription/cancel`,
+        `/api/studios/${user?.studioId}/subscription/cancel`,
         { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } }
       );
       if (response.ok) {
@@ -82,7 +82,7 @@ const AdminProfile: React.FC = () => {
     try {
       const token = localStorage.getItem('authToken');
       const response = await fetch(
-        `http://localhost:3001/api/studios/${user?.studioId}/subscription/reactivate`,
+        `/api/studios/${user?.studioId}/subscription/reactivate`,
         { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } }
       );
       if (response.ok) {
@@ -103,7 +103,7 @@ const AdminProfile: React.FC = () => {
       setUpgrading(true);
       const token = localStorage.getItem('authToken');
       const response = await fetch(
-        `http://localhost:3001/api/studios/${user?.studioId}/checkout`,
+        `/api/studios/${user?.studioId}/checkout`,
         {
           method: 'POST',
           headers: {

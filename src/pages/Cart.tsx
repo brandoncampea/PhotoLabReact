@@ -60,7 +60,7 @@ const Cart: React.FC = () => {
       // If user is a customer with studio_id, fetch the studio fees
       if (user?.studioId) {
         const token = localStorage.getItem('authToken');
-        const response = await fetch(`http://localhost:3001/api/studios/${user.studioId}/fees`, {
+        const response = await fetch(`/api/studios/${user.studioId}/fees`, {
           headers: {
             'Authorization': `Bearer ${token}`
           }

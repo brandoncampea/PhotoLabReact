@@ -61,7 +61,7 @@ export default function SuperAdminDashboard() {
     setLoading(true);
     try {
       const token = localStorage.getItem('authToken');
-      const response = await fetch('http://localhost:3001/api/studios', {
+      const response = await fetch('/api/studios', {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -83,7 +83,7 @@ export default function SuperAdminDashboard() {
 
   const fetchPlans = async () => {
     try {
-      const response = await fetch('http://localhost:3001/api/studios/plans/list');
+      const response = await fetch('/api/studios/plans/list');
       if (response.ok) {
         const data = await response.json();
         setPlans(Object.values(data));
@@ -99,7 +99,7 @@ export default function SuperAdminDashboard() {
     try {
       const token = localStorage.getItem('authToken');
       const response = await fetch(
-        `http://localhost:3001/api/studios/${selectedStudio.id}/subscription`,
+        `/api/studios/${selectedStudio.id}/subscription`,
         {
           method: 'PATCH',
           headers: {
@@ -132,7 +132,7 @@ export default function SuperAdminDashboard() {
     try {
       const token = localStorage.getItem('authToken');
       const response = await fetch(
-        `http://localhost:3001/api/studios/${studio.id}/fees`,
+        `/api/studios/${studio.id}/fees`,
         {
           headers: {
             'Authorization': `Bearer ${token}`
@@ -159,7 +159,7 @@ export default function SuperAdminDashboard() {
     try {
       const token = localStorage.getItem('authToken');
       const response = await fetch(
-        `http://localhost:3001/api/studios/${selectedStudio.id}/fees`,
+        `/api/studios/${selectedStudio.id}/fees`,
         {
           method: 'PUT',
           headers: {

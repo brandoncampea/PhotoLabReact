@@ -58,7 +58,7 @@ export default function StudioAdminDashboard() {
     try {
       const token = localStorage.getItem('authToken');
       const response = await fetch(
-        `http://localhost:3001/api/studios/${user?.studioId}/fees`,
+        `/api/studios/${user?.studioId}/fees`,
         {
           headers: {
             'Authorization': `Bearer ${token}`
@@ -80,7 +80,7 @@ export default function StudioAdminDashboard() {
     try {
       const token = localStorage.getItem('authToken');
       const response = await fetch(
-        `http://localhost:3001/api/studios/${user?.studioId}/subscription`,
+        `/api/studios/${user?.studioId}/subscription`,
         {
           headers: {
             'Authorization': `Bearer ${token}`
@@ -104,7 +104,7 @@ export default function StudioAdminDashboard() {
 
   const fetchAvailablePlans = async () => {
     try {
-      const response = await fetch('http://localhost:3001/api/studios/plans/list');
+      const response = await fetch('/api/studios/plans/list');
       if (response.ok) {
         const data = await response.json();
         setAvailablePlans(Object.values(data));
@@ -124,7 +124,7 @@ export default function StudioAdminDashboard() {
       setLoading(true);
       const token = localStorage.getItem('authToken');
       const response = await fetch(
-        `http://localhost:3001/api/studios/${user?.studioId}/checkout`,
+        `/api/studios/${user?.studioId}/checkout`,
         {
           method: 'POST',
           headers: {
@@ -167,7 +167,7 @@ export default function StudioAdminDashboard() {
     try {
       const token = localStorage.getItem('authToken');
       const response = await fetch(
-        `http://localhost:3001/api/studios/${user?.studioId}/subscription/cancel`,
+        `/api/studios/${user?.studioId}/subscription/cancel`,
         {
           method: 'POST',
           headers: {
@@ -196,7 +196,7 @@ export default function StudioAdminDashboard() {
     try {
       const token = localStorage.getItem('authToken');
       const response = await fetch(
-        `http://localhost:3001/api/studios/${user?.studioId}/subscription/reactivate`,
+        `/api/studios/${user?.studioId}/subscription/reactivate`,
         {
           method: 'POST',
           headers: {
