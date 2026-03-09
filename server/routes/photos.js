@@ -1,35 +1,14 @@
 import express from 'express';
 import multer from 'multer';
 import path from 'path';
-import fs from 'fs';
-import { fileURLToPath } from 'url';
 import { queryRow, queryRows, query } from '../mssql.js';
 import csv from 'csv-parser';
 import sharp from 'sharp';
+import { uploadImageBufferToAzure, deleteBlobByUrl } from '../services/azureStorage.js';
 const router = express.Router();
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Create uploads directory if it doesn't exist
-const uploadsDir = path.join(__dirname, '../uploads');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
-
-// Configure multer for file uploads
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadsDir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
-  }
-});
-
-const upload = multer({ 
-  storage,
+const photoUpload = multer({
+  storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
   fileFilter: (req, file, cb) => {
     const allowedTypes = /jpeg|jpg|png|gif/;
@@ -41,6 +20,26 @@ const upload = multer({
     cb(new Error('Only image files are allowed'));
   }
 });
+
+const csvUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB CSV limit
+  fileFilter: (req, file, cb) => {
+    const extname = path.extname(file.originalname).toLowerCase();
+    const isCsvMime = file.mimetype === 'text/csv' || file.mimetype === 'application/vnd.ms-excel';
+    if (extname === '.csv' || isCsvMime) {
+      return cb(null, true);
+    }
+    cb(new Error('Only CSV files are allowed'));
+  }
+});
+
+function makeBlobName(albumId, originalName) {
+  const extension = path.extname(originalName).toLowerCase();
+  const safeBaseName = path.basename(originalName, extension).replace(/[^a-zA-Z0-9-_]/g, '-');
+  const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+  return `albums/${albumId}/${safeBaseName || 'photo'}-${uniqueSuffix}${extension}`;
+}
 
 // Get photos by album
 router.get('/album/:albumId', async (req, res) => {
@@ -74,7 +73,7 @@ router.get('/album/:albumId', async (req, res) => {
 });
 
 // Upload photos
-router.post('/upload', upload.array('photos', 50), async (req, res) => {
+router.post('/upload', photoUpload.array('photos', 50), async (req, res) => {
   try {
     const { albumId, descriptions } = req.body;
     const parsedDescriptions = descriptions ? JSON.parse(descriptions) : [];
@@ -82,13 +81,14 @@ router.post('/upload', upload.array('photos', 50), async (req, res) => {
     const photos = [];
     for (let index = 0; index < req.files.length; index++) {
       const file = req.files[index];
-      const photoUrl = `/uploads/${file.filename}`;
+      const blobName = makeBlobName(albumId, file.originalname);
+      const photoUrl = await uploadImageBufferToAzure(file.buffer, blobName, file.mimetype);
       
       // Extract image dimensions
       let width = null;
       let height = null;
       try {
-        const metadata = await sharp(file.path).metadata();
+        const metadata = await sharp(file.buffer).metadata();
         width = metadata.width;
         height = metadata.height;
       } catch (err) {
@@ -158,10 +158,8 @@ router.delete('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Photo not found' });
     }
 
-    // Delete file from uploads directory
-    const filePath = path.join(uploadsDir, path.basename(photo.full_image_url));
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
+    if (photo.full_image_url?.startsWith('http')) {
+      await deleteBlobByUrl(photo.full_image_url);
     }
 
     await query('DELETE FROM photos WHERE id = $1', [req.params.id]);
@@ -290,7 +288,7 @@ router.get('/search/metadata', async (req, res) => {
 });
 
 // Upload player names CSV
-router.post('/album/:albumId/upload-players', upload.single('csv'), (req, res) => {
+router.post('/album/:albumId/upload-players', csvUpload.single('csv'), (req, res) => {
   try {
     const albumId = req.params.albumId;
     
@@ -298,12 +296,11 @@ router.post('/album/:albumId/upload-players', upload.single('csv'), (req, res) =
       return res.status(400).json({ error: 'No CSV file provided' });
     }
 
-    const filePath = req.file.path;
     const playerMapping = {}; // Map of file names to player names
     let rowCount = 0;
 
-    fs.createReadStream(filePath)
-      .pipe(csv())
+    const parser = csv();
+    parser
       .on('data', (row) => {
         // CSV should have columns: file_name (or fileName), player_name (or playerName)
         const fileName = row.file_name || row.fileName || row.filename || row['File Name'];
@@ -327,9 +324,6 @@ router.post('/album/:albumId/upload-players', upload.single('csv'), (req, res) =
           }
         }
 
-        // Clean up uploaded CSV file
-        fs.unlinkSync(filePath);
-
         res.json({
           message: 'Player names uploaded successfully',
           rowsParsed: rowCount,
@@ -338,9 +332,10 @@ router.post('/album/:albumId/upload-players', upload.single('csv'), (req, res) =
         });
       })
       .on('error', (err) => {
-        fs.unlinkSync(filePath);
         res.status(400).json({ error: 'Failed to parse CSV: ' + err.message });
       });
+
+    parser.end(req.file.buffer);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
