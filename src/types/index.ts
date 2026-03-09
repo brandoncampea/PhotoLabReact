@@ -207,7 +207,7 @@ export interface UserAccount {
   email: string;
   firstName: string;
   lastName: string;
-  role: 'customer' | 'admin';
+  role: 'customer' | 'admin' | 'super_admin' | 'studio_admin';
   registeredDate: string;
   totalOrders: number;
   totalSpent: number;

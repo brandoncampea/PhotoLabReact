@@ -13,7 +13,7 @@ export const userAdminService = {
   },
 
   async changeRole(id: number, role: string): Promise<User> {
-    const response = await api.patch<User>(`/users/${id}/role`, { role });
+    const response = await api.put<User>(`/users/${id}`, { role });
     return response.data;
   },
 };

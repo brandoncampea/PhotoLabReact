@@ -108,7 +108,7 @@ export const discountCodeService = {
 export const userAdminService = {
   async getAll(): Promise<UserAccount[]> {
     const response = await api.get('/users');
-    const users = response.data as Array<{ id: number; email: string; name: string; role: 'customer' | 'admin'; isActive: boolean; createdAt: string; lastLoginAt?: string; totalOrders: number; totalSpent: number }>;
+    const users = response.data as Array<{ id: number; email: string; name: string; role: 'customer' | 'admin' | 'super_admin' | 'studio_admin'; isActive: boolean; createdAt: string; lastLoginAt?: string; totalOrders: number; totalSpent: number }>;
     return users.map(u => {
       const parts = (u.name || '').trim().split(' ');
       const firstName = parts.shift() || '';
@@ -128,9 +128,9 @@ export const userAdminService = {
     });
   },
 
-  async changeRole(id: number, role: 'customer' | 'admin'): Promise<UserAccount> {
+  async changeRole(id: number, role: 'customer' | 'admin' | 'super_admin' | 'studio_admin'): Promise<UserAccount> {
     const response = await api.put(`/users/${id}`, { role });
-    const u = response.data as { id: number; email: string; name: string; role: 'customer' | 'admin'; isActive: boolean; createdAt: string; lastLoginAt?: string; totalOrders?: number; totalSpent?: number };
+    const u = response.data as { id: number; email: string; name: string; role: 'customer' | 'admin' | 'super_admin' | 'studio_admin'; isActive: boolean; createdAt: string; lastLoginAt?: string; totalOrders?: number; totalSpent?: number };
     const parts = (u.name || '').trim().split(' ');
     const firstName = parts.shift() || '';
     const lastName = parts.join(' ').trim();
@@ -150,7 +150,7 @@ export const userAdminService = {
 
   async toggleActive(id: number, isActive: boolean): Promise<UserAccount> {
     const response = await api.put(`/users/${id}`, { isActive: !isActive });
-    const u = response.data as { id: number; email: string; name: string; role: 'customer' | 'admin'; isActive: boolean; createdAt: string; lastLoginAt?: string; totalOrders?: number; totalSpent?: number };
+    const u = response.data as { id: number; email: string; name: string; role: 'customer' | 'admin' | 'super_admin' | 'studio_admin'; isActive: boolean; createdAt: string; lastLoginAt?: string; totalOrders?: number; totalSpent?: number };
     const parts = (u.name || '').trim().split(' ');
     const firstName = parts.shift() || '';
     const lastName = parts.join(' ').trim();

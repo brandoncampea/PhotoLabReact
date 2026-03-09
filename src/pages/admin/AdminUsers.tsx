@@ -10,7 +10,7 @@ const AdminUsers: React.FC = () => {
   const [users, setUsers] = useState<UserAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [filter, setFilter] = useState<'all' | 'customer' | 'admin'>('all');
+  const [filter, setFilter] = useState<'all' | 'customer' | 'admin' | 'super_admin' | 'studio_admin'>('all');
 
   useEffect(() => {
     loadUsers();
@@ -51,14 +51,14 @@ const AdminUsers: React.FC = () => {
     }
   };
 
-  const handleChangeRole = async (id: number, role: 'customer' | 'admin') => {
-    const action = role === 'admin' ? 'promote to admin' : 'demote to customer';
+  const handleChangeRole = async (id: number, newRole: 'customer' | 'admin' | 'super_admin' | 'studio_admin') => {
+    const action = `change to ${newRole.replace('_', ' ')}`;
     if (confirm(`Are you sure you want to ${action}?`)) {
       try {
         if (isUseMockApi()) {
-          await adminMockApi.users.changeRole(id, role);
+          await adminMockApi.users.changeRole(id, newRole);
         } else {
-          await userAdminService.changeRole(id, role);
+          await userAdminService.changeRole(id, newRole);
         }
         loadUsers();
       } catch (error) {
@@ -80,7 +80,7 @@ const AdminUsers: React.FC = () => {
     <div className="admin-page">
       <div className="page-header">
         <h1>User Accounts</h1>
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
           <button
             onClick={() => setFilter('all')}
             className={`btn ${filter === 'all' ? 'btn-primary' : 'btn-secondary'}`}
@@ -101,6 +101,20 @@ const AdminUsers: React.FC = () => {
             style={{ fontSize: '0.9rem', padding: '0.5rem 1rem' }}
           >
             Admins ({users.filter(u => u.role === 'admin').length})
+          </button>
+          <button
+            onClick={() => setFilter('studio_admin')}
+            className={`btn ${filter === 'studio_admin' ? 'btn-primary' : 'btn-secondary'}`}
+            style={{ fontSize: '0.9rem', padding: '0.5rem 1rem' }}
+          >
+            Studio Admins ({users.filter(u => u.role === 'studio_admin').length})
+          </button>
+          <button
+            onClick={() => setFilter('super_admin')}
+            className={`btn ${filter === 'super_admin' ? 'btn-primary' : 'btn-secondary'}`}
+            style={{ fontSize: '0.9rem', padding: '0.5rem 1rem' }}
+          >
+            Super Admins ({users.filter(u => u.role === 'super_admin').length})
           </button>
           <button
             onClick={() => loadUsers()}
@@ -135,15 +149,23 @@ const AdminUsers: React.FC = () => {
                 <td>{user.firstName} {user.lastName}</td>
                 <td>{user.email}</td>
                 <td>
-                  <span
-                    className="status-badge"
+                  <select
+                    value={user.role}
+                    onChange={(e) => handleChangeRole(user.id, e.target.value as 'customer' | 'admin' | 'super_admin' | 'studio_admin')}
                     style={{
-                      backgroundColor: user.role === 'admin' ? '#4169E1' : '#10b981',
-                      color: '#fff'
+                      padding: '0.5rem',
+                      borderRadius: '4px',
+                      border: '1px solid #ddd',
+                      backgroundColor: '#fff',
+                      cursor: 'pointer',
+                      fontWeight: '500'
                     }}
                   >
-                    {user.role === 'admin' ? '👑 Admin' : '👤 Customer'}
-                  </span>
+                    <option value="customer">👤 Customer</option>
+                    <option value="admin">👨‍💼 Admin</option>
+                    <option value="studio_admin">🏢 Studio Admin</option>
+                    <option value="super_admin">👑 Super Admin</option>
+                  </select>
                 </td>
                 <td>{new Date(user.registeredDate).toLocaleDateString()}</td>
                 <td>
@@ -164,25 +186,6 @@ const AdminUsers: React.FC = () => {
                 </td>
                 <td>
                   <div className="action-buttons">
-                    {user.role === 'customer' ? (
-                      <button
-                        onClick={() => handleChangeRole(user.id, 'admin')}
-                        className="btn-icon"
-                        title="Promote to Admin"
-                        style={{ fontSize: '1.2rem' }}
-                      >
-                        ⬆️
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => handleChangeRole(user.id, 'customer')}
-                        className="btn-icon"
-                        title="Demote to Customer"
-                        style={{ fontSize: '1.2rem' }}
-                      >
-                        ⬇️
-                      </button>
-                    )}
                     <button
                       onClick={() => handleToggleActive(user.id)}
                       className="btn-icon"
@@ -209,8 +212,11 @@ const AdminUsers: React.FC = () => {
       >
         <h4 style={{ marginTop: 0 }}>Account Management:</h4>
         <ul style={{ marginBottom: 0, paddingLeft: '1.5rem' }}>
-          <li><strong>Promote to Admin (⬆️):</strong> Gives user access to the admin portal</li>
-          <li><strong>Demote to Customer (⬇️):</strong> Removes admin access</li>
+          <li><strong>Role Selector:</strong> Click the dropdown to change user role</li>
+          <li><strong>Customer:</strong> Can browse albums and place orders</li>
+          <li><strong>Admin:</strong> Can access admin portal and manage content</li>
+          <li><strong>Studio Admin:</strong> Can manage their own studio and team</li>
+          <li><strong>Super Admin:</strong> Can manage all studios, users, and platform settings</li>
           <li><strong>Deactivate (🔒):</strong> Prevents user from logging in</li>
           <li><strong>Activate (🔓):</strong> Allows user to log in again</li>
         </ul>
