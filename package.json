@@ -22,6 +22,7 @@
     "deploy:azure:appservice": "./scripts/deploy-azure-appservice.sh"
   },
   "dependencies": {
+    "@azure/storage-blob": "^12.31.0",
     "@types/bcryptjs": "^3.0.0",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
@@ -35,8 +36,8 @@
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
-    "multer": "^2.0.2",
     "mssql": "^11.0.1",
+    "multer": "^2.0.2",
     "react": "^18.2.0",
     "react-cropper": "^2.3.3",
     "react-dom": "^18.2.0",

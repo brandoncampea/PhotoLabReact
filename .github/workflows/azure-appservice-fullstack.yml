@@ -74,6 +74,8 @@ jobs:
           STRIPE_WEBHOOK_SECRET: ${{ secrets['STRIPE_WEBHOOK_SECRET'] }}
           MPIX_API_KEY: ${{ secrets['MPIX_API_KEY'] }}
           MPIX_API_SECRET: ${{ secrets['MPIX_API_SECRET'] }}
+          AZURE_STORAGE_CONNECTION_STRING: ${{ secrets['AZURE_STORAGE_CONNECTION_STRING'] }}
+          AZURE_STORAGE_CONTAINER: ${{ secrets['AZURE_STORAGE_CONTAINER'] }}
         run: |
           if [ -z "$JWT_SECRET" ]; then
             echo "Missing required secret: JWT_SECRET"
@@ -133,6 +135,12 @@ jobs:
           if [ -n "$MPIX_API_SECRET" ]; then
             SETTINGS+=("MPIX_API_SECRET=$MPIX_API_SECRET")
           fi
+
+          if [ -n "$AZURE_STORAGE_CONNECTION_STRING" ]; then
+            SETTINGS+=("AZURE_STORAGE_CONNECTION_STRING=$AZURE_STORAGE_CONNECTION_STRING")
+          fi
+
+          SETTINGS+=("AZURE_STORAGE_CONTAINER=${AZURE_STORAGE_CONTAINER:-photos}")
 
           az webapp config appsettings set \
             --name ${{ env.AZURE_WEBAPP_NAME }} \
