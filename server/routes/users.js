@@ -42,6 +42,12 @@ router.get('/', adminRequired, async (req, res) => {
 router.put('/:id', adminRequired, async (req, res) => {
   try {
     const { role, isActive, name } = req.body;
+    
+    // Only super_admin can promote users to super_admin or studio_admin
+    if ((role === 'super_admin' || role === 'studio_admin') && req.user.role !== 'super_admin') {
+      return res.status(403).json({ error: 'Only super admin can assign super_admin or studio_admin roles' });
+    }
+    
     const updates = [];
     const params = [];
     let idx = 1;

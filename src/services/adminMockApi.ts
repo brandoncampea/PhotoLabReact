@@ -1065,7 +1065,7 @@ export const adminMockApi = {
       throw new Error('User not found');
     },
 
-    async changeRole(id: number, role: 'customer' | 'admin'): Promise<UserAccount> {
+    async changeRole(id: number, role: 'customer' | 'admin' | 'super_admin' | 'studio_admin'): Promise<UserAccount> {
       await delay(400);
       console.log('Admin Mock API: Changing user role', id, role);
       const index = mockUserAccounts.findIndex(u => u.id === id);
