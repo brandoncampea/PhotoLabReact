@@ -6,6 +6,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import AdminProtectedRoute from './components/AdminProtectedRoute';
 import SuperAdminProtectedRoute from './components/SuperAdminProtectedRoute';
 import AdminLayout from './components/AdminLayout';
+import LandingPage from './pages/LandingPage';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Albums from './pages/Albums';
@@ -97,7 +98,7 @@ function App() {
                     </ProtectedRoute>
                   }
                 />
-                <Route path="/" element={<Navigate to="/albums" replace />} />
+                <Route path="/" element={<LandingPage />} />
 
                 {/* Studio Subscription Routes */}
                 <Route

@@ -44,7 +44,7 @@ const Navbar: React.FC = () => {
   return (
     <header className="navbar" role="navigation">
       <div className="nav-container">
-        <Link to="/albums" className="nav-brand">
+        <Link to={user ? "/albums" : "/"} className="nav-brand">
           {logoUrl ? (
             <img 
               src={logoUrl} 
@@ -113,14 +113,11 @@ const Navbar: React.FC = () => {
               <Link to="/" className="nav-link">
                 Home
               </Link>
-              <Link to="/albums" className="nav-link">
-                Albums
+              <Link to="/studio-signup" className="nav-link" style={{ color: '#7c5cff', fontWeight: '600' }}>
+                🚀 Start Free Trial
               </Link>
               <Link to="/login" className="nav-link">
                 Login
-              </Link>
-              <Link to="/register" className="nav-link">
-                Register
               </Link>
             </>
           )}
