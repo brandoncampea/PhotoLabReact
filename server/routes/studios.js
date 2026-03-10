@@ -423,6 +423,151 @@ router.put('/:studioId/fees', authRequired, async (req, res) => {
   }
 });
 
+// Get studio admins (super admin can view all, studio_admin can view their own)
+router.get('/:studioId/admins', authRequired, async (req, res) => {
+  try {
+    const { studioId } = req.params;
+
+    // Check authorization
+    if (req.user.role === 'studio_admin' && req.user.studio_id !== parseInt(studioId)) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    if (req.user.role !== 'studio_admin' && req.user.role !== 'super_admin' && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    // Get all studio admins for this studio
+    const admins = await queryRows(`
+      SELECT 
+        u.id,
+        u.email,
+        u.name,
+        u.role,
+        u.is_active as isActive,
+        u.created_at as createdAt,
+        u.last_login_at as lastLoginAt,
+        s.id as studioId,
+        s.name as studioName
+      FROM users u
+      LEFT JOIN studios s ON u.studio_id = s.id
+      WHERE u.studio_id = $1 AND u.role IN ('studio_admin', 'super_admin')
+      ORDER BY u.created_at DESC
+    `, [studioId]);
+
+    res.json(admins);
+  } catch (error) {
+    console.error('Error fetching studio admins:', error);
+    res.status(500).json({ error: 'Failed to fetch studio admins' });
+  }
+});
+
+// Create a new studio admin (super admin or existing studio_admin can add to their studio)
+router.post('/:studioId/admins', authRequired, async (req, res) => {
+  try {
+    const { studioId } = req.params;
+    const { email, name, role = 'studio_admin' } = req.body;
+
+    // Validate role is studio_admin or super_admin
+    if (role !== 'studio_admin' && role !== 'super_admin') {
+      return res.status(400).json({ error: 'Role must be studio_admin or super_admin' });
+    }
+
+    // Check authorization - only super_admin or existing studio_admin of that studio can add
+    if (req.user.role !== 'super_admin') {
+      if (req.user.role !== 'studio_admin' || req.user.studio_id !== parseInt(studioId)) {
+        return res.status(403).json({ error: 'Unauthorized' });
+      }
+    }
+
+    // Verify studio exists
+    const studio = await queryRow('SELECT id, name FROM studios WHERE id = $1', [studioId]);
+    if (!studio) {
+      return res.status(404).json({ error: 'Studio not found' });
+    }
+
+    // Check if user already exists
+    const existingUser = await queryRow('SELECT id FROM users WHERE email = $1', [email]);
+    if (existingUser) {
+      return res.status(400).json({ error: 'User with this email already exists' });
+    }
+
+    // Create new studio admin user
+    const crypto = await import('crypto');
+    const randomPassword = crypto.randomBytes(16).toString('hex');
+
+    const newUser = await queryRow(`
+      INSERT INTO users (email, password, name, role, studio_id, is_active, created_at)
+      VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
+      RETURNING id, email, name, role, is_active as isActive, created_at as createdAt
+    `, [email, randomPassword, name || email.split('@')[0], role, studioId, 1]);
+
+    res.status(201).json({
+      message: `${role} created successfully`,
+      admin: {
+        ...newUser,
+        studioId: studio.id,
+        studioName: studio.name,
+        temporaryPassword: randomPassword
+      }
+    });
+  } catch (error) {
+    console.error('Error creating studio admin:', error);
+    res.status(500).json({ error: 'Failed to create studio admin' });
+  }
+});
+
+// Delete a studio admin
+router.delete('/:studioId/admins/:userId', authRequired, async (req, res) => {
+  try {
+    const { studioId, userId } = req.params;
+
+    // Check authorization
+    if (req.user.role === 'studio_admin') {
+      if (req.user.studio_id !== parseInt(studioId)) {
+        return res.status(403).json({ error: 'Unauthorized' });
+      }
+      // Studio admin cannot delete another admin if it's the only one or if it's a super_admin
+      const targetAdmin = await queryRow(
+        'SELECT role, studio_id FROM users WHERE id = $1',
+        [userId]
+      );
+      if (targetAdmin?.role === 'super_admin' || targetAdmin?.studio_id !== parseInt(studioId)) {
+        return res.status(403).json({ error: 'Cannot delete this admin' });
+      }
+    } else if (req.user.role !== 'super_admin') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    // Verify the admin exists in this studio
+    const admin = await queryRow(
+      'SELECT id, role FROM users WHERE id = $1 AND studio_id = $2',
+      [userId, studioId]
+    );
+    if (!admin) {
+      return res.status(404).json({ error: 'Admin not found in this studio' });
+    }
+
+    // Don't allow deletion if it's the last admin
+    const adminCount = await queryRow(
+      'SELECT COUNT(*) as count FROM users WHERE studio_id = $1 AND role IN (\'studio_admin\', \'super_admin\')',
+      [studioId]
+    );
+    
+    if (adminCount.count <= 1) {
+      return res.status(400).json({ error: 'Cannot delete the last admin of a studio' });
+    }
+
+    // Delete the admin
+    await query('DELETE FROM users WHERE id = $1', [userId]);
+
+    res.json({ message: 'Admin deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting studio admin:', error);
+    res.status(500).json({ error: 'Failed to delete studio admin' });
+  }
+});
+
 // Create Stripe checkout session
 router.post('/:studioId/checkout', authRequired, async (req, res) => {
   try {

@@ -93,6 +93,12 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             👥 Users
           </Link>
           <Link
+            to="/admin/studio-admins"
+            className={`admin-nav-link ${isActive('/admin/studio-admins') ? 'active' : ''}`}
+          >
+            🏢 Studio Admins
+          </Link>
+          <Link
             to="/admin/profile"
             className={`admin-nav-link ${isActive('/admin/profile') ? 'active' : ''}`}
           >

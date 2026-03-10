@@ -27,6 +27,7 @@ import AdminCustomers from './pages/admin/AdminCustomers';
 import AdminShipping from './pages/admin/AdminShipping';
 import AdminPayments from './pages/admin/AdminStripe';
 import AdminUsers from './pages/admin/AdminUsers';
+import AdminStudioAdmins from './pages/admin/AdminStudioAdmins';
 import AdminProfile from './pages/admin/AdminProfile';
 import AdminDiscountCodes from './pages/admin/AdminDiscountCodes';
 import AdminLabs from './pages/admin/AdminLabs';
@@ -144,6 +145,7 @@ function App() {
                           <Route path="shipping" element={<AdminShipping />} />
                           <Route path="payments" element={<AdminPayments />} />
                           <Route path="users" element={<AdminUsers />} />
+                          <Route path="studio-admins" element={<AdminStudioAdmins />} />
                           <Route path="profile" element={<AdminProfile />} />
                           <Route path="discount-codes" element={<AdminDiscountCodes />} />
                           <Route path="labs" element={<AdminLabs />} />
