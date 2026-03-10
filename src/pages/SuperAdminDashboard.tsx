@@ -335,25 +335,8 @@ export default function SuperAdminDashboard() {
 
       {/* Subscription Modal */}
       {showSubscriptionModal && selectedStudio && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0,0,0,0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000
-        }}>
-          <div style={{
-            backgroundColor: 'white',
-            padding: '30px',
-            borderRadius: '8px',
-            maxWidth: '500px',
-            width: '90%'
-          }}>
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ padding: '30px', maxWidth: '500px' }}>
             <h2>Update Subscription for {selectedStudio.name}</h2>
 
             <div style={{ marginBottom: '20px' }}>
@@ -477,25 +460,8 @@ export default function SuperAdminDashboard() {
 
       {/* Fee Modal */}
       {showFeeModal && selectedStudio && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0,0,0,0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000
-        }}>
-          <div style={{
-            backgroundColor: 'white',
-            padding: '30px',
-            borderRadius: '8px',
-            maxWidth: '500px',
-            width: '90%'
-          }}>
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ padding: '30px', maxWidth: '500px' }}>
             <h2>Update Fees for {selectedStudio.name}</h2>
 
             <div style={{ marginBottom: '20px' }}>
