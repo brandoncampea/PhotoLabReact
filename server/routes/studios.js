@@ -1,4 +1,5 @@
 import express from 'express';
+import crypto from 'crypto';
 import { queryRow, queryRows, query, transaction } from '../mssql.js';
 import { SUBSCRIPTION_PLANS, SUBSCRIPTION_STATUSES } from '../constants/subscriptions.js';
 import { authRequired } from '../middleware/auth.js';
@@ -79,11 +80,26 @@ router.get('/', authRequired, async (req, res) => {
 
     const studios = await queryRows(`
       SELECT 
-        s.*,
+        s.id,
+        s.name,
+        s.email,
+        s.subscription_plan,
+        s.subscription_status,
+        s.subscription_start,
+        s.subscription_end,
+        s.stripe_customer_id,
+        s.stripe_subscription_id,
+        s.fee_type,
+        s.fee_value,
+        s.billing_cycle,
+        s.is_free_subscription,
+        s.cancellation_requested,
+        s.cancellation_date,
+        s.created_at,
         COUNT(DISTINCT u.id) as userCount
       FROM studios s
       LEFT JOIN users u ON u.studio_id = s.id AND u.role != 'super_admin'
-      GROUP BY s.id
+      GROUP BY s.id, s.name, s.email, s.subscription_plan, s.subscription_status, s.subscription_start, s.subscription_end, s.stripe_customer_id, s.stripe_subscription_id, s.fee_type, s.fee_value, s.billing_cycle, s.is_free_subscription, s.cancellation_requested, s.cancellation_date, s.created_at
       ORDER BY s.created_at DESC
     `);
 
@@ -493,7 +509,6 @@ router.post('/:studioId/admins', authRequired, async (req, res) => {
     }
 
     // Create new studio admin user
-    const crypto = await import('crypto');
     const randomPassword = crypto.randomBytes(16).toString('hex');
 
     const newUser = await queryRow(`
