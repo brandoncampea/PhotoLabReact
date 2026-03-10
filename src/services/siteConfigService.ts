@@ -7,6 +7,7 @@ export interface SiteConfig {
   whccEnabled: boolean;
   roesEnabled: boolean;
   mpixEnabled: boolean;
+  selectedLab: 'whcc' | 'roes' | 'mpix' | null;
 }
 
 class SiteConfigService {
@@ -14,6 +15,7 @@ class SiteConfigService {
     whccEnabled: false,
     roesEnabled: false,
     mpixEnabled: true,
+    selectedLab: 'mpix',
   };
 
   /**
@@ -27,7 +29,18 @@ class SiteConfigService {
 
       const stored = localStorage.getItem('siteConfig');
       if (stored) {
-        return JSON.parse(stored);
+        const parsed = JSON.parse(stored) as Partial<SiteConfig>;
+        const merged = { ...this.defaultConfig, ...parsed };
+
+        // Backward compatibility for older saved configs without selectedLab
+        if (!merged.selectedLab) {
+          if (merged.whccEnabled) merged.selectedLab = 'whcc';
+          else if (merged.mpixEnabled) merged.selectedLab = 'mpix';
+          else if (merged.roesEnabled) merged.selectedLab = 'roes';
+          else merged.selectedLab = null;
+        }
+
+        return merged;
       }
     } catch (error) {
       console.warn('Failed to load site config:', error);
@@ -53,13 +66,34 @@ class SiteConfigService {
    * Enable/disable a specific site
    */
   setSiteEnabled(site: 'whcc' | 'roes' | 'mpix', enabled: boolean): void {
-    if (site === 'whcc') {
-      this.setConfig({ whccEnabled: enabled });
-    } else if (site === 'roes') {
-      this.setConfig({ roesEnabled: enabled });
-    } else if (site === 'mpix') {
-      this.setConfig({ mpixEnabled: enabled });
+    if (enabled) {
+      // Only one active lab at a time
+      this.setConfig({
+        whccEnabled: site === 'whcc',
+        roesEnabled: site === 'roes',
+        mpixEnabled: site === 'mpix',
+        selectedLab: site,
+      });
+      return;
     }
+
+    const current = this.getConfig();
+    const updated: SiteConfig = {
+      ...current,
+      whccEnabled: site === 'whcc' ? false : current.whccEnabled,
+      roesEnabled: site === 'roes' ? false : current.roesEnabled,
+      mpixEnabled: site === 'mpix' ? false : current.mpixEnabled,
+      selectedLab: current.selectedLab,
+    };
+
+    if (updated.selectedLab === site) {
+      if (updated.whccEnabled) updated.selectedLab = 'whcc';
+      else if (updated.mpixEnabled) updated.selectedLab = 'mpix';
+      else if (updated.roesEnabled) updated.selectedLab = 'roes';
+      else updated.selectedLab = null;
+    }
+
+    this.setConfig(updated);
   }
 
   /**
@@ -71,6 +105,13 @@ class SiteConfigService {
     if (site === 'roes') return config.roesEnabled;
     if (site === 'mpix') return config.mpixEnabled;
     return false;
+  }
+
+  /**
+   * Get currently selected (active) lab
+   */
+  getSelectedLab(): 'whcc' | 'roes' | 'mpix' | null {
+    return this.getConfig().selectedLab;
   }
 
   /**

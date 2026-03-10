@@ -221,16 +221,16 @@ export default function SuperAdminDashboard() {
 
       <div className="stats-grid">
         <div className="stat-card">
-          <h3>{studios.length}</h3>
-          <p>Total Studios</p>
+          <h3>Total Studios</h3>
+          <p className="stat-value">{studios.length}</p>
         </div>
         <div className="stat-card">
-          <h3>{studios.filter(s => s.subscription_status === 'active').length}</h3>
-          <p>Active Subscriptions</p>
+          <h3>Active Subscriptions</h3>
+          <p className="stat-value">{studios.filter(s => s.subscription_status === 'active').length}</p>
         </div>
         <div className="stat-card">
-          <h3>${studios.reduce((sum, s) => sum + parseFloat(s.subscription_plan || '0'), 0).toFixed(2)}</h3>
-          <p>Monthly Revenue</p>
+          <h3>Monthly Revenue</h3>
+          <p className="stat-value">${studios.reduce((sum, s) => sum + parseFloat(s.subscription_plan || '0'), 0).toFixed(2)}</p>
         </div>
       </div>
 
