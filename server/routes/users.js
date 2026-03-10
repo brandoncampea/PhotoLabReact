@@ -30,7 +30,7 @@ router.get('/', adminRequired, async (req, res) => {
       queryText += ` WHERE u.studio_id = $1`;
     }
     
-    queryText += ` GROUP BY u.id, u.email, u.name, u.role, u.studio_id, s.business_name, u.is_active, u.created_at, u.last_login_at ORDER BY u.created_at DESC`;
+    queryText += ` GROUP BY u.id, u.email, u.name, u.role, u.studio_id, s.id, s.business_name, u.is_active, u.created_at, u.last_login_at ORDER BY u.created_at DESC`;
     
     const users = req.user.role === 'studio_admin' 
       ? await queryRows(queryText, [req.user.studio_id])
