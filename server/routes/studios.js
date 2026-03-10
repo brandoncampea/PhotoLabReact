@@ -122,12 +122,27 @@ router.get('/:studioId', authRequired, async (req, res) => {
 
     const studio = await queryRow(`
       SELECT 
-        s.*,
+        s.id,
+        s.name,
+        s.email,
+        s.subscription_plan,
+        s.subscription_status,
+        s.subscription_start,
+        s.subscription_end,
+        s.stripe_customer_id,
+        s.stripe_subscription_id,
+        s.fee_type,
+        s.fee_value,
+        s.billing_cycle,
+        s.is_free_subscription,
+        s.cancellation_requested,
+        s.cancellation_date,
+        s.created_at,
         COUNT(DISTINCT u.id) as userCount
       FROM studios s
       LEFT JOIN users u ON u.studio_id = s.id AND u.role != 'super_admin'
       WHERE s.id = $1
-      GROUP BY s.id
+      GROUP BY s.id, s.name, s.email, s.subscription_plan, s.subscription_status, s.subscription_start, s.subscription_end, s.stripe_customer_id, s.stripe_subscription_id, s.fee_type, s.fee_value, s.billing_cycle, s.is_free_subscription, s.cancellation_requested, s.cancellation_date, s.created_at
     `, [studioId]);
 
     if (!studio) {
