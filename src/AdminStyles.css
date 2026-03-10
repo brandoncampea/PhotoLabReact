@@ -142,6 +142,27 @@
   font-size: 2rem;
 }
 
+/* Legacy Admin Containers (compatibility) */
+.admin-container {
+  background-color: var(--bg-primary);
+  border-radius: 1rem;
+  padding: 2rem;
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--border-color);
+}
+
+.admin-container h1 {
+  margin: 0 0 1.5rem 0;
+  font-size: 2rem;
+  color: var(--text-primary);
+}
+
+.admin-container h2 {
+  margin: 0 0 1rem 0;
+  font-size: 1.5rem;
+  color: var(--text-primary);
+}
+
 /* Stats Grid */
 .stats-grid {
   display: grid;
@@ -218,6 +239,39 @@
 
 .admin-table tr:hover {
   background-color: rgba(124, 92, 255, 0.08);
+}
+
+/* Legacy table class used in older admin pages */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+
+.data-table th {
+  background-color: var(--bg-tertiary);
+  color: var(--text-primary);
+  padding: 1rem;
+  text-align: left;
+  font-weight: 600;
+  border-bottom: 2px solid var(--border-color);
+}
+
+.data-table td {
+  padding: 1rem;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-primary);
+}
+
+.data-table tr:hover {
+  background-color: rgba(124, 92, 255, 0.08);
+}
+
+.data-table tbody tr:last-child td {
+  border-bottom: none;
 }
 
 .table-thumbnail {

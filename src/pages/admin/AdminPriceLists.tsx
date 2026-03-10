@@ -45,6 +45,7 @@ const AdminPriceLists: React.FC = () => {
   const [importError, setImportError] = useState('');
   const [importStep, setImportStep] = useState<'upload' | 'mapping' | 'preview'>('upload');
   const [importTargetPriceListId, setImportTargetPriceListId] = useState<number | null>(null);
+  const selectedLab = siteConfigService.getSelectedLab();
 
   useEffect(() => {
     loadData();
@@ -393,12 +394,12 @@ const AdminPriceLists: React.FC = () => {
           <button onClick={() => setShowImportDialog(true)} className="btn btn-secondary">
             📥 Import from CSV
           </button>
-          {siteConfigService.isSiteEnabled('whcc') && (
+          {selectedLab === 'whcc' && siteConfigService.isSiteEnabled('whcc') && (
             <button onClick={() => setShowWhccImport(true)} className="btn btn-secondary" title="Import products from WHCC">
               📦 Import from WHCC
             </button>
           )}
-          {siteConfigService.isSiteEnabled('mpix') && (
+          {selectedLab === 'mpix' && siteConfigService.isSiteEnabled('mpix') && (
             <button onClick={() => setShowMpixImport(true)} className="btn btn-secondary" title="Import products from Mpix">
               📸 Import from Mpix
             </button>
