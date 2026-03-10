@@ -1,8 +1,13 @@
 import sql from 'mssql';
 import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
+import { fileURLToPath } from 'url';
+import { dirname, resolve } from 'path';
 
-dotenv.config({ path: '.env.local' });
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+dotenv.config({ path: resolve(__dirname, '..', '.env.local') });
 
 const rawConnectionString = (process.env.MSSQL_CONNECTION_STRING || '').trim();
 const hasValidConnectionString = /(?:^|;)\s*(server|data source)\s*=\s*/i.test(rawConnectionString);
