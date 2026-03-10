@@ -235,8 +235,8 @@ const AdminMpixImport: React.FC<{ onClose: () => void; onImportComplete: () => v
   };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-      <div style={{ backgroundColor: 'white', borderRadius: '8px', padding: '30px', maxWidth: '700px', maxHeight: '80vh', overflowY: 'auto', width: '90%' }}>
+    <div className="modal-overlay">
+      <div className="modal-content" style={{ padding: '30px', maxWidth: '700px', maxHeight: '80vh' }}>
         <h2>Import Products from Mpix</h2>
 
         {error && (
