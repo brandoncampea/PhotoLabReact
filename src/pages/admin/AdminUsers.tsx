@@ -3,14 +3,18 @@ import { UserAccount } from '../../types';
 import { adminMockApi } from '../../services/adminMockApi';
 import { userAdminService } from '../../services/adminService';
 import { isUseMockApi } from '../../utils/mockApiConfig';
+import { useAuth } from '../../contexts/AuthContext';
 
 
 
 const AdminUsers: React.FC = () => {
+  const { user } = useAuth();
   const [users, setUsers] = useState<UserAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<'all' | 'customer' | 'admin' | 'super_admin' | 'studio_admin'>('all');
+  
+  const isSuperAdmin = user?.role === 'super_admin';
 
   useEffect(() => {
     loadUsers();
@@ -90,7 +94,14 @@ const AdminUsers: React.FC = () => {
   return (
     <div className="admin-page">
       <div className="page-header">
-        <h1>User Accounts</h1>
+        <div>
+          <h1>User Accounts</h1>
+          {isSuperAdmin && (
+            <p style={{ margin: '0.5rem 0 0 0', color: '#666', fontSize: '0.95rem' }}>
+              👑 Viewing all users across all studios
+            </p>
+          )}
+        </div>
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
           <button
             onClick={() => setFilter('all')}
@@ -145,6 +156,7 @@ const AdminUsers: React.FC = () => {
             <tr>
               <th>Name</th>
               <th>Email</th>
+              {isSuperAdmin && <th>Studio</th>}
               <th>Role</th>
               <th>Registered</th>
               <th>Last Login</th>
@@ -159,6 +171,11 @@ const AdminUsers: React.FC = () => {
               <tr key={user.id}>
                 <td>{user.firstName} {user.lastName}</td>
                 <td>{user.email}</td>
+                {isSuperAdmin && (
+                  <td>
+                    {user.studioName || <span style={{ color: '#999', fontStyle: 'italic' }}>No Studio</span>}
+                  </td>
+                )}
                 <td>
                   <select
                     value={user.role}

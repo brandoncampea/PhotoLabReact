@@ -213,6 +213,8 @@ export interface UserAccount {
   totalSpent: number;
   isActive: boolean;
   lastLoginDate?: string;
+  studioId?: number;
+  studioName?: string;
 }
 
 export interface DashboardStats {
