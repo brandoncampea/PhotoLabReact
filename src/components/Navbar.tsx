@@ -95,7 +95,7 @@ const Navbar: React.FC = () => {
                 </Link>
               )}
               {user.role === 'super_admin' && (
-                <Link to="/super-admin" className="nav-link" style={{ color: '#d32f2f', fontWeight: '600' }}>
+                <Link to="/admin/dashboard" className="nav-link" style={{ color: '#d32f2f', fontWeight: '600' }}>
                   👑 Super Admin
                 </Link>
               )}

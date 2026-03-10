@@ -1,0 +1,67 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - navigation [ref=e4]:
+    - generic [ref=e5]:
+      - link "📸 Photo Lab" [ref=e6] [cursor=pointer]:
+        - /url: /albums
+      - generic [ref=e7]:
+        - textbox "Quick search..." [ref=e9]
+        - link "Albums" [ref=e10] [cursor=pointer]:
+          - /url: /albums
+        - link "🔍 Search" [ref=e11] [cursor=pointer]:
+          - /url: /search
+        - link "Orders" [ref=e12] [cursor=pointer]:
+          - /url: /orders
+        - link "🛒 Cart" [ref=e13] [cursor=pointer]:
+          - /url: /cart
+        - link "⚙️ Admin" [ref=e14] [cursor=pointer]:
+          - /url: /admin/dashboard
+        - generic [ref=e15]:
+          - generic [ref=e16]: Test Admin
+          - button "Logout" [ref=e17] [cursor=pointer]
+  - main [ref=e18]:
+    - generic [ref=e19]:
+      - complementary [ref=e20]:
+        - heading "📸 Photo Lab Admin" [level=2] [ref=e22]
+        - navigation [ref=e23]:
+          - link "📊 Dashboard" [ref=e24] [cursor=pointer]:
+            - /url: /admin/dashboard
+          - link "📈 Analytics" [ref=e25] [cursor=pointer]:
+            - /url: /admin/analytics
+          - link "📁 Albums" [ref=e26] [cursor=pointer]:
+            - /url: /admin/albums
+          - link "📷 Photos" [ref=e27] [cursor=pointer]:
+            - /url: /admin/photos
+          - link "📦 Products" [ref=e28] [cursor=pointer]:
+            - /url: /admin/products
+          - link "💰 Price Lists" [ref=e29] [cursor=pointer]:
+            - /url: /admin/price-lists
+          - link "💧 Watermarks" [ref=e30] [cursor=pointer]:
+            - /url: /admin/watermarks
+          - link "🛒 Orders" [ref=e31] [cursor=pointer]:
+            - /url: /admin/orders
+          - link "👥 Customers" [ref=e32] [cursor=pointer]:
+            - /url: /admin/customers
+          - link "🚚 Shipping" [ref=e33] [cursor=pointer]:
+            - /url: /admin/shipping
+          - link "💳 Payments" [ref=e34] [cursor=pointer]:
+            - /url: /admin/payments
+          - link "👥 Users" [ref=e35] [cursor=pointer]:
+            - /url: /admin/users
+          - link "🏢 Studio Admins" [ref=e36] [cursor=pointer]:
+            - /url: /admin/studio-admins
+          - link "👤 Profile" [ref=e37] [cursor=pointer]:
+            - /url: /admin/profile
+          - link "🎟️ Discount Codes" [ref=e38] [cursor=pointer]:
+            - /url: /admin/discount-codes
+          - link "🖼️ Lab Configuration" [ref=e39] [cursor=pointer]:
+            - /url: /admin/configuration
+        - generic [ref=e40]:
+          - link "🏠 Customer Site" [ref=e41] [cursor=pointer]:
+            - /url: /
+          - button "🚪 Logout" [ref=e42] [cursor=pointer]
+      - main [ref=e43]:
+        - generic [ref=e44]: Loading watermarks...
+```
