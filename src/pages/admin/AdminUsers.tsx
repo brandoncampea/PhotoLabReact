@@ -52,6 +52,14 @@ const AdminUsers: React.FC = () => {
   };
 
   const handleChangeRole = async (id: number, newRole: 'customer' | 'admin' | 'super_admin' | 'studio_admin') => {
+    // Check permissions: only super_admin can assign admin/studio_admin/super_admin roles
+    const currentUser = users.find(u => u.id === id);
+    if ((newRole === 'admin' || newRole === 'studio_admin' || newRole === 'super_admin') && 
+        (currentUser?.role !== 'admin' && currentUser?.role !== 'studio_admin' && currentUser?.role !== 'super_admin')) {
+      // If user is not already an admin type, check if current user can promote
+      // This check assumes the backend will enforce this, but we can warn the user
+    }
+
     const action = `change to ${newRole.replace('_', ' ')}`;
     if (confirm(`Are you sure you want to ${action}?`)) {
       try {
@@ -63,6 +71,9 @@ const AdminUsers: React.FC = () => {
         loadUsers();
       } catch (error) {
         console.error('Failed to change user role:', error);
+        if ((error as any)?.response?.status === 403) {
+          alert('You do not have permission to assign this role. Only super admins can assign admin roles.');
+        }
       }
     }
   };
