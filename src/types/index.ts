@@ -17,6 +17,7 @@ export interface Album {
   description: string;
   coverImageUrl?: string;
   coverPhotoId?: number;
+  previewImageUrls?: string[];
   photoCount: number;
   createdDate: string;
   category?: string;
