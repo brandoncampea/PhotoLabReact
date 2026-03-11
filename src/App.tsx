@@ -40,6 +40,7 @@ const AdminRoesConfig = lazy(() => import('./pages/admin/AdminRoesConfig'));
 const AdminWhccConfig = lazy(() => import('./pages/admin/AdminWhccConfig'));
 const AdminMpixConfig = lazy(() => import('./pages/admin/AdminMpixConfig'));
 const StudioSignup = lazy(() => import('./pages/StudioSignup'));
+const StudioAdminDashboard = lazy(() => import('./pages/StudioAdminDashboard'));
 const SuperAdminDashboard = lazy(() => import('./pages/SuperAdminDashboard'));
 const SuperAdminPricing = lazy(() => import('./pages/SuperAdminPricing'));
 const CheckoutSuccess = lazy(() => import('./pages/CheckoutSuccess'));
@@ -120,7 +121,7 @@ function App() {
                 {/* Studio Subscription Routes */}
                 <Route
                   path="/studio-admin"
-                  element={<Navigate to="/admin/dashboard" replace />}
+                  element={<Navigate to="/admin/studio-dashboard" replace />}
                 />
 
                 {/* Super Admin Routes */}
@@ -158,6 +159,7 @@ function App() {
                       <AdminLayout>
                         <Routes>
                           <Route path="dashboard" element={<AdminDashboard />} />
+                          <Route path="studio-dashboard" element={<StudioAdminDashboard />} />
                           <Route path="analytics" element={<AdminAnalytics />} />
                           <Route path="albums" element={<AdminAlbums />} />
                           <Route path="photos" element={<AdminPhotos />} />

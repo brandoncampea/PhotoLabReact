@@ -420,7 +420,7 @@ export default function StudioAdminDashboard() {
       {subscription && (
         <>
           {/* Current Subscription Card */}
-          <div id="studio-invoices" style={{
+          <div style={{
             backgroundColor: 'var(--bg-tertiary)',
             padding: '20px',
             borderRadius: '8px',
@@ -593,7 +593,7 @@ export default function StudioAdminDashboard() {
           )}
 
           {/* Current Invoice Widget */}
-          <div style={{
+          <div id="studio-invoices" style={{
             backgroundColor: 'var(--bg-tertiary)',
             padding: '20px',
             borderRadius: '8px',
