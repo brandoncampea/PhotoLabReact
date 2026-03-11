@@ -1,8 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Customer } from '../../types';
-import { adminMockApi } from '../../services/adminMockApi';
 import { customerAdminService } from '../../services/customerAdminService';
-import { isUseMockApi } from '../../utils/mockApiConfig';
 
 const AdminCustomers: React.FC = () => {
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -14,9 +12,7 @@ const AdminCustomers: React.FC = () => {
 
   const loadCustomers = async () => {
     try {
-      const data = isUseMockApi()
-        ? await adminMockApi.customers.getAll()
-        : await customerAdminService.getAll();
+      const data = await customerAdminService.getAll();
       setCustomers(data);
     } catch (error) {
       console.error('Failed to load customers:', error);
@@ -27,9 +23,7 @@ const AdminCustomers: React.FC = () => {
 
   const handleToggleActive = async (id: number) => {
     try {
-      isUseMockApi()
-        ? await adminMockApi.customers.toggleActive(id)
-        : await customerAdminService.toggleActive(id);
+      await customerAdminService.toggleActive(id);
       loadCustomers();
     } catch (error) {
       console.error('Failed to toggle customer status:', error);

@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Package, PriceListProduct } from '../../types';
-import { adminMockApi } from '../../services/adminMockApi';
 import { packageService } from '../../services/packageService';
-import { isUseMockApi } from '../../utils/mockApiConfig';
+import { productService } from '../../services/productService';
 
 const AdminPackages: React.FC = () => {
   const [packages, setPackages] = useState<Package[]>([]);
@@ -26,25 +25,13 @@ const AdminPackages: React.FC = () => {
 
   const loadData = async () => {
     try {
-      let packagesData: Package[];
-      let productsData: any[];
-
-      if (isUseMockApi()) {
-        [packagesData, productsData] = await Promise.all([
-          adminMockApi.packages.getAll(),
-          adminMockApi.products.getAll(),
-        ]);
-      } else {
-        // For real API, use packageService and get products from mock API
-        // (since products are managed within price lists in the real API)
-        [packagesData, productsData] = await Promise.all([
-          packageService.getAll(),
-          adminMockApi.products.getAll(),
-        ]);
-      }
+      const [packagesData, productsData] = await Promise.all([
+        packageService.getAll(),
+        productService.getAll(),
+      ]);
 
       setPackages(packagesData);
-      setProducts(productsData as PriceListProduct[]);
+      setProducts(productsData as unknown as PriceListProduct[]);
     } catch (error) {
       console.error('Failed to load data:', error);
     } finally {
@@ -82,18 +69,10 @@ const AdminPackages: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      if (isUseMockApi()) {
-        if (editingPackage) {
-          await adminMockApi.packages.update(editingPackage.id, formData);
-        } else {
-          await adminMockApi.packages.create(formData);
-        }
+      if (editingPackage) {
+        await packageService.update(editingPackage.id, formData);
       } else {
-        if (editingPackage) {
-          await packageService.update(editingPackage.id, formData);
-        } else {
-          await packageService.create(formData);
-        }
+        await packageService.create(formData);
       }
       setShowModal(false);
       loadData();
@@ -105,11 +84,7 @@ const AdminPackages: React.FC = () => {
   const handleDelete = async (id: number) => {
     if (confirm('Are you sure you want to delete this package?')) {
       try {
-        if (isUseMockApi()) {
-          await adminMockApi.packages.delete(id);
-        } else {
-          await packageService.delete(id);
-        }
+        await packageService.delete(id);
         loadData();
       } catch (error) {
         console.error('Failed to delete package:', error);

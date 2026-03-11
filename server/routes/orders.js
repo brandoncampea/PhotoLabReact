@@ -295,4 +295,108 @@ router.get('/admin/all-orders', adminRequired, async (req, res) => {
   }
 });
 
+// Update order status (admin)
+router.patch('/admin/:orderId/status', adminRequired, async (req, res) => {
+  try {
+    const orderId = Number(req.params.orderId);
+    const { status } = req.body;
+
+    if (!orderId || !status) {
+      return res.status(400).json({ error: 'orderId and status are required' });
+    }
+
+    const allowedStatuses = ['pending', 'processing', 'completed', 'shipped', 'cancelled'];
+    if (!allowedStatuses.includes(String(status).toLowerCase())) {
+      return res.status(400).json({ error: 'Invalid order status' });
+    }
+
+    const order = await queryRow(
+      `SELECT o.id, o.user_id as userId
+       FROM orders o
+       WHERE o.id = $1`,
+      [orderId]
+    );
+
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    if (req.user.role === 'studio_admin') {
+      const user = await queryRow(
+        `SELECT studio_id as studioId FROM users WHERE id = $1`,
+        [order.userId]
+      );
+
+      if (!user || user.studioId !== req.user.studio_id) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+    }
+
+    await query(
+      `UPDATE orders
+       SET status = $1
+       WHERE id = $2`,
+      [status, orderId]
+    );
+
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Submit batch orders to lab (admin)
+router.post('/admin/submit-batch', adminRequired, async (req, res) => {
+  try {
+    const { orderIds } = req.body;
+
+    if (!Array.isArray(orderIds) || orderIds.length === 0) {
+      return res.status(400).json({ error: 'orderIds must be a non-empty array' });
+    }
+
+    const ids = orderIds.map((id) => Number(id)).filter(Boolean);
+    if (ids.length === 0) {
+      return res.status(400).json({ error: 'No valid order IDs provided' });
+    }
+
+    let updatedCount = 0;
+
+    for (const orderId of ids) {
+      const order = await queryRow(
+        `SELECT o.id, o.user_id as userId, o.is_batch as isBatch
+         FROM orders o
+         WHERE o.id = $1`,
+        [orderId]
+      );
+
+      if (!order || !order.isBatch) continue;
+
+      if (req.user.role === 'studio_admin') {
+        const user = await queryRow(
+          `SELECT studio_id as studioId FROM users WHERE id = $1`,
+          [order.userId]
+        );
+
+        if (!user || user.studioId !== req.user.studio_id) {
+          continue;
+        }
+      }
+
+      await query(
+        `UPDATE orders
+         SET lab_submitted = true,
+             status = CASE WHEN status = 'pending' THEN 'processing' ELSE status END
+         WHERE id = $1`,
+        [orderId]
+      );
+
+      updatedCount += 1;
+    }
+
+    res.json({ success: true, updatedCount });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;

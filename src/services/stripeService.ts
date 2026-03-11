@@ -1,13 +1,8 @@
 import api from './api';
-import { adminMockApi } from './adminMockApi';
-import { isUseMockApi } from '../utils/mockApiConfig';
 import { StripeConfig, PaymentIntent, CartItem } from '../types';
 
 export const stripeService = {
   async getConfig(): Promise<StripeConfig> {
-    if (isUseMockApi()) {
-      return adminMockApi.stripe.getConfig();
-    }
     const response = await api.get<StripeConfig>('/stripe/config');
     return response.data;
   },
@@ -35,20 +30,6 @@ export const stripeService = {
     shippingCost: number,
     discountAmount: number = 0
   ): Promise<PaymentIntent> {
-    if (isUseMockApi()) {
-      // Mock payment intent creation
-      const totalAmount = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-      const finalAmount = Math.round((totalAmount + shippingCost - discountAmount) * 100); // Convert to cents
-      
-      return {
-        id: 'pi_mock_' + Math.random().toString(36).substring(7),
-        clientSecret: 'pi_mock_secret_' + Math.random().toString(36).substring(7),
-        amount: finalAmount,
-        currency: 'usd',
-        status: 'requires_payment_method',
-      };
-    }
-    
     try {
       const response = await api.post<PaymentIntent>('/stripe/create-payment-intent', {
         items,
@@ -77,8 +58,8 @@ export const stripeService = {
   },
 
   async confirmPayment(paymentIntentId: string): Promise<{ success: boolean; message: string }> {
-    // If using mock API or the payment ID is a mock ID, use mock confirmation
-    if (isUseMockApi() || paymentIntentId.startsWith('pi_mock_')) {
+    // If the payment ID is a mock ID, use mock confirmation
+    if (paymentIntentId.startsWith('pi_mock_')) {
       // Simulate payment confirmation delay
       await new Promise(resolve => setTimeout(resolve, 1500));
       return {
