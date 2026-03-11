@@ -1,9 +1,30 @@
-import { BlobServiceClient } from '@azure/storage-blob';
+import {
+  BlobServiceClient,
+  BlobSASPermissions,
+  StorageSharedKeyCredential,
+  generateBlobSASQueryParameters,
+} from '@azure/storage-blob';
 
 const STORAGE_CONNECTION_STRING = process.env.AZURE_STORAGE_CONNECTION_STRING;
 const STORAGE_CONTAINER = process.env.AZURE_STORAGE_CONTAINER || 'photos';
 
 let containerClient;
+
+function parseConnectionString(connectionString) {
+  if (!connectionString) return { accountName: null, accountKey: null };
+
+  const parts = connectionString.split(';').reduce((acc, segment) => {
+    const [key, ...rest] = segment.split('=');
+    if (!key) return acc;
+    acc[key] = rest.join('=');
+    return acc;
+  }, {});
+
+  return {
+    accountName: parts.AccountName || null,
+    accountKey: parts.AccountKey || null,
+  };
+}
 
 function getContainerClient() {
   if (!STORAGE_CONNECTION_STRING) {
@@ -30,6 +51,50 @@ export async function uploadImageBufferToAzure(buffer, blobName, contentType = '
   });
 
   return blockBlobClient.url;
+}
+
+export function getSignedReadUrl(blobUrlOrName, expiresInHours = Number(process.env.AZURE_READ_SAS_HOURS || 24)) {
+  if (!blobUrlOrName) return blobUrlOrName;
+
+  const container = getContainerClient();
+  const { accountName, accountKey } = parseConnectionString(STORAGE_CONNECTION_STRING);
+  if (!accountName || !accountKey) {
+    return blobUrlOrName;
+  }
+
+  let blobName = blobUrlOrName;
+  if (blobUrlOrName.startsWith('http')) {
+    try {
+      const parsed = new URL(blobUrlOrName);
+      const marker = `/${STORAGE_CONTAINER}/`;
+      const markerIndex = parsed.pathname.indexOf(marker);
+      if (markerIndex >= 0) {
+        blobName = decodeURIComponent(parsed.pathname.slice(markerIndex + marker.length));
+      }
+    } catch {
+      return blobUrlOrName;
+    }
+  }
+
+  if (!blobName) return blobUrlOrName;
+
+  const sharedKeyCredential = new StorageSharedKeyCredential(accountName, accountKey);
+  const startsOn = new Date(Date.now() - 5 * 60 * 1000);
+  const expiresOn = new Date(Date.now() + Math.max(1, expiresInHours) * 60 * 60 * 1000);
+
+  const sas = generateBlobSASQueryParameters(
+    {
+      containerName: container.containerName,
+      blobName,
+      permissions: BlobSASPermissions.parse('r'),
+      startsOn,
+      expiresOn,
+      protocol: 'https',
+    },
+    sharedKeyCredential
+  );
+
+  return `${container.getBlockBlobClient(blobName).url}?${sas.toString()}`;
 }
 
 export async function deleteBlobByUrl(blobUrl) {

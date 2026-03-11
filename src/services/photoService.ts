@@ -61,17 +61,98 @@ export const photoService = {
     return response.data;
   },
 
-  async uploadPhotos(albumId: number, files: File[], descriptions?: string[]): Promise<Photo[]> {
-    const formData = new FormData();
-    formData.append('albumId', String(albumId));
-    files.forEach((file) => formData.append('photos', file));
-    if (descriptions && descriptions.length) {
-      formData.append('descriptions', JSON.stringify(descriptions));
+  async uploadPhotos(
+    albumId: number,
+    files: File[],
+    descriptions?: string[],
+    options?: {
+      batchSize?: number;
+      concurrency?: number;
+      maxRetries?: number;
+      onProgress?: (completed: number, total: number) => void;
     }
-    const response = await api.post<Photo[]>(`/photos/upload`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
-    return response.data;
+  ): Promise<{
+    uploadedPhotos: Photo[];
+    failedFiles: string[];
+    retriedBatches: number;
+    totalFiles: number;
+  }> {
+    const totalFiles = files.length;
+    if (totalFiles === 0) {
+      return { uploadedPhotos: [], failedFiles: [], retriedBatches: 0, totalFiles: 0 };
+    }
+
+    const batchSize = Math.max(1, options?.batchSize ?? 10);
+    const concurrency = Math.max(1, options?.concurrency ?? 3);
+    const maxRetries = Math.max(0, options?.maxRetries ?? 2);
+
+    const batches = [] as Array<{ files: File[]; descriptions?: string[] }>;
+    for (let i = 0; i < files.length; i += batchSize) {
+      const batchFiles = files.slice(i, i + batchSize);
+      const batchDescriptions = descriptions?.slice(i, i + batchSize);
+      batches.push({ files: batchFiles, descriptions: batchDescriptions });
+    }
+
+    const uploadSingleBatch = async (batchFiles: File[], batchDescriptions?: string[]): Promise<Photo[]> => {
+      const formData = new FormData();
+      formData.append('albumId', String(albumId));
+      batchFiles.forEach((file) => formData.append('photos', file));
+      if (batchDescriptions && batchDescriptions.length) {
+        formData.append('descriptions', JSON.stringify(batchDescriptions));
+      }
+      const response = await api.post<Photo[]>(`/photos/upload`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      return response.data;
+    };
+
+    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    const uploadedPhotos: Photo[] = [];
+    const failedFiles: string[] = [];
+    let retriedBatches = 0;
+    let completedFiles = 0;
+    let batchIndex = 0;
+
+    const worker = async () => {
+      while (batchIndex < batches.length) {
+        const currentIndex = batchIndex;
+        batchIndex += 1;
+        const batch = batches[currentIndex];
+
+        let attempt = 0;
+        let success = false;
+
+        while (!success && attempt <= maxRetries) {
+          try {
+            if (attempt > 0) {
+              retriedBatches += 1;
+              await sleep(Math.min(1000 * attempt, 3000));
+            }
+            const uploaded = await uploadSingleBatch(batch.files, batch.descriptions);
+            uploadedPhotos.push(...uploaded);
+            success = true;
+          } catch {
+            attempt += 1;
+            if (attempt > maxRetries) {
+              failedFiles.push(...batch.files.map((file) => file.name));
+            }
+          }
+        }
+
+        completedFiles += batch.files.length;
+        options?.onProgress?.(Math.min(completedFiles, totalFiles), totalFiles);
+      }
+    };
+
+    await Promise.all(Array.from({ length: Math.min(concurrency, batches.length) }, () => worker()));
+
+    return {
+      uploadedPhotos,
+      failedFiles,
+      retriedBatches,
+      totalFiles,
+    };
   },
 
   async deletePhoto(id: number): Promise<void> {
