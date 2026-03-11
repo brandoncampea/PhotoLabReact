@@ -349,6 +349,7 @@ export interface PriceList {
   name: string;
   description?: string;
   products: PriceListProduct[];
+  productCount?: number;
   isActive: boolean;
   createdDate: string;
   isDefault?: boolean;

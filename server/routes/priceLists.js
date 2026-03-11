@@ -49,8 +49,16 @@ const parseProductOptions = (options) => {
 router.get('/', adminRequired, async (req, res) => {
   try {
     const priceLists = await queryRows(`
-      SELECT id, name, description, is_default as isDefault, created_at as createdDate
-      FROM price_lists
+      SELECT
+        pl.id,
+        pl.name,
+        pl.description,
+        pl.is_default as isDefault,
+        pl.created_at as createdDate,
+        COUNT(DISTINCT plp.product_id) as productCount
+      FROM price_lists pl
+      LEFT JOIN price_list_products plp ON pl.id = plp.price_list_id
+      GROUP BY pl.id, pl.name, pl.description, pl.is_default, pl.created_at
       ORDER BY name ASC
     `);
     res.json(priceLists);

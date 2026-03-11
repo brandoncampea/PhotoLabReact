@@ -784,7 +784,9 @@ const AdminPriceLists: React.FC = () => {
               {priceList.description || 'No description'}
             </p>
             <p className="muted-text" style={{ fontSize: '0.85rem', margin: '0.5rem 0' }}>
-              {Array.isArray(priceList.products) ? priceList.products.length : 0} product(s)
+              {(typeof priceList.productCount === 'number'
+                ? priceList.productCount
+                : (Array.isArray(priceList.products) ? priceList.products.length : 0))} product(s)
             </p>
             {priceList.isDefault && (
               <span className="status-badge status-active" style={{ marginTop: '0.25rem', display: 'inline-block' }}>
