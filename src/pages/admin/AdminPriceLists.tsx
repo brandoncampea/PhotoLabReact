@@ -1,11 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { PriceList, Package } from '../../types';
-import { adminMockApi } from '../../services/adminMockApi';
 import { priceListAdminService } from '../../services/priceListAdminService';
 import { packageService } from '../../services/packageService';
 import { parseCSVData, createPriceListFromImport, detectColumnsFromCSV, ColumnSuggestion, ColumnMapping } from '../../services/priceListService';
 import { siteConfigService } from '../../services/siteConfigService';
-import { isUseMockApi } from '../../utils/mockApiConfig';
 import AdminWhccImport from '../../components/AdminWhccImport';
 import AdminMpixImport from '../../components/AdminMpixImport';
 
@@ -61,9 +59,7 @@ const AdminPriceLists: React.FC = () => {
 
   const loadData = async () => {
     try {
-      const lists = isUseMockApi()
-        ? await adminMockApi.priceLists.getAll()
-        : await priceListAdminService.getAll();
+      const lists = await priceListAdminService.getAll();
       setPriceLists(lists);
     } catch (error) {
       console.error('Failed to load data:', error);
@@ -75,9 +71,7 @@ const AdminPriceLists: React.FC = () => {
   const loadPackages = async (priceListId: number) => {
     setPackagesLoading(true);
     try {
-      const pkgData = isUseMockApi()
-        ? await adminMockApi.packages.getAll(priceListId)
-        : await packageService.getAll(priceListId);
+      const pkgData = await packageService.getAll(priceListId);
       setPackages(pkgData);
     } catch (error) {
       console.error('Failed to load packages:', error);
@@ -91,17 +85,11 @@ const AdminPriceLists: React.FC = () => {
     if (!newListName.trim()) return;
 
     try {
-      const newList = isUseMockApi()
-        ? await adminMockApi.priceLists.create({
-            name: newListName,
-            description: newListDesc,
-            products: [],
-          })
-        : await priceListAdminService.create({
-            name: newListName,
-            description: newListDesc,
-            products: [],
-          });
+      const newList = await priceListAdminService.create({
+        name: newListName,
+        description: newListDesc,
+        products: [],
+      });
       setPriceLists([...priceLists, newList]);
       setNewListName('');
       setNewListDesc('');
@@ -114,9 +102,7 @@ const AdminPriceLists: React.FC = () => {
   const handleDeletePriceList = async (id: number) => {
     if (confirm('Are you sure you want to delete this price list?')) {
       try {
-        isUseMockApi()
-          ? await adminMockApi.priceLists.delete(id)
-          : await priceListAdminService.delete(id);
+        await priceListAdminService.delete(id);
         setPriceLists(priceLists.filter(pl => pl.id !== id));
         if (selectedPriceList?.id === id) {
           setSelectedPriceList(null);
@@ -129,12 +115,8 @@ const AdminPriceLists: React.FC = () => {
 
   const handleSetDefault = async (id: number) => {
     try {
-      isUseMockApi()
-        ? await adminMockApi.priceLists.setDefault(id)
-        : await priceListAdminService.setDefault(id);
-      const updated = isUseMockApi()
-        ? await adminMockApi.priceLists.getAll()
-        : await priceListAdminService.getAll();
+      await priceListAdminService.setDefault(id);
+      const updated = await priceListAdminService.getAll();
       setPriceLists(updated);
       if (selectedPriceList) {
         const refreshed = updated.find(pl => pl.id === selectedPriceList.id);
@@ -256,7 +238,7 @@ const AdminPriceLists: React.FC = () => {
 
   const handleRemoveProduct = async (priceListId: number, productId: number) => {
     try {
-      await adminMockApi.priceLists.removeProduct(priceListId, productId);
+      await priceListAdminService.removeProduct(priceListId, productId);
       const updated = priceLists.map(pl =>
         pl.id === priceListId
           ? { ...pl, products: pl.products.filter(p => p.id !== productId) }
@@ -300,9 +282,7 @@ const AdminPriceLists: React.FC = () => {
     if (!selectedPriceList) return;
     if (confirm('Are you sure you want to delete this package?')) {
       try {
-        isUseMockApi()
-          ? await adminMockApi.packages.delete(id)
-          : await packageService.delete(id);
+        await packageService.delete(id);
         loadPackages(selectedPriceList.id);
       } catch (error) {
         console.error('Failed to delete package:', error);
@@ -347,12 +327,12 @@ const AdminPriceLists: React.FC = () => {
     if (!selectedPriceList) return;
     try {
       if (editingPackage) {
-        await adminMockApi.packages.update(editingPackage.id, {
+        await packageService.update(editingPackage.id, {
           ...packageForm,
           priceListId: selectedPriceList.id,
         });
       } else {
-        await adminMockApi.packages.create({
+        await packageService.create({
           ...packageForm,
           priceListId: selectedPriceList.id,
         });
@@ -372,9 +352,7 @@ const AdminPriceLists: React.FC = () => {
   const handleSelectPriceList = async (priceListId: number) => {
     setLoading(true);
     try {
-      const pl = isUseMockApi()
-        ? await adminMockApi.priceLists.getById(priceListId)
-        : await priceListAdminService.getById(priceListId);
+      const pl = await priceListAdminService.getById(priceListId);
       setSelectedPriceList(pl);
     } catch (error) {
       console.error('Failed to fetch price list details:', error);

@@ -1,8 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Order } from '../../types';
-import { adminMockApi } from '../../services/adminMockApi';
 import api from '../../services/api';
-import { isUseMockApi } from '../../utils/mockApiConfig';
 
 const AdminOrders: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -27,16 +25,9 @@ const AdminOrders: React.FC = () => {
 
   const loadOrders = async () => {
     try {
-      
-      
-      if (isUseMockApi()) {
-        const data = await adminMockApi.orders.getAll();
-        setOrders(data);
-      } else {
-        // Fetch all orders from backend (admin endpoint)
-        const response = await api.get<Order[]>('/orders/admin/all-orders');
-        setOrders(response.data);
-      }
+      // Fetch all orders from backend (admin endpoint)
+      const response = await api.get<Order[]>('/orders/admin/all-orders');
+      setOrders(response.data);
     } catch (error) {
       console.error('Failed to load orders:', error);
     } finally {
@@ -46,7 +37,7 @@ const AdminOrders: React.FC = () => {
 
   const handleStatusChange = async (orderId: number, newStatus: string) => {
     try {
-      await adminMockApi.orders.updateStatus(orderId, newStatus);
+      await api.patch(`/orders/admin/${orderId}/status`, { status: newStatus });
       loadOrders();
     } catch (error) {
       console.error('Failed to update order status:', error);
@@ -74,7 +65,7 @@ const AdminOrders: React.FC = () => {
     setSubmitting(true);
     try {
       const orderIds = batchOrders.map(o => o.id);
-      await adminMockApi.orders.submitBatchToLab(orderIds, batchAddress);
+      await api.post('/orders/admin/submit-batch', { orderIds, batchAddress });
       alert('Batch orders submitted successfully!');
       loadOrders(); // Refresh the list
       

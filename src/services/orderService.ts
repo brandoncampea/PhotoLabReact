@@ -2,7 +2,6 @@ import api from './api';
 // import { mockApi } from './mockApi'; // Removed: unused
 import { Order, CartItem, ShippingAddress } from '../types';
 import { taxService } from './taxService';
-import { isUseMockApi } from '../utils/mockApiConfig';
 
 export const orderService = {
   async createOrder(
@@ -14,10 +13,6 @@ export const orderService = {
     studioFeeType?: string,
     studioFeeValue?: number
   ): Promise<Order> {
-    if (isUseMockApi()) {
-      // return mockApi.orders.createOrder(items, shippingAddress, shippingOption, shippingCost, discountCode); // Removed: mock function not implemented
-    }
-    
     // Calculate subtotal with studio fees applied to each item
     let itemsTotal = items.reduce((sum, item) => {
       let itemPrice = item.price * item.quantity;
@@ -77,9 +72,6 @@ export const orderService = {
   },
 
   async getOrders(): Promise<Order[]> {
-    if (isUseMockApi()) {
-      // return mockApi.orders.getOrders(); // Removed: mock function not implemented
-    }
     const response = await api.get<Order[]>('/orders');
     return response.data;
   },
@@ -90,9 +82,6 @@ export const orderService = {
   },
 
   async getOrder(id: number): Promise<Order> {
-    if (isUseMockApi()) {
-      // return mockApi.orders.getOrder(id); // Removed: mock function not implemented
-    }
     const response = await api.get<Order>(`/orders/${id}`);
     return response.data;
   },

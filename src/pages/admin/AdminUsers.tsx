@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { UserAccount } from '../../types';
-import { adminMockApi } from '../../services/adminMockApi';
 import { userAdminService } from '../../services/adminService';
-import { isUseMockApi } from '../../utils/mockApiConfig';
 import { useAuth } from '../../contexts/AuthContext';
 
 
@@ -30,7 +28,7 @@ const AdminUsers: React.FC = () => {
     try {
       if (!silent) setLoading(true);
       setRefreshing(true);
-      const data = isUseMockApi() ? await adminMockApi.users.getAll() : await userAdminService.getAll();
+      const data = await userAdminService.getAll();
       setUsers(data);
     } catch (error) {
       console.error('Failed to load users:', error);
@@ -42,13 +40,9 @@ const AdminUsers: React.FC = () => {
 
   const handleToggleActive = async (id: number) => {
     try {
-      if (isUseMockApi()) {
-        await adminMockApi.users.toggleActive(id);
-      } else {
-        const user = users.find(u => u.id === id);
-        if (!user) return;
-        await userAdminService.toggleActive(id, user.isActive);
-      }
+      const user = users.find(u => u.id === id);
+      if (!user) return;
+      await userAdminService.toggleActive(id, user.isActive);
       loadUsers();
     } catch (error) {
       console.error('Failed to toggle user active status:', error);
@@ -67,11 +61,7 @@ const AdminUsers: React.FC = () => {
     const action = `change to ${newRole.replace('_', ' ')}`;
     if (confirm(`Are you sure you want to ${action}?`)) {
       try {
-        if (isUseMockApi()) {
-          await adminMockApi.users.changeRole(id, newRole);
-        } else {
-          await userAdminService.changeRole(id, newRole);
-        }
+        await userAdminService.changeRole(id, newRole);
         loadUsers();
       } catch (error) {
         console.error('Failed to change user role:', error);

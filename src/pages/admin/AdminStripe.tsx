@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { StripeConfig } from '../../types';
-import { adminMockApi } from '../../services/adminMockApi';
-import { isUseMockApi } from '../../utils/mockApiConfig';
 import { stripeService } from '../../services/stripeService';
 
 const AdminPayments: React.FC = () => {
@@ -23,9 +21,7 @@ const AdminPayments: React.FC = () => {
 
   const loadConfig = async () => {
     try {
-      const data = isUseMockApi()
-        ? await adminMockApi.stripe.getConfig()
-        : await stripeService.getConfig();
+      const data = await stripeService.getConfig();
       setConfig(data);
       setPublishableKey(data.publishableKey);
       setSecretKey(data.secretKey || '');
@@ -42,26 +38,13 @@ const AdminPayments: React.FC = () => {
   const handleSave = async () => {
     setSaving(true);
     try {
-      let updatedConfig: StripeConfig;
-      if (isUseMockApi()) {
-        updatedConfig = await adminMockApi.stripe.updateConfig({
-          publishableKey,
-          secretKey,
-          webhookSecret: webhookSecret || undefined,
-          isLiveMode,
-          isActive,
-        });
-      } else {
-        // Use the real backend for saving config
-        const response = await stripeService.saveConfig({
-          publishableKey,
-          secretKey,
-          webhookSecret: webhookSecret || undefined,
-          isLiveMode,
-          isActive,
-        });
-        updatedConfig = response;
-      }
+      const updatedConfig = await stripeService.saveConfig({
+        publishableKey,
+        secretKey,
+        webhookSecret: webhookSecret || undefined,
+        isLiveMode,
+        isActive,
+      });
       setConfig(updatedConfig);
       alert('Stripe configuration saved successfully!');
     } catch (error) {

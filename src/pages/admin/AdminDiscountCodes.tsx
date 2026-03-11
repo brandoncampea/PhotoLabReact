@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { DiscountCode, Product } from '../../types';
-import { adminMockApi } from '../../services/adminMockApi';
 import { discountCodeService } from '../../services/discountCodeService';
 import { productService } from '../../services/productService';
-import { isUseMockApi } from '../../utils/mockApiConfig';
 
 const AdminDiscountCodes: React.FC = () => {
   const [discountCodes, setDiscountCodes] = useState<DiscountCode[]>([]);
@@ -31,12 +29,8 @@ const AdminDiscountCodes: React.FC = () => {
   const loadData = async () => {
     try {
       const [codesData, productsData] = await Promise.all([
-        isUseMockApi()
-          ? adminMockApi.discountCodes.getAll()
-          : discountCodeService.getAll(),
-        isUseMockApi()
-          ? adminMockApi.products.getAll()
-          : productService.getAll(),
+        discountCodeService.getAll(),
+        productService.getAll(),
       ]);
       setDiscountCodes(codesData);
       setProducts(productsData);
@@ -92,13 +86,9 @@ const AdminDiscountCodes: React.FC = () => {
         usageCount: 0,
       };
       if (editingCode) {
-        isUseMockApi()
-          ? await adminMockApi.discountCodes.update(editingCode.id, submitData)
-          : await discountCodeService.update(editingCode.id, submitData);
+        await discountCodeService.update(editingCode.id, submitData);
       } else {
-        isUseMockApi()
-          ? await adminMockApi.discountCodes.create(submitData)
-          : await discountCodeService.create(submitData);
+        await discountCodeService.create(submitData);
       }
       setShowModal(false);
       loadData();
@@ -110,9 +100,7 @@ const AdminDiscountCodes: React.FC = () => {
   const handleDelete = async (id: number) => {
     if (confirm('Are you sure you want to delete this discount code?')) {
       try {
-        isUseMockApi()
-          ? await adminMockApi.discountCodes.delete(id)
-          : await discountCodeService.delete(id);
+        await discountCodeService.delete(id);
         loadData();
       } catch (error) {
         console.error('Failed to delete discount code:', error);

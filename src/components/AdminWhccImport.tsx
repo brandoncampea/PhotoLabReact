@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { whccService } from '../services/whccService';
-import { adminMockApi } from '../services/adminMockApi';
+import { priceListAdminService } from '../services/priceListAdminService';
 import { PriceList } from '../types';
 
 interface WhccProduct {
@@ -40,7 +40,7 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
     setLoading(true);
     setError(null);
     try {
-      const lists = await adminMockApi.priceLists.getAll();
+      const lists = await priceListAdminService.getAll();
       setPriceLists(lists);
     } catch (err) {
       setError('Failed to load price lists');
@@ -162,9 +162,7 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
       });
 
       // Add to price list
-      // This would typically call an API endpoint to update the price list
-      // For now, we'll use the mock API
-      await adminMockApi.priceLists.addItemsToPriceList(selectedPriceListId, itemsToAdd);
+      await priceListAdminService.addItemsToPriceList(selectedPriceListId, itemsToAdd);
 
       onImportComplete();
     } catch (err) {
