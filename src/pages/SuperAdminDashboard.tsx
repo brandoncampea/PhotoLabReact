@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import '../AdminStyles.css';
@@ -32,6 +33,7 @@ interface Plan {
 export default function SuperAdminDashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [studios, setStudios] = useState<Studio[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [_loading, setLoading] = useState(false);
@@ -65,6 +67,14 @@ export default function SuperAdminDashboard() {
       fetchSubscriptionPaymentConfig();
     }
   }, [user]);
+
+  useEffect(() => {
+    if (location.hash === '#subscription-payment-gateway') {
+      requestAnimationFrame(() => {
+        document.getElementById('subscription-payment-gateway')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    }
+  }, [location.hash]);
 
   const fetchSubscriptionPaymentConfig = async () => {
     try {
@@ -270,7 +280,7 @@ export default function SuperAdminDashboard() {
         </button>
       </div>
 
-      <div className="admin-summary-box" style={{ marginBottom: '24px' }}>
+      <div id="subscription-payment-gateway" className="admin-summary-box" style={{ marginBottom: '24px' }}>
         <h2 style={{ marginTop: 0 }}>Studio Subscription Payment Gateway</h2>
         <p style={{ marginTop: '0.5rem', color: 'var(--text-secondary)' }}>
           This Stripe configuration is used only for studio subscription billing (not customer checkout).

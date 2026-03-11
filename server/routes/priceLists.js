@@ -45,6 +45,11 @@ const parseProductOptions = (options) => {
   }
 };
 
+const getStudioIdFromRequest = (req) => {
+  const studioId = Number(req.user?.studio_id);
+  return Number.isInteger(studioId) && studioId > 0 ? studioId : null;
+};
+
 // Get all price lists
 router.get('/', adminRequired, async (req, res) => {
   try {
@@ -134,6 +139,100 @@ router.get('/:id', adminRequired, async (req, res) => {
     }));
 
     res.json(priceList);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/:id/studio-offerings', adminRequired, async (req, res) => {
+  try {
+    const studioId = getStudioIdFromRequest(req);
+    if (!studioId) {
+      return res.status(400).json({ error: 'Studio context is required' });
+    }
+
+    const priceListId = Number(req.params.id);
+    if (!priceListId) {
+      return res.status(400).json({ error: 'Invalid price list id' });
+    }
+
+    const products = await queryRows(
+      `SELECT product_id as productId
+       FROM price_list_products
+       WHERE price_list_id = $1`,
+      [priceListId]
+    );
+
+    const hidden = await queryRows(
+      `SELECT product_id as productId
+       FROM studio_price_list_offerings
+       WHERE studio_id = $1
+         AND price_list_id = $2
+         AND is_offered = 0`,
+      [studioId, priceListId]
+    );
+
+    const hiddenSet = new Set(hidden.map((row) => Number(row.productId)));
+    const offeredProductIds = products
+      .map((row) => Number(row.productId))
+      .filter((productId) => !hiddenSet.has(productId));
+
+    res.json({ offeredProductIds });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.put('/:id/studio-offerings', adminRequired, async (req, res) => {
+  try {
+    const studioId = getStudioIdFromRequest(req);
+    if (!studioId) {
+      return res.status(400).json({ error: 'Studio context is required' });
+    }
+
+    const priceListId = Number(req.params.id);
+    if (!priceListId) {
+      return res.status(400).json({ error: 'Invalid price list id' });
+    }
+
+    const offeredProductIdsInput = Array.isArray(req.body?.offeredProductIds)
+      ? req.body.offeredProductIds.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)
+      : [];
+
+    const priceListProducts = await queryRows(
+      `SELECT product_id as productId
+       FROM price_list_products
+       WHERE price_list_id = $1`,
+      [priceListId]
+    );
+
+    const validProductIds = priceListProducts.map((row) => Number(row.productId));
+    const validSet = new Set(validProductIds);
+
+    const invalidProductIds = offeredProductIdsInput.filter((id) => !validSet.has(id));
+    if (invalidProductIds.length > 0) {
+      return res.status(400).json({ error: 'One or more selected products are not in this price list' });
+    }
+
+    const offeredSet = new Set(offeredProductIdsInput);
+    const hiddenProductIds = validProductIds.filter((id) => !offeredSet.has(id));
+
+    await query(
+      `DELETE FROM studio_price_list_offerings
+       WHERE studio_id = $1 AND price_list_id = $2`,
+      [studioId, priceListId]
+    );
+
+    for (const productId of hiddenProductIds) {
+      await query(
+        `INSERT INTO studio_price_list_offerings (studio_id, price_list_id, product_id, is_offered)
+         VALUES ($1, $2, $3, 0)`,
+        [studioId, priceListId, productId]
+      );
+    }
+
+    const offeredProductIds = validProductIds.filter((id) => !hiddenProductIds.includes(id));
+    res.json({ offeredProductIds });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

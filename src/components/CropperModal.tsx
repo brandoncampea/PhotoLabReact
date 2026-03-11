@@ -92,7 +92,7 @@ const CropperModal: React.FC<CropperModalProps> = ({
 
   const loadProducts = async () => {
     try {
-      const data = await productService.getActiveProducts();
+      const data = await productService.getActiveProducts(photo.albumId);
       // Sort by popularity (highest first)
       const sorted = [...data].sort((a, b) => b.popularity - a.popularity);
       setProducts(sorted);

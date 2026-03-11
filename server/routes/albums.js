@@ -1,6 +1,7 @@
 import express from 'express';
 import { queryRow, queryRows, query } from '../mssql.js';
 import { requireActiveSubscription } from '../middleware/subscription.js';
+import { enforceAlbumQuotaForStudio } from '../middleware/subscription.js';
 const router = express.Router();
 
 const signAlbumForResponse = (album) => ({
@@ -117,10 +118,14 @@ router.post('/', requireActiveSubscription, async (req, res) => {
     if (!albumName) {
       return res.status(400).json({ error: 'Album name is required' });
     }
+
+    if (req.studioId) {
+      await enforceAlbumQuotaForStudio(req.studioId);
+    }
     
     const result = await queryRow(`
-      INSERT INTO albums (name, title, description, cover_image_url, cover_photo_id, category, price_list_id, is_password_protected, password, password_hint)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      INSERT INTO albums (name, title, description, cover_image_url, cover_photo_id, category, price_list_id, is_password_protected, password, password_hint, studio_id)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       RETURNING id
     `, [
       albumName,
@@ -133,6 +138,7 @@ router.post('/', requireActiveSubscription, async (req, res) => {
       !!isPasswordProtected,
       isPasswordProtected ? password : null,
       isPasswordProtected ? passwordHint : null,
+      req.studioId || null,
     ]);
     
     const album = await queryRow(`
@@ -153,6 +159,9 @@ router.post('/', requireActiveSubscription, async (req, res) => {
     `, [result.id]);
     res.status(201).json(signAlbumForResponse(album));
   } catch (error) {
+    if (error.code === 'ALBUM_QUOTA_EXCEEDED') {
+      return res.status(403).json({ error: error.message, quotaExceeded: true });
+    }
     res.status(500).json({ error: error.message });
   }
 });

@@ -12,8 +12,9 @@ export const productService = {
     return response.data;
   },
 
-  async getActiveProducts(): Promise<Product[]> {
-    const response = await api.get<Product[]>('/products/active');
+  async getActiveProducts(albumId?: number): Promise<Product[]> {
+    const url = albumId ? `/products/active?albumId=${albumId}` : '/products/active';
+    const response = await api.get<Product[]>(url);
     return response.data;
   },
 };

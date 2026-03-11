@@ -84,7 +84,7 @@ export default function SuperAdminPricing() {
     if (!editingPlan) return;
 
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('authToken');
       const response = await fetch(
         `/api/subscription-plans/${editingPlan}`,
         {
