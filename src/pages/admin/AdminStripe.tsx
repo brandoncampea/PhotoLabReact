@@ -109,7 +109,7 @@ const AdminPayments: React.FC = () => {
     <div className="admin-page">
       <div className="page-header">
         <h1>💳 Payment Methods</h1>
-        <p style={{ fontSize: '0.9rem', color: '#666', marginTop: '0.5rem' }}>Configure payment processing options for your store</p>
+        <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>Configure payment processing options for your store</p>
       </div>
 
       <div style={{ marginBottom: '2rem' }}>
@@ -131,7 +131,7 @@ const AdminPayments: React.FC = () => {
               <span style={{ fontSize: '2rem' }}>💳</span>
               <h3 style={{ margin: 0 }}>Stripe</h3>
             </div>
-            <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.85rem', color: '#666' }}>
+            <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
               Accept credit cards, Apple Pay, Google Pay, and more
             </p>
             <div style={{ marginTop: '0.75rem' }}>
@@ -151,7 +151,7 @@ const AdminPayments: React.FC = () => {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: '#999'
+              color: 'var(--text-secondary)'
             }}
           >
             <div style={{ textAlign: 'center' }}>
@@ -194,7 +194,7 @@ const AdminPayments: React.FC = () => {
             />
             Enable Stripe Payments
           </label>
-          <p style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.25rem' }}>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
             When disabled, customers cannot complete purchases
           </p>
         </div>
@@ -210,9 +210,9 @@ const AdminPayments: React.FC = () => {
             />
             Use Live Mode (Production)
           </label>
-          <p style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.25rem' }}>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
             {isLiveMode ? (
-              <span style={{ color: '#d32f2f', fontWeight: 600 }}>
+              <span style={{ color: 'var(--error-color)', fontWeight: 600 }}>
                 ⚠️ Live mode - Real charges will be processed
               </span>
             ) : (
@@ -235,7 +235,7 @@ const AdminPayments: React.FC = () => {
             placeholder={isLiveMode ? 'pk_live_...' : 'pk_test_...'}
             disabled={!isActive}
           />
-          <p style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.25rem' }}>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
             This key is safe to use in your frontend code
           </p>
         </div>
@@ -273,7 +273,7 @@ const AdminPayments: React.FC = () => {
               {showSecretKey ? 'Hide' : 'Show'}
             </button>
           </div>
-          <p style={{ fontSize: '0.85rem', color: '#d32f2f', marginTop: '0.25rem' }}>
+          <p style={{ fontSize: '0.85rem', color: 'var(--error-color)', marginTop: '0.25rem' }}>
             ⚠️ Keep this secret! Never expose in frontend code
           </p>
         </div>
@@ -290,7 +290,7 @@ const AdminPayments: React.FC = () => {
             placeholder="whsec_..."
             disabled={!isActive}
           />
-          <p style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.25rem' }}>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
             Used to verify webhook events from Stripe
           </p>
         </div>
@@ -315,7 +315,7 @@ const AdminPayments: React.FC = () => {
         <div style={{
           marginTop: '2rem',
           padding: '1rem',
-          backgroundColor: '#f5f5f5',
+          backgroundColor: 'var(--bg-tertiary)',
           borderRadius: '8px',
           fontSize: '0.9rem'
         }}>

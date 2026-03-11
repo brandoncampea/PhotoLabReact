@@ -103,37 +103,29 @@ const AdminWhccConfig = () => {
   return (
     <div style={{ maxWidth: '900px', margin: '0 auto', padding: '20px' }}>
       <h1>WHCC Configuration</h1>
-      <p style={{ color: '#666', marginBottom: '30px' }}>
+      <p style={{ color: 'var(--text-secondary)', marginBottom: '30px' }}>
         Configure your Whitehouse Custom Colour (WHCC) API credentials for order submission.
       </p>
 
       {error && (
-        <div style={{ backgroundColor: '#ffebee', padding: '12px', marginBottom: '20px', borderRadius: '4px', color: '#c62828' }}>
+        <div className="info-box-error" style={{ marginBottom: '20px' }}>
           ✗ {error}
         </div>
       )}
 
       {saved && (
-        <div style={{ backgroundColor: '#e8f5e9', padding: '12px', marginBottom: '20px', borderRadius: '4px', color: '#2e7d32' }}>
+        <div className="info-box-success" style={{ marginBottom: '20px' }}>
           ✓ Configuration saved successfully
         </div>
       )}
 
       {testResult && (
-        <div
-          style={{
-            backgroundColor: testResult.startsWith('✓') ? '#e8f5e9' : '#ffebee',
-            padding: '12px',
-            marginBottom: '20px',
-            borderRadius: '4px',
-            color: testResult.startsWith('✓') ? '#2e7d32' : '#c62828',
-          }}
-        >
+        <div className={testResult.startsWith('✓') ? 'info-box-success' : 'info-box-error'} style={{ marginBottom: '20px' }}>
           {testResult}
         </div>
       )}
 
-      <div style={{ backgroundColor: '#f5f5f5', padding: '20px', borderRadius: '8px', marginBottom: '30px' }}>
+      <div style={{ backgroundColor: 'var(--bg-tertiary)', padding: '20px', borderRadius: '8px', marginBottom: '30px' }}>
         <h2 style={{ fontSize: '18px', marginBottom: '15px' }}>Basic Settings</h2>
 
         <div style={{ marginBottom: '20px' }}>
@@ -146,7 +138,7 @@ const AdminWhccConfig = () => {
             />
             <span style={{ cursor: 'pointer', fontWeight: 500 }}>Enable WHCC Integration</span>
           </label>
-          <p style={{ fontSize: '12px', color: '#666', marginTop: '5px' }}>
+          <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '5px' }}>
             When enabled, orders will be submitted to WHCC instead of the standard backend.
           </p>
         </div>
@@ -177,7 +169,7 @@ const AdminWhccConfig = () => {
               <span>Production</span>
             </label>
           </div>
-          <p style={{ fontSize: '12px', color: '#666', marginTop: '5px' }}>
+          <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '5px' }}>
             Use Sandbox for testing. Switch to Production when ready.
           </p>
         </div>
@@ -194,7 +186,7 @@ const AdminWhccConfig = () => {
             style={{
               width: '100%',
               padding: '10px',
-              border: '1px solid #ddd',
+              border: '1px solid var(--border-color)',
               borderRadius: '4px',
               fontFamily: 'monospace',
               fontSize: '12px',
@@ -215,14 +207,14 @@ const AdminWhccConfig = () => {
             style={{
               width: '100%',
               padding: '10px',
-              border: '1px solid #ddd',
+              border: '1px solid var(--border-color)',
               borderRadius: '4px',
               fontFamily: 'monospace',
               fontSize: '12px',
               boxSizing: 'border-box',
             }}
           />
-          <p style={{ fontSize: '12px', color: '#666', marginTop: '5px' }}>
+          <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '5px' }}>
             This will be stored in localStorage. Consider using environment variables for sensitive data.
           </p>
         </div>
@@ -230,23 +222,20 @@ const AdminWhccConfig = () => {
         <button
           onClick={handleTestConnection}
           disabled={!consumerKey || !consumerSecret || isTestLoading}
+          className="btn btn-primary"
           style={{
             padding: '10px 20px',
-            backgroundColor: isTestLoading ? '#ccc' : '#2196f3',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: isTestLoading ? 'not-allowed' : 'pointer',
             fontWeight: 500,
+            opacity: isTestLoading || !consumerKey || !consumerSecret ? 0.5 : 1,
           }}
         >
           {isTestLoading ? 'Testing...' : 'Test Connection'}
         </button>
       </div>
 
-      <div style={{ backgroundColor: '#f5f5f5', padding: '20px', borderRadius: '8px', marginBottom: '30px' }}>
+      <div style={{ backgroundColor: 'var(--bg-tertiary)', padding: '20px', borderRadius: '8px', marginBottom: '30px' }}>
         <h2 style={{ fontSize: '18px', marginBottom: '15px' }}>Ship From Address</h2>
-        <p style={{ fontSize: '12px', color: '#666', marginBottom: '15px' }}>
+        <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '15px' }}>
           This address will appear on shipping labels and is used for undeliverable returns.
         </p>
 
@@ -260,7 +249,7 @@ const AdminWhccConfig = () => {
             style={{
               width: '100%',
               padding: '10px',
-              border: '1px solid #ddd',
+              border: '1px solid var(--border-color)',
               borderRadius: '4px',
               boxSizing: 'border-box',
             }}
@@ -277,7 +266,7 @@ const AdminWhccConfig = () => {
             style={{
               width: '100%',
               padding: '10px',
-              border: '1px solid #ddd',
+              border: '1px solid var(--border-color)',
               borderRadius: '4px',
               boxSizing: 'border-box',
             }}
@@ -294,7 +283,7 @@ const AdminWhccConfig = () => {
             style={{
               width: '100%',
               padding: '10px',
-              border: '1px solid #ddd',
+              border: '1px solid var(--border-color)',
               borderRadius: '4px',
               boxSizing: 'border-box',
             }}
@@ -312,7 +301,7 @@ const AdminWhccConfig = () => {
               style={{
                 width: '100%',
                 padding: '10px',
-                border: '1px solid #ddd',
+                border: '1px solid var(--border-color)',
                 borderRadius: '4px',
                 boxSizing: 'border-box',
               }}
@@ -330,7 +319,7 @@ const AdminWhccConfig = () => {
               style={{
                 width: '100%',
                 padding: '10px',
-                border: '1px solid #ddd',
+                border: '1px solid var(--border-color)',
                 borderRadius: '4px',
                 boxSizing: 'border-box',
               }}
@@ -348,7 +337,7 @@ const AdminWhccConfig = () => {
             style={{
               width: '100%',
               padding: '10px',
-              border: '1px solid #ddd',
+              border: '1px solid var(--border-color)',
               borderRadius: '4px',
               boxSizing: 'border-box',
             }}
@@ -365,7 +354,7 @@ const AdminWhccConfig = () => {
             style={{
               width: '100%',
               padding: '10px',
-              border: '1px solid #ddd',
+              border: '1px solid var(--border-color)',
               borderRadius: '4px',
               boxSizing: 'border-box',
             }}
@@ -376,13 +365,9 @@ const AdminWhccConfig = () => {
       <div style={{ display: 'flex', gap: '10px', marginBottom: '30px' }}>
         <button
           onClick={handleSave}
+          className="btn btn-success"
           style={{
             padding: '12px 30px',
-            backgroundColor: '#4caf50',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
             fontWeight: 500,
             fontSize: '14px',
           }}
@@ -391,12 +376,12 @@ const AdminWhccConfig = () => {
         </button>
       </div>
 
-      <div style={{ backgroundColor: '#f0f4ff', padding: '20px', borderRadius: '8px', marginBottom: '20px' }}>
+      <div className="info-box-blue" style={{ marginBottom: '20px' }}>
         <h3 style={{ fontSize: '14px', marginBottom: '10px' }}>ℹ️ Integration Notes</h3>
-        <ul style={{ fontSize: '12px', color: '#333', lineHeight: '1.6', marginLeft: '20px' }}>
+        <ul style={{ fontSize: '12px', color: 'var(--text-primary)', lineHeight: '1.6', marginLeft: '20px' }}>
           <li>
             <strong>API Credentials:</strong> Obtain from{' '}
-            <a href="https://developer.whcc.com" target="_blank" rel="noopener noreferrer" style={{ color: '#1976d2' }}>
+            <a href="https://developer.whcc.com" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary-color)' }}>
               WHCC Developer Portal
             </a>
           </li>
@@ -418,9 +403,9 @@ const AdminWhccConfig = () => {
         </ul>
       </div>
 
-      <div style={{ backgroundColor: '#fff3e0', padding: '20px', borderRadius: '8px' }}>
+      <div className="info-box-warning">
         <h3 style={{ fontSize: '14px', marginBottom: '10px' }}>⚠️ Production Checklist</h3>
-        <ul style={{ fontSize: '12px', color: '#333', lineHeight: '1.6', marginLeft: '20px' }}>
+        <ul style={{ fontSize: '12px', color: 'var(--text-primary)', lineHeight: '1.6', marginLeft: '20px' }}>
           <li>Store credentials in environment variables, not localStorage</li>
           <li>Use Production environment URLs when live</li>
           <li>Test order submission with real products</li>

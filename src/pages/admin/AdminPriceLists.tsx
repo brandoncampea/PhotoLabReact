@@ -410,7 +410,7 @@ const AdminPriceLists: React.FC = () => {
       {/* Create Form Modal */}
       {showCreateForm && (
         <div className="modal-overlay">
-          <div className="modal-content">
+          <div className="modal-content admin-modal-content" style={{ padding: '2rem' }}>
             <h2>Create Price List</h2>
             <form onSubmit={handleCreatePriceList}>
               <div className="form-group">
@@ -448,12 +448,12 @@ const AdminPriceLists: React.FC = () => {
       {/* Import Dialog Modal */}
       {showImportDialog && (
         <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: '900px', maxHeight: '90vh', overflowY: 'auto' }}>
+          <div className="modal-content admin-modal-content" style={{ maxWidth: '900px', maxHeight: '90vh', overflowY: 'auto', padding: '2rem' }}>
             <h2>Import Price List from CSV</h2>
             
             {importStep === 'upload' && (
               <>
-                <p style={{ color: '#666', marginBottom: '1rem' }}>
+                <p className="muted-text" style={{ marginBottom: '1rem' }}>
                   Upload a CSV file. We'll help you map the columns.
                 </p>
                 <div className="form-group">
@@ -467,7 +467,7 @@ const AdminPriceLists: React.FC = () => {
                 </div>
                 
                 {importError && (
-                  <div style={{ color: '#dc3545', marginBottom: '1rem', padding: '0.5rem', backgroundColor: '#f8d7da', borderRadius: '4px' }}>
+                  <div className="info-box-error" style={{ marginBottom: '1rem' }}>
                     {importError}
                   </div>
                 )}
@@ -491,11 +491,11 @@ const AdminPriceLists: React.FC = () => {
             {importStep === 'mapping' && columnSuggestions && columnMapping && (
               <>
                 <h3>Map CSV Columns</h3>
-                <p style={{ color: '#666', fontSize: '0.9rem', marginBottom: '1.5rem' }}>
+                <p className="muted-text" style={{ fontSize: '0.9rem', marginBottom: '1.5rem' }}>
                   We detected your CSV columns. Adjust the mapping if needed, then proceed to preview.
                 </p>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
+                <div className="form-row" style={{ marginBottom: '1.5rem' }}>
                   <div className="form-group">
                     <label>Product Column *</label>
                     <select
@@ -587,7 +587,7 @@ const AdminPriceLists: React.FC = () => {
                 </div>
 
                 {importError && (
-                  <div style={{ color: '#dc3545', marginBottom: '1rem', padding: '0.5rem', backgroundColor: '#f8d7da', borderRadius: '4px' }}>
+                  <div className="info-box-error" style={{ marginBottom: '1rem' }}>
                     {importError}
                   </div>
                 )}
@@ -634,26 +634,20 @@ const AdminPriceLists: React.FC = () => {
             {importStep === 'preview' && importedData.length > 0 && (
               <>
                 <h3>Review Grouped Products</h3>
-                <p style={{ color: '#666', fontSize: '0.9rem', marginBottom: '1rem' }}>
+                <p className="muted-text" style={{ fontSize: '0.9rem', marginBottom: '1rem' }}>
                   {importedData.length} product group(s) found.
                 </p>
 
-                <div style={{ marginBottom: '1.5rem', maxHeight: '300px', overflowY: 'auto' }}>
+                <div className="import-scroll-panel" style={{ marginBottom: '1.5rem', maxHeight: '300px' }}>
                   {importedData.map((mapping, idx) => (
                     <div
                       key={idx}
-                      style={{
-                        padding: '1rem',
-                        backgroundColor: '#f8f9fa',
-                        borderRadius: '6px',
-                        marginBottom: '0.5rem',
-                        border: '1px solid #e9ecef',
-                      }}
+                      className="import-product-card"
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
                         <div>
                           <strong>{mapping.productName}</strong>
-                          <div style={{ fontSize: '0.8rem', color: '#999', marginTop: '0.5rem' }}>
+                          <div className="muted-text" style={{ fontSize: '0.8rem', marginTop: '0.5rem' }}>
                             Sizes: {mapping.items.map(i => `${i.sizeName} ($${i.price.toFixed(2)}${i.cost ? `, Cost: $${i.cost.toFixed(2)}` : ''})`).join(', ')}
                           </div>
                         </div>
@@ -736,29 +730,22 @@ const AdminPriceLists: React.FC = () => {
       )}
 
       {/* Price Lists Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.5rem' }}>
+      <div className="selection-grid">
         {priceLists.map(priceList => (
           <div
             key={priceList.id}
-            style={{
-              padding: '1.5rem',
-              border: '1px solid #e0e0e0',
-              borderRadius: '8px',
-              backgroundColor: selectedPriceList?.id === priceList.id ? '#e7f3ff' : '#fff',
-              cursor: 'pointer',
-              transition: 'all 0.2s',
-            }}
+            className={`selection-card ${selectedPriceList?.id === priceList.id ? 'active' : ''}`}
             onClick={() => handleSelectPriceList(priceList.id)}
           >
-            <h3 style={{ margin: '0 0 0.5rem 0' }}>{priceList.name}</h3>
-            <p style={{ fontSize: '0.9rem', color: '#666', margin: '0.5rem 0' }}>
+            <h3 className="selection-card-title">{priceList.name}</h3>
+            <p className="muted-text" style={{ fontSize: '0.9rem', margin: '0.5rem 0' }}>
               {priceList.description || 'No description'}
             </p>
-            <p style={{ fontSize: '0.85rem', color: '#999', margin: '0.5rem 0' }}>
+            <p className="muted-text" style={{ fontSize: '0.85rem', margin: '0.5rem 0' }}>
               {Array.isArray(priceList.products) ? priceList.products.length : 0} product(s)
             </p>
             {priceList.isDefault && (
-              <span className="status-badge active" style={{ marginTop: '0.25rem', display: 'inline-block' }}>
+              <span className="status-badge status-active" style={{ marginTop: '0.25rem', display: 'inline-block' }}>
                 Default
               </span>
             )}
@@ -791,30 +778,26 @@ const AdminPriceLists: React.FC = () => {
 
       {/* Details Panel */}
       {selectedPriceList && (
-        <div style={{ marginTop: '2rem', padding: '1.5rem', backgroundColor: '#f8f9fa', borderRadius: '8px' }}>
+        <div className="detail-panel">
           <h2>{selectedPriceList.name} - Details</h2>
-          <p style={{ color: '#666', marginBottom: '1rem' }}>
+          <p className="muted-text" style={{ marginBottom: '1rem' }}>
             {(Array.isArray(selectedPriceList.products) ? selectedPriceList.products.length : 0)} product(s)
           </p>
 
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{
-              width: '100%',
-              borderCollapse: 'collapse',
-              fontSize: '0.9rem',
-            }}>
+          <div className="analytics-table-wrap">
+            <table>
               <thead>
-                <tr style={{ backgroundColor: '#e9ecef', borderBottom: '2px solid #dee2e6' }}>
-                  <th style={{ padding: '0.75rem', textAlign: 'left' }}>Product</th>
-                  <th style={{ padding: '0.75rem', textAlign: 'left' }}>Size</th>
-                  <th style={{ padding: '0.75rem', textAlign: 'right' }}>Price</th>
-                  <th style={{ padding: '0.75rem', textAlign: 'center' }}>Action</th>
+                <tr>
+                  <th>Product</th>
+                  <th>Size</th>
+                  <th style={{ textAlign: 'right' }}>Price</th>
+                  <th style={{ textAlign: 'center' }}>Action</th>
                 </tr>
               </thead>
               <tbody>
                 {(Array.isArray(selectedPriceList.products) && selectedPriceList.products.length === 0) ? (
                   <tr>
-                    <td colSpan={4} style={{ padding: '1rem', textAlign: 'center', color: '#999' }}>
+                    <td colSpan={4} className="muted-text" style={{ padding: '1rem', textAlign: 'center' }}>
                       No products yet. Use Products page to add them.
                     </td>
                   </tr>
@@ -826,32 +809,24 @@ const AdminPriceLists: React.FC = () => {
                       : (Array.isArray(product.sizes) ? product.sizes : []);
                     if (sizes.length > 0) {
                       return sizes.map((size, idx) => (
-                        <tr key={String(product.id) + '-' + String(size.id)} style={{ borderBottom: '1px solid #dee2e6' }}>
-                          <td style={{ padding: '0.75rem' }}>
+                        <tr key={String(product.id) + '-' + String(size.id)}>
+                          <td>
                             {idx === 0 ? (
                               <>
                                 <strong>{product.name || 'Unnamed Product'}</strong>
-                                <div style={{ fontSize: '0.8rem', color: '#999' }}>{product.isDigital ? 'Digital' : 'Physical'}</div>
+                                <div className="muted-text" style={{ fontSize: '0.8rem' }}>{product.isDigital ? 'Digital' : 'Physical'}</div>
                               </>
                             ) : null}
                           </td>
-                          <td style={{ padding: '0.75rem' }}>{size.name || ''}</td>
-                          <td style={{ padding: '0.75rem', textAlign: 'right' }}>
+                          <td>{size.name || ''}</td>
+                          <td style={{ textAlign: 'right' }}>
                             {typeof size.price === 'number' ? `$${size.price.toFixed(2)}` : ''}
                           </td>
-                          <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                          <td style={{ textAlign: 'center' }}>
                             {idx === 0 ? (
                               <button
                                 onClick={() => handleRemoveProduct(selectedPriceList.id, product.id)}
-                                style={{
-                                  padding: '0.25rem 0.5rem',
-                                  fontSize: '0.8rem',
-                                  backgroundColor: '#dc3545',
-                                  color: 'white',
-                                  border: 'none',
-                                  borderRadius: '4px',
-                                  cursor: 'pointer',
-                                }}
+                                className="btn btn-danger btn-sm"
                               >
                                 Remove
                               </button>
@@ -861,26 +836,18 @@ const AdminPriceLists: React.FC = () => {
                       ));
                     } else {
                       return [
-                        <tr key={String(product.id) + '-no-sizes'} style={{ borderBottom: '1px solid #dee2e6' }}>
-                          <td style={{ padding: '0.75rem' }}>
+                        <tr key={String(product.id) + '-no-sizes'}>
+                          <td>
                             <strong>{product.name || 'Unnamed Product'}</strong>
-                            <div style={{ fontSize: '0.8rem', color: '#999' }}>{product.isDigital ? 'Digital' : 'Physical'}</div>
+                            <div className="muted-text" style={{ fontSize: '0.8rem' }}>{product.isDigital ? 'Digital' : 'Physical'}</div>
                           </td>
-                          <td style={{ padding: '0.75rem' }} colSpan={2}>
-                            <span style={{ color: '#999' }}>No sizes</span>
+                          <td colSpan={2}>
+                            <span className="muted-text">No sizes</span>
                           </td>
-                          <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                          <td style={{ textAlign: 'center' }}>
                             <button
                               onClick={() => handleRemoveProduct(selectedPriceList.id, product.id)}
-                              style={{
-                                padding: '0.25rem 0.5rem',
-                                fontSize: '0.8rem',
-                                backgroundColor: '#dc3545',
-                                color: 'white',
-                                border: 'none',
-                                borderRadius: '4px',
-                                cursor: 'pointer',
-                              }}
+                              className="btn btn-danger btn-sm"
                             >
                               Remove
                             </button>
@@ -905,7 +872,7 @@ const AdminPriceLists: React.FC = () => {
             {packagesLoading ? (
               <div className="loading">Loading packages...</div>
             ) : packages.length === 0 ? (
-              <p style={{ color: '#666', fontStyle: 'italic' }}>No packages yet for this price list.</p>
+              <p className="muted-text" style={{ fontStyle: 'italic' }}>No packages yet for this price list.</p>
             ) : (
               <div className="table-container" style={{ marginTop: '0.5rem' }}>
                 <table className="admin-table">
@@ -949,11 +916,11 @@ const AdminPriceLists: React.FC = () => {
                           </td>
                           <td>${retailValue.toFixed(2)}</td>
                           <td><strong>${pkg.packagePrice.toFixed(2)}</strong></td>
-                          <td style={{ color: '#4caf50' }}>
+                          <td className="success-text">
                             ${savings.toFixed(2)} ({savingsPercent}%)
                           </td>
                           <td>
-                            <span className={`status-badge ${pkg.isActive ? 'active' : 'inactive'}`}>
+                            <span className={`status-badge ${pkg.isActive ? 'status-active' : 'status-inactive'}`}>
                               {pkg.isActive ? 'Active' : 'Inactive'}
                             </span>
                           </td>
@@ -977,12 +944,12 @@ const AdminPriceLists: React.FC = () => {
       {/* Package Modal */}
       {showPackageModal && selectedPriceList && (
         <div className="modal-overlay" onClick={() => setShowPackageModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '720px' }}>
-            <div className="modal-header">
+          <div className="modal-content admin-modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '720px' }}>
+            <div className="modal-header admin-modal-header">
               <h2>{editingPackage ? 'Edit Package' : 'Create Package'}</h2>
               <button onClick={() => setShowPackageModal(false)} className="btn-close">×</button>
             </div>
-            <form onSubmit={handleSubmitPackage} className="modal-body">
+            <form onSubmit={handleSubmitPackage} className="modal-body admin-modal-body">
               <div className="form-group">
                 <label>Package Name</label>
                 <input
@@ -1011,15 +978,15 @@ const AdminPriceLists: React.FC = () => {
                   </button>
                 </div>
                 {packageForm.items.length === 0 ? (
-                  <p style={{ color: '#666', fontSize: '0.9rem', fontStyle: 'italic' }}>
+                  <p className="muted-text" style={{ fontSize: '0.9rem', fontStyle: 'italic' }}>
                     No items yet. Add at least one product/size.
                   </p>
                 ) : (
-                  <div style={{ border: '1px solid #ddd', borderRadius: '4px', padding: '0.5rem' }}>
+                  <div className="compact-item-list">
                     {packageForm.items.map((item, index) => {
                       const product = selectedPriceList.products.find(p => p.id === item.productId);
                       return (
-                        <div key={index} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'center' }}>
+                        <div key={index} className="compact-item-row">
                           <select
                             value={item.productId}
                             onChange={(e) => updatePackageItem(index, 'productId', parseInt(e.target.value))}
@@ -1077,7 +1044,7 @@ const AdminPriceLists: React.FC = () => {
                 </div>
               </div>
 
-              <div className="modal-actions" style={{ marginTop: '1rem', display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+              <div className="modal-actions admin-modal-actions">
                 <button type="button" onClick={() => setShowPackageModal(false)} className="btn btn-secondary">
                   Cancel
                 </button>
@@ -1089,54 +1056,6 @@ const AdminPriceLists: React.FC = () => {
           </div>
         </div>
       )}
-
-      <style>{`
-        .modal-overlay {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          backgroundColor: rgba(0, 0, 0, 0.5);
-          display: flex;
-          alignItems: center;
-          justifyContent: center;
-          zIndex: 1000;
-        }
-
-        .modal-content {
-          backgroundColor: white;
-          borderRadius: 8px;
-          padding: 2rem;
-          maxWidth: 500px;
-          width: 90%;
-          boxShadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        }
-
-        .form-group {
-          marginBottom: 1rem;
-        }
-
-        .form-group label {
-          display: block;
-          marginBottom: 0.5rem;
-          fontWeight: 500;
-        }
-
-        .form-group input,
-        .form-group textarea {
-          width: 100%;
-          padding: 0.5rem;
-          border: 1px solid #ddd;
-          borderRadius: 4px;
-          fontFamily: inherit;
-        }
-
-        .btn-sm {
-          padding: 0.5rem 1rem;
-          fontSize: 0.85rem;
-        }
-      `}</style>
 
       {/* WHCC Import Modal */}
       {showWhccImport && (

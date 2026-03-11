@@ -136,7 +136,7 @@ const AdminWatermarks: React.FC = () => {
               <p>Position: {watermark.tiled ? 'Tiled' : watermark.position}</p>
               <p>Opacity: {(watermark.opacity * 100).toFixed(0)}%</p>
               {watermark.isDefault && <span className="badge">Default</span>}
-              {watermark.tiled && <span className="badge" style={{ backgroundColor: '#10b981', marginLeft: '0.5rem' }}>Tiled</span>}
+              {watermark.tiled && <span className="badge badge-success" style={{ marginLeft: '0.5rem' }}>Tiled</span>}
             </div>
             <div className="action-buttons">
               <button onClick={() => handleEdit(watermark)} className="btn-icon">✏️</button>
@@ -164,7 +164,7 @@ const AdminWatermarks: React.FC = () => {
                 />
               </div>
               <div className="form-group">
-                <label>Watermark Image {!editingWatermark && <span style={{ color: '#d32f2f' }}>*</span>}</label>
+                <label>Watermark Image {!editingWatermark && <span className="danger-text">*</span>}</label>
                 <input
                   type="file"
                   accept="image/*"
@@ -173,12 +173,12 @@ const AdminWatermarks: React.FC = () => {
                   style={{ marginBottom: '0.5rem' }}
                 />
                 {editingWatermark && (
-                  <p style={{ fontSize: '0.85rem', color: '#666', margin: '0.5rem 0' }}>
+                  <p className="muted-text" style={{ fontSize: '0.85rem', margin: '0.5rem 0' }}>
                     Leave empty to keep current image
                   </p>
                 )}
                 {previewUrl && (
-                  <div style={{ marginTop: '0.75rem', padding: '1rem', background: '#f5f5f5', borderRadius: '4px', textAlign: 'center' }}>
+                  <div className="preview-box">
                     <p style={{ fontSize: '0.85rem', marginBottom: '0.5rem', fontWeight: 500 }}>Preview:</p>
                     <img 
                       src={previewUrl} 
@@ -188,7 +188,7 @@ const AdminWatermarks: React.FC = () => {
                         (e.target as HTMLImageElement).style.display = 'none';
                         const errorMsg = document.createElement('p');
                         errorMsg.textContent = 'Failed to load preview';
-                        errorMsg.style.color = '#d32f2f';
+                        errorMsg.style.color = 'var(--error-color)';
                         errorMsg.style.fontSize = '0.85rem';
                         (e.target as HTMLImageElement).parentElement?.appendChild(errorMsg);
                       }}
@@ -210,7 +210,7 @@ const AdminWatermarks: React.FC = () => {
                   <option value="bottom-right">Bottom Right</option>
                 </select>
                 {formData.tiled && (
-                  <p style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.25rem' }}>
+                  <p className="muted-text" style={{ fontSize: '0.85rem', marginTop: '0.25rem' }}>
                     Position is ignored when tiling is enabled
                   </p>
                 )}
@@ -246,7 +246,7 @@ const AdminWatermarks: React.FC = () => {
                   {' '}Tile watermark across image
                 </label>
                 {formData.tiled && (
-                  <p style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.25rem' }}>
+                  <p className="muted-text" style={{ fontSize: '0.85rem', marginTop: '0.25rem' }}>
                     🔲 Watermark will repeat across the entire image in a grid pattern
                   </p>
                 )}

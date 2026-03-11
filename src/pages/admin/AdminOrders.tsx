@@ -142,14 +142,9 @@ const AdminOrders: React.FC = () => {
       </div>
 
       {activeTab === 'batch' && (
-        <div className="batch-submission-panel" style={{ 
-          background: '#f8f9fa', 
-          padding: '20px', 
-          borderRadius: '8px', 
-          marginBottom: '20px' 
-        }}>
+        <div className="batch-submission-panel admin-section-card" style={{ marginBottom: '20px' }}>
           <h2>Batch Shipping Address</h2>
-          <p style={{ color: '#666', marginBottom: '15px' }}>
+          <p className="muted-text" style={{ marginBottom: '15px' }}>
             Enter the batch shipping address to submit all pending batch orders to the lab
           </p>
           
@@ -259,12 +254,12 @@ const AdminOrders: React.FC = () => {
                   <h3>
                     Order #{order.id}
                     {order.isBatch && (
-                      <span className="badge" style={{ marginLeft: '10px', background: '#ffc107', color: '#000' }}>
+                      <span className="badge badge-warning" style={{ marginLeft: '10px' }}>
                         Batch Order
                       </span>
                     )}
                     {order.labSubmitted && (
-                      <span className="badge" style={{ marginLeft: '10px', background: '#28a745', color: '#fff' }}>
+                      <span className="badge badge-success" style={{ marginLeft: '10px' }}>
                         Submitted to Lab
                       </span>
                     )}
@@ -273,7 +268,7 @@ const AdminOrders: React.FC = () => {
                     {new Date(order.orderDate).toLocaleDateString()}
                   </p>
                   {order.isBatch && !order.labSubmitted && (
-                    <p style={{ color: '#856404', fontSize: '0.9em', marginTop: '5px' }}>
+                    <p className="warning-text" style={{ fontSize: '0.9em', marginTop: '5px' }}>
                       ⚠️ Awaiting batch submission
                     </p>
                   )}
@@ -292,20 +287,14 @@ const AdminOrders: React.FC = () => {
                   <p className="order-total">${order.totalAmount.toFixed(2)}</p>
                 </div>
               </div>
-              <div className="order-shipping-info" style={{ 
-                padding: '10px', 
-                background: '#f8f9fa', 
-                borderRadius: '4px', 
-                marginBottom: '10px',
-                fontSize: '0.9em'
-              }}>
+              <div className="order-shipping-info admin-summary-box" style={{ marginBottom: '10px', fontSize: '0.9em' }}>
                 <strong>Ship to:</strong>
                 <p>{order.shippingAddress.fullName}</p>
                 <p>{order.shippingAddress.addressLine1}</p>
                 {order.shippingAddress.addressLine2 && <p>{order.shippingAddress.addressLine2}</p>}
                 <p>{order.shippingAddress.city}, {order.shippingAddress.state} {order.shippingAddress.zipCode}</p>
                 {order.batchShippingAddress && (
-                  <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #dee2e6' }}>
+                  <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid var(--border-color)' }}>
                     <strong>Batch Shipping Address Used:</strong>
                     <p>{order.batchShippingAddress.fullName}</p>
                     <p>{order.batchShippingAddress.addressLine1}</p>

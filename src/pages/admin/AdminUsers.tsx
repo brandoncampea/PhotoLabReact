@@ -97,7 +97,7 @@ const AdminUsers: React.FC = () => {
         <div>
           <h1>User Accounts</h1>
           {isSuperAdmin && (
-            <p style={{ margin: '0.5rem 0 0 0', color: '#666', fontSize: '0.95rem' }}>
+            <p className="muted-text" style={{ margin: '0.5rem 0 0 0', fontSize: '0.95rem' }}>
               👑 Viewing all users across all studios
             </p>
           )}
@@ -173,7 +173,7 @@ const AdminUsers: React.FC = () => {
                 <td>{user.email}</td>
                 {isSuperAdmin && (
                   <td>
-                    {user.studioName || <span style={{ color: '#999', fontStyle: 'italic' }}>No Studio</span>}
+                    {user.studioName || <span className="muted-text" style={{ fontStyle: 'italic' }}>No Studio</span>}
                   </td>
                 )}
                 <td>
@@ -183,8 +183,9 @@ const AdminUsers: React.FC = () => {
                     style={{
                       padding: '0.5rem',
                       borderRadius: '4px',
-                      border: '1px solid #ddd',
-                      backgroundColor: '#fff',
+                      border: '1px solid var(--border-color)',
+                      backgroundColor: 'var(--bg-primary)',
+                      color: 'var(--text-primary)',
                       cursor: 'pointer',
                       fontWeight: '500'
                     }}
@@ -229,15 +230,7 @@ const AdminUsers: React.FC = () => {
         </table>
       </div>
 
-      <div
-        style={{
-          marginTop: '2rem',
-          padding: '1rem',
-          backgroundColor: '#f5f5f5',
-          borderRadius: '8px',
-          fontSize: '0.9rem'
-        }}
-      >
+      <div className="admin-summary-box" style={{ marginTop: '2rem', fontSize: '0.9rem' }}>
         <h4 style={{ marginTop: 0 }}>Account Management:</h4>
         <ul style={{ marginBottom: 0, paddingLeft: '1.5rem' }}>
           <li><strong>Role Selector:</strong> Click the dropdown to change user role</li>

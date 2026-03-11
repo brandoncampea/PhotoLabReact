@@ -166,32 +166,36 @@ const AdminLabs: React.FC = () => {
   return (
     <div className="admin-page">
       <div className="page-header">
-        <h1>Lab Configuration</h1>
-        <p>Configure your printing lab integrations (ROES, WHCC, Mpix)</p>
+        <div>
+          <h1>Lab Configuration</h1>
+          <p className="muted-text" style={{ marginTop: '0.5rem' }}>
+            Configure your printing lab integrations (ROES, WHCC, Mpix)
+          </p>
+        </div>
       </div>
 
       {message && (
-        <div className={`alert alert-${message.type}`}>
+        <div className={message.type === 'success' ? 'info-box-success' : 'info-box-error'}>
           {message.text}
         </div>
       )}
 
-      <div className="tab-container">
-        <div className="tabs">
+      <div style={{ marginTop: '2rem' }}>
+        <div className="admin-tab-strip">
           <button
-            className={`tab ${activeTab === 'roes' ? 'active' : ''}`}
+            className={`admin-tab-button ${activeTab === 'roes' ? 'active' : ''}`}
             onClick={() => setActiveTab('roes')}
           >
             ⚙️ ROES
           </button>
           <button
-            className={`tab ${activeTab === 'whcc' ? 'active' : ''}`}
+            className={`admin-tab-button ${activeTab === 'whcc' ? 'active' : ''}`}
             onClick={() => setActiveTab('whcc')}
           >
             📦 WHCC
           </button>
           <button
-            className={`tab ${activeTab === 'mpix' ? 'active' : ''}`}
+            className={`admin-tab-button ${activeTab === 'mpix' ? 'active' : ''}`}
             onClick={() => setActiveTab('mpix')}
           >
             📸 Mpix
@@ -201,7 +205,7 @@ const AdminLabs: React.FC = () => {
         <div className="tab-content">
           {/* ROES Configuration */}
           {activeTab === 'roes' && (
-            <div className="config-section">
+            <div className="admin-config-section">
               <h2>ROES Web Components Configuration</h2>
               <div className="form-group">
                 <label>
@@ -248,7 +252,7 @@ const AdminLabs: React.FC = () => {
 
           {/* WHCC Configuration */}
           {activeTab === 'whcc' && (
-            <div className="config-section">
+            <div className="admin-config-section">
               <h2>WHCC Configuration</h2>
               <div className="form-group">
                 <label>
@@ -396,7 +400,7 @@ const AdminLabs: React.FC = () => {
 
           {/* Mpix Configuration */}
           {activeTab === 'mpix' && (
-            <div className="config-section">
+            <div className="admin-config-section">
               <h2>Mpix Configuration</h2>
               <div className="form-group">
                 <label>
@@ -496,81 +500,6 @@ const AdminLabs: React.FC = () => {
         </div>
       </div>
 
-      <style>{`
-        .tab-container {
-          margin-top: 2rem;
-        }
-
-        .tabs {
-          display: flex;
-          gap: 1rem;
-          border-bottom: 2px solid #e0e0e0;
-          margin-bottom: 2rem;
-        }
-
-        .tab {
-          padding: 0.75rem 1.5rem;
-          border: none;
-          background: none;
-          cursor: pointer;
-          font-size: 1rem;
-          border-bottom: 3px solid transparent;
-          transition: all 0.3s ease;
-        }
-
-        .tab:hover {
-          background-color: #f5f5f5;
-        }
-
-        .tab.active {
-          border-bottom-color: #007bff;
-          color: #007bff;
-          font-weight: bold;
-        }
-
-        .config-section {
-          max-width: 600px;
-        }
-
-        .config-section h2 {
-          margin-top: 0;
-          color: #333;
-        }
-
-        .config-section h3 {
-          margin-top: 2rem;
-          margin-bottom: 1rem;
-          color: #555;
-          font-size: 0.95rem;
-          text-transform: uppercase;
-          border-bottom: 1px solid #e0e0e0;
-          padding-bottom: 0.5rem;
-        }
-
-        .form-row {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-          gap: 1rem;
-        }
-
-        .alert {
-          padding: 1rem;
-          border-radius: 4px;
-          margin-bottom: 1rem;
-        }
-
-        .alert-success {
-          background-color: #d4edda;
-          color: #155724;
-          border: 1px solid #c3e6cb;
-        }
-
-        .alert-error {
-          background-color: #f8d7da;
-          color: #721c24;
-          border: 1px solid #f5c6cb;
-        }
-      `}</style>
     </div>
   );
 };

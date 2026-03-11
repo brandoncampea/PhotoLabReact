@@ -184,7 +184,7 @@ const AdminDiscountCodes: React.FC = () => {
                 <td>
                   {new Date(code.expirationDate).toLocaleDateString()}
                   {isExpired(code.expirationDate) && (
-                    <span style={{ color: '#d32f2f', fontSize: '0.85rem', display: 'block' }}>Expired</span>
+                    <span className="danger-text" style={{ fontSize: '0.85rem', display: 'block' }}>Expired</span>
                   )}
                 </td>
                 <td>
@@ -192,14 +192,14 @@ const AdminDiscountCodes: React.FC = () => {
                     {code.usageCount}{code.maxUsages ? ` / ${code.maxUsages}` : ''}
                   </div>
                   {code.isOneTimeUse && (
-                    <span style={{ fontSize: '0.85rem', color: '#666' }}>One-time</span>
+                    <span className="muted-text" style={{ fontSize: '0.85rem' }}>One-time</span>
                   )}
                   {isMaxedOut(code) && (
-                    <span style={{ color: '#d32f2f', fontSize: '0.85rem', display: 'block' }}>Max reached</span>
+                    <span className="danger-text" style={{ fontSize: '0.85rem', display: 'block' }}>Max reached</span>
                   )}
                 </td>
                 <td>
-                  <span className={`status-badge ${code.isActive && !isExpired(code.expirationDate) && !isMaxedOut(code) ? 'active' : 'inactive'}`}>
+                  <span className={`status-badge ${code.isActive && !isExpired(code.expirationDate) && !isMaxedOut(code) ? 'status-active' : 'status-inactive'}`}>
                     {code.isActive && !isExpired(code.expirationDate) && !isMaxedOut(code) ? 'Active' : 'Inactive'}
                   </span>
                 </td>
@@ -309,7 +309,7 @@ const AdminDiscountCodes: React.FC = () => {
                 </div>
                 
                 {formData.applicationType === 'specific-products' && (
-                  <div style={{ border: '1px solid #ddd', borderRadius: '4px', padding: '0.75rem', marginTop: '0.5rem' }}>
+                  <div className="admin-summary-box" style={{ padding: '0.75rem', marginTop: '0.5rem' }}>
                     <p style={{ fontSize: '0.9rem', marginBottom: '0.5rem', fontWeight: 500 }}>Select Products:</p>
                     {products.map(product => (
                       <label key={product.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
@@ -356,7 +356,7 @@ const AdminDiscountCodes: React.FC = () => {
                     min="1"
                     placeholder="Leave empty for unlimited"
                   />
-                  <p style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.25rem' }}>
+                  <p className="muted-text" style={{ fontSize: '0.85rem', marginTop: '0.25rem' }}>
                     Limit total number of times this code can be used across all customers
                   </p>
                 </div>
