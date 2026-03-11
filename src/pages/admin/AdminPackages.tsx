@@ -230,11 +230,11 @@ const AdminPackages: React.FC = () => {
                   </td>
                   <td>${retailValue.toFixed(2)}</td>
                   <td><strong>${pkg.packagePrice.toFixed(2)}</strong></td>
-                  <td style={{ color: '#4caf50' }}>
+                  <td className="success-text">
                     ${savings.toFixed(2)} ({savingsPercent}%)
                   </td>
                   <td>
-                    <span className={`status-badge ${pkg.isActive ? 'active' : 'inactive'}`}>
+                    <span className={`status-badge ${pkg.isActive ? 'status-active' : 'status-inactive'}`}>
                       {pkg.isActive ? 'Active' : 'Inactive'}
                     </span>
                   </td>
@@ -288,11 +288,11 @@ const AdminPackages: React.FC = () => {
                 </div>
                 
                 {formData.items.length === 0 ? (
-                  <p style={{ color: '#666', fontSize: '0.9rem', fontStyle: 'italic' }}>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', fontStyle: 'italic' }}>
                     No items added yet. Click "Add Item" to start building your package.
                   </p>
                 ) : (
-                  <div style={{ border: '1px solid #ddd', borderRadius: '4px', padding: '0.5rem' }}>
+                  <div className="admin-summary-box" style={{ padding: '0.5rem' }}>
                     {formData.items.map((item, index) => {
                       const selectedProduct = products.find(p => p.id === item.productId);
                       const selectedSize = selectedProduct?.sizes.find(s => s.id === item.productSizeId);
@@ -300,7 +300,7 @@ const AdminPackages: React.FC = () => {
                       const itemPrice = selectedSize ? selectedSize.price * item.quantity : 0;
                       
                       return (
-                        <div key={index} style={{ marginBottom: '1rem', padding: '0.75rem', background: '#f9f9f9', borderRadius: '4px' }}>
+                        <div key={index} className="admin-summary-box" style={{ marginBottom: '1rem', padding: '0.75rem' }}>
                           <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'center' }}>
                             <select
                               value={item.productId}
@@ -332,9 +332,9 @@ const AdminPackages: React.FC = () => {
                               🗑️
                             </button>
                           </div>
-                          <div style={{ fontSize: '0.85rem', color: '#666', display: 'flex', justifyContent: 'space-between', paddingLeft: '0.25rem' }}>
-                            <span>Cost: <strong style={{ color: '#d32f2f' }}>${itemCost.toFixed(2)}</strong></span>
-                            <span>Price: <strong style={{ color: '#4caf50' }}>${itemPrice.toFixed(2)}</strong></span>
+                          <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between', paddingLeft: '0.25rem' }}>
+                            <span>Cost: <strong style={{ color: 'var(--error-color)' }}>${itemCost.toFixed(2)}</strong></span>
+                            <span>Price: <strong className="success-text">${itemPrice.toFixed(2)}</strong></span>
                             <span>Profit: <strong>${(itemPrice - itemCost).toFixed(2)}</strong></span>
                           </div>
                         </div>
@@ -344,10 +344,10 @@ const AdminPackages: React.FC = () => {
                 )}
               </div>
 
-              <div style={{ background: '#f5f5f5', padding: '1rem', borderRadius: '4px', marginBottom: '1rem' }}>
+              <div className="admin-summary-box" style={{ marginBottom: '1rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                   <span>Total Cost:</span>
-                  <strong style={{ color: '#d32f2f' }}>${calculateTotalCost(formData.items).toFixed(2)}</strong>
+                  <strong style={{ color: 'var(--error-color)' }}>${calculateTotalCost(formData.items).toFixed(2)}</strong>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                   <span>Retail Value:</span>
@@ -355,12 +355,12 @@ const AdminPackages: React.FC = () => {
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span>Package Price:</span>
-                  <strong style={{ color: '#4caf50' }}>${formData.packagePrice.toFixed(2)}</strong>
+                  <strong className="success-text">${formData.packagePrice.toFixed(2)}</strong>
                 </div>
                 {formData.packagePrice > 0 && calculateRetailValue(formData.items) > 0 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid #ddd' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid var(--border-color)' }}>
                     <span>Customer Savings:</span>
-                    <strong style={{ color: '#4caf50' }}>
+                    <strong className="success-text">
                       ${(calculateRetailValue(formData.items) - formData.packagePrice).toFixed(2)} 
                       ({(((calculateRetailValue(formData.items) - formData.packagePrice) / calculateRetailValue(formData.items)) * 100).toFixed(0)}%)
                     </strong>

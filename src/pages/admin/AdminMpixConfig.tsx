@@ -78,21 +78,12 @@ const AdminMpixConfig: React.FC = () => {
       </div>
 
       {message && (
-        <div
-          style={{
-            padding: '12px',
-            marginBottom: '20px',
-            borderRadius: '4px',
-            backgroundColor: message.type === 'success' ? '#e8f5e9' : '#ffebee',
-            color: message.type === 'success' ? '#2e7d32' : '#c62828',
-            border: `1px solid ${message.type === 'success' ? '#4caf50' : '#f44336'}`,
-          }}
-        >
+        <div className={message.type === 'success' ? 'info-box-success' : 'info-box-error'} style={{ marginBottom: '20px' }}>
           {message.type === 'success' ? '✓' : '✗'} {message.text}
         </div>
       )}
 
-      <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
+      <div className="admin-section-card">
         <h2 style={{ marginTop: 0 }}>Configuration</h2>
 
         {/* Enable/Disable Toggle */}
@@ -106,7 +97,7 @@ const AdminMpixConfig: React.FC = () => {
             />
             <span style={{ fontSize: '16px', fontWeight: 500 }}>Enable Mpix Integration</span>
           </label>
-          <p style={{ margin: '8px 0 0 0', fontSize: '12px', color: '#666' }}>
+          <p style={{ margin: '8px 0 0 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
             When enabled, Mpix will be available as a fulfillment provider for orders
           </p>
         </div>
@@ -124,12 +115,12 @@ const AdminMpixConfig: React.FC = () => {
             style={{
               width: '100%',
               padding: '10px',
-              border: '1px solid #ddd',
+              border: '1px solid var(--border-color)',
               borderRadius: '4px',
               boxSizing: 'border-box',
             }}
           />
-          <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#666' }}>
+          <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
             From your Mpix developer account
           </p>
         </div>
@@ -146,12 +137,12 @@ const AdminMpixConfig: React.FC = () => {
             style={{
               width: '100%',
               padding: '10px',
-              border: '1px solid #ddd',
+              border: '1px solid var(--border-color)',
               borderRadius: '4px',
               boxSizing: 'border-box',
             }}
           />
-          <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#666' }}>
+          <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
             Keep this secret and never share publicly
           </p>
         </div>
@@ -167,15 +158,17 @@ const AdminMpixConfig: React.FC = () => {
             style={{
               width: '100%',
               padding: '10px',
-              border: '1px solid #ddd',
+              border: '1px solid var(--border-color)',
               borderRadius: '4px',
               boxSizing: 'border-box',
+              backgroundColor: 'var(--bg-primary)',
+              color: 'var(--text-primary)',
             }}
           >
             <option value="sandbox">Sandbox (Testing)</option>
             <option value="production">Production (Live)</option>
           </select>
-          <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#666' }}>
+          <p className="muted-text" style={{ margin: '4px 0 0 0', fontSize: '12px' }}>
             Use sandbox for testing, production for live orders
           </p>
         </div>
@@ -195,9 +188,11 @@ const AdminMpixConfig: React.FC = () => {
             style={{
               width: '100%',
               padding: '10px',
-              border: '1px solid #ddd',
+              border: '1px solid var(--border-color)',
               borderRadius: '4px',
               boxSizing: 'border-box',
+              backgroundColor: 'var(--bg-primary)',
+              color: 'var(--text-primary)',
             }}
           />
         </div>
@@ -214,9 +209,11 @@ const AdminMpixConfig: React.FC = () => {
             style={{
               width: '100%',
               padding: '10px',
-              border: '1px solid #ddd',
+              border: '1px solid var(--border-color)',
               borderRadius: '4px',
               boxSizing: 'border-box',
+              backgroundColor: 'var(--bg-primary)',
+              color: 'var(--text-primary)',
             }}
           />
         </div>
@@ -233,9 +230,11 @@ const AdminMpixConfig: React.FC = () => {
             style={{
               width: '100%',
               padding: '10px',
-              border: '1px solid #ddd',
+              border: '1px solid var(--border-color)',
               borderRadius: '4px',
               boxSizing: 'border-box',
+              backgroundColor: 'var(--bg-primary)',
+              color: 'var(--text-primary)',
             }}
           />
         </div>
@@ -245,15 +244,8 @@ const AdminMpixConfig: React.FC = () => {
           <button
             onClick={handleSave}
             disabled={loading}
-            style={{
-              padding: '10px 20px',
-              backgroundColor: '#4caf50',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: loading ? 'not-allowed' : 'pointer',
-              opacity: loading ? 0.6 : 1,
-            }}
+            className="btn btn-success"
+            style={{ opacity: loading ? 0.6 : 1 }}
           >
             {loading ? 'Saving...' : '💾 Save Configuration'}
           </button>
@@ -261,30 +253,16 @@ const AdminMpixConfig: React.FC = () => {
           <button
             onClick={handleTestConnection}
             disabled={loading || !config.apiKey || !config.apiSecret}
-            style={{
-              padding: '10px 20px',
-              backgroundColor: config.apiKey && config.apiSecret ? '#2196f3' : '#ccc',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: config.apiKey && config.apiSecret && !loading ? 'pointer' : 'not-allowed',
-            }}
+            className="btn btn-primary"
+            style={{ opacity: loading || !config.apiKey || !config.apiSecret ? 0.5 : 1 }}
           >
             {loading ? 'Testing...' : '🔗 Test Connection'}
           </button>
         </div>
 
         {/* Info Box */}
-        <div
-          style={{
-            marginTop: '30px',
-            padding: '15px',
-            backgroundColor: '#e3f2fd',
-            borderRadius: '4px',
-            border: '1px solid #90caf9',
-          }}
-        >
-          <h4 style={{ margin: '0 0 10px 0', color: '#1976d2' }}>📋 About Mpix</h4>
+        <div className="info-box-blue" style={{ marginTop: '30px' }}>
+          <h4 style={{ margin: '0 0 10px 0' }}>📋 About Mpix</h4>
           <p style={{ margin: '0 0 8px 0', fontSize: '14px' }}>
             Mpix (https://devapi.mpix.com/) is a professional photo printing service offering:
           </p>

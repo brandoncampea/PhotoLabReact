@@ -171,7 +171,7 @@ const AdminStudioAdmins: React.FC = () => {
   if (user?.role !== 'super_admin') {
     return (
       <div className="admin-page">
-        <div style={{ padding: '20px', color: '#d32f2f' }}>
+        <div style={{ padding: '20px', color: 'var(--error-color)' }}>
           Access denied. Super admin only.
         </div>
       </div>
@@ -190,7 +190,7 @@ const AdminStudioAdmins: React.FC = () => {
           padding: '12px',
           marginBottom: '16px',
           backgroundColor: '#ffebee',
-          color: '#d32f2f',
+          color: 'var(--error-color)',
           borderRadius: '4px',
           border: '1px solid #d32f2f'
         }}>
@@ -215,7 +215,7 @@ const AdminStudioAdmins: React.FC = () => {
       <div style={{
         marginBottom: '24px',
         padding: '16px',
-        backgroundColor: '#f5f5f5',
+        backgroundColor: 'var(--bg-tertiary)',
         borderRadius: '8px'
       }}>
         <h3 style={{ marginTop: 0 }}>Select Studio</h3>
@@ -269,8 +269,8 @@ const AdminStudioAdmins: React.FC = () => {
             <div style={{
               marginBottom: '24px',
               padding: '16px',
-              backgroundColor: '#f9f9f9',
-              border: '1px solid #ddd',
+              backgroundColor: 'var(--bg-tertiary)',
+              border: '1px solid var(--border-color)',
               borderRadius: '8px'
             }}>
               <h3 style={{ marginTop: 0 }}>Create New Studio Admin</h3>
@@ -286,7 +286,7 @@ const AdminStudioAdmins: React.FC = () => {
                     style={{
                       width: '100%',
                       padding: '10px',
-                      border: '1px solid #ddd',
+                      border: '1px solid var(--border-color)',
                       borderRadius: '4px',
                       fontSize: '14px',
                       boxSizing: 'border-box'
@@ -307,7 +307,7 @@ const AdminStudioAdmins: React.FC = () => {
                     style={{
                       width: '100%',
                       padding: '10px',
-                      border: '1px solid #ddd',
+                      border: '1px solid var(--border-color)',
                       borderRadius: '4px',
                       fontSize: '14px',
                       boxSizing: 'border-box'
@@ -327,7 +327,7 @@ const AdminStudioAdmins: React.FC = () => {
                     style={{
                       width: '100%',
                       padding: '10px',
-                      border: '1px solid #ddd',
+                      border: '1px solid var(--border-color)',
                       borderRadius: '4px',
                       fontSize: '14px',
                       boxSizing: 'border-box'
@@ -364,7 +364,7 @@ const AdminStudioAdmins: React.FC = () => {
             <h3>Studio Admins for {selectedStudio.name}</h3>
             {loading && <p>Loading...</p>}
             {admins.length === 0 ? (
-              <p style={{ color: '#999' }}>No admins found for this studio</p>
+              <p style={{ color: 'var(--text-secondary)' }}>No admins found for this studio</p>
             ) : (
               <div style={{ overflowX: 'auto' }}>
                 <table className="data-table">
@@ -443,7 +443,7 @@ const AdminStudioAdmins: React.FC = () => {
       <div style={{
         marginTop: '32px',
         padding: '16px',
-        backgroundColor: '#f5f5f5',
+        backgroundColor: 'var(--bg-tertiary)',
         borderRadius: '8px',
         fontSize: '0.9rem'
       }}>

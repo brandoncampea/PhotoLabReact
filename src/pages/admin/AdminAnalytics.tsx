@@ -67,105 +67,78 @@ const AdminAnalytics: React.FC = () => {
     <div className="admin-page">
       <div className="page-header">
         <h1>📊 Analytics</h1>
-        <p style={{ fontSize: '0.9rem', color: '#666', marginTop: '0.5rem' }}>
+        <p className="muted-text" style={{ fontSize: '0.9rem', marginTop: '0.5rem' }}>
           Track visitor behavior and popular content
         </p>
       </div>
 
       {/* Overview Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1.5rem', marginBottom: '2rem' }}>
-        <div style={{
-          padding: '1.5rem',
-          backgroundColor: '#e3f2fd',
-          borderRadius: '8px',
-          border: '2px solid #4169E1'
-        }}>
-          <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: '#4169E1' }}>
+        <div className="analytics-stat-card analytics-stat-card-blue">
+          <div className="analytics-stat-value">
             {analytics.totalVisitors}
           </div>
-          <div style={{ fontSize: '1rem', color: '#666', marginTop: '0.5rem' }}>
+          <div className="analytics-stat-label">
             Total Visitors
           </div>
         </div>
 
-        <div style={{
-          padding: '1.5rem',
-          backgroundColor: '#f3e5f5',
-          borderRadius: '8px',
-          border: '2px solid #9c27b0'
-        }}>
-          <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: '#9c27b0' }}>
+        <div className="analytics-stat-card analytics-stat-card-purple">
+          <div className="analytics-stat-value">
             {analytics.totalPageViews}
           </div>
-          <div style={{ fontSize: '1rem', color: '#666', marginTop: '0.5rem' }}>
+          <div className="analytics-stat-label">
             Total Page Views
           </div>
         </div>
 
-        <div style={{
-          padding: '1.5rem',
-          backgroundColor: '#e8f5e9',
-          borderRadius: '8px',
-          border: '2px solid #4caf50'
-        }}>
-          <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: '#4caf50' }}>
+        <div className="analytics-stat-card analytics-stat-card-green">
+          <div className="analytics-stat-value">
             {analytics.albumViews.reduce((sum, a) => sum + a.views, 0)}
           </div>
-          <div style={{ fontSize: '1rem', color: '#666', marginTop: '0.5rem' }}>
+          <div className="analytics-stat-label">
             Album Views
           </div>
         </div>
 
-        <div style={{
-          padding: '1.5rem',
-          backgroundColor: '#fff3e0',
-          borderRadius: '8px',
-          border: '2px solid #ff9800'
-        }}>
-          <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: '#ff9800' }}>
+        <div className="analytics-stat-card analytics-stat-card-orange">
+          <div className="analytics-stat-value">
             {analytics.photoViews.reduce((sum, p) => sum + p.views, 0)}
           </div>
-          <div style={{ fontSize: '1rem', color: '#666', marginTop: '0.5rem' }}>
+          <div className="analytics-stat-label">
             Photo Views
           </div>
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
+      <div className="analytics-two-col">
         {/* Top Albums */}
         <div>
           <h2 style={{ fontSize: '1.3rem', marginBottom: '1rem' }}>📁 Top Albums</h2>
           {analytics.albumViews.length === 0 ? (
-            <p style={{ color: '#999', fontStyle: 'italic' }}>No album views yet</p>
+            <p className="muted-text" style={{ fontStyle: 'italic' }}>No album views yet</p>
           ) : (
-            <div style={{ backgroundColor: '#f8f9fa', borderRadius: '8px', overflow: 'hidden' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <div className="analytics-table-wrap">
+              <table>
                 <thead>
-                  <tr style={{ backgroundColor: '#e9ecef', borderBottom: '2px solid #dee2e6' }}>
-                    <th style={{ padding: '0.75rem', textAlign: 'left' }}>Album</th>
-                    <th style={{ padding: '0.75rem', textAlign: 'center' }}>Views</th>
-                    <th style={{ padding: '0.75rem', textAlign: 'left' }}>Last Viewed</th>
+                  <tr>
+                    <th>Album</th>
+                    <th style={{ textAlign: 'center' }}>Views</th>
+                    <th>Last Viewed</th>
                   </tr>
                 </thead>
                 <tbody>
                   {analytics.albumViews.slice(0, 10).map((album) => (
-                    <tr key={album.albumId} style={{ borderBottom: '1px solid #dee2e6' }}>
-                      <td style={{ padding: '0.75rem' }}>
+                    <tr key={album.albumId}>
+                      <td>
                         <strong>{album.albumName}</strong>
                       </td>
-                      <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                        <span style={{
-                          padding: '0.25rem 0.75rem',
-                          backgroundColor: '#4169E1',
-                          color: 'white',
-                          borderRadius: '12px',
-                          fontSize: '0.9rem',
-                          fontWeight: 'bold'
-                        }}>
+                      <td style={{ textAlign: 'center' }}>
+                        <span className="analytics-view-badge" style={{ backgroundColor: '#4169E1' }}>
                           {album.views}
                         </span>
                       </td>
-                      <td style={{ padding: '0.75rem', fontSize: '0.85rem', color: '#666' }}>
+                      <td className="muted-text" style={{ fontSize: '0.85rem' }}>
                         {formatDateTime(album.lastViewed)}
                       </td>
                     </tr>
@@ -180,41 +153,34 @@ const AdminAnalytics: React.FC = () => {
         <div>
           <h2 style={{ fontSize: '1.3rem', marginBottom: '1rem' }}>🖼️ Top Photos</h2>
           {analytics.photoViews.length === 0 ? (
-            <p style={{ color: '#999', fontStyle: 'italic' }}>No photo views yet</p>
+            <p className="muted-text" style={{ fontStyle: 'italic' }}>No photo views yet</p>
           ) : (
-            <div style={{ backgroundColor: '#f8f9fa', borderRadius: '8px', overflow: 'hidden' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <div className="analytics-table-wrap">
+              <table>
                 <thead>
-                  <tr style={{ backgroundColor: '#e9ecef', borderBottom: '2px solid #dee2e6' }}>
-                    <th style={{ padding: '0.75rem', textAlign: 'left' }}>Photo</th>
-                    <th style={{ padding: '0.75rem', textAlign: 'center' }}>Views</th>
-                    <th style={{ padding: '0.75rem', textAlign: 'left' }}>Last Viewed</th>
+                  <tr>
+                    <th>Photo</th>
+                    <th style={{ textAlign: 'center' }}>Views</th>
+                    <th>Last Viewed</th>
                   </tr>
                 </thead>
                 <tbody>
                   {analytics.photoViews.slice(0, 10).map((photo) => (
-                    <tr key={photo.photoId} style={{ borderBottom: '1px solid #dee2e6' }}>
-                      <td style={{ padding: '0.75rem' }}>
+                    <tr key={photo.photoId}>
+                      <td>
                         <div>
                           <strong>{photo.photoFileName}</strong>
-                          <div style={{ fontSize: '0.8rem', color: '#999' }}>
+                          <div className="muted-text" style={{ fontSize: '0.8rem' }}>
                             in {photo.albumName}
                           </div>
                         </div>
                       </td>
-                      <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                        <span style={{
-                          padding: '0.25rem 0.75rem',
-                          backgroundColor: '#4caf50',
-                          color: 'white',
-                          borderRadius: '12px',
-                          fontSize: '0.9rem',
-                          fontWeight: 'bold'
-                        }}>
+                      <td style={{ textAlign: 'center' }}>
+                        <span className="analytics-view-badge" style={{ backgroundColor: '#4caf50' }}>
                           {photo.views}
                         </span>
                       </td>
-                      <td style={{ padding: '0.75rem', fontSize: '0.85rem', color: '#666' }}>
+                      <td className="muted-text" style={{ fontSize: '0.85rem' }}>
                         {formatDateTime(photo.lastViewed)}
                       </td>
                     </tr>
@@ -230,21 +196,13 @@ const AdminAnalytics: React.FC = () => {
       <div style={{ marginTop: '2rem' }}>
         <h2 style={{ fontSize: '1.3rem', marginBottom: '1rem' }}>🕐 Recent Activity</h2>
         {analytics.recentActivity.length === 0 ? (
-          <p style={{ color: '#999', fontStyle: 'italic' }}>No recent activity</p>
+          <p className="muted-text" style={{ fontStyle: 'italic' }}>No recent activity</p>
         ) : (
-          <div style={{ backgroundColor: '#f8f9fa', borderRadius: '8px', padding: '1rem', maxHeight: '400px', overflowY: 'auto' }}>
+          <div className="analytics-activity-feed">
             {analytics.recentActivity.map((activity) => (
               <div 
                 key={activity.id}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  padding: '0.75rem',
-                  marginBottom: '0.5rem',
-                  backgroundColor: 'white',
-                  borderRadius: '6px',
-                  border: '1px solid #dee2e6'
-                }}
+                className="analytics-activity-item"
               >
                 <span style={{ fontSize: '1.5rem', marginRight: '1rem' }}>
                   {getActivityIcon(activity.type)}
@@ -253,7 +211,7 @@ const AdminAnalytics: React.FC = () => {
                   <div style={{ fontWeight: 500 }}>
                     {getActivityDescription(activity)}
                   </div>
-                  <div style={{ fontSize: '0.8rem', color: '#999', marginTop: '0.25rem' }}>
+                  <div className="muted-text" style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>
                     {formatDateTime(activity.timestamp)}
                   </div>
                 </div>

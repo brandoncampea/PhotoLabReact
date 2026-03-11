@@ -162,7 +162,7 @@ const AdminProfile: React.FC = () => {
     <div className="admin-page">
       <div className="page-header">
         <h1>👤 Profile Settings</h1>
-        <p style={{ fontSize: '0.9rem', color: '#666', marginTop: '0.5rem' }}>
+        <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
           Manage your business profile and notification preferences
         </p>
       </div>
@@ -175,7 +175,7 @@ const AdminProfile: React.FC = () => {
               <div style={{
                 marginBottom: '1rem',
                 padding: '1rem',
-                backgroundColor: '#f5f5f5',
+                backgroundColor: 'var(--bg-tertiary)',
                 borderRadius: '8px',
                 display: 'flex',
                 alignItems: 'center',
@@ -227,14 +227,14 @@ const AdminProfile: React.FC = () => {
               }}
             />
           </div>
-          <p style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.25rem' }}>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
             Upload a logo image to replace the "📸 Photo Lab" text in the header. Recommended: transparent PNG, max height 60px
           </p>
         </div>
 
         <div className="form-group">
           <label htmlFor="ownerName">
-            Owner Name <span style={{ color: '#d32f2f' }}>*</span>
+            Owner Name <span style={{ color: 'var(--error-color)' }}>*</span>
           </label>
           <input
             type="text"
@@ -244,14 +244,14 @@ const AdminProfile: React.FC = () => {
             placeholder="John Smith"
             required
           />
-          <p style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.25rem' }}>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
             Your full name
           </p>
         </div>
 
         <div className="form-group">
           <label htmlFor="businessName">
-            Business Name <span style={{ color: '#d32f2f' }}>*</span>
+            Business Name <span style={{ color: 'var(--error-color)' }}>*</span>
           </label>
           <input
             type="text"
@@ -261,14 +261,14 @@ const AdminProfile: React.FC = () => {
             placeholder="PhotoLab Studio"
             required
           />
-          <p style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.25rem' }}>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
             Your business or studio name
           </p>
         </div>
 
         <div className="form-group">
           <label htmlFor="email">
-            Email Address <span style={{ color: '#d32f2f' }}>*</span>
+            Email Address <span style={{ color: 'var(--error-color)' }}>*</span>
           </label>
           <input
             type="email"
@@ -278,7 +278,7 @@ const AdminProfile: React.FC = () => {
             placeholder="admin@photolab.com"
             required
           />
-          <p style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.25rem' }}>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
             Primary contact email for your business
           </p>
         </div>
@@ -294,7 +294,7 @@ const AdminProfile: React.FC = () => {
             />
             Receive Order Notifications
           </label>
-          <p style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.25rem' }}>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
             Get email notifications when new orders are placed
           </p>
         </div>
@@ -313,7 +313,7 @@ const AdminProfile: React.FC = () => {
           <div style={{
             marginTop: '2rem',
             padding: '1rem',
-            backgroundColor: '#f5f5f5',
+            backgroundColor: 'var(--bg-tertiary)',
             borderRadius: '8px',
             fontSize: '0.9rem'
           }}>
@@ -333,7 +333,7 @@ const AdminProfile: React.FC = () => {
         <div style={{ marginTop: '2rem' }}>
           <div className="page-header">
             <h2>📋 Subscription Management</h2>
-            <p style={{ fontSize: '0.9rem', color: '#666', marginTop: '0.5rem' }}>
+            <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
               View and manage your subscription plan
             </p>
           </div>
@@ -376,7 +376,7 @@ const AdminProfile: React.FC = () => {
           ) : null}
 
           <div style={{
-            backgroundColor: '#f5f5f5',
+            backgroundColor: 'var(--bg-tertiary)',
             padding: '20px',
             borderRadius: '8px',
             border: '2px solid #ddd'
@@ -390,14 +390,14 @@ const AdminProfile: React.FC = () => {
                 {subscription.studio.is_free_subscription ? (
                   <p style={{ color: '#4caf50', fontWeight: 'bold' }}>FREE (No Billing)</p>
                 ) : subscription.plan ? (
-                  <p style={{ color: '#666' }}>
+                  <p style={{ color: 'var(--text-secondary)' }}>
                     ${subscription.studio.billing_cycle === 'yearly' 
                       ? (subscription.plan.yearlyPrice || subscription.plan.monthlyPrice * 10)
                       : subscription.plan.monthlyPrice}
                     /{subscription.studio.billing_cycle === 'yearly' ? 'year' : 'month'}
                   </p>
                 ) : (
-                  <p style={{ color: '#999' }}>Plan info not available</p>
+                  <p style={{ color: 'var(--text-secondary)' }}>Plan info not available</p>
                 )}
               </div>
 
@@ -468,7 +468,7 @@ const AdminProfile: React.FC = () => {
                   </>
                 ) : null}
                 {user?.role !== 'studio_admin' ? (
-                  <p style={{ color: '#999', fontSize: '14px', marginTop: '8px' }}>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginTop: '8px' }}>
                     Only studio admins can manage subscription settings
                   </p>
                 ) : null}
@@ -483,7 +483,7 @@ const AdminProfile: React.FC = () => {
         <div className="modal-overlay">
           <div className="modal-content" style={{ padding: '30px', maxWidth: '500px' }}>
             <h2>Select Your Plan</h2>
-            <p style={{ color: '#666', marginBottom: '20px' }}>
+            <p style={{ color: 'var(--text-secondary)', marginBottom: '20px' }}>
               Choose a plan to upgrade or downgrade your subscription
             </p>
 
@@ -507,7 +507,7 @@ const AdminProfile: React.FC = () => {
                   </p>
                   <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '13px' }}>
                     {plan.features.slice(0, 3).map((feature, idx) => (
-                      <li key={idx} style={{ color: '#666' }}>{feature}</li>
+                      <li key={idx} style={{ color: 'var(--text-secondary)' }}>{feature}</li>
                     ))}
                   </ul>
                 </div>
@@ -588,7 +588,7 @@ const AdminProfile: React.FC = () => {
                   flex: 1,
                   padding: '12px',
                   backgroundColor: '#ccc',
-                  color: '#333',
+                  color: 'var(--text-primary)',
                   border: 'none',
                   borderRadius: '4px',
                   cursor: upgrading ? 'not-allowed' : 'pointer',

@@ -228,22 +228,16 @@ const AdminPhotos: React.FC = () => {
       </div>
 
       {currentAlbum && (
-        <div style={{ 
-          padding: '1rem', 
-          backgroundColor: '#f8f9fa', 
-          borderRadius: '8px', 
-          marginBottom: '1.5rem',
-          border: '1px solid #e9ecef'
-        }}>
-          <p style={{ margin: 0, fontSize: '0.95rem', color: '#666' }}>
+        <div className="admin-summary-box" style={{ marginBottom: '1.5rem' }}>
+          <p className="muted-text" style={{ margin: 0, fontSize: '0.95rem' }}>
             <strong>Current Album:</strong> {currentAlbum.name} ({photos.length} photos)
           </p>
           {coverMessage && (
-            <p style={{ margin: '0.35rem 0 0 0', fontSize: '0.85rem', color: coverMessage.includes('Failed') ? '#d32f2f' : '#2e7d32' }}>
+            <p className={coverMessage.includes('Failed') ? 'danger-text' : 'success-text'} style={{ margin: '0.35rem 0 0 0', fontSize: '0.85rem' }}>
               {coverMessage}
             </p>
           )}
-          <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.85rem', color: '#888' }}>
+          <p className="muted-text" style={{ margin: '0.5rem 0 0 0', fontSize: '0.85rem' }}>
             All photos must belong to an album. Select an album above to upload or manage photos.
           </p>
         </div>
@@ -257,7 +251,7 @@ const AdminPhotos: React.FC = () => {
               <p className="photo-filename">{photo.fileName}</p>
             </div>
             {currentAlbum && currentAlbum.coverPhotoId === photo.id && (
-              <div className="badge" style={{ backgroundColor: '#0d6efd', color: 'white', padding: '0.2rem 0.5rem', borderRadius: '12px', fontSize: '0.75rem', alignSelf: 'flex-start', margin: '0 0 0.5rem 0.5rem' }}>
+              <div className="cover-photo-badge">
                 Cover photo
               </div>
             )}

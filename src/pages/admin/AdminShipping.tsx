@@ -64,23 +64,17 @@ const AdminShipping: React.FC = () => {
       </div>
 
       <div className="admin-form" style={{ maxWidth: '800px' }}>
-        <div className="info-box" style={{
-          padding: '1rem',
-          backgroundColor: '#e3f2fd',
-          borderRadius: '8px',
-          marginBottom: '2rem',
-          border: '1px solid #90caf9'
-        }}>
-          <h3 style={{ marginTop: 0, color: '#1565c0' }}>📦 Batch Shipping</h3>
+        <div className="info-box-blue" style={{ marginBottom: '2rem' }}>
+          <h3 style={{ marginTop: 0 }}>📦 Batch Shipping</h3>
           <p style={{ marginBottom: '0.5rem' }}>
             Batch shipping allows you to collect multiple orders and ship them together, reducing costs.
             Customers can choose batch shipping (no extra charge) before the deadline, or pay for direct shipping anytime.
           </p>
-          <p style={{ margin: 0, fontSize: '0.9rem', color: '#555' }}>
+          <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
             <strong>Current Status:</strong> {deadlinePassed ? (
-              <span style={{ color: '#d32f2f' }}>Deadline passed - Only direct shipping available</span>
+              <span className="danger-text">Deadline passed - Only direct shipping available</span>
             ) : (
-              <span style={{ color: '#388e3c' }}>Active - {daysUntilDeadline} days until batch deadline</span>
+              <span className="success-text">Active - {daysUntilDeadline} days until batch deadline</span>
             )}
           </p>
         </div>
@@ -96,7 +90,7 @@ const AdminShipping: React.FC = () => {
             />
             Enable Batch Shipping
           </label>
-          <p style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.25rem' }}>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
             When disabled, only direct shipping will be available to customers
           </p>
         </div>
@@ -111,7 +105,7 @@ const AdminShipping: React.FC = () => {
             disabled={!isActive}
             min={new Date().toISOString().split('T')[0]}
           />
-          <p style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.25rem' }}>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
             Customers can choose batch shipping until this date
           </p>
         </div>
@@ -126,7 +120,7 @@ const AdminShipping: React.FC = () => {
             min="0"
             step="0.01"
           />
-          <p style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.25rem' }}>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
             Extra fee customers pay for direct (immediate) shipping
           </p>
         </div>
@@ -141,13 +135,7 @@ const AdminShipping: React.FC = () => {
           </button>
         </div>
 
-        <div style={{
-          marginTop: '2rem',
-          padding: '1rem',
-          backgroundColor: '#f5f5f5',
-          borderRadius: '8px',
-          fontSize: '0.9rem'
-        }}>
+        <div className="admin-summary-box" style={{ marginTop: '2rem', fontSize: '0.9rem' }}>
           <h4 style={{ marginTop: 0 }}>How it works:</h4>
           <ul style={{ marginBottom: 0, paddingLeft: '1.5rem' }}>
             <li>Before the deadline: Customers can choose batch shipping (free) or direct shipping (+${directShippingCharge})</li>

@@ -307,7 +307,7 @@ const AdminProducts: React.FC = () => {
       </div>
 
       {/* Price List Selector */}
-      <div style={{ marginBottom: '2rem', padding: '1rem', backgroundColor: '#f8f9fa', borderRadius: '8px' }}>
+      <div className="selection-panel">
         <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
           Select Price List:
         </label>
@@ -321,8 +321,10 @@ const AdminProducts: React.FC = () => {
           style={{
             padding: '0.5rem',
             borderRadius: '4px',
-            border: '1px solid #ddd',
+            border: '1px solid var(--border-color)',
             minWidth: '300px',
+            backgroundColor: 'var(--bg-primary)',
+            color: 'var(--text-primary)',
           }}
         >
           {priceLists.map(pl => (
@@ -335,21 +337,15 @@ const AdminProducts: React.FC = () => {
 
       {/* Studio Fees Info Banner */}
       {studioFees && studioFees.feeValue > 0 && (
-        <div style={{
-          marginBottom: '2rem',
-          padding: '1rem',
-          backgroundColor: '#fff3cd',
-          border: '1px solid #ff9800',
-          borderRadius: '8px'
-        }}>
-          <strong style={{ color: '#856404' }}>💰 Product Fee Applied:</strong>
-          <p style={{ margin: '0.5rem 0 0 0', color: '#666' }}>
+        <div className="info-box-warning" style={{ marginBottom: '2rem' }}>
+          <strong className="warning-text">💰 Product Fee Applied:</strong>
+          <p className="muted-text" style={{ margin: '0.5rem 0 0 0' }}>
             A <strong>
               {studioFees.feeType === 'percentage'
                 ? `${studioFees.feeValue}%`
                 : `$${studioFees.feeValue.toFixed(2)}`
               }
-            </strong> fee is automatically added to each product price. 
+            </strong> fee is automatically added to each product price.
             Customers will see the adjusted "Customer Price" shown below.
           </p>
         </div>
@@ -365,21 +361,16 @@ const AdminProducts: React.FC = () => {
               <p>No products in this price list</p>
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '1.5rem' }}>
+            <div className="product-grid">
               {selectedPriceList.products.map(product => (
                 <div
                   key={product.id}
-                  style={{
-                    padding: '1.5rem',
-                    border: '1px solid #e0e0e0',
-                    borderRadius: '8px',
-                    backgroundColor: '#fff',
-                  }}
+                  className="product-card"
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '1rem' }}>
                     <div>
                       <h3 style={{ margin: '0 0 0.5rem 0' }}>{product.name}</h3>
-                      <p style={{ fontSize: '0.9rem', color: '#666', margin: 0 }}>
+                      <p className="muted-text" style={{ fontSize: '0.9rem', margin: 0 }}>
                         {product.isDigital ? '🖥️ Digital' : '🖨️ Physical'}
                       </p>
                     </div>
@@ -400,7 +391,7 @@ const AdminProducts: React.FC = () => {
                   </div>
 
                   {product.description && (
-                    <p style={{ fontSize: '0.85rem', color: '#888', marginBottom: '1rem', fontStyle: 'italic' }}>
+                    <p className="muted-text" style={{ fontSize: '0.85rem', marginBottom: '1rem', fontStyle: 'italic' }}>
                       {product.description}
                     </p>
                   )}
@@ -410,22 +401,14 @@ const AdminProducts: React.FC = () => {
                       <strong style={{ fontSize: '0.9rem' }}>Sizes ({product.sizes.length})</strong>
                       <button
                         onClick={() => handleCreateSize(product)}
-                        style={{
-                          padding: '0.25rem 0.75rem',
-                          fontSize: '0.8rem',
-                          backgroundColor: '#28a745',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: 'pointer',
-                        }}
+                        className="btn btn-success btn-sm"
                       >
                         + Add
                       </button>
                     </div>
 
                     {product.sizes.length === 0 ? (
-                      <p style={{ fontSize: '0.85rem', color: '#999', margin: '0.75rem 0' }}>
+                      <p className="muted-text" style={{ fontSize: '0.85rem', margin: '0.75rem 0' }}>
                         No sizes defined
                       </p>
                     ) : (
@@ -433,10 +416,8 @@ const AdminProducts: React.FC = () => {
                         {product.sizes.map(size => (
                           <div
                             key={size.id}
+                            className="subtle-panel"
                             style={{
-                              padding: '0.75rem',
-                              backgroundColor: '#f5f5f5',
-                              borderRadius: '4px',
                               display: 'flex',
                               justifyContent: 'space-between',
                               alignItems: 'center',
@@ -445,51 +426,35 @@ const AdminProducts: React.FC = () => {
                             <div style={{ fontSize: '0.85rem' }}>
                               <strong>{size.name}</strong>
                               {size.width > 0 && ` (${size.width}x${size.height})`}
-                              <div style={{ color: '#666', fontSize: '0.8rem' }}>
+                              <div className="muted-text" style={{ fontSize: '0.8rem' }}>
                                 Base: ${size.price.toFixed(2)}
                                 {studioFees && studioFees.feeValue > 0 && (
-                                  <span style={{ color: '#ff9800', fontWeight: 'bold' }}>
+                                  <span className="warning-text" style={{ fontWeight: 'bold' }}>
                                     {' → Customer Price: $'}{calculatePriceWithFees(size.price).toFixed(2)}
                                   </span>
                                 )}
                                 {size.cost > 0 && (
                                   <>
                                     {' | Cost: $'}{size.cost.toFixed(2)}{' | '}
-                                    <span style={{ color: size.price > size.cost ? '#28a745' : '#dc3545' }}>
+                                    <span className={size.price > size.cost ? 'success-text' : 'danger-text'}>
                                       Profit: ${(size.price - size.cost).toFixed(2)}
                                     </span>
                                   </>
                                 )}
                               </div>
                             </div>
-                            <div style={{ display: 'flex', gap: '0.25rem' }}>
+                            <div className="row-actions">
                               <button
                                 onClick={() => handleEditSize(product, size)}
-                                style={{
-                                  padding: '0.25rem 0.5rem',
-                                  fontSize: '0.75rem',
-                                  backgroundColor: '#007bff',
-                                  color: 'white',
-                                  border: 'none',
-                                  borderRadius: '3px',
-                                  cursor: 'pointer',
-                                }}
+                                className="btn btn-primary btn-sm"
                               >
-                                ✏️
+                                Edit
                               </button>
                               <button
                                 onClick={() => handleDeleteSize(product.id, size.id)}
-                                style={{
-                                  padding: '0.25rem 0.5rem',
-                                  fontSize: '0.75rem',
-                                  backgroundColor: '#dc3545',
-                                  color: 'white',
-                                  border: 'none',
-                                  borderRadius: '3px',
-                                  cursor: 'pointer',
-                                }}
+                                className="btn btn-danger btn-sm"
                               >
-                                🗑️
+                                Delete
                               </button>
                             </div>
                           </div>
@@ -507,12 +472,12 @@ const AdminProducts: React.FC = () => {
       {/* Package Modal */}
       {showPackageModal && selectedPriceList && (
         <div className="modal-overlay" onClick={() => setShowPackageModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '720px' }}>
-            <div className="modal-header">
+          <div className="modal-content admin-modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '720px' }}>
+            <div className="modal-header admin-modal-header">
               <h2>{editingPackage ? 'Edit Package' : 'Create Package'}</h2>
               <button onClick={() => setShowPackageModal(false)} className="btn-close">×</button>
             </div>
-            <form onSubmit={handleSubmitPackage} className="modal-body">
+            <form onSubmit={handleSubmitPackage} className="modal-body admin-modal-body">
               <div className="form-group">
                 <label>Package Name</label>
                 <input
@@ -541,15 +506,15 @@ const AdminProducts: React.FC = () => {
                   </button>
                 </div>
                 {packageForm.items.length === 0 ? (
-                  <p style={{ color: '#666', fontSize: '0.9rem', fontStyle: 'italic' }}>
+                  <p className="muted-text" style={{ fontSize: '0.9rem', fontStyle: 'italic' }}>
                     No items yet. Add at least one product/size.
                   </p>
                 ) : (
-                  <div style={{ border: '1px solid #ddd', borderRadius: '4px', padding: '0.5rem' }}>
+                  <div className="compact-item-list">
                     {packageForm.items.map((item, index) => {
                       const product = selectedPriceList.products.find(p => p.id === item.productId);
                       return (
-                        <div key={index} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'center' }}>
+                        <div key={index} className="compact-item-row">
                           <select
                             value={item.productId}
                             onChange={(e) => updatePackageItem(index, 'productId', parseInt(e.target.value))}
@@ -607,7 +572,7 @@ const AdminProducts: React.FC = () => {
                 </div>
               </div>
 
-              <div className="modal-actions" style={{ marginTop: '1rem', display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+              <div className="modal-actions admin-modal-actions">
                 <button type="button" onClick={() => setShowPackageModal(false)} className="btn btn-secondary">
                   Cancel
                 </button>
@@ -632,7 +597,7 @@ const AdminProducts: React.FC = () => {
                               {packagesLoading ? (
                                 <div className="loading">Loading packages...</div>
                               ) : packages.length === 0 ? (
-                                <p style={{ color: '#666', fontStyle: 'italic' }}>No packages yet for this price list.</p>
+                                <p className="muted-text" style={{ fontStyle: 'italic' }}>No packages yet for this price list.</p>
                               ) : (
                                 <div className="table-container" style={{ marginTop: '0.5rem' }}>
                                   <table className="admin-table">
@@ -676,11 +641,11 @@ const AdminProducts: React.FC = () => {
                                             </td>
                                             <td>${retailValue.toFixed(2)}</td>
                                             <td><strong>${pkg.packagePrice.toFixed(2)}</strong></td>
-                                            <td style={{ color: '#4caf50' }}>
+                                            <td className="success-text">
                                               ${savings.toFixed(2)} ({savingsPercent}%)
                                             </td>
                                             <td>
-                                              <span className={`status-badge ${pkg.isActive ? 'active' : 'inactive'}`}>
+                                              <span className={`status-badge ${pkg.isActive ? 'status-active' : 'status-inactive'}`}>
                                                 {pkg.isActive ? 'Active' : 'Inactive'}
                                               </span>
                                             </td>
@@ -701,12 +666,12 @@ const AdminProducts: React.FC = () => {
       {/* Product Modal */}
       {showProductModal && (
         <div className="modal-overlay" onClick={() => setShowProductModal(false)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
+          <div className="modal-content admin-modal-content" onClick={e => e.stopPropagation()}>
+            <div className="modal-header admin-modal-header">
               <h2>{editingProduct ? 'Edit Product' : 'Add Product'}</h2>
               <button onClick={() => setShowProductModal(false)} className="btn-close">×</button>
             </div>
-            <form onSubmit={handleSubmitProduct} className="modal-body">
+            <form onSubmit={handleSubmitProduct} className="modal-body admin-modal-body">
               <div className="form-group">
                 <label>Product Name *</label>
                 <input
@@ -750,12 +715,12 @@ const AdminProducts: React.FC = () => {
       {/* Size Modal */}
       {showSizeModal && (
         <div className="modal-overlay" onClick={() => setShowSizeModal(false)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
+          <div className="modal-content admin-modal-content" onClick={e => e.stopPropagation()}>
+            <div className="modal-header admin-modal-header">
               <h2>{editingSize ? 'Edit Size' : 'Add Size'}</h2>
               <button onClick={() => setShowSizeModal(false)} className="btn-close">×</button>
             </div>
-            <form onSubmit={handleSubmitSize} className="modal-body">
+            <form onSubmit={handleSubmitSize} className="modal-body admin-modal-body">
               <div className="form-group">
                 <label>Size Name *</label>
                 <input

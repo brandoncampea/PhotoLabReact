@@ -176,11 +176,11 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
 
   return (
     <div className="modal-overlay">
-      <div className="modal-content" style={{ padding: '30px', maxWidth: '700px', maxHeight: '80vh' }}>
+      <div className="modal-content import-modal">
         <h2>Import Products from WHCC</h2>
 
         {error && (
-          <div style={{ backgroundColor: '#ffebee', padding: '12px', marginBottom: '20px', borderRadius: '4px', color: '#c62828' }}>
+          <div className="info-box-error" style={{ marginBottom: '20px' }}>
             ✗ {error}
           </div>
         )}
@@ -188,7 +188,7 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
         {/* Step 1: Select Price List */}
         {step === 'select-list' && (
           <>
-            <p style={{ color: '#666', marginBottom: '20px' }}>
+            <p style={{ color: 'var(--text-secondary)', marginBottom: '20px' }}>
               Select a price list where you want to add WHCC products.
             </p>
 
@@ -196,15 +196,8 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
               <button
                 onClick={handleLoadPriceLists}
                 disabled={loading}
-                style={{
-                  padding: '10px 20px',
-                  backgroundColor: '#2196f3',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  marginBottom: '20px',
-                }}
+                className="btn btn-primary"
+                style={{ marginBottom: '20px' }}
               >
                 {loading ? 'Loading...' : 'Load Price Lists'}
               </button>
@@ -220,9 +213,11 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
                     style={{
                       width: '100%',
                       padding: '10px',
-                      border: '1px solid #ddd',
+                      border: '1px solid var(--border-color)',
                       borderRadius: '4px',
-                      boxSizing: 'border-box',
+                      boxSizing: 'border-box' as const,
+                      backgroundColor: 'var(--bg-primary)',
+                      color: 'var(--text-primary)',
                     }}
                   >
                     <option value="">-- Select a price list --</option>
@@ -237,14 +232,7 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
                 <button
                   onClick={handleLoadWhccProducts}
                   disabled={!selectedPriceListId || loading}
-                  style={{
-                    padding: '10px 20px',
-                    backgroundColor: selectedPriceListId ? '#4caf50' : '#ccc',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: selectedPriceListId ? 'pointer' : 'not-allowed',
-                  }}
+                  className="btn btn-success"
                 >
                   {loading ? 'Loading...' : 'Next: Select Products'}
                 </button>
@@ -256,39 +244,23 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
         {/* Step 2: Select Products */}
         {step === 'select-products' && (
           <>
-            <p style={{ color: '#666', marginBottom: '20px' }}>
+            <p style={{ color: 'var(--text-secondary)', marginBottom: '20px' }}>
               Select products from WHCC catalog to add to your price list.
             </p>
 
             {/* Global Controls */}
-            <div style={{ marginBottom: '20px', padding: '15px', backgroundColor: '#f5f5f5', borderRadius: '4px', border: '1px solid #ddd' }}>
+            <div className="admin-section-card" style={{ marginBottom: '20px' }}>
               <div style={{ display: 'flex', gap: '15px', alignItems: 'center', flexWrap: 'wrap' }}>
                 <div style={{ display: 'flex', gap: '10px' }}>
                   <button
                     onClick={handleSelectAll}
-                    style={{
-                      padding: '8px 16px',
-                      backgroundColor: '#2196f3',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      fontSize: '13px',
-                    }}
+                    className="btn btn-primary btn-sm"
                   >
                     Select All ({whccProducts.length})
                   </button>
                   <button
                     onClick={handleDeselectAll}
-                    style={{
-                      padding: '8px 16px',
-                      backgroundColor: '#666',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      fontSize: '13px',
-                    }}
+                    className="btn btn-secondary btn-sm"
                   >
                     Deselect All
                   </button>
@@ -307,35 +279,29 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
                     style={{
                       width: '80px',
                       padding: '6px',
-                      border: '1px solid #ddd',
+                      border: '1px solid var(--border-color)',
                       borderRadius: '4px',
                       fontSize: '13px',
+                      backgroundColor: 'var(--bg-primary)',
+                      color: 'var(--text-primary)',
                     }}
                   />
                   <button
                     onClick={handleApplyGlobalMarkup}
                     disabled={selectedProducts.size === 0}
-                    style={{
-                      padding: '6px 12px',
-                      backgroundColor: selectedProducts.size > 0 ? '#4caf50' : '#ccc',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: selectedProducts.size > 0 ? 'pointer' : 'not-allowed',
-                      fontSize: '12px',
-                    }}
+                    className="btn btn-success btn-sm"
                   >
                     Apply to Selected
                   </button>
                 </div>
 
-                <div style={{ fontSize: '12px', color: '#666' }}>
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
                   Selected: <strong>{selectedProducts.size}</strong> / {whccProducts.length}
                 </div>
               </div>
             </div>
 
-            <div style={{ marginBottom: '20px', maxHeight: '400px', overflowY: 'auto', border: '1px solid #ddd', borderRadius: '4px', padding: '15px' }}>
+            <div className="import-scroll-panel">
               {whccProducts.map((product) => {
                 const isSelected = selectedProducts.has(product.productUID);
                 const mapping = selectedProducts.get(product.productUID);
@@ -343,13 +309,7 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
                 return (
                   <div
                     key={product.productUID}
-                    style={{
-                      padding: '15px',
-                      marginBottom: '10px',
-                      backgroundColor: isSelected ? '#e3f2fd' : '#f5f5f5',
-                      borderRadius: '4px',
-                      border: isSelected ? '2px solid #2196f3' : '1px solid #ddd',
-                    }}
+                    className={`import-product-card${isSelected ? ' selected' : ''}`}
                   >
                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '15px' }}>
                       <input
@@ -361,7 +321,7 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
 
                       <div style={{ flex: 1 }}>
                         <h4 style={{ margin: '0 0 5px 0' }}>{product.name}</h4>
-                        <p style={{ margin: '0 0 5px 0', fontSize: '12px', color: '#666' }}>
+                        <p style={{ margin: '0 0 5px 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
                           {product.description}
                         </p>
                         <p style={{ margin: '0 0 5px 0', fontSize: '12px' }}>
@@ -370,8 +330,8 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
                         </p>
 
                         {isSelected && (
-                          <div style={{ marginTop: '10px', padding: '10px', backgroundColor: 'white', borderRadius: '4px' }}>
-                            <div style={{ marginBottom: '10px', padding: '8px', backgroundColor: '#f0f0f0', borderRadius: '3px', fontSize: '12px' }}>
+                          <div className="import-pricing-box">
+                            <div className="import-pricing-summary">
                               <strong>Cost:</strong> ${product.basePrice.toFixed(2)}
                               {' | '}
                               <strong>Retail Price:</strong> ${
@@ -403,10 +363,12 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
                                   style={{
                                     width: '80px',
                                     padding: '6px',
-                                    border: '1px solid #ddd',
+                                    border: '1px solid var(--border-color)',
                                     borderRadius: '4px',
                                     fontSize: '12px',
                                     marginBottom: '8px',
+                                    backgroundColor: 'var(--bg-secondary)',
+                                    color: 'var(--text-primary)',
                                   }}
                                 />
                               </>
@@ -426,10 +388,12 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
                                   style={{
                                     width: '100px',
                                     padding: '6px',
-                                    border: '1px solid #ddd',
+                                    border: '1px solid var(--border-color)',
                                     borderRadius: '4px',
                                     fontSize: '12px',
                                     marginBottom: '8px',
+                                    backgroundColor: 'var(--bg-secondary)',
+                                    color: 'var(--text-primary)',
                                   }}
                                 />
                               </>
@@ -457,14 +421,7 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
             <div style={{ display: 'flex', gap: '10px' }}>
               <button
                 onClick={() => setStep('select-list')}
-                style={{
-                  padding: '10px 20px',
-                  backgroundColor: '#999',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                }}
+                className="btn btn-secondary"
               >
                 Back
               </button>
@@ -472,14 +429,7 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
               <button
                 onClick={() => setStep('confirm')}
                 disabled={selectedProducts.size === 0}
-                style={{
-                  padding: '10px 20px',
-                  backgroundColor: selectedProducts.size > 0 ? '#4caf50' : '#ccc',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: selectedProducts.size > 0 ? 'pointer' : 'not-allowed',
-                }}
+                className="btn btn-success"
               >
                 Review & Import ({selectedProducts.size})
               </button>
@@ -490,11 +440,11 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
         {/* Step 3: Confirm */}
         {step === 'confirm' && (
           <>
-            <p style={{ color: '#666', marginBottom: '20px' }}>
+            <p style={{ color: 'var(--text-secondary)', marginBottom: '20px' }}>
               Review and confirm import of <strong>{selectedProducts.size} products</strong> to the selected price list.
             </p>
 
-            <div style={{ marginBottom: '20px', maxHeight: '300px', overflowY: 'auto', border: '1px solid #ddd', borderRadius: '4px', padding: '15px', backgroundColor: '#f9f9f9' }}>
+            <div className="import-scroll-panel" style={{ maxHeight: '300px' }}>
               <h4 style={{ margin: '0 0 10px 0' }}>Products to Import:</h4>
               <ul style={{ margin: 0, paddingLeft: '20px' }}>
                 {Array.from(selectedProducts.values()).map((mapping) => {
@@ -507,9 +457,9 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
                     <li key={mapping.productUID} style={{ marginBottom: '8px', fontSize: '12px' }}>
                       <strong>{product?.name}</strong>
                       {' — Cost: '}
-                      <span style={{ color: '#d32f2f' }}>${cost.toFixed(2)}</span>
+                      <span style={{ color: 'var(--error-color)' }}>${cost.toFixed(2)}</span>
                       {' | Retail: '}
-                      <span style={{ color: '#388e3c' }}>${retailPrice.toFixed(2)}</span>
+                      <span className="success-text">${retailPrice.toFixed(2)}</span>
                       {' | Margin: '}
                       <span>{margin}%</span>
                     </li>
@@ -521,14 +471,7 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
             <div style={{ display: 'flex', gap: '10px' }}>
               <button
                 onClick={() => setStep('select-products')}
-                style={{
-                  padding: '10px 20px',
-                  backgroundColor: '#999',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                }}
+                className="btn btn-secondary"
               >
                 Back
               </button>
@@ -536,14 +479,7 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
               <button
                 onClick={handleImport}
                 disabled={importing}
-                style={{
-                  padding: '10px 20px',
-                  backgroundColor: importing ? '#ccc' : '#4caf50',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: importing ? 'not-allowed' : 'pointer',
-                }}
+                className="btn btn-success"
               >
                 {importing ? 'Importing...' : 'Import to Price List'}
               </button>
@@ -554,16 +490,7 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
         {/* Close button */}
         <button
           onClick={onClose}
-          style={{
-            position: 'absolute',
-            top: '15px',
-            right: '15px',
-            backgroundColor: 'transparent',
-            border: 'none',
-            fontSize: '24px',
-            cursor: 'pointer',
-            color: '#666',
-          }}
+          className="import-close"
         >
           ×
         </button>
