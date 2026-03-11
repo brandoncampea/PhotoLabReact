@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import { studioFeatureService, StudioFeatureSettings } from '../../services/studioFeatureService';
 import '../../AdminStyles.css';
 
 interface StudioAdmin {
@@ -29,6 +30,7 @@ const AdminStudioAdmins: React.FC = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
+  const [featureSettings, setFeatureSettings] = useState<StudioFeatureSettings>(studioFeatureService.getDefaultSettings());
   const [formData, setFormData] = useState({
     email: '',
     name: '',
@@ -56,6 +58,7 @@ const AdminStudioAdmins: React.FC = () => {
         setStudios(data);
         if (data.length > 0) {
           setSelectedStudio(data[0]);
+          setFeatureSettings(studioFeatureService.getStudioSettings(data[0].id));
           fetchAdmins(data[0].id);
         }
       }
@@ -92,9 +95,41 @@ const AdminStudioAdmins: React.FC = () => {
 
   const handleSelectStudio = (studio: Studio) => {
     setSelectedStudio(studio);
+    setFeatureSettings(studioFeatureService.getStudioSettings(studio.id));
     setShowAddForm(false);
     setFormData({ email: '', name: '', role: 'studio_admin' });
     fetchAdmins(studio.id);
+  };
+
+  const togglePaymentVendor = (vendor: 'stripe') => {
+    setFeatureSettings((prev) => {
+      const alreadyEnabled = prev.paymentVendors.includes(vendor);
+      return {
+        ...prev,
+        paymentVendors: alreadyEnabled
+          ? prev.paymentVendors.filter((v) => v !== vendor)
+          : [...prev.paymentVendors, vendor],
+      };
+    });
+  };
+
+  const toggleLabVendor = (vendor: 'roes' | 'whcc' | 'mpix') => {
+    setFeatureSettings((prev) => {
+      const alreadyEnabled = prev.labVendors.includes(vendor);
+      return {
+        ...prev,
+        labVendors: alreadyEnabled
+          ? prev.labVendors.filter((v) => v !== vendor)
+          : [...prev.labVendors, vendor],
+      };
+    });
+  };
+
+  const handleSaveFeatureSettings = () => {
+    if (!selectedStudio) return;
+    studioFeatureService.saveStudioSettings(selectedStudio.id, featureSettings);
+    setSuccess(`Studio access settings saved for ${selectedStudio.name}`);
+    setTimeout(() => setSuccess(''), 4000);
   };
 
   const handleAddAdmin = async (e: React.FormEvent) => {
@@ -230,6 +265,71 @@ const AdminStudioAdmins: React.FC = () => {
 
       {selectedStudio && (
         <div>
+          <div style={{
+            marginBottom: '24px',
+            padding: '16px',
+            backgroundColor: 'var(--bg-tertiary)',
+            border: '1px solid var(--border-color)',
+            borderRadius: '8px'
+          }}>
+            <h3 style={{ marginTop: 0 }}>Studio Access Settings</h3>
+            <p style={{ color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+              Choose which payment vendors and lab configurations are available to this studio.
+            </p>
+
+            <div style={{ marginTop: '1rem' }}>
+              <h4 style={{ marginBottom: '0.75rem' }}>Payment Vendors</h4>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                <input
+                  type="checkbox"
+                  checked={featureSettings.paymentVendors.includes('stripe')}
+                  onChange={() => togglePaymentVendor('stripe')}
+                />
+                Stripe
+              </label>
+            </div>
+
+            <div style={{ marginTop: '1rem' }}>
+              <h4 style={{ marginBottom: '0.75rem' }}>Lab Configurations</h4>
+              <div style={{ display: 'grid', gap: '0.5rem' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={featureSettings.labVendors.includes('roes')}
+                    onChange={() => toggleLabVendor('roes')}
+                  />
+                  ROES
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={featureSettings.labVendors.includes('whcc')}
+                    onChange={() => toggleLabVendor('whcc')}
+                  />
+                  WHCC
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={featureSettings.labVendors.includes('mpix')}
+                    onChange={() => toggleLabVendor('mpix')}
+                  />
+                  Mpix
+                </label>
+              </div>
+            </div>
+
+            <div style={{ marginTop: '1rem' }}>
+              <button
+                onClick={handleSaveFeatureSettings}
+                className="btn btn-success"
+                style={{ fontSize: '14px', fontWeight: '600' }}
+              >
+                Save Studio Access Settings
+              </button>
+            </div>
+          </div>
+
           {/* Add New Admin Button */}
           <div style={{ marginBottom: '24px' }}>
             <button

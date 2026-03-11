@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { StripeConfig } from '../../types';
 import { stripeService } from '../../services/stripeService';
+import { useAuth } from '../../contexts/AuthContext';
+import { studioFeatureService } from '../../services/studioFeatureService';
 
 const AdminPayments: React.FC = () => {
+  const { user } = useAuth();
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'stripe' | null>('stripe');
   const [config, setConfig] = useState<StripeConfig | null>(null);
   const [loading, setLoading] = useState(true);
@@ -86,6 +89,24 @@ const AdminPayments: React.FC = () => {
 
   if (loading) {
     return <div className="loading">Loading payment configuration...</div>;
+  }
+
+  const stripeAvailable = studioFeatureService.isPaymentVendorAvailable(user, 'stripe');
+
+  if (!stripeAvailable) {
+    return (
+      <div className="admin-page">
+        <div className="page-header">
+          <h1>💳 Payment Methods</h1>
+          <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
+            Payment methods are managed by your super admin.
+          </p>
+        </div>
+        <div className="info-box" style={{ border: '1px solid var(--border-color)' }}>
+          Stripe is not enabled for your studio. Contact your super admin to request access.
+        </div>
+      </div>
+    );
   }
 
   return (

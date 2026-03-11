@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { mpixService } from '../../services/mpixService';
 import { siteConfigService } from '../../services/siteConfigService';
+import { useAuth } from '../../contexts/AuthContext';
+import { studioFeatureService } from '../../services/studioFeatureService';
 
 interface RoesConfig {
   apiKey: string;
@@ -33,6 +35,7 @@ interface MpixConfigState {
 }
 
 const AdminLabs: React.FC = () => {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'roes' | 'whcc' | 'mpix'>('roes');
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -72,6 +75,17 @@ const AdminLabs: React.FC = () => {
   useEffect(() => {
     loadConfigs();
   }, []);
+
+  const allowedTabs = (['roes', 'whcc', 'mpix'] as const).filter((lab) =>
+    studioFeatureService.isLabVendorAvailable(user, lab)
+  );
+
+  useEffect(() => {
+    if (allowedTabs.length === 0) return;
+    if (!allowedTabs.includes(activeTab)) {
+      setActiveTab(allowedTabs[0]);
+    }
+  }, [allowedTabs, activeTab]);
 
   const loadConfigs = () => {
     // Load ROES
@@ -181,30 +195,42 @@ const AdminLabs: React.FC = () => {
       )}
 
       <div style={{ marginTop: '2rem' }}>
+        {allowedTabs.length === 0 ? (
+          <div className="info-box" style={{ border: '1px solid var(--border-color)' }}>
+            No lab configurations are enabled for your studio. Contact your super admin.
+          </div>
+        ) : (
         <div className="admin-tab-strip">
-          <button
-            className={`admin-tab-button ${activeTab === 'roes' ? 'active' : ''}`}
-            onClick={() => setActiveTab('roes')}
-          >
-            ⚙️ ROES
-          </button>
-          <button
-            className={`admin-tab-button ${activeTab === 'whcc' ? 'active' : ''}`}
-            onClick={() => setActiveTab('whcc')}
-          >
-            📦 WHCC
-          </button>
-          <button
-            className={`admin-tab-button ${activeTab === 'mpix' ? 'active' : ''}`}
-            onClick={() => setActiveTab('mpix')}
-          >
-            📸 Mpix
-          </button>
+          {allowedTabs.includes('roes') && (
+            <button
+              className={`admin-tab-button ${activeTab === 'roes' ? 'active' : ''}`}
+              onClick={() => setActiveTab('roes')}
+            >
+              ⚙️ ROES
+            </button>
+          )}
+          {allowedTabs.includes('whcc') && (
+            <button
+              className={`admin-tab-button ${activeTab === 'whcc' ? 'active' : ''}`}
+              onClick={() => setActiveTab('whcc')}
+            >
+              📦 WHCC
+            </button>
+          )}
+          {allowedTabs.includes('mpix') && (
+            <button
+              className={`admin-tab-button ${activeTab === 'mpix' ? 'active' : ''}`}
+              onClick={() => setActiveTab('mpix')}
+            >
+              📸 Mpix
+            </button>
+          )}
         </div>
+        )}
 
-        <div className="tab-content">
+        {allowedTabs.length > 0 && <div className="tab-content">
           {/* ROES Configuration */}
-          {activeTab === 'roes' && (
+          {activeTab === 'roes' && allowedTabs.includes('roes') && (
             <div className="admin-config-section">
               <h2>ROES Web Components Configuration</h2>
               <div className="form-group">
@@ -251,7 +277,7 @@ const AdminLabs: React.FC = () => {
           )}
 
           {/* WHCC Configuration */}
-          {activeTab === 'whcc' && (
+          {activeTab === 'whcc' && allowedTabs.includes('whcc') && (
             <div className="admin-config-section">
               <h2>WHCC Configuration</h2>
               <div className="form-group">
@@ -399,7 +425,7 @@ const AdminLabs: React.FC = () => {
           )}
 
           {/* Mpix Configuration */}
-          {activeTab === 'mpix' && (
+          {activeTab === 'mpix' && allowedTabs.includes('mpix') && (
             <div className="admin-config-section">
               <h2>Mpix Configuration</h2>
               <div className="form-group">
@@ -497,7 +523,7 @@ const AdminLabs: React.FC = () => {
               </button>
             </div>
           )}
-        </div>
+        </div>}
       </div>
 
     </div>
