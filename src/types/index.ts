@@ -264,6 +264,7 @@ export interface AlbumViewStats {
   albumName: string;
   views: number;
   lastViewed: string;
+  coverImageUrl?: string;
 }
 
 export interface PhotoViewStats {
@@ -273,17 +274,20 @@ export interface PhotoViewStats {
   albumName: string;
   views: number;
   lastViewed: string;
+  thumbnailUrl?: string;
+  fullImageUrl?: string;
 }
 
 export interface ActivityLog {
   id: number;
-  type: 'visit' | 'album_view' | 'photo_view';
+  type: 'visit' | 'page_view' | 'album_view' | 'photo_view';
   timestamp: string;
   albumId?: number;
   albumName?: string;
   photoId?: number;
   photoFileName?: string;
   userAgent?: string;
+  path?: string;
 }
 
 export interface PaymentIntent {

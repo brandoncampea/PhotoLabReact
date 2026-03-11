@@ -289,7 +289,18 @@ const CropperModal: React.FC<CropperModalProps> = ({
 
     return (
       <div className="modal-overlay" onClick={onClose}>
-        <div className="modal-content cropper-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '1200px' }}>
+        <div
+          className="modal-content cropper-modal"
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            maxWidth: '1200px',
+            width: '95%',
+            maxHeight: '90vh',
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column'
+          }}
+        >
           <div className="modal-header">
             <h2>{editMode ? 'Edit Crop' : 'Select Product'}</h2>
             <button onClick={onClose} className="btn-close">
@@ -297,16 +308,21 @@ const CropperModal: React.FC<CropperModalProps> = ({
             </button>
           </div>
 
-          <div className="modal-body" style={{ 
-            display: 'grid', 
-            gridTemplateColumns: '40% 1fr', 
-            gap: '2rem', 
-            padding: '2rem',
-            maxHeight: 'calc(90vh - 140px)',
-            overflow: 'hidden'
-          }}>
+          <div
+            className="modal-body"
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'minmax(280px, 40%) minmax(0, 1fr)',
+              gap: '2rem',
+              padding: '2rem',
+              height: 'calc(90vh - 140px)',
+              minHeight: 0,
+              overflow: 'hidden',
+              alignItems: 'start'
+            }}
+          >
             {/* LEFT COLUMN: Photo Preview & Metadata */}
-            <div style={{ marginBottom: '1rem' }}>
+            <div style={{ marginBottom: '1rem', minHeight: 0, overflowY: 'auto', paddingRight: '0.25rem' }}>
               <div
                 style={{
                   width: '100%',
@@ -355,7 +371,7 @@ const CropperModal: React.FC<CropperModalProps> = ({
             </div>
 
             {/* RIGHT COLUMN: Recommendations & Products */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', minHeight: 0 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', minHeight: 0, height: '100%', overflow: 'hidden' }}>
               {/* Tabs */}
               {products.length > 0 && (
                 <div style={{ display: 'flex', gap: '0.5rem', borderBottom: '2px solid #e0e0e0', flexShrink: 0 }}>
@@ -404,7 +420,9 @@ const CropperModal: React.FC<CropperModalProps> = ({
                 overflowY: 'auto',
                 flex: 1,
                 minHeight: 0,
-                paddingRight: '0.5rem'
+                height: '100%',
+                paddingRight: '0.5rem',
+                overscrollBehavior: 'contain'
               }}>
                 {allProducts.length === 0 ? (
                   <div style={{ padding: '2rem', textAlign: 'center', color: '#999' }}>

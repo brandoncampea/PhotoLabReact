@@ -1,6 +1,6 @@
 
 import api from './api';
-import { Photo, PhotoMetadata } from '../types';
+import { Photo } from '../types';
 
 
 const normalizeRecommendations = (data: any) => {

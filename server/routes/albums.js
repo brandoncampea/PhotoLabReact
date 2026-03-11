@@ -1,12 +1,15 @@
 import express from 'express';
 import { queryRow, queryRows, query } from '../mssql.js';
 import { requireActiveSubscription } from '../middleware/subscription.js';
-import { getSignedReadUrl } from '../services/azureStorage.js';
 const router = express.Router();
 
 const signAlbumForResponse = (album) => ({
   ...album,
-  coverImageUrl: album?.coverImageUrl ? getSignedReadUrl(album.coverImageUrl) : album?.coverImageUrl,
+  coverImageUrl: album?.coverPhotoId
+    ? `/api/photos/${album.coverPhotoId}/asset?variant=full`
+    : album?.coverImageUrl
+      ? `/api/photos/proxy?source=${encodeURIComponent(album.coverImageUrl)}`
+      : album?.coverImageUrl,
 });
 
 // Get all albums

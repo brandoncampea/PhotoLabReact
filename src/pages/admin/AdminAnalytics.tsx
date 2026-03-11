@@ -5,6 +5,8 @@ import { analyticsService } from '../../services/analyticsService';
 const AdminAnalytics: React.FC = () => {
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showAllAlbums, setShowAllAlbums] = useState(false);
+  const [showAllPhotos, setShowAllPhotos] = useState(false);
 
   useEffect(() => {
     loadAnalytics();
@@ -36,6 +38,7 @@ const AdminAnalytics: React.FC = () => {
   const getActivityIcon = (type: string) => {
     switch (type) {
       case 'visit': return '🌐';
+      case 'page_view': return '📄';
       case 'album_view': return '📁';
       case 'photo_view': return '🖼️';
       default: return '📊';
@@ -46,6 +49,8 @@ const AdminAnalytics: React.FC = () => {
     switch (activity.type) {
       case 'visit':
         return 'Site visit';
+      case 'page_view':
+        return `Viewed page: ${activity.path || 'Unknown route'}`;
       case 'album_view':
         return `Viewed album: ${activity.albumName}`;
       case 'photo_view':
@@ -63,6 +68,19 @@ const AdminAnalytics: React.FC = () => {
     return <div className="error">Failed to load analytics data</div>;
   }
 
+  const sortedAlbumViews = [...analytics.albumViews].sort((a, b) => b.views - a.views);
+  const sortedPhotoViews = [...analytics.photoViews].sort((a, b) => b.views - a.views);
+  const topAlbums = showAllAlbums ? sortedAlbumViews : sortedAlbumViews.slice(0, 5);
+  const topPhotos = showAllPhotos ? sortedPhotoViews : sortedPhotoViews.slice(0, 5);
+
+  const formatNumber = (value: number) => value.toLocaleString();
+
+  const renderThumbnail = (src: string | undefined, alt: string, fallback: string) => (
+    <div className="analytics-thumb">
+      {src ? <img src={src} alt={alt} /> : <span>{fallback}</span>}
+    </div>
+  );
+
   return (
     <div className="admin-page">
       <div className="page-header">
@@ -76,7 +94,7 @@ const AdminAnalytics: React.FC = () => {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1.5rem', marginBottom: '2rem' }}>
         <div className="analytics-stat-card analytics-stat-card-blue">
           <div className="analytics-stat-value">
-            {analytics.totalVisitors}
+            {formatNumber(analytics.totalVisitors)}
           </div>
           <div className="analytics-stat-label">
             Total Visitors
@@ -85,7 +103,7 @@ const AdminAnalytics: React.FC = () => {
 
         <div className="analytics-stat-card analytics-stat-card-purple">
           <div className="analytics-stat-value">
-            {analytics.totalPageViews}
+            {formatNumber(analytics.totalPageViews)}
           </div>
           <div className="analytics-stat-label">
             Total Page Views
@@ -94,7 +112,7 @@ const AdminAnalytics: React.FC = () => {
 
         <div className="analytics-stat-card analytics-stat-card-green">
           <div className="analytics-stat-value">
-            {analytics.albumViews.reduce((sum, a) => sum + a.views, 0)}
+            {formatNumber(analytics.albumViews.reduce((sum, a) => sum + a.views, 0))}
           </div>
           <div className="analytics-stat-label">
             Album Views
@@ -103,7 +121,7 @@ const AdminAnalytics: React.FC = () => {
 
         <div className="analytics-stat-card analytics-stat-card-orange">
           <div className="analytics-stat-value">
-            {analytics.photoViews.reduce((sum, p) => sum + p.views, 0)}
+            {formatNumber(analytics.photoViews.reduce((sum, p) => sum + p.views, 0))}
           </div>
           <div className="analytics-stat-label">
             Photo Views
@@ -114,7 +132,14 @@ const AdminAnalytics: React.FC = () => {
       <div className="analytics-two-col">
         {/* Top Albums */}
         <div>
-          <h2 style={{ fontSize: '1.3rem', marginBottom: '1rem' }}>📁 Top Albums</h2>
+          <div className="analytics-section-header">
+            <h2 style={{ fontSize: '1.3rem', marginBottom: '1rem' }}>📁 Top Albums</h2>
+            {sortedAlbumViews.length > 5 && (
+              <button className="btn btn-secondary" onClick={() => setShowAllAlbums((value) => !value)}>
+                {showAllAlbums ? 'Show Top 5' : `View All (${sortedAlbumViews.length})`}
+              </button>
+            )}
+          </div>
           {analytics.albumViews.length === 0 ? (
             <p className="muted-text" style={{ fontStyle: 'italic' }}>No album views yet</p>
           ) : (
@@ -123,19 +148,23 @@ const AdminAnalytics: React.FC = () => {
                 <thead>
                   <tr>
                     <th>Album</th>
+                    <th>Cover</th>
                     <th style={{ textAlign: 'center' }}>Views</th>
                     <th>Last Viewed</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {analytics.albumViews.slice(0, 10).map((album) => (
+                  {topAlbums.map((album) => (
                     <tr key={album.albumId}>
                       <td>
                         <strong>{album.albumName}</strong>
                       </td>
+                      <td>
+                        {renderThumbnail(album.coverImageUrl, `${album.albumName} cover`, '📁')}
+                      </td>
                       <td style={{ textAlign: 'center' }}>
                         <span className="analytics-view-badge" style={{ backgroundColor: 'var(--primary-color)' }}>
-                          {album.views}
+                          {formatNumber(album.views)}
                         </span>
                       </td>
                       <td className="muted-text" style={{ fontSize: '0.85rem' }}>
@@ -151,7 +180,14 @@ const AdminAnalytics: React.FC = () => {
 
         {/* Top Photos */}
         <div>
-          <h2 style={{ fontSize: '1.3rem', marginBottom: '1rem' }}>🖼️ Top Photos</h2>
+          <div className="analytics-section-header">
+            <h2 style={{ fontSize: '1.3rem', marginBottom: '1rem' }}>🖼️ Top Photos</h2>
+            {sortedPhotoViews.length > 5 && (
+              <button className="btn btn-secondary" onClick={() => setShowAllPhotos((value) => !value)}>
+                {showAllPhotos ? 'Show Top 5' : `View All (${sortedPhotoViews.length})`}
+              </button>
+            )}
+          </div>
           {analytics.photoViews.length === 0 ? (
             <p className="muted-text" style={{ fontStyle: 'italic' }}>No photo views yet</p>
           ) : (
@@ -160,12 +196,13 @@ const AdminAnalytics: React.FC = () => {
                 <thead>
                   <tr>
                     <th>Photo</th>
+                    <th>Preview</th>
                     <th style={{ textAlign: 'center' }}>Views</th>
                     <th>Last Viewed</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {analytics.photoViews.slice(0, 10).map((photo) => (
+                  {topPhotos.map((photo) => (
                     <tr key={photo.photoId}>
                       <td>
                         <div>
@@ -175,9 +212,12 @@ const AdminAnalytics: React.FC = () => {
                           </div>
                         </div>
                       </td>
+                      <td>
+                        {renderThumbnail(photo.thumbnailUrl || photo.fullImageUrl, photo.photoFileName, '🖼️')}
+                      </td>
                       <td style={{ textAlign: 'center' }}>
                         <span className="analytics-view-badge" style={{ backgroundColor: '#16a34a' }}>
-                          {photo.views}
+                          {formatNumber(photo.views)}
                         </span>
                       </td>
                       <td className="muted-text" style={{ fontSize: '0.85rem' }}>

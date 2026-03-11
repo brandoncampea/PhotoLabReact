@@ -4,14 +4,54 @@ import path from 'path';
 import { queryRow, queryRows, query } from '../mssql.js';
 import csv from 'csv-parser';
 import sharp from 'sharp';
-import { uploadImageBufferToAzure, deleteBlobByUrl, getSignedReadUrl } from '../services/azureStorage.js';
+import { uploadImageBufferToAzure, deleteBlobByUrl, downloadBlob } from '../services/azureStorage.js';
 const router = express.Router();
+
+const getPhotoAssetUrl = (photoId, variant = 'full') => `/api/photos/${photoId}/asset?variant=${variant}`;
+const getProxySourceUrl = (source) => `/api/photos/proxy?source=${encodeURIComponent(source)}`;
 
 const signPhotoForResponse = (photo) => ({
   ...photo,
-  thumbnailUrl: photo?.thumbnailUrl ? getSignedReadUrl(photo.thumbnailUrl) : photo?.thumbnailUrl,
-  fullImageUrl: photo?.fullImageUrl ? getSignedReadUrl(photo.fullImageUrl) : photo?.fullImageUrl,
+  thumbnailUrl: photo?.id ? getPhotoAssetUrl(photo.id, 'thumbnail') : photo?.thumbnailUrl,
+  fullImageUrl: photo?.id ? getPhotoAssetUrl(photo.id, 'full') : photo?.fullImageUrl,
 });
+
+async function pipeAssetToResponse(source, res) {
+  const download = await downloadBlob(source);
+  if (download?.contentType) {
+    res.setHeader('Content-Type', download.contentType);
+  }
+  if (download?.contentLength) {
+    res.setHeader('Content-Length', String(download.contentLength));
+  }
+  res.setHeader('Cache-Control', 'public, max-age=300');
+
+  if (download?.readableStreamBody) {
+    download.readableStreamBody.on('error', (error) => {
+      if (!res.headersSent) {
+        res.status(500).end(error.message);
+      } else {
+        res.end();
+      }
+    });
+    download.readableStreamBody.pipe(res);
+    return;
+  }
+
+  if (typeof source === 'string' && source.startsWith('http')) {
+    const upstream = await fetch(source);
+    if (!upstream.ok) {
+      res.status(upstream.status).end('Failed to fetch asset');
+      return;
+    }
+    const arrayBuffer = await upstream.arrayBuffer();
+    res.setHeader('Content-Type', upstream.headers.get('content-type') || 'application/octet-stream');
+    res.send(Buffer.from(arrayBuffer));
+    return;
+  }
+
+  res.status(404).json({ error: 'Asset not found' });
+}
 
 const photoUpload = multer({
   storage: multer.memoryStorage(),
@@ -80,6 +120,46 @@ router.get('/album/:albumId', async (req, res) => {
     res.json(photos.map(signPhotoForResponse));
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/proxy', async (req, res) => {
+  try {
+    const source = String(req.query.source || '');
+    if (!source) {
+      return res.status(400).json({ error: 'source is required' });
+    }
+
+    await pipeAssetToResponse(source, res);
+  } catch (error) {
+    if (!res.headersSent) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+});
+
+router.get('/:id/asset', async (req, res) => {
+  try {
+    const variant = req.query.variant === 'thumbnail' ? 'thumbnail' : 'full';
+    const photo = await queryRow(
+      `SELECT id,
+              thumbnail_url as thumbnailUrl,
+              full_image_url as fullImageUrl
+       FROM photos
+       WHERE id = $1`,
+      [req.params.id]
+    );
+
+    if (!photo) {
+      return res.status(404).json({ error: 'Photo not found' });
+    }
+
+    const source = variant === 'thumbnail' ? photo.thumbnailUrl : photo.fullImageUrl;
+    await pipeAssetToResponse(source, res);
+  } catch (error) {
+    if (!res.headersSent) {
+      res.status(500).json({ error: error.message });
+    }
   }
 });
 

@@ -1,5 +1,5 @@
-import { Suspense, lazy } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { Suspense, lazy, useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { CartProvider } from './contexts/CartContext';
 import Navbar from './components/Navbar';
@@ -7,6 +7,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import AdminProtectedRoute from './components/AdminProtectedRoute';
 import SuperAdminProtectedRoute from './components/SuperAdminProtectedRoute';
 import AdminLayout from './components/AdminLayout';
+import { analyticsService } from './services/analyticsService';
 import './App.css';
 import './AdminStyles.css';
 
@@ -43,6 +44,17 @@ const SuperAdminDashboard = lazy(() => import('./pages/SuperAdminDashboard'));
 const SuperAdminPricing = lazy(() => import('./pages/SuperAdminPricing'));
 const CheckoutSuccess = lazy(() => import('./pages/CheckoutSuccess'));
 
+function RouteAnalyticsTracker() {
+  const location = useLocation();
+
+  useEffect(() => {
+    analyticsService.trackVisit();
+    analyticsService.trackPageView(`${location.pathname}${location.search}`);
+  }, [location.pathname, location.search]);
+
+  return null;
+}
+
 function App() {
   return (
     <BrowserRouter
@@ -53,6 +65,7 @@ function App() {
     >
       <AuthProvider>
         <CartProvider>
+          <RouteAnalyticsTracker />
           <div className="app">
             <Navbar />
             <main className="main-content">

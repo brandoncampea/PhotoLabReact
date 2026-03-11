@@ -53,6 +53,27 @@ export async function uploadImageBufferToAzure(buffer, blobName, contentType = '
   return blockBlobClient.url;
 }
 
+export function getBlobNameFromUrlOrName(blobUrlOrName) {
+  if (!blobUrlOrName) return null;
+
+  if (!String(blobUrlOrName).startsWith('http')) {
+    return blobUrlOrName;
+  }
+
+  try {
+    const parsed = new URL(blobUrlOrName);
+    const marker = `/${STORAGE_CONTAINER}/`;
+    const markerIndex = parsed.pathname.indexOf(marker);
+    if (markerIndex < 0) {
+      return null;
+    }
+
+    return decodeURIComponent(parsed.pathname.slice(markerIndex + marker.length));
+  } catch {
+    return null;
+  }
+}
+
 export function getSignedReadUrl(blobUrlOrName, expiresInHours = Number(process.env.AZURE_READ_SAS_HOURS || 24)) {
   if (!blobUrlOrName) return blobUrlOrName;
 
@@ -62,19 +83,7 @@ export function getSignedReadUrl(blobUrlOrName, expiresInHours = Number(process.
     return blobUrlOrName;
   }
 
-  let blobName = blobUrlOrName;
-  if (blobUrlOrName.startsWith('http')) {
-    try {
-      const parsed = new URL(blobUrlOrName);
-      const marker = `/${STORAGE_CONTAINER}/`;
-      const markerIndex = parsed.pathname.indexOf(marker);
-      if (markerIndex >= 0) {
-        blobName = decodeURIComponent(parsed.pathname.slice(markerIndex + marker.length));
-      }
-    } catch {
-      return blobUrlOrName;
-    }
-  }
+  const blobName = getBlobNameFromUrlOrName(blobUrlOrName);
 
   if (!blobName) return blobUrlOrName;
 
@@ -97,21 +106,24 @@ export function getSignedReadUrl(blobUrlOrName, expiresInHours = Number(process.
   return `${container.getBlockBlobClient(blobName).url}?${sas.toString()}`;
 }
 
+export async function downloadBlob(blobUrlOrName) {
+  const blobName = getBlobNameFromUrlOrName(blobUrlOrName);
+  if (!blobName) {
+    return null;
+  }
+
+  const container = getContainerClient();
+  const blockBlobClient = container.getBlockBlobClient(blobName);
+  return blockBlobClient.download();
+}
+
 export async function deleteBlobByUrl(blobUrl) {
   if (!blobUrl || !blobUrl.startsWith('http')) {
     return;
   }
 
   const container = getContainerClient();
-  const url = new URL(blobUrl);
-  const marker = `/${STORAGE_CONTAINER}/`;
-  const markerIndex = url.pathname.indexOf(marker);
-
-  if (markerIndex < 0) {
-    return;
-  }
-
-  const blobName = decodeURIComponent(url.pathname.slice(markerIndex + marker.length));
+  const blobName = getBlobNameFromUrlOrName(blobUrl);
   if (!blobName) {
     return;
   }
