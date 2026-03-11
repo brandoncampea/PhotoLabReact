@@ -49,13 +49,72 @@ export default function SuperAdminDashboard() {
     feeType: 'percentage',
     feeValue: 0
   });
+  const [subscriptionPaymentConfig, setSubscriptionPaymentConfig] = useState({
+    publishableKey: '',
+    secretKey: '',
+    webhookSecret: '',
+    isLiveMode: false,
+    isActive: false,
+  });
+  const [savingSubscriptionConfig, setSavingSubscriptionConfig] = useState(false);
 
   useEffect(() => {
     if (user?.role === 'super_admin') {
       fetchStudios();
       fetchPlans();
+      fetchSubscriptionPaymentConfig();
     }
   }, [user]);
+
+  const fetchSubscriptionPaymentConfig = async () => {
+    try {
+      const token = localStorage.getItem('authToken');
+      const response = await fetch('/api/studios/subscription-payment-config', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setSubscriptionPaymentConfig({
+          publishableKey: data.publishableKey || '',
+          secretKey: data.secretKey || '',
+          webhookSecret: data.webhookSecret || '',
+          isLiveMode: !!data.isLiveMode,
+          isActive: !!data.isActive,
+        });
+      }
+    } catch (err) {
+      console.error('Failed to fetch subscription payment config:', err);
+    }
+  };
+
+  const handleSaveSubscriptionPaymentConfig = async () => {
+    try {
+      setSavingSubscriptionConfig(true);
+      const token = localStorage.getItem('authToken');
+      const response = await fetch('/api/studios/subscription-payment-config', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(subscriptionPaymentConfig),
+      });
+
+      if (response.ok) {
+        alert('Subscription payment configuration saved successfully');
+      } else {
+        const data = await response.json();
+        setError(data.error || 'Failed to save subscription payment configuration');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to save subscription payment configuration');
+    } finally {
+      setSavingSubscriptionConfig(false);
+    }
+  };
 
   const fetchStudios = async () => {
     setLoading(true);
@@ -208,6 +267,75 @@ export default function SuperAdminDashboard() {
           style={{ fontSize: '16px', fontWeight: 'bold' }}
         >
           💰 Manage Pricing
+        </button>
+      </div>
+
+      <div className="admin-summary-box" style={{ marginBottom: '24px' }}>
+        <h2 style={{ marginTop: 0 }}>Studio Subscription Payment Gateway</h2>
+        <p style={{ marginTop: '0.5rem', color: 'var(--text-secondary)' }}>
+          This Stripe configuration is used only for studio subscription billing (not customer checkout).
+        </p>
+
+        <div className="form-group">
+          <label>
+            <input
+              type="checkbox"
+              checked={subscriptionPaymentConfig.isActive}
+              onChange={(e) => setSubscriptionPaymentConfig(prev => ({ ...prev, isActive: e.target.checked }))}
+              style={{ marginRight: '0.5rem' }}
+            />
+            Enable subscription billing gateway
+          </label>
+        </div>
+
+        <div className="form-group">
+          <label>
+            <input
+              type="checkbox"
+              checked={subscriptionPaymentConfig.isLiveMode}
+              onChange={(e) => setSubscriptionPaymentConfig(prev => ({ ...prev, isLiveMode: e.target.checked }))}
+              style={{ marginRight: '0.5rem' }}
+            />
+            Live mode
+          </label>
+        </div>
+
+        <div className="form-group">
+          <label>Publishable Key</label>
+          <input
+            type="text"
+            value={subscriptionPaymentConfig.publishableKey}
+            onChange={(e) => setSubscriptionPaymentConfig(prev => ({ ...prev, publishableKey: e.target.value }))}
+            placeholder={subscriptionPaymentConfig.isLiveMode ? 'pk_live_...' : 'pk_test_...'}
+          />
+        </div>
+
+        <div className="form-group">
+          <label>Secret Key</label>
+          <input
+            type="password"
+            value={subscriptionPaymentConfig.secretKey}
+            onChange={(e) => setSubscriptionPaymentConfig(prev => ({ ...prev, secretKey: e.target.value }))}
+            placeholder={subscriptionPaymentConfig.isLiveMode ? 'sk_live_...' : 'sk_test_...'}
+          />
+        </div>
+
+        <div className="form-group">
+          <label>Webhook Secret</label>
+          <input
+            type="password"
+            value={subscriptionPaymentConfig.webhookSecret}
+            onChange={(e) => setSubscriptionPaymentConfig(prev => ({ ...prev, webhookSecret: e.target.value }))}
+            placeholder="whsec_..."
+          />
+        </div>
+
+        <button
+          onClick={handleSaveSubscriptionPaymentConfig}
+          className="btn btn-success"
+          disabled={savingSubscriptionConfig}
+        >
+          {savingSubscriptionConfig ? 'Saving...' : 'Save Subscription Gateway Config'}
         </button>
       </div>
 

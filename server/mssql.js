@@ -155,6 +155,8 @@ export async function initializeDatabase() {
           subscription_end DATETIME2,
           stripe_customer_id NVARCHAR(255),
           stripe_subscription_id NVARCHAR(255),
+          payment_vendors NVARCHAR(MAX),
+          lab_vendors NVARCHAR(MAX),
           fee_type NVARCHAR(50) DEFAULT 'percentage',
           fee_value FLOAT DEFAULT 0,
           billing_cycle NVARCHAR(50) DEFAULT 'monthly',
@@ -463,6 +465,22 @@ export async function initializeDatabase() {
     `);
 
     await query(`
+      IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'subscription_stripe_config')
+      BEGIN
+        CREATE TABLE subscription_stripe_config (
+          id INT PRIMARY KEY,
+          publishable_key NVARCHAR(255),
+          secret_key NVARCHAR(255),
+          webhook_secret NVARCHAR(255),
+          is_live_mode BIT DEFAULT 0,
+          is_active BIT DEFAULT 0,
+          updated_at DATETIME2 DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT ck_subscription_stripe_config_id CHECK (id = 1)
+        )
+      END
+    `);
+
+    await query(`
       IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'categories')
       BEGIN
         CREATE TABLE categories (
@@ -512,6 +530,40 @@ export async function initializeDatabase() {
          VALUES (1, 'pk_test_example', 'sk_test_example', 0, 0)
        END`
     );
+
+    await query(
+      `IF NOT EXISTS (SELECT 1 FROM subscription_stripe_config WHERE id = 1)
+       BEGIN
+         INSERT INTO subscription_stripe_config (id, publishable_key, secret_key, webhook_secret, is_live_mode, is_active)
+         VALUES (1, 'pk_test_example', 'sk_test_example', NULL, 0, 0)
+       END`
+    );
+
+    await query(`
+      IF COL_LENGTH('studios', 'payment_vendors') IS NULL
+      BEGIN
+        ALTER TABLE studios ADD payment_vendors NVARCHAR(MAX) NULL
+      END
+    `);
+
+    await query(`
+      IF COL_LENGTH('studios', 'lab_vendors') IS NULL
+      BEGIN
+        ALTER TABLE studios ADD lab_vendors NVARCHAR(MAX) NULL
+      END
+    `);
+
+    await query(`
+      UPDATE studios
+      SET payment_vendors = '["stripe"]'
+      WHERE payment_vendors IS NULL OR LTRIM(RTRIM(payment_vendors)) = ''
+    `);
+
+    await query(`
+      UPDATE studios
+      SET lab_vendors = '["roes","whcc","mpix"]'
+      WHERE lab_vendors IS NULL OR LTRIM(RTRIM(lab_vendors)) = ''
+    `);
 
     await query(`
       IF COL_LENGTH('orders', 'batch_ready_date') IS NULL

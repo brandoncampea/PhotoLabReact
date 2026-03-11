@@ -1,4 +1,5 @@
 import Stripe from 'stripe';
+import { queryRow } from '../mssql.js';
 
 // Initialize Stripe with secret key from environment
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY || 'sk_test_51QqI2mFc0tLpWH2yXzAbCdEfGhIjKlMnOpQrStUvWxYzAbCdEfGhIjKlMn';
@@ -6,14 +7,37 @@ const stripe = new Stripe(stripeSecretKey, {
   apiVersion: '2023-10-16'
 });
 
+const getConfiguredStripeClient = async () => {
+  try {
+    const config = await queryRow('SELECT * FROM subscription_stripe_config WHERE id = 1');
+    const secretKey = config?.secret_key ? String(config.secret_key).trim() : '';
+    const isActive = Boolean(config?.is_active);
+
+    if (isActive && secretKey && !secretKey.includes('example')) {
+      return {
+        client: new Stripe(secretKey, { apiVersion: '2023-10-16' }),
+        config,
+      };
+    }
+  } catch (error) {
+    console.warn('Subscription Stripe config lookup failed, falling back to env key:', error?.message || error);
+  }
+
+  return {
+    client: stripe,
+    config: null,
+  };
+};
+
 export const stripeService = {
   /**
    * Create a checkout session for subscription
    */
   async createCheckoutSession(studioId, stripePriceId, successUrl, cancelUrl) {
     try {
+      const { client } = await getConfiguredStripeClient();
       // Create a new customer or get existing one
-      const session = await stripe.checkout.sessions.create({
+      const session = await client.checkout.sessions.create({
         payment_method_types: ['card'],
         mode: 'subscription',
         line_items: [
@@ -41,7 +65,8 @@ export const stripeService = {
    */
   async getSubscription(subscriptionId) {
     try {
-      const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+      const { client } = await getConfiguredStripeClient();
+      const subscription = await client.subscriptions.retrieve(subscriptionId);
       return subscription;
     } catch (error) {
       console.error('Error retrieving subscription:', error);
@@ -54,10 +79,11 @@ export const stripeService = {
    */
   async updateSubscription(subscriptionId, newPriceId) {
     try {
-      const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+      const { client } = await getConfiguredStripeClient();
+      const subscription = await client.subscriptions.retrieve(subscriptionId);
       
       // Update the subscription with new price
-      const updated = await stripe.subscriptions.update(subscriptionId, {
+      const updated = await client.subscriptions.update(subscriptionId, {
         items: [
           {
             id: subscription.items.data[0].id,
@@ -78,7 +104,8 @@ export const stripeService = {
    */
   async cancelSubscription(subscriptionId) {
     try {
-      const subscription = await stripe.subscriptions.del(subscriptionId);
+      const { client } = await getConfiguredStripeClient();
+      const subscription = await client.subscriptions.del(subscriptionId);
       return subscription;
     } catch (error) {
       console.error('Error canceling subscription:', error);
@@ -91,7 +118,8 @@ export const stripeService = {
    */
   async createCustomer(email, name) {
     try {
-      const customer = await stripe.customers.create({
+      const { client } = await getConfiguredStripeClient();
+      const customer = await client.customers.create({
         email,
         name
       });
@@ -105,9 +133,17 @@ export const stripeService = {
   /**
    * Verify webhook signature
    */
-  verifyWebhookSignature(body, signature, webhookSecret) {
+  async verifyWebhookSignature(body, signature, webhookSecret) {
     try {
-      const event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
+      let signingSecret = webhookSecret;
+
+      if (!signingSecret) {
+        const { config } = await getConfiguredStripeClient();
+        signingSecret = config?.webhook_secret || process.env.STRIPE_WEBHOOK_SECRET || 'whsec_test_secret';
+      }
+
+      const { client } = await getConfiguredStripeClient();
+      const event = client.webhooks.constructEvent(body, signature, signingSecret);
       return event;
     } catch (error) {
       console.error('Webhook signature verification failed:', error);

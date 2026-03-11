@@ -11,12 +11,11 @@ const router = express.Router();
  */
 router.post('/stripe', express.raw({ type: 'application/json' }), async (req, res) => {
   const sig = req.headers['stripe-signature'];
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || 'whsec_test_secret';
 
   let event;
 
   try {
-    event = stripeService.verifyWebhookSignature(req.body, sig, webhookSecret);
+    event = await stripeService.verifyWebhookSignature(req.body, sig);
   } catch (err) {
     console.error('Webhook Error:', err.message);
     return res.status(400).send(`Webhook Error: ${err.message}`);
