@@ -43,3 +43,12 @@ export const adminRequired = async (req, res, next) => {
     next();
   });
 };
+
+export const superAdminRequired = async (req, res, next) => {
+  await authRequired(req, res, () => {
+    if (req.user?.role !== 'super_admin') {
+      return res.status(403).json({ error: 'Super admin access required' });
+    }
+    next();
+  });
+};

@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 
 const AdminProducts: React.FC = () => {
   const { user } = useAuth();
+  const canManagePriceListProducts = user?.role === 'super_admin';
   const [priceLists, setPriceLists] = useState<PriceList[]>([]);
   const [selectedPriceList, setSelectedPriceList] = useState<PriceList | null>(null);
   const [loading, setLoading] = useState(true);
@@ -301,10 +302,18 @@ const AdminProducts: React.FC = () => {
     <div className="admin-page">
       <div className="page-header">
         <h1>Products</h1>
-        <button onClick={handleCreateProduct} className="btn btn-primary">
-          + Add Product
-        </button>
+        {canManagePriceListProducts && (
+          <button onClick={handleCreateProduct} className="btn btn-primary">
+            + Add Product
+          </button>
+        )}
       </div>
+
+      {!canManagePriceListProducts && (
+        <div className="info-box" style={{ border: '1px solid var(--border-color)', marginBottom: '1rem' }}>
+          Product and size management is super-admin only. You can still choose products from this price list and create packages.
+        </div>
+      )}
 
       {/* Price List Selector */}
       <div className="selection-panel">
@@ -375,18 +384,22 @@ const AdminProducts: React.FC = () => {
                       </p>
                     </div>
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
-                      <button
-                        onClick={() => handleEditProduct(product)}
-                        className="btn-icon"
-                      >
-                        ✏️
-                      </button>
-                      <button
-                        onClick={() => handleDeleteProduct(product.id)}
-                        className="btn-icon"
-                      >
-                        🗑️
-                      </button>
+                      {canManagePriceListProducts && (
+                        <>
+                          <button
+                            onClick={() => handleEditProduct(product)}
+                            className="btn-icon"
+                          >
+                            ✏️
+                          </button>
+                          <button
+                            onClick={() => handleDeleteProduct(product.id)}
+                            className="btn-icon"
+                          >
+                            🗑️
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
 
@@ -399,12 +412,14 @@ const AdminProducts: React.FC = () => {
                   <div style={{ marginTop: '1rem' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
                       <strong style={{ fontSize: '0.9rem' }}>Sizes ({product.sizes.length})</strong>
-                      <button
-                        onClick={() => handleCreateSize(product)}
-                        className="btn btn-success btn-sm"
-                      >
-                        + Add
-                      </button>
+                      {canManagePriceListProducts && (
+                        <button
+                          onClick={() => handleCreateSize(product)}
+                          className="btn btn-success btn-sm"
+                        >
+                          + Add
+                        </button>
+                      )}
                     </div>
 
                     {product.sizes.length === 0 ? (
@@ -444,18 +459,22 @@ const AdminProducts: React.FC = () => {
                               </div>
                             </div>
                             <div className="row-actions">
-                              <button
-                                onClick={() => handleEditSize(product, size)}
-                                className="btn btn-primary btn-sm"
-                              >
-                                Edit
-                              </button>
-                              <button
-                                onClick={() => handleDeleteSize(product.id, size.id)}
-                                className="btn btn-danger btn-sm"
-                              >
-                                Delete
-                              </button>
+                              {canManagePriceListProducts && (
+                                <>
+                                  <button
+                                    onClick={() => handleEditSize(product, size)}
+                                    className="btn btn-primary btn-sm"
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteSize(product.id, size.id)}
+                                    className="btn btn-danger btn-sm"
+                                  >
+                                    Delete
+                                  </button>
+                                </>
+                              )}
                             </div>
                           </div>
                         ))}
@@ -664,7 +683,7 @@ const AdminProducts: React.FC = () => {
                               )}
                             </div>
       {/* Product Modal */}
-      {showProductModal && (
+      {showProductModal && canManagePriceListProducts && (
         <div className="modal-overlay" onClick={() => setShowProductModal(false)}>
           <div className="modal-content admin-modal-content" onClick={e => e.stopPropagation()}>
             <div className="modal-header admin-modal-header">
@@ -713,7 +732,7 @@ const AdminProducts: React.FC = () => {
       )}
 
       {/* Size Modal */}
-      {showSizeModal && (
+      {showSizeModal && canManagePriceListProducts && (
         <div className="modal-overlay" onClick={() => setShowSizeModal(false)}>
           <div className="modal-content admin-modal-content" onClick={e => e.stopPropagation()}>
             <div className="modal-header admin-modal-header">

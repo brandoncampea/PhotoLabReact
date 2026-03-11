@@ -1,6 +1,6 @@
 import express from 'express';
 import { queryRow, queryRows, query } from '../mssql.js';
-import { adminRequired } from '../middleware/auth.js';
+import { adminRequired, superAdminRequired } from '../middleware/auth.js';
 const router = express.Router();
 
 const SIZE_DIMENSION_DELIMITER = '__';
@@ -131,7 +131,7 @@ router.get('/:id', adminRequired, async (req, res) => {
   }
 });
 
-router.post('/:id/products', adminRequired, async (req, res) => {
+router.post('/:id/products', superAdminRequired, async (req, res) => {
   try {
     const priceListId = Number(req.params.id);
     const { name, description, isDigital } = req.body;
@@ -167,7 +167,7 @@ router.post('/:id/products', adminRequired, async (req, res) => {
   }
 });
 
-router.put('/:id/products/:productId', adminRequired, async (req, res) => {
+router.put('/:id/products/:productId', superAdminRequired, async (req, res) => {
   try {
     const { name, description, isDigital } = req.body;
     const existing = await queryRow('SELECT id, options FROM products WHERE id = $1', [req.params.productId]);
@@ -196,7 +196,7 @@ router.put('/:id/products/:productId', adminRequired, async (req, res) => {
   }
 });
 
-router.delete('/:id/products/:productId', adminRequired, async (req, res) => {
+router.delete('/:id/products/:productId', superAdminRequired, async (req, res) => {
   try {
     await query('DELETE FROM price_list_products WHERE price_list_id = $1 AND product_id = $2', [req.params.id, req.params.productId]);
     await query('DELETE FROM product_sizes WHERE price_list_id = $1 AND product_id = $2', [req.params.id, req.params.productId]);
@@ -206,7 +206,7 @@ router.delete('/:id/products/:productId', adminRequired, async (req, res) => {
   }
 });
 
-router.post('/:id/products/:productId/sizes', adminRequired, async (req, res) => {
+router.post('/:id/products/:productId/sizes', superAdminRequired, async (req, res) => {
   try {
     const { name, width, height, price, cost } = req.body;
     const encodedName = encodeSizeName(name, width, height);
@@ -231,7 +231,7 @@ router.post('/:id/products/:productId/sizes', adminRequired, async (req, res) =>
   }
 });
 
-router.put('/:id/products/:productId/sizes/:sizeId', adminRequired, async (req, res) => {
+router.put('/:id/products/:productId/sizes/:sizeId', superAdminRequired, async (req, res) => {
   try {
     const { name, width, height, price, cost } = req.body;
     const encodedName = encodeSizeName(name, width, height);
@@ -250,7 +250,7 @@ router.put('/:id/products/:productId/sizes/:sizeId', adminRequired, async (req, 
   }
 });
 
-router.delete('/:id/products/:productId/sizes/:sizeId', adminRequired, async (req, res) => {
+router.delete('/:id/products/:productId/sizes/:sizeId', superAdminRequired, async (req, res) => {
   try {
     await query(
       `DELETE FROM product_sizes
@@ -264,7 +264,7 @@ router.delete('/:id/products/:productId/sizes/:sizeId', adminRequired, async (re
 });
 
 // Create price list
-router.post('/', adminRequired, async (req, res) => {
+router.post('/', superAdminRequired, async (req, res) => {
   try {
     const { name, description, isDefault } = req.body;
     
@@ -292,7 +292,7 @@ router.post('/', adminRequired, async (req, res) => {
 });
 
 // Update price list
-router.put('/:id', adminRequired, async (req, res) => {
+router.put('/:id', superAdminRequired, async (req, res) => {
   try {
     const { name, description, isDefault } = req.body;
 
@@ -319,7 +319,7 @@ router.put('/:id', adminRequired, async (req, res) => {
 });
 
 // Set default price list
-router.post('/:id/setDefault', adminRequired, async (req, res) => {
+router.post('/:id/setDefault', superAdminRequired, async (req, res) => {
   try {
     await query('UPDATE price_lists SET is_default = 0');
     await query('UPDATE price_lists SET is_default = 1 WHERE id = $1', [req.params.id]);
@@ -337,7 +337,7 @@ router.post('/:id/setDefault', adminRequired, async (req, res) => {
 });
 
 // Delete price list
-router.delete('/:id', adminRequired, async (req, res) => {
+router.delete('/:id', superAdminRequired, async (req, res) => {
   try {
     await query('DELETE FROM price_lists WHERE id = $1', [req.params.id]);
     res.json({ message: 'Price list deleted successfully' });

@@ -1,9 +1,12 @@
 import React from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 
 const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const isSuperAdmin = user?.role === 'super_admin';
 
   const handleLogout = () => {
     localStorage.removeItem('adminToken');
@@ -50,12 +53,14 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           >
             📦 Products
           </Link>
-          <Link
-            to="/admin/price-lists"
-            className={`admin-nav-link ${isActive('/admin/price-lists') ? 'active' : ''}`}
-          >
-            💰 Price Lists
-          </Link>
+          {isSuperAdmin && (
+            <Link
+              to="/admin/price-lists"
+              className={`admin-nav-link ${isActive('/admin/price-lists') ? 'active' : ''}`}
+            >
+              💰 Price Lists
+            </Link>
+          )}
           <Link
             to="/admin/watermarks"
             className={`admin-nav-link ${isActive('/admin/watermarks') ? 'active' : ''}`}
