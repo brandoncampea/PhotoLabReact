@@ -134,7 +134,7 @@ const AdminAnalytics: React.FC = () => {
                         <strong>{album.albumName}</strong>
                       </td>
                       <td style={{ textAlign: 'center' }}>
-                        <span className="analytics-view-badge" style={{ backgroundColor: '#4169E1' }}>
+                        <span className="analytics-view-badge" style={{ backgroundColor: 'var(--primary-color)' }}>
                           {album.views}
                         </span>
                       </td>
@@ -176,7 +176,7 @@ const AdminAnalytics: React.FC = () => {
                         </div>
                       </td>
                       <td style={{ textAlign: 'center' }}>
-                        <span className="analytics-view-badge" style={{ backgroundColor: '#4caf50' }}>
+                        <span className="analytics-view-badge" style={{ backgroundColor: '#16a34a' }}>
                           {photo.views}
                         </span>
                       </td>

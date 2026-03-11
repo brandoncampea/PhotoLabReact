@@ -148,12 +148,12 @@ const AdminWatermarks: React.FC = () => {
 
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
+          <div className="modal-content admin-modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header admin-modal-header">
               <h2>{editingWatermark ? 'Edit Watermark' : 'Create Watermark'}</h2>
               <button onClick={() => setShowModal(false)} className="btn-close">×</button>
             </div>
-            <form onSubmit={handleSubmit} className="modal-body">
+            <form onSubmit={handleSubmit} className="modal-body admin-modal-body">
               <div className="form-group">
                 <label>Name</label>
                 <input

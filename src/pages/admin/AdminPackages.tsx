@@ -253,12 +253,12 @@ const AdminPackages: React.FC = () => {
 
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '700px' }}>
-            <div className="modal-header">
+          <div className="modal-content admin-modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '700px' }}>
+            <div className="modal-header admin-modal-header">
               <h2>{editingPackage ? 'Edit Package' : 'Create Package'}</h2>
               <button onClick={() => setShowModal(false)} className="btn-close">×</button>
             </div>
-            <form onSubmit={handleSubmit} className="modal-body">
+            <form onSubmit={handleSubmit} className="modal-body admin-modal-body">
               <div className="form-group">
                 <label>Package Name</label>
                 <input

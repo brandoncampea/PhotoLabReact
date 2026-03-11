@@ -197,14 +197,7 @@ const AdminProfile: React.FC = () => {
                     setLogoPreview('');
                     setLogoUrl('');
                   }}
-                  style={{
-                    padding: '0.5rem 1rem',
-                    backgroundColor: '#d32f2f',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: 'pointer'
-                  }}
+                  className="btn btn-danger btn-sm"
                 >
                   Remove Logo
                 </button>
@@ -340,16 +333,16 @@ const AdminProfile: React.FC = () => {
 
           {subscription.studio.cancellation_requested ? (
             <div style={{
-              backgroundColor: '#fff3cd',
-              border: '2px solid #ff9800',
+              backgroundColor: 'rgba(251, 191, 36, 0.12)',
+              border: '2px solid rgba(251, 191, 36, 0.5)',
               borderRadius: '8px',
               padding: '20px',
               marginBottom: '20px'
             }}>
-              <h3 style={{ color: '#e65100', margin: '0 0 10px 0' }}>
+              <h3 style={{ color: '#fde68a', margin: '0 0 10px 0' }}>
                 ⚠️ Subscription Cancellation Scheduled
               </h3>
-              <p style={{ color: '#856404', margin: '0 0 15px 0' }}>
+              <p style={{ color: '#fde68a', margin: '0 0 15px 0' }}>
                 Your subscription will end on {subscription.studio.subscription_end 
                   ? new Date(subscription.studio.subscription_end).toLocaleDateString()
                   : 'the renewal date'}. 
@@ -358,16 +351,8 @@ const AdminProfile: React.FC = () => {
               {user?.role === 'studio_admin' ? (
                 <button
                   onClick={handleReactivateSubscription}
-                  style={{
-                    backgroundColor: '#4caf50',
-                    color: 'white',
-                    border: 'none',
-                    padding: '10px 25px',
-                    fontSize: '14px',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    fontWeight: 'bold'
-                  }}
+                  className="btn btn-success"
+                  style={{ fontSize: '14px', fontWeight: 'bold' }}
                 >
                   ✓ Reactivate Subscription
                 </button>
@@ -379,16 +364,16 @@ const AdminProfile: React.FC = () => {
             backgroundColor: 'var(--bg-tertiary)',
             padding: '20px',
             borderRadius: '8px',
-            border: '2px solid #ddd'
+            border: '1px solid var(--border-color)'
           }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', marginBottom: '20px' }}>
               <div>
                 <h4>Current Plan</h4>
-                <p style={{ fontSize: '24px', fontWeight: 'bold', color: '#007bff' }}>
+                <p style={{ fontSize: '24px', fontWeight: 'bold', color: 'var(--primary-color)' }}>
                   {subscription.plan?.name || 'No Plan'}
                 </p>
                 {subscription.studio.is_free_subscription ? (
-                  <p style={{ color: '#4caf50', fontWeight: 'bold' }}>FREE (No Billing)</p>
+                  <p style={{ color: '#86efac', fontWeight: 'bold' }}>FREE (No Billing)</p>
                 ) : subscription.plan ? (
                   <p style={{ color: 'var(--text-secondary)' }}>
                     ${subscription.studio.billing_cycle === 'yearly' 
@@ -407,8 +392,8 @@ const AdminProfile: React.FC = () => {
                   fontSize: '18px',
                   fontWeight: 'bold',
                   color: subscription.studio.cancellation_requested 
-                    ? '#ff9800' 
-                    : subscription.studio.subscription_status === 'active' ? '#4caf50' : '#f44336'
+                    ? '#fde68a' 
+                    : subscription.studio.subscription_status === 'active' ? '#86efac' : 'var(--error-color)'
                 }}>
                   {subscription.studio.cancellation_requested 
                     ? `Active (Cancels ${subscription.studio.subscription_end 
@@ -428,39 +413,23 @@ const AdminProfile: React.FC = () => {
               </div>
             </div>
 
-            <div style={{ paddingTop: '20px', borderTop: '1px solid #ddd' }}>
+            <div style={{ paddingTop: '20px', borderTop: '1px solid var(--border-color)' }}>
               <h4>Actions</h4>
               <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                 {user?.role === 'studio_admin' ? (
                   <>
                     <button
                       onClick={() => setShowUpgradeModal(true)}
-                      style={{
-                        backgroundColor: '#007bff',
-                        color: 'white',
-                        border: 'none',
-                        padding: '10px 20px',
-                        borderRadius: '6px',
-                        cursor: 'pointer',
-                        fontSize: '14px',
-                        fontWeight: 'bold'
-                      }}
+                      className="btn btn-primary"
+                      style={{ fontSize: '14px', fontWeight: 'bold' }}
                     >
                       {subscription.studio.subscription_status === 'active' && !subscription.studio.is_free_subscription ? 'Change Plan' : 'Subscribe'}
                     </button>
                     {subscription.studio.subscription_status === 'active' && !subscription.studio.is_free_subscription && !subscription.studio.cancellation_requested ? (
                       <button
                         onClick={handleCancelSubscription}
-                        style={{
-                          backgroundColor: '#f44336',
-                          color: 'white',
-                          border: 'none',
-                          padding: '10px 20px',
-                          borderRadius: '6px',
-                          cursor: 'pointer',
-                          fontSize: '14px',
-                          fontWeight: 'bold'
-                        }}
+                        className="btn btn-danger"
+                        style={{ fontSize: '14px', fontWeight: 'bold' }}
                       >
                         Cancel Subscription
                       </button>
@@ -481,7 +450,7 @@ const AdminProfile: React.FC = () => {
       {/* Upgrade Modal */}
       {showUpgradeModal && (
         <div className="modal-overlay">
-          <div className="modal-content" style={{ padding: '30px', maxWidth: '500px' }}>
+          <div className="modal-content admin-modal-content" style={{ padding: '30px', maxWidth: '500px' }}>
             <h2>Select Your Plan</h2>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '20px' }}>
               Choose a plan to upgrade or downgrade your subscription
@@ -494,15 +463,15 @@ const AdminProfile: React.FC = () => {
                   onClick={() => setSelectedUpgradePlan(id)}
                   style={{
                     padding: '15px',
-                    border: selectedUpgradePlan === id ? '2px solid #007bff' : '1px solid #ddd',
+                    border: selectedUpgradePlan === id ? '2px solid var(--primary-color)' : '1px solid var(--border-color)',
                     borderRadius: '8px',
                     cursor: 'pointer',
-                    backgroundColor: selectedUpgradePlan === id ? '#f0f7ff' : '#fff',
+                    backgroundColor: selectedUpgradePlan === id ? 'rgba(124, 92, 255, 0.12)' : 'var(--bg-primary)',
                     transition: 'all 0.2s'
                   }}
                 >
                   <h4 style={{ margin: '0 0 8px 0' }}>{plan.name}</h4>
-                  <p style={{ margin: '0 0 8px 0', fontWeight: 'bold', color: '#007bff', fontSize: '18px' }}>
+                  <p style={{ margin: '0 0 8px 0', fontWeight: 'bold', color: 'var(--primary-color)', fontSize: '18px' }}>
                     ${plan.monthlyPrice}/month
                   </p>
                   <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '13px' }}>
@@ -522,11 +491,11 @@ const AdminProfile: React.FC = () => {
                 <label style={{
                   flex: 1,
                   padding: '10px',
-                  border: `2px solid ${selectedBillingCycle === 'monthly' ? '#007bff' : '#ddd'}`,
+                  border: `2px solid ${selectedBillingCycle === 'monthly' ? 'var(--primary-color)' : 'var(--border-color)'}`,
                   borderRadius: '6px',
                   cursor: 'pointer',
                   textAlign: 'center',
-                  backgroundColor: selectedBillingCycle === 'monthly' ? '#e3f2fd' : 'white'
+                  backgroundColor: selectedBillingCycle === 'monthly' ? 'rgba(124, 92, 255, 0.12)' : 'var(--bg-primary)'
                 }}>
                   <input
                     type="radio"
@@ -541,11 +510,11 @@ const AdminProfile: React.FC = () => {
                 <label style={{
                   flex: 1,
                   padding: '10px',
-                  border: `2px solid ${selectedBillingCycle === 'yearly' ? '#007bff' : '#ddd'}`,
+                  border: `2px solid ${selectedBillingCycle === 'yearly' ? 'var(--primary-color)' : 'var(--border-color)'}`,
                   borderRadius: '6px',
                   cursor: 'pointer',
                   textAlign: 'center',
-                  backgroundColor: selectedBillingCycle === 'yearly' ? '#e3f2fd' : 'white'
+                  backgroundColor: selectedBillingCycle === 'yearly' ? 'rgba(124, 92, 255, 0.12)' : 'var(--bg-primary)'
                 }}>
                   <input
                     type="radio"
@@ -556,7 +525,7 @@ const AdminProfile: React.FC = () => {
                     style={{ marginRight: '8px' }}
                   />
                   Yearly
-                  <div style={{ fontSize: '12px', color: '#4caf50', marginTop: '4px' }}>
+                  <div style={{ fontSize: '12px', color: '#86efac', marginTop: '4px' }}>
                     Save ~17%
                   </div>
                 </label>
@@ -567,34 +536,16 @@ const AdminProfile: React.FC = () => {
               <button
                 onClick={handleUpgrade}
                 disabled={!selectedUpgradePlan || upgrading}
-                style={{
-                  flex: 1,
-                  padding: '12px',
-                  backgroundColor: selectedUpgradePlan ? '#007bff' : '#ccc',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: selectedUpgradePlan && !upgrading ? 'pointer' : 'not-allowed',
-                  fontWeight: 'bold',
-                  opacity: upgrading ? 0.7 : 1
-                }}
+                className="btn btn-primary"
+                style={{ flex: 1, fontWeight: 'bold', opacity: upgrading ? 0.7 : 1 }}
               >
                 {upgrading ? 'Processing...' : 'Continue to Payment'}
               </button>
               <button
                 onClick={() => setShowUpgradeModal(false)}
                 disabled={upgrading}
-                style={{
-                  flex: 1,
-                  padding: '12px',
-                  backgroundColor: '#ccc',
-                  color: 'var(--text-primary)',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: upgrading ? 'not-allowed' : 'pointer',
-                  fontWeight: 'bold',
-                  opacity: upgrading ? 0.7 : 1
-                }}
+                className="btn btn-secondary"
+                style={{ flex: 1, fontWeight: 'bold', opacity: upgrading ? 0.7 : 1 }}
               >
                 Cancel
               </button>
