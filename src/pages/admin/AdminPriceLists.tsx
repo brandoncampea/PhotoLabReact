@@ -194,20 +194,6 @@ const AdminPriceLists: React.FC = () => {
 
     setImportLoading(true);
     try {
-      // Flatten importedData to items array for backend
-      // Group items by product, each with a sizes array
-      const items = importedData.map(group => ({
-        productName: group.productName,
-        // Optionally add description/category if available
-        sizes: group.items.map(item => ({
-          sizeName: item.sizeName,
-          width: item.width,
-          height: item.height,
-          price: item.price,
-          cost: item.cost,
-        }))
-      }));
-
       let targetPriceListId = importTargetPriceListId;
       // If creating new price list
       if (targetPriceListId === null) {
@@ -215,8 +201,70 @@ const AdminPriceLists: React.FC = () => {
         targetPriceListId = newPriceList.id;
       }
 
+      // Check existing product names for selected target list
+      const targetPriceList = await priceListAdminService.getById(targetPriceListId);
+      const existingProductNames = new Set(targetPriceList?.products?.map(p => p.name.toLowerCase()) || []);
+
+      const getBaseName = (name: string) => {
+        const cleaned = name
+          .replace(/\b\d+(?:\.\d+)?\s*[x×]\s*\d+(?:\.\d+)?\b/gi, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+        return cleaned || name;
+      };
+
+      // Group imported rows by base product name and merge sizes
+      const groupedByBase = new Map<string, Array<{ sizeName: string; width?: number; height?: number; price: number; cost?: number }>>();
+      importedData.forEach((group) => {
+        const baseName = getBaseName(group.productName);
+        if (!groupedByBase.has(baseName)) {
+          groupedByBase.set(baseName, []);
+        }
+        groupedByBase.get(baseName)!.push(...group.items);
+      });
+
+      const skippedDuplicates: string[] = [];
+      const items: Array<{ productName: string; sizes: Array<{ sizeName: string; width?: number; height?: number; price: number; cost?: number }> }> = [];
+
+      groupedByBase.forEach((sizeItems, productName) => {
+        if (existingProductNames.has(productName.toLowerCase())) {
+          skippedDuplicates.push(productName);
+          return;
+        }
+
+        // Dedupe size rows by dimensions + size name
+        const seenSizes = new Set<string>();
+        const uniqueSizes = sizeItems.filter((item) => {
+          const key = `${item.width ?? ''}x${item.height ?? ''}|${item.sizeName.toLowerCase()}`;
+          if (seenSizes.has(key)) return false;
+          seenSizes.add(key);
+          return true;
+        });
+
+        items.push({
+          productName,
+          sizes: uniqueSizes.map((item) => ({
+            sizeName: item.sizeName,
+            width: item.width,
+            height: item.height,
+            price: item.price,
+            cost: item.cost,
+          })),
+        });
+      });
+
+      if (items.length === 0) {
+        setImportError('All imported products already exist in this price list');
+        setImportLoading(false);
+        return;
+      }
+
       // Add items to the selected or new price list
       await priceListAdminService.addItemsToPriceList(targetPriceListId, items);
+
+      if (skippedDuplicates.length > 0) {
+        alert(`Imported ${items.length} product group(s). Skipped ${skippedDuplicates.length} duplicate product(s).`);
+      }
 
       await loadData();
       setShowImportDialog(false);
