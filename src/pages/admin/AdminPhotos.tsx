@@ -4,7 +4,6 @@ import { Photo, Album, PhotoMetadata } from '../../types';
 import { photoService } from '../../services/photoService';
 import { albumService } from '../../services/albumService';
 import { albumAdminService } from '../../services/albumAdminService';
-import { exifService } from '../../services/exifService';
 
 
 
@@ -120,7 +119,6 @@ const AdminPhotos: React.FC = () => {
     } finally {
       setUploading(false);
       setUploadProgress({ completed: 0, total: 0 });
-      e.target.value = '';
     }
   };
 

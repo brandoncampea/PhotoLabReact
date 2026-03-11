@@ -2,6 +2,18 @@ import express from 'express';
 import { queryRow, queryRows, query } from '../mssql.js';
 const router = express.Router();
 
+const albumCoverUrl = (albumId, coverPhotoId, coverImageUrl) => {
+  if (coverPhotoId) {
+    return `/api/photos/${coverPhotoId}/asset?variant=full`;
+  }
+  if (coverImageUrl) {
+    return `/api/photos/proxy?source=${encodeURIComponent(coverImageUrl)}`;
+  }
+  return undefined;
+};
+
+const photoAssetUrl = (photoId, variant) => `/api/photos/${photoId}/asset?variant=${variant}`;
+
 // Track event
 router.post('/track', async (req, res) => {
   try {
@@ -20,11 +32,17 @@ router.post('/track', async (req, res) => {
 // Get analytics summary
 router.get('/summary', async (req, res) => {
   try {
-    const totalVisitsResult = await queryRow("SELECT COUNT(*) AS count FROM analytics WHERE event_type = 'site_visit'");
+    const totalVisitsResult = await queryRow(`
+      SELECT COUNT(DISTINCT JSON_VALUE(event_data, '$.sessionId')) AS count
+      FROM analytics
+      WHERE event_type = 'site_visit'
+    `);
+    const totalPageViewsResult = await queryRow("SELECT COUNT(*) AS count FROM analytics WHERE event_type = 'page_view'");
     const albumViewsResult = await queryRow("SELECT COUNT(*) AS count FROM analytics WHERE event_type = 'album_view'");
     const photoViewsResult = await queryRow("SELECT COUNT(*) AS count FROM analytics WHERE event_type = 'photo_view'");
 
     const totalVisits = parseInt(totalVisitsResult?.count ?? 0) || 0;
+    const totalPageViews = parseInt(totalPageViewsResult?.count ?? 0) || 0;
     const albumViews = parseInt(albumViewsResult?.count ?? 0) || 0;
     const photoViews = parseInt(photoViewsResult?.count ?? 0) || 0;
 
@@ -32,7 +50,7 @@ router.get('/summary', async (req, res) => {
       totalVisits,
       albumViews,
       photoViews,
-      totalPageViews: totalVisits + albumViews + photoViews,
+      totalPageViews,
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -46,11 +64,15 @@ router.get('/details', async (req, res) => {
       SELECT
         JSON_VALUE(event_data, '$.albumId') AS albumId,
         JSON_VALUE(event_data, '$.albumName') AS albumName,
+        a.cover_photo_id as coverPhotoId,
+        a.cover_image_url as coverImageUrl,
         COUNT(*) AS views,
         MAX(created_at) AS lastViewed
       FROM analytics
+      LEFT JOIN albums a
+        ON a.id = TRY_CAST(JSON_VALUE(event_data, '$.albumId') AS INT)
       WHERE event_type = 'album_view' AND event_data IS NOT NULL
-      GROUP BY JSON_VALUE(event_data, '$.albumId'), JSON_VALUE(event_data, '$.albumName')
+      GROUP BY JSON_VALUE(event_data, '$.albumId'), JSON_VALUE(event_data, '$.albumName'), a.cover_photo_id, a.cover_image_url
       ORDER BY views DESC
     `);
 
@@ -60,15 +82,21 @@ router.get('/details', async (req, res) => {
         JSON_VALUE(event_data, '$.photoFileName') AS photoFileName,
         JSON_VALUE(event_data, '$.albumId') AS albumId,
         JSON_VALUE(event_data, '$.albumName') AS albumName,
+        p.thumbnail_url as thumbnailUrl,
+        p.full_image_url as fullImageUrl,
         COUNT(*) AS views,
         MAX(created_at) AS lastViewed
       FROM analytics
+      LEFT JOIN photos p
+        ON p.id = TRY_CAST(JSON_VALUE(event_data, '$.photoId') AS INT)
       WHERE event_type = 'photo_view' AND event_data IS NOT NULL
       GROUP BY
         JSON_VALUE(event_data, '$.photoId'),
         JSON_VALUE(event_data, '$.photoFileName'),
         JSON_VALUE(event_data, '$.albumId'),
         JSON_VALUE(event_data, '$.albumName')
+        , p.thumbnail_url
+        , p.full_image_url
       ORDER BY views DESC
     `);
 
@@ -84,6 +112,7 @@ router.get('/details', async (req, res) => {
         albumName: r.albumName || 'Unknown',
         views: parseInt(r.views) || 0,
         lastViewed: r.lastViewed,
+        coverImageUrl: albumCoverUrl(parseInt(r.albumId) || 0, parseInt(r.coverPhotoId) || 0, r.coverImageUrl),
       })),
       photoViews: photoViewRows.map(r => ({
         photoId: parseInt(r.photoId) || 0,
@@ -92,6 +121,8 @@ router.get('/details', async (req, res) => {
         albumName: r.albumName || 'Unknown',
         views: parseInt(r.views) || 0,
         lastViewed: r.lastViewed,
+        thumbnailUrl: parseInt(r.photoId) ? photoAssetUrl(parseInt(r.photoId), 'thumbnail') : undefined,
+        fullImageUrl: parseInt(r.photoId) ? photoAssetUrl(parseInt(r.photoId), 'full') : undefined,
       })),
       recentActivity: recentRows.map(r => {
         const data = r.event_data ? JSON.parse(r.event_data) : {};

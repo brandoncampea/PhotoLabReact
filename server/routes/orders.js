@@ -2,7 +2,6 @@ import express from 'express';
 import { queryRow, queryRows, query } from '../mssql.js';
 import { authRequired, adminRequired } from '../middleware/auth.js';
 import { requireActiveSubscription } from '../middleware/subscription.js';
-import { getSignedReadUrl } from '../services/azureStorage.js';
 const router = express.Router();
 
 // Protect all order routes
@@ -194,8 +193,8 @@ router.get('/', async (req, res) => {
           photo: photo ? {
             id: photo.id,
             fileName: photo.filename ?? photo.fileName,
-            thumbnailUrl: getSignedReadUrl(photo.thumbnailUrl),
-            url: getSignedReadUrl(photo.fullImageUrl),
+            thumbnailUrl: `/api/photos/${photo.id}/asset?variant=thumbnail`,
+            url: `/api/photos/${photo.id}/asset?variant=full`,
           } : {
             id: item.photoId,
             fileName: `Photo #${item.photoId}`,
@@ -271,8 +270,8 @@ router.get('/admin/all-orders', adminRequired, async (req, res) => {
           photo: photo ? {
             id: photo.id,
             fileName: photo.filename ?? photo.fileName,
-            thumbnailUrl: getSignedReadUrl(photo.thumbnailUrl),
-            url: getSignedReadUrl(photo.fullImageUrl),
+            thumbnailUrl: `/api/photos/${photo.id}/asset?variant=thumbnail`,
+            url: `/api/photos/${photo.id}/asset?variant=full`,
           } : {
             id: item.photoId,
             fileName: `Photo #${item.photoId}`,

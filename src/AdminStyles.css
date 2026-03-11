@@ -861,6 +861,18 @@
     gap: 2rem;
   }
 
+  .analytics-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .analytics-section-header h2 {
+    margin: 0;
+  }
+
   .analytics-table-wrap {
     background-color: var(--bg-tertiary);
     border-radius: 0.5rem;
@@ -905,6 +917,27 @@
     font-size: 0.85rem;
     font-weight: 700;
     color: white;
+  }
+
+  .analytics-thumb {
+    width: 56px;
+    height: 56px;
+    border-radius: 0.5rem;
+    overflow: hidden;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+    font-size: 1.25rem;
+  }
+
+  .analytics-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
   }
 
   .analytics-activity-feed {
