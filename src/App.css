@@ -243,6 +243,22 @@
   overflow: hidden;
 }
 
+.album-cover-carousel {
+  position: absolute;
+  inset: 0;
+}
+
+.album-cover-slide {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+
+.album-cover-slide.active {
+  opacity: 1;
+}
+
 .album-cover img {
   position: absolute;
   top: 0;
@@ -250,6 +266,28 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.album-cover-dots {
+  position: absolute;
+  left: 50%;
+  bottom: 0.75rem;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 0.35rem;
+  z-index: 2;
+}
+
+.album-cover-dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+}
+
+.album-cover-dot.active {
+  background: rgba(255, 255, 255, 0.95);
 }
 
 .album-overlay {

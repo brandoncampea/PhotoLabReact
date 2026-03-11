@@ -12,6 +12,45 @@ const signAlbumForResponse = (album) => ({
       : album?.coverImageUrl,
 });
 
+const addAlbumPreviewImages = async (albums) => {
+  if (!albums.length) {
+    return albums;
+  }
+
+  const albumIds = albums.map((album) => album.id).filter(Boolean);
+  if (!albumIds.length) {
+    return albums;
+  }
+
+  const placeholders = albumIds.map((_, index) => `$${index + 1}`).join(', ');
+  const previewRows = await queryRows(`
+    WITH ranked_photos AS (
+      SELECT
+        id,
+        album_id as albumId,
+        ROW_NUMBER() OVER (PARTITION BY album_id ORDER BY created_at DESC) as rowNumber
+      FROM photos
+      WHERE album_id IN (${placeholders})
+    )
+    SELECT id, albumId
+    FROM ranked_photos
+    WHERE rowNumber <= 5
+    ORDER BY albumId, rowNumber
+  `, albumIds);
+
+  const previewMap = new Map();
+  previewRows.forEach((row) => {
+    const current = previewMap.get(row.albumId) || [];
+    current.push(`/api/photos/${row.id}/asset?variant=full`);
+    previewMap.set(row.albumId, current);
+  });
+
+  return albums.map((album) => ({
+    ...album,
+    previewImageUrls: previewMap.get(album.id) || [],
+  }));
+};
+
 // Get all albums
 router.get('/', async (req, res) => {
   try {
@@ -32,7 +71,8 @@ router.get('/', async (req, res) => {
       FROM albums 
       ORDER BY created_at DESC
     `);
-    res.json(albums.map(signAlbumForResponse));
+    const albumsWithPreviews = await addAlbumPreviewImages(albums);
+    res.json(albumsWithPreviews.map(signAlbumForResponse));
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -60,7 +100,8 @@ router.get('/:id', async (req, res) => {
     if (!album) {
       return res.status(404).json({ error: 'Album not found' });
     }
-    res.json(signAlbumForResponse(album));
+    const [albumWithPreviews] = await addAlbumPreviewImages([album]);
+    res.json(signAlbumForResponse(albumWithPreviews));
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
