@@ -186,27 +186,13 @@ const AdminStudioAdmins: React.FC = () => {
       </div>
 
       {error && (
-        <div style={{
-          padding: '12px',
-          marginBottom: '16px',
-          backgroundColor: '#ffebee',
-          color: 'var(--error-color)',
-          borderRadius: '4px',
-          border: '1px solid #d32f2f'
-        }}>
+        <div className="info-box-error" style={{ marginBottom: '16px' }}>
           {error}
         </div>
       )}
 
       {success && (
-        <div style={{
-          padding: '12px',
-          marginBottom: '16px',
-          backgroundColor: '#e8f5e9',
-          color: '#2e7d32',
-          borderRadius: '4px',
-          border: '1px solid #2e7d32'
-        }}>
+        <div className="info-box-success" style={{ marginBottom: '16px' }}>
           {success}
         </div>
       )}
@@ -227,9 +213,9 @@ const AdminStudioAdmins: React.FC = () => {
               style={{
                 padding: '10px 16px',
                 border: '2px solid',
-                borderColor: selectedStudio?.id === studio.id ? '#1976d2' : '#ddd',
-                backgroundColor: selectedStudio?.id === studio.id ? '#e3f2fd' : '#fff',
-                color: selectedStudio?.id === studio.id ? '#1976d2' : '#666',
+                borderColor: selectedStudio?.id === studio.id ? 'var(--primary-color)' : 'var(--border-color)',
+                backgroundColor: selectedStudio?.id === studio.id ? 'rgba(124, 92, 255, 0.12)' : 'var(--bg-primary)',
+                color: selectedStudio?.id === studio.id ? 'var(--primary-color)' : 'var(--text-secondary)',
                 borderRadius: '4px',
                 cursor: 'pointer',
                 fontWeight: selectedStudio?.id === studio.id ? '600' : '400',
@@ -248,17 +234,8 @@ const AdminStudioAdmins: React.FC = () => {
           <div style={{ marginBottom: '24px' }}>
             <button
               onClick={() => setShowAddForm(!showAddForm)}
-              style={{
-                padding: '10px 16px',
-                backgroundColor: '#1976d2',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: '600',
-                transition: 'background-color 0.2s'
-              }}
+              className="btn btn-primary"
+              style={{ fontSize: '14px', fontWeight: '600' }}
             >
               {showAddForm ? '✕ Cancel' : '+ Add New Admin'}
             </button>
@@ -289,7 +266,9 @@ const AdminStudioAdmins: React.FC = () => {
                       border: '1px solid var(--border-color)',
                       borderRadius: '4px',
                       fontSize: '14px',
-                      boxSizing: 'border-box'
+                      boxSizing: 'border-box',
+                      backgroundColor: 'var(--bg-primary)',
+                      color: 'var(--text-primary)'
                     }}
                     placeholder="admin@example.com"
                     required
@@ -310,7 +289,9 @@ const AdminStudioAdmins: React.FC = () => {
                       border: '1px solid var(--border-color)',
                       borderRadius: '4px',
                       fontSize: '14px',
-                      boxSizing: 'border-box'
+                      boxSizing: 'border-box',
+                      backgroundColor: 'var(--bg-primary)',
+                      color: 'var(--text-primary)'
                     }}
                     placeholder="Admin Name"
                     required
@@ -330,7 +311,9 @@ const AdminStudioAdmins: React.FC = () => {
                       border: '1px solid var(--border-color)',
                       borderRadius: '4px',
                       fontSize: '14px',
-                      boxSizing: 'border-box'
+                      boxSizing: 'border-box',
+                      backgroundColor: 'var(--bg-primary)',
+                      color: 'var(--text-primary)'
                     }}
                   >
                     <option value="studio_admin">🏢 Studio Admin</option>
@@ -341,17 +324,8 @@ const AdminStudioAdmins: React.FC = () => {
                 <button
                   type="submit"
                   disabled={loading}
-                  style={{
-                    padding: '10px 16px',
-                    backgroundColor: '#2e7d32',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: loading ? 'not-allowed' : 'pointer',
-                    fontSize: '14px',
-                    fontWeight: '600',
-                    opacity: loading ? 0.6 : 1
-                  }}
+                  className="btn btn-success"
+                  style={{ fontSize: '14px', fontWeight: '600', opacity: loading ? 0.6 : 1 }}
                 >
                   {loading ? 'Creating...' : 'Create Admin'}
                 </button>
@@ -390,8 +364,8 @@ const AdminStudioAdmins: React.FC = () => {
                             borderRadius: '4px',
                             fontSize: '12px',
                             fontWeight: '600',
-                            backgroundColor: admin.role === 'super_admin' ? '#fce4ec' : '#e3f2fd',
-                            color: admin.role === 'super_admin' ? '#c2185b' : '#1976d2'
+                            backgroundColor: admin.role === 'super_admin' ? 'rgba(236, 72, 153, 0.15)' : 'rgba(124, 92, 255, 0.15)',
+                            color: admin.role === 'super_admin' ? '#f9a8d4' : '#c4b5fd'
                           }}>
                             {admin.role === 'super_admin' ? '👑 Super Admin' : '🏢 Studio Admin'}
                           </span>
@@ -402,8 +376,8 @@ const AdminStudioAdmins: React.FC = () => {
                             borderRadius: '4px',
                             fontSize: '12px',
                             fontWeight: '600',
-                            backgroundColor: admin.isActive ? '#e8f5e9' : '#ffebee',
-                            color: admin.isActive ? '#2e7d32' : '#d32f2f'
+                            backgroundColor: admin.isActive ? 'rgba(34, 197, 94, 0.18)' : 'rgba(239, 68, 68, 0.18)',
+                            color: admin.isActive ? '#86efac' : '#fca5a5'
                           }}>
                             {admin.isActive ? '✓ Active' : '✕ Inactive'}
                           </span>
@@ -414,12 +388,8 @@ const AdminStudioAdmins: React.FC = () => {
                           <button
                             onClick={() => handleDeleteAdmin(admin.id, admin.email)}
                             disabled={loading || admins.length === 1}
+                            className="btn btn-danger btn-sm"
                             style={{
-                              padding: '6px 12px',
-                              backgroundColor: '#d32f2f',
-                              color: 'white',
-                              border: 'none',
-                              borderRadius: '4px',
                               cursor: loading || admins.length === 1 ? 'not-allowed' : 'pointer',
                               fontSize: '12px',
                               fontWeight: '600',

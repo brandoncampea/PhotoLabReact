@@ -199,21 +199,13 @@ export default function SuperAdminDashboard() {
     <div className="admin-container">
       <h1>Super Admin Dashboard</h1>
 
-      {error && <div style={{ color: '#d32f2f', marginBottom: '20px' }}>{error}</div>}
+      {error && <div style={{ color: 'var(--error-color)', marginBottom: '20px' }}>{error}</div>}
 
       <div style={{ marginBottom: '30px' }}>
         <button
           onClick={() => navigate('/super-admin-pricing')}
-          style={{
-            padding: '12px 24px',
-            backgroundColor: '#7c3aed',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontSize: '16px',
-            fontWeight: 'bold'
-          }}
+          className="btn btn-primary"
+          style={{ fontSize: '16px', fontWeight: 'bold' }}
         >
           💰 Manage Pricing
         </button>
@@ -257,29 +249,21 @@ export default function SuperAdminDashboard() {
                 <td>{studio.email}</td>
                 <td>{getPlanPrice(studio.subscription_plan)}</td>
                 <td>
-                  <span style={{ fontSize: '13px', color: '#666' }}>
+                  <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
                     {studio.is_free_subscription 
                       ? 'FREE' 
                       : (studio.billing_cycle === 'yearly' ? 'Yearly' : 'Monthly')}
                   </span>
                 </td>
                 <td>
-                  <span style={{
-                    padding: '4px 8px',
-                    borderRadius: '4px',
-                    backgroundColor: studio.cancellation_requested 
-                      ? '#ff9800' 
-                      : studio.subscription_status === 'active' ? '#4caf50' : '#f44336',
-                    color: 'white',
-                    fontSize: '12px'
-                  }}>
+                  <span className={`status-badge ${studio.cancellation_requested ? 'badge-warning' : studio.subscription_status === 'active' ? 'status-active' : 'status-inactive'}`}>
                     {studio.cancellation_requested 
                       ? `Cancelling ${studio.subscription_end ? new Date(studio.subscription_end).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}` 
                       : studio.subscription_status}
                   </span>
                 </td>
                 <td>
-                  <span style={{ fontSize: '13px', color: '#666' }}>
+                  <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
                     {studio.fee_type === 'percentage' 
                       ? `${studio.fee_value}%` 
                       : `$${(studio.fee_value || 0).toFixed(2)}`}
@@ -299,30 +283,14 @@ export default function SuperAdminDashboard() {
                       });
                       setShowSubscriptionModal(true);
                     }}
-                    style={{
-                      padding: '6px 12px',
-                      marginRight: '8px',
-                      backgroundColor: '#2196F3',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      fontSize: '12px'
-                    }}
+                    className="btn btn-primary btn-sm"
+                    style={{ marginRight: '8px' }}
                   >
                     Edit Sub
                   </button>
                   <button
                     onClick={() => handleOpenFeeModal(studio)}
-                    style={{
-                      padding: '6px 12px',
-                      backgroundColor: '#ff9800',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      fontSize: '12px'
-                    }}
+                    className="btn btn-secondary btn-sm"
                   >
                     Edit Fees
                   </button>
@@ -336,7 +304,7 @@ export default function SuperAdminDashboard() {
       {/* Subscription Modal */}
       {showSubscriptionModal && selectedStudio && (
         <div className="modal-overlay">
-          <div className="modal-content" style={{ padding: '30px', maxWidth: '500px' }}>
+          <div className="modal-content admin-modal-content" style={{ padding: '30px', maxWidth: '500px' }}>
             <h2>Update Subscription for {selectedStudio.name}</h2>
 
             <div style={{ marginBottom: '20px' }}>
@@ -351,8 +319,10 @@ export default function SuperAdminDashboard() {
                   width: '100%',
                   padding: '10px',
                   marginBottom: '10px',
-                  border: '1px solid #ddd',
-                  borderRadius: '4px'
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '4px',
+                  backgroundColor: 'var(--bg-primary)',
+                  color: 'var(--text-primary)'
                 }}
               >
                 {plans.map(plan => (
@@ -375,8 +345,10 @@ export default function SuperAdminDashboard() {
                   width: '100%',
                   padding: '10px',
                   marginBottom: '10px',
-                  border: '1px solid #ddd',
-                  borderRadius: '4px'
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '4px',
+                  backgroundColor: 'var(--bg-primary)',
+                  color: 'var(--text-primary)'
                 }}
               >
                 <option value="active">Active</option>
@@ -414,8 +386,10 @@ export default function SuperAdminDashboard() {
                     width: '100%',
                     padding: '10px',
                     marginBottom: '10px',
-                    border: '1px solid #ddd',
-                    borderRadius: '4px'
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '4px',
+                    backgroundColor: 'var(--bg-primary)',
+                    color: 'var(--text-primary)'
                   }}
                 >
                   <option value="monthly">Monthly</option>
@@ -427,29 +401,15 @@ export default function SuperAdminDashboard() {
             <div style={{ display: 'flex', gap: '10px' }}>
               <button
                 onClick={handleUpdateSubscription}
-                style={{
-                  flex: 1,
-                  padding: '10px',
-                  backgroundColor: '#4caf50',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer'
-                }}
+                className="btn btn-success"
+                style={{ flex: 1 }}
               >
                 Update
               </button>
               <button
                 onClick={() => setShowSubscriptionModal(false)}
-                style={{
-                  flex: 1,
-                  padding: '10px',
-                  backgroundColor: '#ccc',
-                  color: '#333',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer'
-                }}
+                className="btn btn-secondary"
+                style={{ flex: 1 }}
               >
                 Cancel
               </button>
@@ -461,7 +421,7 @@ export default function SuperAdminDashboard() {
       {/* Fee Modal */}
       {showFeeModal && selectedStudio && (
         <div className="modal-overlay">
-          <div className="modal-content" style={{ padding: '30px', maxWidth: '500px' }}>
+          <div className="modal-content admin-modal-content" style={{ padding: '30px', maxWidth: '500px' }}>
             <h2>Update Fees for {selectedStudio.name}</h2>
 
             <div style={{ marginBottom: '20px' }}>
@@ -506,12 +466,12 @@ export default function SuperAdminDashboard() {
                 style={{
                   width: '100%',
                   padding: '10px',
-                  border: '1px solid #ddd',
+                  border: '1px solid var(--border-color)',
                   borderRadius: '4px',
                   fontSize: '16px'
                 }}
               />
-              <p style={{ fontSize: '12px', color: '#666', marginTop: '8px' }}>
+              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '8px' }}>
                 {studioFees.feeType === 'percentage'
                   ? 'This percentage will be added to each product price'
                   : 'This fixed amount will be added to each product price'}
@@ -521,30 +481,15 @@ export default function SuperAdminDashboard() {
             <div style={{ display: 'flex', gap: '10px' }}>
               <button
                 onClick={() => handleUpdateFees()}
-                style={{
-                  flex: 1,
-                  padding: '10px',
-                  backgroundColor: '#4caf50',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontWeight: 'bold'
-                }}
+                className="btn btn-success"
+                style={{ flex: 1, fontWeight: 'bold' }}
               >
                 Update Fees
               </button>
               <button
                 onClick={() => setShowFeeModal(false)}
-                style={{
-                  flex: 1,
-                  padding: '10px',
-                  backgroundColor: '#ccc',
-                  color: '#333',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer'
-                }}
+                className="btn btn-secondary"
+                style={{ flex: 1 }}
               >
                 Cancel
               </button>

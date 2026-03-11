@@ -229,12 +229,12 @@ const AdminAlbums: React.FC = () => {
 
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
+          <div className="modal-content admin-modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header admin-modal-header">
               <h2>{editingAlbum ? 'Edit Album' : 'Create Album'}</h2>
               <button onClick={() => setShowModal(false)} className="btn-close">×</button>
             </div>
-            <form onSubmit={handleSubmit} className="modal-body">
+            <form onSubmit={handleSubmit} className="modal-body admin-modal-body">
               <div className="form-group">
                 <label>Name</label>
                 <input
@@ -312,7 +312,7 @@ const AdminAlbums: React.FC = () => {
                     <option key={pl.id} value={pl.id}>{pl.name}</option>
                   ))}
                 </select>
-                <a href="/admin/price-lists" style={{ fontSize: '0.85rem', color: '#0066cc', marginTop: '0.5rem', display: 'block' }}>
+                <a href="/admin/price-lists" style={{ fontSize: '0.85rem', color: 'var(--primary-color)', marginTop: '0.5rem', display: 'block' }}>
                   Manage price lists →
                 </a>
               </div>

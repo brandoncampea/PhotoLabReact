@@ -227,36 +227,28 @@ export default function StudioAdminDashboard() {
     <div className="admin-container">
       <h1>Studio Dashboard</h1>
 
-      {error && <div style={{ color: '#d32f2f', marginBottom: '20px' }}>{error}</div>}
+      {error && <div style={{ color: 'var(--error-color)', marginBottom: '20px' }}>{error}</div>}
 
       {/* Subscription Required Banner */}
       {needsSubscription && (
         <div style={{
-          backgroundColor: '#fff3cd',
-          border: '2px solid #ffc107',
+          backgroundColor: 'rgba(251, 191, 36, 0.12)',
+          border: '2px solid rgba(251, 191, 36, 0.5)',
           borderRadius: '8px',
           padding: '20px',
           marginBottom: '30px',
           textAlign: 'center'
         }}>
-          <h2 style={{ color: '#856404', margin: '0 0 15px 0' }}>
+          <h2 style={{ color: '#fde68a', margin: '0 0 15px 0' }}>
             🔒 Subscription Required
           </h2>
-          <p style={{ color: '#856404', margin: '0 0 15px 0', fontSize: '16px' }}>
+          <p style={{ color: '#fde68a', margin: '0 0 15px 0', fontSize: '16px' }}>
             To create albums and start selling, please subscribe to one of our plans.
           </p>
           <button
             onClick={() => setShowUpgradeModal(true)}
-            style={{
-              backgroundColor: '#007bff',
-              color: 'white',
-              border: 'none',
-              padding: '12px 30px',
-              fontSize: '16px',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              fontWeight: 'bold'
-            }}
+            className="btn btn-primary"
+            style={{ fontSize: '16px', fontWeight: 'bold' }}
           >
             View Subscription Plans
           </button>
@@ -266,16 +258,16 @@ export default function StudioAdminDashboard() {
       {/* Cancellation Warning Banner */}
       {subscription?.studio.cancellation_requested && (
         <div style={{
-          backgroundColor: '#fff3cd',
-          border: '2px solid #ff9800',
+          backgroundColor: 'rgba(251, 191, 36, 0.12)',
+          border: '2px solid rgba(251, 191, 36, 0.5)',
           borderRadius: '8px',
           padding: '20px',
           marginBottom: '30px'
         }}>
-          <h3 style={{ color: '#e65100', margin: '0 0 10px 0' }}>
+          <h3 style={{ color: '#fde68a', margin: '0 0 10px 0' }}>
             ⚠️ Subscription Cancellation Scheduled
           </h3>
-          <p style={{ color: '#856404', margin: '0 0 15px 0' }}>
+          <p style={{ color: '#fde68a', margin: '0 0 15px 0' }}>
             Your subscription will end on {subscription.studio.subscription_end 
               ? new Date(subscription.studio.subscription_end).toLocaleDateString()
               : 'the renewal date'}. 
@@ -284,55 +276,8 @@ export default function StudioAdminDashboard() {
           <button
             onClick={handleReactivateSubscription}
             disabled={loading}
-            style={{
-              backgroundColor: '#4caf50',
-              color: 'white',
-              border: 'none',
-              padding: '10px 25px',
-              fontSize: '14px',
-              borderRadius: '6px',
-              cursor: loading ? 'not-allowed' : 'pointer',
-              fontWeight: 'bold',
-              opacity: loading ? 0.6 : 1
-            }}
-          >
-            {loading ? 'Processing...' : 'Reactivate Subscription'}
-          </button>
-        </div>
-      )}
-
-      {/* Cancellation Warning Banner */}
-      {subscription?.studio.cancellation_requested && (
-        <div style={{
-          backgroundColor: '#fff3cd',
-          border: '2px solid #ff9800',
-          borderRadius: '8px',
-          padding: '20px',
-          marginBottom: '30px'
-        }}>
-          <h3 style={{ color: '#e65100', margin: '0 0 10px 0' }}>
-            ⚠️ Subscription Cancellation Scheduled
-          </h3>
-          <p style={{ color: '#856404', margin: '0 0 15px 0' }}>
-            Your subscription will end on {subscription.studio.subscription_end 
-              ? new Date(subscription.studio.subscription_end).toLocaleDateString()
-              : 'the renewal date'}. 
-            You will continue to have full access until then.
-          </p>
-          <button
-            onClick={handleReactivateSubscription}
-            disabled={loading}
-            style={{
-              backgroundColor: '#4caf50',
-              color: 'white',
-              border: 'none',
-              padding: '10px 25px',
-              fontSize: '14px',
-              borderRadius: '6px',
-              cursor: loading ? 'not-allowed' : 'pointer',
-              fontWeight: 'bold',
-              opacity: loading ? 0.6 : 1
-            }}
+            className="btn btn-success"
+            style={{ fontSize: '14px', fontWeight: 'bold', opacity: loading ? 0.6 : 1 }}
           >
             {loading ? 'Processing...' : 'Reactivate Subscription'}
           </button>
@@ -343,24 +288,24 @@ export default function StudioAdminDashboard() {
         <>
           {/* Current Subscription Card */}
           <div style={{
-            backgroundColor: '#f5f5f5',
+            backgroundColor: 'var(--bg-tertiary)',
             padding: '20px',
             borderRadius: '8px',
             marginBottom: '30px',
-            border: isExpiringSoon ? '2px solid #ff9800' : 'none'
+            border: isExpiringSoon ? '2px solid rgba(251, 191, 36, 0.5)' : '1px solid var(--border-color)'
           }}>
             <h2>{subscription.studio.name}</h2>
             
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', marginTop: '20px' }}>
               <div>
                 <h4>Current Plan</h4>
-                <p style={{ fontSize: '24px', fontWeight: 'bold', color: '#007bff' }}>
+                <p style={{ fontSize: '24px', fontWeight: 'bold', color: 'var(--primary-color)' }}>
                   {subscription.plan?.name || 'No Plan'}
                 </p>
                 {subscription.studio.is_free_subscription ? (
-                  <p style={{ color: '#4caf50', fontWeight: 'bold' }}>FREE (No Billing)</p>
+                  <p style={{ color: '#86efac', fontWeight: 'bold' }}>FREE (No Billing)</p>
                 ) : (
-                  <p style={{ color: '#666' }}>
+                  <p style={{ color: 'var(--text-secondary)' }}>
                     ${subscription.studio.billing_cycle === 'yearly' 
                       ? subscription.plan?.yearlyPrice 
                       : subscription.plan?.monthlyPrice}
@@ -375,8 +320,8 @@ export default function StudioAdminDashboard() {
                   fontSize: '18px',
                   fontWeight: 'bold',
                   color: subscription.studio.cancellation_requested 
-                    ? '#ff9800' 
-                    : subscription.studio.subscription_status === 'active' ? '#4caf50' : '#f44336'
+                    ? '#fde68a' 
+                    : subscription.studio.subscription_status === 'active' ? '#86efac' : 'var(--error-color)'
                 }}>
                   {subscription.studio.cancellation_requested 
                     ? `Active (Cancels ${subscription.studio.subscription_end 
@@ -401,10 +346,10 @@ export default function StudioAdminDashboard() {
               <div style={{
                 marginTop: '15px',
                 padding: '10px',
-                backgroundColor: '#fff3cd',
-                border: '1px solid #ffc107',
+                backgroundColor: 'rgba(251, 191, 36, 0.12)',
+                border: '1px solid rgba(251, 191, 36, 0.5)',
                 borderRadius: '4px',
-                color: '#856404'
+                color: '#fde68a'
               }}>
                 ⚠️ Your subscription is expiring soon!
               </div>
@@ -418,16 +363,8 @@ export default function StudioAdminDashboard() {
                 <button
                   onClick={handleCancelSubscription}
                   disabled={loading}
-                  style={{
-                    backgroundColor: '#f44336',
-                    color: 'white',
-                    border: 'none',
-                    padding: '10px 20px',
-                    borderRadius: '6px',
-                    cursor: loading ? 'not-allowed' : 'pointer',
-                    fontSize: '14px',
-                    opacity: loading ? 0.6 : 1
-                  }}
+                  className="btn btn-danger"
+                  style={{ fontSize: '14px', opacity: loading ? 0.6 : 1 }}
                 >
                   Cancel Subscription
                 </button>
@@ -438,21 +375,21 @@ export default function StudioAdminDashboard() {
           {/* Product Fees Info */}
           {studioFees && (
             <div style={{
-              backgroundColor: '#f9f9f9',
+              backgroundColor: 'var(--bg-tertiary)',
               padding: '20px',
               borderRadius: '8px',
               marginBottom: '30px',
-              border: '1px solid #e0e0e0'
+              border: '1px solid var(--border-color)'
             }}>
               <h3 style={{ marginTop: 0 }}>💰 Product Fees Applied</h3>
-              <p style={{ color: '#666', marginBottom: '15px' }}>
+              <p style={{ color: 'var(--text-secondary)', marginBottom: '15px' }}>
                 The following fee is added to each product price when customers make purchases:
               </p>
               <div style={{
-                backgroundColor: 'white',
+                backgroundColor: 'var(--bg-primary)',
                 padding: '15px',
                 borderRadius: '6px',
-                border: '2px solid #ff9800'
+                border: '2px solid rgba(251, 191, 36, 0.5)'
               }}>
                 <p style={{ margin: 0, fontSize: '18px', fontWeight: 'bold' }}>
                   {studioFees.feeType === 'percentage'
@@ -460,7 +397,7 @@ export default function StudioAdminDashboard() {
                     : `$${studioFees.feeValue.toFixed(2)} per item`
                   }
                 </p>
-                <p style={{ margin: '8px 0 0 0', fontSize: '13px', color: '#666' }}>
+                <p style={{ margin: '8px 0 0 0', fontSize: '13px', color: 'var(--text-secondary)' }}>
                   {studioFees.feeType === 'percentage'
                     ? 'This percentage is added to the base price of each product'
                     : 'This fixed amount is added to each product price'
@@ -476,7 +413,7 @@ export default function StudioAdminDashboard() {
               <h3>Your Plan Includes:</h3>
               <ul style={{ listStyle: 'none', padding: 0 }}>
                 {subscription.plan.features?.map((feature, idx) => (
-                  <li key={idx} style={{ padding: '8px 0', borderBottom: '1px solid #eee' }}>
+                  <li key={idx} style={{ padding: '8px 0', borderBottom: '1px solid var(--border-color)' }}>
                     ✓ {feature}
                   </li>
                 ))}
@@ -496,19 +433,19 @@ export default function StudioAdminDashboard() {
                 <div
                   key={plan.id}
                   style={{
-                    border: '1px solid #ddd',
+                    border: '1px solid var(--border-color)',
                     borderRadius: '8px',
                     padding: '20px',
                     textAlign: 'center',
-                    backgroundColor: subscription.plan?.id === plan.id ? '#f0f7ff' : '#fff'
+                    backgroundColor: subscription.plan?.id === plan.id ? 'rgba(124, 92, 255, 0.1)' : 'var(--bg-primary)'
                   }}
                 >
                   <h4>{plan.name}</h4>
-                  <p style={{ fontSize: '24px', fontWeight: 'bold', color: '#007bff' }}>
+                  <p style={{ fontSize: '24px', fontWeight: 'bold', color: 'var(--primary-color)' }}>
                     ${plan.monthlyPrice}/mo
                   </p>
                   {plan.yearlyPrice && (
-                    <p style={{ fontSize: '14px', color: '#4caf50', marginTop: '-10px' }}>
+                    <p style={{ fontSize: '14px', color: '#86efac', marginTop: '-10px' }}>
                       or ${plan.yearlyPrice}/year (Save ~17%)
                     </p>
                   )}
@@ -521,15 +458,7 @@ export default function StudioAdminDashboard() {
                   </ul>
 
                   {subscription.plan?.id === plan.id ? (
-                    <button disabled style={{
-                      width: '100%',
-                      padding: '10px',
-                      backgroundColor: '#ccc',
-                      color: '#333',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: 'not-allowed'
-                    }}>
+                    <button disabled className="btn btn-secondary" style={{ width: '100%' }}>
                       Current Plan
                     </button>
                   ) : (
@@ -538,15 +467,8 @@ export default function StudioAdminDashboard() {
                         setSelectedUpgradePlan(plan.id);
                         setShowUpgradeModal(true);
                       }}
-                      style={{
-                        width: '100%',
-                        padding: '10px',
-                        backgroundColor: '#007bff',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: 'pointer'
-                      }}
+                      className="btn btn-primary"
+                      style={{ width: '100%' }}
                     >
                       {plan.monthlyPrice > (subscription.plan?.monthlyPrice || 0) ? 'Upgrade' : 'Downgrade'}
                     </button>
@@ -561,7 +483,7 @@ export default function StudioAdminDashboard() {
       {/* Upgrade Modal */}
       {showUpgradeModal && (
         <div className="modal-overlay">
-          <div className="modal-content" style={{ padding: '30px', maxWidth: '400px' }}>
+          <div className="modal-content admin-modal-content" style={{ padding: '30px', maxWidth: '400px' }}>
             <h2>Confirm Plan Change</h2>
             <p>You're about to upgrade/downgrade your subscription. You'll be redirected to payment.</p>
 
@@ -573,11 +495,11 @@ export default function StudioAdminDashboard() {
                 <label style={{
                   flex: 1,
                   padding: '10px',
-                  border: `2px solid ${selectedBillingCycle === 'monthly' ? '#007bff' : '#ddd'}`,
+                  border: `2px solid ${selectedBillingCycle === 'monthly' ? 'var(--primary-color)' : 'var(--border-color)'}`,
                   borderRadius: '6px',
                   cursor: 'pointer',
                   textAlign: 'center',
-                  backgroundColor: selectedBillingCycle === 'monthly' ? '#e3f2fd' : 'white'
+                  backgroundColor: selectedBillingCycle === 'monthly' ? 'rgba(124, 92, 255, 0.12)' : 'var(--bg-primary)'
                 }}>
                   <input
                     type="radio"
@@ -592,11 +514,11 @@ export default function StudioAdminDashboard() {
                 <label style={{
                   flex: 1,
                   padding: '10px',
-                  border: `2px solid ${selectedBillingCycle === 'yearly' ? '#007bff' : '#ddd'}`,
+                  border: `2px solid ${selectedBillingCycle === 'yearly' ? 'var(--primary-color)' : 'var(--border-color)'}`,
                   borderRadius: '6px',
                   cursor: 'pointer',
                   textAlign: 'center',
-                  backgroundColor: selectedBillingCycle === 'yearly' ? '#e3f2fd' : 'white'
+                  backgroundColor: selectedBillingCycle === 'yearly' ? 'rgba(124, 92, 255, 0.12)' : 'var(--bg-primary)'
                 }}>
                   <input
                     type="radio"
@@ -607,7 +529,7 @@ export default function StudioAdminDashboard() {
                     style={{ marginRight: '8px' }}
                   />
                   Yearly
-                  <div style={{ fontSize: '12px', color: '#4caf50', marginTop: '4px' }}>
+                  <div style={{ fontSize: '12px', color: '#86efac', marginTop: '4px' }}>
                     Save ~17%
                   </div>
                 </label>
@@ -618,30 +540,15 @@ export default function StudioAdminDashboard() {
               <button
                 onClick={handleUpgrade}
                 disabled={loading}
-                style={{
-                  flex: 1,
-                  padding: '10px',
-                  backgroundColor: '#007bff',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: loading ? 'not-allowed' : 'pointer',
-                  opacity: loading ? 0.7 : 1
-                }}
+                className="btn btn-primary"
+                style={{ flex: 1, opacity: loading ? 0.7 : 1 }}
               >
                 {loading ? 'Processing...' : 'Continue to Payment'}
               </button>
               <button
                 onClick={() => setShowUpgradeModal(false)}
-                style={{
-                  flex: 1,
-                  padding: '10px',
-                  backgroundColor: '#ccc',
-                  color: '#333',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer'
-                }}
+                className="btn btn-secondary"
+                style={{ flex: 1 }}
               >
                 Cancel
               </button>

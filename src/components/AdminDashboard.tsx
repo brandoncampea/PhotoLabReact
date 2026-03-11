@@ -164,8 +164,8 @@ export const AdminDashboard: React.FC = () => {
 
       {showEditModal && selectedStudio && (
         <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
+          <div className="modal-content admin-modal-content" onClick={e => e.stopPropagation()}>
+            <div className="modal-header admin-modal-header">
               <h2>Edit Studio: {selectedStudio.name}</h2>
               <button 
                 className="btn-close"
@@ -175,7 +175,7 @@ export const AdminDashboard: React.FC = () => {
               </button>
             </div>
 
-            <div className="modal-body">
+            <div className="modal-body admin-modal-body">
               <div className="form-group">
                 <label htmlFor="subscription_plan">Subscription Plan</label>
                 <select
@@ -431,7 +431,8 @@ export const AdminDashboard: React.FC = () => {
         }
 
         .modal-content {
-          background: white;
+          background: var(--bg-secondary);
+          border: 1px solid var(--border-color);
           border-radius: 8px;
           box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
           max-width: 500px;
@@ -445,12 +446,14 @@ export const AdminDashboard: React.FC = () => {
           justify-content: space-between;
           align-items: center;
           padding: 20px;
-          border-bottom: 1px solid #ddd;
+          border-bottom: 1px solid var(--border-color);
+          background-color: var(--bg-tertiary);
         }
 
         .modal-header h2 {
           margin: 0;
           font-size: 20px;
+          color: var(--text-primary);
         }
 
         .btn-close {
@@ -458,15 +461,16 @@ export const AdminDashboard: React.FC = () => {
           border: none;
           font-size: 24px;
           cursor: pointer;
-          color: #999;
+          color: var(--text-secondary);
         }
 
         .btn-close:hover {
-          color: #333;
+          color: var(--text-primary);
         }
 
         .modal-body {
           padding: 20px;
+          background-color: var(--bg-secondary);
         }
 
         .form-group {
@@ -477,19 +481,22 @@ export const AdminDashboard: React.FC = () => {
           display: block;
           margin-bottom: 8px;
           font-weight: 500;
-          color: #333;
+          color: var(--text-primary);
         }
 
         .form-group select {
           width: 100%;
           padding: 8px;
-          border: 1px solid #ddd;
+          border: 1px solid var(--border-color);
           border-radius: 4px;
           font-size: 14px;
+          background-color: var(--bg-primary);
+          color: var(--text-primary);
         }
 
         .info-box {
-          background-color: #f8f9fa;
+          background-color: var(--bg-tertiary);
+          border: 1px solid var(--border-color);
           padding: 12px;
           border-radius: 4px;
           margin-top: 20px;
@@ -498,15 +505,15 @@ export const AdminDashboard: React.FC = () => {
         .info-box p {
           margin: 6px 0;
           font-size: 14px;
-          color: #666;
+          color: var(--text-secondary);
         }
 
         .modal-footer {
           display: flex;
           gap: 10px;
           padding: 20px;
-          border-top: 1px solid #ddd;
-          background-color: #f8f9fa;
+          border-top: 1px solid var(--border-color);
+          background-color: var(--bg-tertiary);
         }
 
         .btn-cancel,
@@ -521,12 +528,13 @@ export const AdminDashboard: React.FC = () => {
         }
 
         .btn-cancel {
-          background-color: #e9ecef;
-          color: #333;
+          background-color: var(--bg-primary);
+          color: var(--text-primary);
+          border: 1px solid var(--border-color);
         }
 
         .btn-cancel:hover {
-          background-color: #dee2e6;
+          background-color: var(--bg-tertiary);
         }
 
         .btn-save {

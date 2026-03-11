@@ -118,12 +118,12 @@ const AdminPayments: React.FC = () => {
           <div 
             onClick={() => setSelectedPaymentMethod('stripe')}
             style={{
-              border: selectedPaymentMethod === 'stripe' ? '2px solid #4169E1' : '2px solid #ddd',
+              border: selectedPaymentMethod === 'stripe' ? '2px solid var(--primary-color)' : '2px solid var(--border-color)',
               borderRadius: '8px',
               padding: '1.5rem',
               cursor: 'pointer',
               minWidth: '200px',
-              background: selectedPaymentMethod === 'stripe' ? '#f0f4ff' : '#fff',
+              background: selectedPaymentMethod === 'stripe' ? 'rgba(124, 92, 255, 0.12)' : 'var(--bg-primary)',
               transition: 'all 0.2s'
             }}
           >
@@ -143,11 +143,11 @@ const AdminPayments: React.FC = () => {
           
           <div 
             style={{
-              border: '2px dashed #ddd',
+              border: '2px dashed var(--border-color)',
               borderRadius: '8px',
               padding: '1.5rem',
               minWidth: '200px',
-              background: '#fafafa',
+              background: 'var(--bg-tertiary)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -171,13 +171,13 @@ const AdminPayments: React.FC = () => {
           <div className="admin-form" style={{ maxWidth: '800px' }}>
             <div className="info-box" style={{
               padding: '1rem',
-              backgroundColor: '#fff3cd',
+              backgroundColor: 'rgba(251, 191, 36, 0.12)',
               borderRadius: '8px',
               marginBottom: '2rem',
-              border: '1px solid #ffc107'
+              border: '1px solid rgba(251, 191, 36, 0.5)'
             }}>
-          <h3 style={{ marginTop: 0, color: '#856404' }}>⚠️ Security Notice</h3>
-          <p style={{ margin: 0, fontSize: '0.9rem', color: '#856404' }}>
+          <h3 style={{ marginTop: 0, color: '#fde68a' }}>⚠️ Security Notice</h3>
+          <p style={{ margin: 0, fontSize: '0.9rem', color: '#fde68a' }}>
             Never share your Stripe secret keys publicly. In production, store these securely on the backend.
             The keys shown here are for testing purposes only.
           </p>
@@ -216,7 +216,7 @@ const AdminPayments: React.FC = () => {
                 ⚠️ Live mode - Real charges will be processed
               </span>
             ) : (
-              <span style={{ color: '#388e3c' }}>
+              <span style={{ color: '#86efac' }}>
                 ✓ Test mode - No real charges
               </span>
             )}
@@ -264,7 +264,7 @@ const AdminPayments: React.FC = () => {
                 transform: 'translateY(-50%)',
                 background: 'none',
                 border: 'none',
-                color: '#4169E1',
+                color: 'var(--primary-color)',
                 cursor: 'pointer',
                 fontSize: '0.85rem',
                 padding: '0.25rem 0.5rem'
@@ -334,7 +334,7 @@ const AdminPayments: React.FC = () => {
           <div style={{
             marginTop: '1.5rem',
             padding: '1rem',
-            backgroundColor: '#e3f2fd',
+            backgroundColor: 'rgba(124, 92, 255, 0.12)',
             borderRadius: '8px',
             fontSize: '0.9rem'
           }}>

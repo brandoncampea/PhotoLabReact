@@ -747,7 +747,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0, 0, 0, 1);
+  background-color: rgba(0, 0, 0, 0.7);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -756,7 +756,8 @@
 }
 
 .modal-content {
-  background-color: #ffffff;
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
   border-radius: 0.75rem;
   width: 100%;
   max-width: 900px;
@@ -771,12 +772,12 @@
   align-items: center;
   padding: 1.5rem;
   border-bottom: 1px solid var(--border-color);
-  background-color: #ffffff;
+  background-color: var(--bg-tertiary);
 }
 
 .modal-header h2 {
   font-size: 1.5rem;
-  color: #000000;
+  color: var(--text-primary);
 }
 
 .btn-close {
@@ -785,7 +786,7 @@
   font-size: 2rem;
   line-height: 1;
   cursor: pointer;
-  color: #666666;
+  color: var(--text-secondary);
   padding: 0;
   width: 2rem;
   height: 2rem;
@@ -795,17 +796,17 @@
 }
 
 .btn-close:hover {
-  color: #000000;
+  color: var(--text-primary);
 }
 
 .modal-body {
   padding: 1.5rem;
-  background-color: #ffffff;
+  background-color: var(--bg-secondary);
 }
 
 .cropper-container {
   margin-bottom: 1.5rem;
-  background-color: #ffffff;
+  background-color: var(--bg-secondary);
 }
 
 .cropper-controls {
@@ -813,7 +814,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 1rem;
-  background-color: #f8f9fa;
+  background-color: var(--bg-tertiary);
   border-radius: 0.5rem;
 }
 
