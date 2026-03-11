@@ -1,6 +1,6 @@
 
 import api from './api';
-import { Photo } from '../types';
+import { Photo, PhotoMetadata } from '../types';
 
 
 const normalizeRecommendations = (data: any) => {
@@ -61,15 +61,29 @@ export const photoService = {
     return response.data;
   },
 
-  async uploadPhotos(albumId: number, files: File[], descriptions?: string[]): Promise<Photo[]> {
+  async uploadPhotos(
+    albumId: number,
+    files: File[],
+    descriptions?: string[],
+    metadata?: PhotoMetadata[],
+    onProgress?: (progress: number) => void
+  ): Promise<Photo[]> {
     const formData = new FormData();
     formData.append('albumId', String(albumId));
     files.forEach((file) => formData.append('photos', file));
     if (descriptions && descriptions.length) {
       formData.append('descriptions', JSON.stringify(descriptions));
     }
+    if (metadata && metadata.length) {
+      formData.append('metadata', JSON.stringify(metadata));
+    }
     const response = await api.post<Photo[]>(`/photos/upload`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
+      onUploadProgress: (evt) => {
+        if (!onProgress || !evt.total) return;
+        const percent = Math.round((evt.loaded / evt.total) * 100);
+        onProgress(percent);
+      },
     });
     return response.data;
   },
