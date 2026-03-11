@@ -17,13 +17,18 @@ const photoUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
   fileFilter: (req, file, cb) => {
-    const allowedTypes = /jpeg|jpg|png|gif/;
-    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = allowedTypes.test(file.mimetype);
-    if (extname && mimetype) {
+    const allowedExts = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic', '.heif']);
+    const allowedMimePrefixes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/heic', 'image/heif'];
+    const extname = path.extname(file.originalname).toLowerCase();
+    const mimetype = (file.mimetype || '').toLowerCase();
+
+    const extAllowed = allowedExts.has(extname);
+    const mimeAllowed = allowedMimePrefixes.some((t) => mimetype.startsWith(t));
+
+    if (extAllowed || mimeAllowed) {
       return cb(null, true);
     }
-    cb(new Error('Only image files are allowed'));
+    cb(new multer.MulterError('LIMIT_UNEXPECTED_FILE', 'photos'));
   }
 });
 
@@ -79,10 +84,40 @@ router.get('/album/:albumId', async (req, res) => {
 });
 
 // Upload photos
-router.post('/upload', photoUpload.array('photos', 50), async (req, res) => {
+router.post('/upload', (req, res, next) => {
+  photoUpload.array('photos', 50)(req, res, (err) => {
+    if (err) {
+      if (err instanceof multer.MulterError) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          return res.status(400).json({ error: 'Each file must be 10MB or smaller' });
+        }
+        return res.status(400).json({ error: 'Invalid upload payload. Please upload supported image files.' });
+      }
+      return res.status(400).json({ error: err.message || 'Upload failed' });
+    }
+    next();
+  });
+}, async (req, res) => {
   try {
-    const { albumId, descriptions } = req.body;
-    const parsedDescriptions = descriptions ? JSON.parse(descriptions) : [];
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ error: 'No photos provided' });
+    }
+
+    const { albumId, descriptions, metadata } = req.body;
+    let parsedDescriptions = [];
+    let parsedMetadata = [];
+
+    try {
+      parsedDescriptions = descriptions ? JSON.parse(descriptions) : [];
+    } catch {
+      parsedDescriptions = [];
+    }
+
+    try {
+      parsedMetadata = metadata ? JSON.parse(metadata) : [];
+    } catch {
+      parsedMetadata = [];
+    }
     
     const photos = [];
     for (let index = 0; index < req.files.length; index++) {
@@ -102,10 +137,19 @@ router.post('/upload', photoUpload.array('photos', 50), async (req, res) => {
       }
       
       const result = await queryRow(`
-        INSERT INTO photos (album_id, file_name, thumbnail_url, full_image_url, description, width, height)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        INSERT INTO photos (album_id, file_name, thumbnail_url, full_image_url, description, metadata, width, height)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         RETURNING id
-      `, [albumId, file.originalname, photoUrl, photoUrl, parsedDescriptions[index] || '', width, height]);
+      `, [
+        albumId,
+        file.originalname,
+        photoUrl,
+        photoUrl,
+        parsedDescriptions[index] || '',
+        parsedMetadata[index] ? JSON.stringify(parsedMetadata[index]) : null,
+        width,
+        height,
+      ]);
       
       photos.push({
         id: result.id,
@@ -114,6 +158,7 @@ router.post('/upload', photoUpload.array('photos', 50), async (req, res) => {
         thumbnailUrl: photoUrl,
         fullImageUrl: photoUrl,
         description: parsedDescriptions[index] || '',
+        metadata: parsedMetadata[index] || null,
         width: width,
         height: height
       });

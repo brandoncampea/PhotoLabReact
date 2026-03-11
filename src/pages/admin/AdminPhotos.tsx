@@ -1,14 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Photo, Album } from '../../types';
+import { Photo, Album, PhotoMetadata } from '../../types';
 import { photoService } from '../../services/photoService';
 import { albumService } from '../../services/albumService';
 import { albumAdminService } from '../../services/albumAdminService';
+import { exifService } from '../../services/exifService';
 
 
 
 
 const AdminPhotos: React.FC = () => {
+  type UploadItem = {
+    id: string;
+    file: File;
+    previewUrl: string;
+    progress: number;
+    status: 'queued' | 'uploading' | 'done' | 'error';
+    metadata?: PhotoMetadata;
+    error?: string;
+  };
+
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [albums, setAlbums] = useState<Album[]>([]);
@@ -23,6 +34,8 @@ const AdminPhotos: React.FC = () => {
   const [coverMessage, setCoverMessage] = useState<string | null>(null);
   const [coverLoadingId, setCoverLoadingId] = useState<number | null>(null);
   const [coverSuccessId, setCoverSuccessId] = useState<number | null>(null);
+  const [uploadItems, setUploadItems] = useState<UploadItem[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
 
   useEffect(() => {
     loadAlbums();
@@ -78,37 +91,29 @@ const AdminPhotos: React.FC = () => {
     }
   };
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
+  const uploadFiles = async (files: File[]) => {
     if (files.length === 0 || !albumId) return;
 
+    uploadItems.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+
+    const items: UploadItem[] = files.map((file, idx) => ({
+      id: `${Date.now()}-${idx}-${file.name}`,
+      file,
+      previewUrl: URL.createObjectURL(file),
+      progress: 0,
+      status: 'queued',
+    }));
+
+    setUploadItems(items);
     setUploading(true);
-    setUploadMessage(null);
-    setUploadProgress({ completed: 0, total: files.length });
     try {
       // Extract metadata from each file
       // Metadata extraction is currently unused
       
       // Descriptions currently unused; we pass files only
-      const result = await photoService.uploadPhotos(albumId, files, undefined, {
-        onProgress: (completed, total) => setUploadProgress({ completed, total }),
-      });
-      await loadPhotos();
-      await loadAlbums(); // Reload albums to update photo count
-
-      if (result.failedFiles.length === 0) {
-        setUploadMessage({
-          type: 'success',
-          text: `Uploaded ${result.uploadedPhotos.length}/${result.totalFiles} photos successfully.${result.retriedBatches > 0 ? ` Auto-retried ${result.retriedBatches} batches.` : ''}`,
-        });
-      } else {
-        setUploadMessage({
-          type: 'error',
-          text: `Uploaded ${result.uploadedPhotos.length}/${result.totalFiles} photos. ${result.failedFiles.length} failed after automatic retries.`,
-        });
-      }
-
-      setShowUploadPanel(false);
+      await photoService.uploadPhotos(albumId, files);
+      loadPhotos();
+      loadAlbums(); // Reload albums to update photo count
     } catch (error) {
       console.error('Failed to upload photos:', error);
       setUploadMessage({ type: 'error', text: 'Upload failed. Please try again.' });
@@ -117,6 +122,20 @@ const AdminPhotos: React.FC = () => {
       setUploadProgress({ completed: 0, total: 0 });
       e.target.value = '';
     }
+  };
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    await uploadFiles(files);
+    e.target.value = '';
+  };
+
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    const files = Array.from(e.dataTransfer.files || []).filter((f) => f.type.startsWith('image/'));
+    await uploadFiles(files);
   };
 
   const handleDelete = async (id: number) => {
@@ -310,6 +329,65 @@ const AdminPhotos: React.FC = () => {
           )}
         </div>
       </div>
+
+      <div
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsDragging(true);
+        }}
+        onDragLeave={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsDragging(false);
+        }}
+        onDrop={handleDrop}
+        style={{
+          marginBottom: '1rem',
+          padding: '1.25rem',
+          border: `2px dashed ${isDragging ? 'var(--primary-color)' : 'var(--border-color)'}`,
+          borderRadius: '0.75rem',
+          backgroundColor: isDragging ? 'rgba(124, 92, 255, 0.12)' : 'var(--bg-tertiary)',
+          textAlign: 'center',
+          color: 'var(--text-secondary)',
+        }}
+      >
+        Drag & drop images here to upload, or use the upload button.
+      </div>
+
+      {uploadItems.length > 0 && (
+        <div className="admin-summary-box" style={{ marginBottom: '1.5rem' }}>
+          <h3 style={{ marginTop: 0, marginBottom: '0.75rem' }}>Upload Progress</h3>
+          <div style={{ display: 'grid', gap: '0.75rem' }}>
+            {uploadItems.map((item) => (
+              <div key={item.id} style={{ display: 'grid', gridTemplateColumns: '56px 1fr', gap: '0.75rem', alignItems: 'center' }}>
+                <img
+                  src={item.previewUrl}
+                  alt={item.file.name}
+                  style={{ width: '56px', height: '56px', objectFit: 'cover', borderRadius: '0.5rem', border: '1px solid var(--border-color)' }}
+                />
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem' }}>
+                    <span style={{ fontSize: '0.9rem' }}>{item.file.name}</span>
+                    <span className={item.status === 'error' ? 'danger-text' : item.status === 'done' ? 'success-text' : 'muted-text'} style={{ fontSize: '0.8rem' }}>
+                      {item.status === 'uploading' ? `${item.progress}%` : item.status}
+                    </span>
+                  </div>
+                  <div style={{ height: '8px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '999px', overflow: 'hidden', marginTop: '0.35rem' }}>
+                    <div style={{ width: `${item.progress}%`, height: '100%', backgroundColor: item.status === 'error' ? 'var(--error-color)' : 'var(--primary-color)', transition: 'width 0.2s' }} />
+                  </div>
+                  {item.metadata && (
+                    <div className="muted-text" style={{ fontSize: '0.75rem', marginTop: '0.25rem' }}>
+                      {item.metadata.cameraMake || 'Camera'} • {item.metadata.width || '?'}x{item.metadata.height || '?'}
+                    </div>
+                  )}
+                  {item.error && <div className="danger-text" style={{ fontSize: '0.75rem' }}>{item.error}</div>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {currentAlbum && (
         <div className="admin-summary-box" style={{ marginBottom: '1.5rem' }}>
