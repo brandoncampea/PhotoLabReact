@@ -144,42 +144,25 @@ const AdminDashboard: React.FC = () => {
     <div className="admin-page">
       <div className="page-header">
         <h1>📊 Dashboard</h1>
-        <p style={{ fontSize: '0.9rem', color: '#666', marginTop: '0.5rem' }}>
+        <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
           Welcome back! Here's what's happening with your business today.
         </p>
       </div>
 
-
-      
       {/* Key Metrics */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.5rem', marginBottom: '2rem' }}>
+      <div className="dashboard-metrics">
         <div
           role="button"
           tabIndex={0}
           onClick={() => navigate('/admin/analytics')}
           onKeyDown={(e) => e.key === 'Enter' && navigate('/admin/analytics')}
-          style={{
-            padding: '1.5rem',
-            backgroundColor: '#e3f2fd',
-            borderRadius: '12px',
-            border: '2px solid #4169E1',
-            position: 'relative',
-            overflow: 'hidden',
-            cursor: 'pointer',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
-            transition: 'transform 0.15s ease, box-shadow 0.15s ease'
-          }}
-          className="dashboard-card"
+          className="dashboard-card dashboard-card-revenue"
         >
-          <div style={{ position: 'absolute', top: '10px', right: '10px', fontSize: '2rem', opacity: 0.2 }}>💰</div>
-          <div style={{ fontSize: '0.9rem', color: '#666', marginBottom: '0.5rem', fontWeight: 500 }}>Total Revenue</div>
-          <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#4169E1' }}>
-            ${stats?.totalRevenue.toFixed(2) || '0.00'}
-          </div>
-          <div style={{ fontSize: '0.8rem', color: '#666', marginTop: '0.5rem' }}>
-            Avg: ${averageOrderValue} per order
-          </div>
-          <div style={{ fontSize: '0.8rem', color: '#4169E1', marginTop: '0.75rem', fontWeight: 600 }}>View analytics →</div>
+          <span className="dashboard-card-icon">💰</span>
+          <div className="dashboard-card-label">Total Revenue</div>
+          <div className="dashboard-card-value">${stats?.totalRevenue.toFixed(2) || '0.00'}</div>
+          <div className="dashboard-card-sub">Avg: ${averageOrderValue} per order</div>
+          <span className="dashboard-card-link">View analytics →</span>
         </div>
 
         <div
@@ -187,28 +170,13 @@ const AdminDashboard: React.FC = () => {
           tabIndex={0}
           onClick={() => navigate('/admin/orders')}
           onKeyDown={(e) => e.key === 'Enter' && navigate('/admin/orders')}
-          style={{
-            padding: '1.5rem',
-            backgroundColor: '#e8f5e9',
-            borderRadius: '12px',
-            border: '2px solid #4caf50',
-            position: 'relative',
-            overflow: 'hidden',
-            cursor: 'pointer',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
-            transition: 'transform 0.15s ease, box-shadow 0.15s ease'
-          }}
-          className="dashboard-card"
+          className="dashboard-card dashboard-card-orders"
         >
-          <div style={{ position: 'absolute', top: '10px', right: '10px', fontSize: '2rem', opacity: 0.2 }}>📦</div>
-          <div style={{ fontSize: '0.9rem', color: '#666', marginBottom: '0.5rem', fontWeight: 500 }}>Total Orders</div>
-          <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#4caf50' }}>
-            {stats?.totalOrders || 0}
-          </div>
-          <div style={{ fontSize: '0.8rem', color: '#666', marginTop: '0.5rem' }}>
-            {orderCompletionRate}% completion rate
-          </div>
-          <div style={{ fontSize: '0.8rem', color: '#2e7d32', marginTop: '0.75rem', fontWeight: 600 }}>Go to orders →</div>
+          <span className="dashboard-card-icon">📦</span>
+          <div className="dashboard-card-label">Total Orders</div>
+          <div className="dashboard-card-value">{stats?.totalOrders || 0}</div>
+          <div className="dashboard-card-sub">{orderCompletionRate}% completion rate</div>
+          <span className="dashboard-card-link">Go to orders →</span>
         </div>
 
         <div
@@ -216,28 +184,13 @@ const AdminDashboard: React.FC = () => {
           tabIndex={0}
           onClick={() => navigate('/admin/customers')}
           onKeyDown={(e) => e.key === 'Enter' && navigate('/admin/customers')}
-          style={{
-            padding: '1.5rem',
-            backgroundColor: '#f3e5f5',
-            borderRadius: '12px',
-            border: '2px solid #9c27b0',
-            position: 'relative',
-            overflow: 'hidden',
-            cursor: 'pointer',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
-            transition: 'transform 0.15s ease, box-shadow 0.15s ease'
-          }}
-          className="dashboard-card"
+          className="dashboard-card dashboard-card-customers"
         >
-          <div style={{ position: 'absolute', top: '10px', right: '10px', fontSize: '2rem', opacity: 0.2 }}>👥</div>
-          <div style={{ fontSize: '0.9rem', color: '#666', marginBottom: '0.5rem', fontWeight: 500 }}>Total Customers</div>
-          <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#9c27b0' }}>
-            {stats?.totalCustomers || 0}
-          </div>
-          <div style={{ fontSize: '0.8rem', color: '#666', marginTop: '0.5rem' }}>
-            Active user accounts
-          </div>
-          <div style={{ fontSize: '0.8rem', color: '#7b1fa2', marginTop: '0.75rem', fontWeight: 600 }}>View customers →</div>
+          <span className="dashboard-card-icon">👥</span>
+          <div className="dashboard-card-label">Total Customers</div>
+          <div className="dashboard-card-value">{stats?.totalCustomers || 0}</div>
+          <div className="dashboard-card-sub">Active user accounts</div>
+          <span className="dashboard-card-link">View customers →</span>
         </div>
 
         <div
@@ -245,28 +198,13 @@ const AdminDashboard: React.FC = () => {
           tabIndex={0}
           onClick={() => navigate('/admin/orders')}
           onKeyDown={(e) => e.key === 'Enter' && navigate('/admin/orders')}
-          style={{
-            padding: '1.5rem',
-            backgroundColor: '#fff3e0',
-            borderRadius: '12px',
-            border: '2px solid #ff9800',
-            position: 'relative',
-            overflow: 'hidden',
-            cursor: 'pointer',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
-            transition: 'transform 0.15s ease, box-shadow 0.15s ease'
-          }}
-          className="dashboard-card"
+          className="dashboard-card dashboard-card-pending"
         >
-          <div style={{ position: 'absolute', top: '10px', right: '10px', fontSize: '2rem', opacity: 0.2 }}>⏳</div>
-          <div style={{ fontSize: '0.9rem', color: '#666', marginBottom: '0.5rem', fontWeight: 500 }}>Pending Orders</div>
-          <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#ff9800' }}>
-            {stats?.pendingOrders || 0}
-          </div>
-          <div style={{ fontSize: '0.8rem', color: '#666', marginTop: '0.5rem' }}>
-            Requires attention
-          </div>
-          <div style={{ fontSize: '0.8rem', color: '#ef6c00', marginTop: '0.75rem', fontWeight: 600 }}>Review pending →</div>
+          <span className="dashboard-card-icon">⏳</span>
+          <div className="dashboard-card-label">Pending Orders</div>
+          <div className="dashboard-card-value">{stats?.pendingOrders || 0}</div>
+          <div className="dashboard-card-sub">Requires attention</div>
+          <span className="dashboard-card-link">Review pending →</span>
         </div>
 
         <div
@@ -274,213 +212,119 @@ const AdminDashboard: React.FC = () => {
           tabIndex={0}
           onClick={() => navigate('/admin/analytics')}
           onKeyDown={(e) => e.key === 'Enter' && navigate('/admin/analytics')}
-          style={{
-            padding: '1.5rem',
-            backgroundColor: '#f1f8e9',
-            borderRadius: '12px',
-            border: '2px solid #689f38',
-            position: 'relative',
-            overflow: 'hidden',
-            cursor: 'pointer',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
-            transition: 'transform 0.15s ease, box-shadow 0.15s ease'
-          }}
-          className="dashboard-card"
+          className="dashboard-card dashboard-card-profit"
         >
-          <div style={{ position: 'absolute', top: '10px', right: '10px', fontSize: '2rem', opacity: 0.2 }}>📈</div>
-          <div style={{ fontSize: '0.9rem', color: '#666', marginBottom: '0.5rem', fontWeight: 500 }}>Total Profit</div>
-          <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#689f38' }}>
-            ${profitData.profit.toFixed(2)}
-          </div>
-          <div style={{ fontSize: '0.8rem', color: '#666', marginTop: '0.5rem' }}>
-            {profitData.margin}% margin
-          </div>
-          <div style={{ fontSize: '0.8rem', color: '#558b2f', marginTop: '0.75rem', fontWeight: 600 }}>See profit details →</div>
+          <span className="dashboard-card-icon">📈</span>
+          <div className="dashboard-card-label">Total Profit</div>
+          <div className="dashboard-card-value">${profitData.profit.toFixed(2)}</div>
+          <div className="dashboard-card-sub">{profitData.margin}% margin</div>
+          <span className="dashboard-card-link">See profit details →</span>
         </div>
       </div>
 
-      {/* Analytics Overview */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginBottom: '2rem' }}>
-        {/* Visitor Stats */}
-        <div style={{
-          backgroundColor: 'white',
-          borderRadius: '12px',
-          padding: '1.5rem',
-          border: '1px solid #e0e0e0'
-        }}>
-          <h2 style={{ fontSize: '1.2rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span>📈</span> Traffic Overview
-          </h2>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-            <div style={{ padding: '1rem', backgroundColor: '#f8f9fa', borderRadius: '8px' }}>
-              <div style={{ fontSize: '0.85rem', color: '#666', marginBottom: '0.5rem' }}>Total Visitors</div>
-              <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: '#4169E1' }}>{analytics?.totalVisitors || 0}</div>
+      {/* Analytics Overview + Order Status */}
+      <div className="dashboard-two-col">
+        {/* Traffic Overview */}
+        <div className="dashboard-widget">
+          <h2><span>📈</span> Traffic Overview</h2>
+          <div className="dashboard-mini-stats">
+            <div className="dashboard-mini-stat">
+              <div className="dashboard-mini-stat-label">Total Visitors</div>
+              <div className="dashboard-mini-stat-value accent-blue">{analytics?.totalVisitors || 0}</div>
             </div>
-            <div style={{ padding: '1rem', backgroundColor: '#f8f9fa', borderRadius: '8px' }}>
-              <div style={{ fontSize: '0.85rem', color: '#666', marginBottom: '0.5rem' }}>Page Views</div>
-              <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: '#9c27b0' }}>{analytics?.totalPageViews || 0}</div>
+            <div className="dashboard-mini-stat">
+              <div className="dashboard-mini-stat-label">Page Views</div>
+              <div className="dashboard-mini-stat-value accent-purple">{analytics?.totalPageViews || 0}</div>
             </div>
-            <div style={{ padding: '1rem', backgroundColor: '#f8f9fa', borderRadius: '8px' }}>
-              <div style={{ fontSize: '0.85rem', color: '#666', marginBottom: '0.5rem' }}>Albums Viewed</div>
-              <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: '#4caf50' }}>{analytics?.albumViews || 0}</div>
+            <div className="dashboard-mini-stat">
+              <div className="dashboard-mini-stat-label">Albums Viewed</div>
+              <div className="dashboard-mini-stat-value accent-green">{analytics?.albumViews || 0}</div>
             </div>
-            <div style={{ padding: '1rem', backgroundColor: '#f8f9fa', borderRadius: '8px' }}>
-              <div style={{ fontSize: '0.85rem', color: '#666', marginBottom: '0.5rem' }}>Photos Viewed</div>
-              <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: '#ff9800' }}>{analytics?.photoViews || 0}</div>
+            <div className="dashboard-mini-stat">
+              <div className="dashboard-mini-stat-label">Photos Viewed</div>
+              <div className="dashboard-mini-stat-value accent-orange">{analytics?.photoViews || 0}</div>
             </div>
           </div>
         </div>
 
-        {/* Order Status Breakdown */}
-        <div style={{
-          backgroundColor: 'white',
-          borderRadius: '12px',
-          padding: '1.5rem',
-          border: '1px solid #e0e0e0'
-        }}>
-          <h2 style={{ fontSize: '1.2rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span>📊</span> Order Status
-          </h2>
+        {/* Order Status */}
+        <div className="dashboard-widget">
+          <h2><span>📊</span> Order Status</h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            {/* Completed Orders Bar */}
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', fontSize: '0.9rem' }}>
+            <div className="dashboard-progress-item">
+              <div className="dashboard-progress-label-row">
                 <span style={{ fontWeight: 500 }}>Completed</span>
-                <span style={{ color: '#666' }}>{stats?.totalOrders ? stats.totalOrders - stats.pendingOrders : 0}</span>
+                <span>{stats?.totalOrders ? stats.totalOrders - stats.pendingOrders : 0}</span>
               </div>
-              <div style={{ height: '24px', backgroundColor: '#e0e0e0', borderRadius: '12px', overflow: 'hidden' }}>
-                <div style={{
-                  height: '100%',
-                  width: `${stats?.totalOrders ? ((stats.totalOrders - stats.pendingOrders) / stats.totalOrders * 100) : 0}%`,
-                  backgroundColor: '#4caf50',
-                  transition: 'width 0.3s ease'
-                }}></div>
+              <div className="dashboard-progress-track">
+                <div
+                  className="dashboard-progress-fill accent-green"
+                  style={{ width: `${stats?.totalOrders ? ((stats.totalOrders - stats.pendingOrders) / stats.totalOrders * 100) : 0}%` }}
+                />
               </div>
             </div>
-
-            {/* Pending Orders Bar */}
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', fontSize: '0.9rem' }}>
+            <div className="dashboard-progress-item">
+              <div className="dashboard-progress-label-row">
                 <span style={{ fontWeight: 500 }}>Pending</span>
-                <span style={{ color: '#666' }}>{stats?.pendingOrders || 0}</span>
+                <span>{stats?.pendingOrders || 0}</span>
               </div>
-              <div style={{ height: '24px', backgroundColor: '#e0e0e0', borderRadius: '12px', overflow: 'hidden' }}>
-                <div style={{
-                  height: '100%',
-                  width: `${stats?.totalOrders ? (stats.pendingOrders / stats.totalOrders * 100) : 0}%`,
-                  backgroundColor: '#ff9800',
-                  transition: 'width 0.3s ease'
-                }}></div>
+              <div className="dashboard-progress-track">
+                <div
+                  className="dashboard-progress-fill accent-orange"
+                  style={{ width: `${stats?.totalOrders ? (stats.pendingOrders / stats.totalOrders * 100) : 0}%` }}
+                />
               </div>
             </div>
-
-            {/* Completion Rate Circle */}
-            <div style={{ marginTop: '1rem', textAlign: 'center' }}>
-              <div style={{ position: 'relative', display: 'inline-block' }}>
-                <svg width="120" height="120">
-                  <circle
-                    cx="60"
-                    cy="60"
-                    r="50"
-                    fill="none"
-                    stroke="#e0e0e0"
-                    strokeWidth="10"
-                  />
-                  <circle
-                    cx="60"
-                    cy="60"
-                    r="50"
-                    fill="none"
-                    stroke="#4caf50"
-                    strokeWidth="10"
-                    strokeDasharray={`${2 * Math.PI * 50 * parseFloat(orderCompletionRate) / 100} ${2 * Math.PI * 50}`}
-                    strokeLinecap="round"
-                    transform="rotate(-90 60 60)"
-                  />
-                  <text x="60" y="60" textAnchor="middle" dy=".3em" style={{ fontSize: '1.5rem', fontWeight: 'bold', fill: '#4caf50' }}>
-                    {orderCompletionRate}%
-                  </text>
-                </svg>
-                <div style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.5rem' }}>Completion Rate</div>
-              </div>
+            <div className="dashboard-completion-ring">
+              <svg width="120" height="120">
+                <circle cx="60" cy="60" r="50" fill="none" stroke="var(--border-color)" strokeWidth="10" />
+                <circle
+                  cx="60" cy="60" r="50" fill="none"
+                  stroke="#4caf50" strokeWidth="10"
+                  strokeDasharray={`${2 * Math.PI * 50 * parseFloat(orderCompletionRate) / 100} ${2 * Math.PI * 50}`}
+                  strokeLinecap="round"
+                  transform="rotate(-90 60 60)"
+                />
+                <text x="60" y="60" textAnchor="middle" dy=".3em" style={{ fontSize: '1.5rem', fontWeight: 'bold', fill: '#4caf50' }}>
+                  {orderCompletionRate}%
+                </text>
+              </svg>
+              <div className="dashboard-completion-ring-label">Completion Rate</div>
             </div>
           </div>
         </div>
       </div>
 
       {/* Top Albums */}
-      <div style={{ marginBottom: '2rem' }}>
-        <div style={{
-          backgroundColor: 'white',
-          borderRadius: '12px',
-          padding: '1.5rem',
-          border: '1px solid #e0e0e0'
-        }}>
-          <h2 style={{ fontSize: '1.2rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span>🔥</span> Most Popular Albums
-          </h2>
-          {!stats?.topAlbums || stats.topAlbums.length === 0 ? (
-            <p style={{ color: '#999', fontStyle: 'italic', textAlign: 'center', padding: '2rem' }}>
-              No album orders yet. Sales will appear here once customers purchase.
-            </p>
-          ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1rem' }}>
-              {stats.topAlbums.slice(0, 6).map((entry) => (
-                <div key={entry.album.id} style={{
-                  padding: '1rem',
-                  backgroundColor: '#f8f9fa',
-                  borderRadius: '8px',
-                  border: '2px solid #e0e0e0',
-                  transition: 'transform 0.2s, box-shadow 0.2s',
-                  cursor: 'pointer'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.transform = 'translateY(-4px)';
-                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = 'translateY(0)';
-                  e.currentTarget.style.boxShadow = 'none';
-                }}>
-                  <div style={{ fontSize: '0.85rem', color: '#666', marginBottom: '0.5rem' }}>📁 {entry.album.name}</div>
-                  <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#4169E1' }}>{entry.orderCount}</div>
-                  <div style={{ fontSize: '0.75rem', color: '#999', marginTop: '0.25rem' }}>orders</div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+      <div className="dashboard-widget" style={{ marginBottom: '2rem' }}>
+        <h2><span>🔥</span> Most Popular Albums</h2>
+        {!stats?.topAlbums || stats.topAlbums.length === 0 ? (
+          <p style={{ color: 'var(--text-secondary)', fontStyle: 'italic', textAlign: 'center', padding: '2rem' }}>
+            No album orders yet. Sales will appear here once customers purchase.
+          </p>
+        ) : (
+          <div className="dashboard-albums-grid">
+            {stats.topAlbums.slice(0, 6).map((entry) => (
+              <div key={entry.album.id} className="dashboard-album-card">
+                <div className="dashboard-album-name">📁 {entry.album.name}</div>
+                <div className="dashboard-album-count">{entry.orderCount}</div>
+                <div className="dashboard-album-count-label">orders</div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Quick Actions */}
-      <div style={{
-        backgroundColor: 'white',
-        borderRadius: '12px',
-        padding: '1.5rem',
-        border: '1px solid #e0e0e0'
-      }}>
-        <h2 style={{ fontSize: '1.2rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <span>⚡</span> Quick Actions
-        </h2>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
-          <a href="/admin/orders" className="btn btn-primary" style={{ textDecoration: 'none', textAlign: 'center' }}>
-            📦 Manage Orders
-          </a>
-          <a href="/admin/albums" className="btn btn-primary" style={{ textDecoration: 'none', textAlign: 'center' }}>
-            📁 Manage Albums
-          </a>
-          <a href="/admin/products" className="btn btn-primary" style={{ textDecoration: 'none', textAlign: 'center' }}>
-            🛍️ Manage Products
-          </a>
-          <a href="/admin/customers" className="btn btn-primary" style={{ textDecoration: 'none', textAlign: 'center' }}>
-            👥 View Customers
-          </a>
-          <a href="/admin/analytics" className="btn btn-secondary" style={{ textDecoration: 'none', textAlign: 'center' }}>
-            📈 View Analytics
-          </a>
-          <a href="/admin/shipping" className="btn btn-secondary" style={{ textDecoration: 'none', textAlign: 'center' }}>
-            🚚 Shipping Settings
-          </a>
+      <div className="dashboard-widget">
+        <h2><span>⚡</span> Quick Actions</h2>
+        <div className="dashboard-actions-grid">
+          <a href="/admin/orders"    className="btn btn-primary"    style={{ textDecoration: 'none', textAlign: 'center' }}>📦 Manage Orders</a>
+          <a href="/admin/albums"    className="btn btn-primary"    style={{ textDecoration: 'none', textAlign: 'center' }}>📁 Manage Albums</a>
+          <a href="/admin/products"  className="btn btn-primary"    style={{ textDecoration: 'none', textAlign: 'center' }}>🛍️ Manage Products</a>
+          <a href="/admin/customers" className="btn btn-primary"    style={{ textDecoration: 'none', textAlign: 'center' }}>👥 View Customers</a>
+          <a href="/admin/analytics" className="btn btn-secondary"  style={{ textDecoration: 'none', textAlign: 'center' }}>📈 View Analytics</a>
+          <a href="/admin/shipping"  className="btn btn-secondary"  style={{ textDecoration: 'none', textAlign: 'center' }}>🚚 Shipping Settings</a>
         </div>
       </div>
     </div>
