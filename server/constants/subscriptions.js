@@ -12,7 +12,9 @@ export const SUBSCRIPTION_PLANS = {
       'Monthly reports'
     ],
     maxAlbums: 5,
-    maxUsers: 3
+    maxUsers: 3,
+    maxPhotos: 500,
+    maxStorageGb: 50
   },
   professional: {
     id: 'professional',
@@ -21,13 +23,16 @@ export const SUBSCRIPTION_PLANS = {
     stripePriceId: 'price_1QqI2mFc0tLpWH2y0j2d4L9n', // Test mode Stripe price ID for $79/mo
     features: [
       'Unlimited albums',
+      'Advanced analytics',
       'Advanced photo editing',
       'Priority support',
       'Custom watermarks',
       'API access'
     ],
     maxAlbums: null, // unlimited
-    maxUsers: 10
+    maxUsers: 10,
+    maxPhotos: 5000,
+    maxStorageGb: 500
   },
   enterprise: {
     id: 'enterprise',
@@ -36,6 +41,7 @@ export const SUBSCRIPTION_PLANS = {
     stripePriceId: 'price_1QqI2mFc0tLpWH2y0j3e5M0o', // Test mode Stripe price ID for $199/mo
     features: [
       'Unlimited albums',
+      'Advanced analytics',
       'Advanced photo editing',
       '24/7 premium support',
       'Custom watermarks',
@@ -44,7 +50,9 @@ export const SUBSCRIPTION_PLANS = {
       'Custom integrations'
     ],
     maxAlbums: null,
-    maxUsers: null // unlimited
+    maxUsers: null, // unlimited
+    maxPhotos: 50000,
+    maxStorageGb: 2000
   }
 };
 

@@ -268,6 +268,76 @@ router.get('/:studioId/subscription', authRequired, async (req, res) => {
   }
 });
 
+// Get studio usage stats against subscription limits
+router.get('/:studioId/usage', authRequired, async (req, res) => {
+  try {
+    const { studioId } = req.params;
+    const parsedStudioId = parseInt(studioId, 10);
+
+    if (req.user.role !== 'super_admin' && req.user.studio_id !== parsedStudioId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    const studio = await queryRow(
+      `SELECT id, subscription_plan as subscriptionPlan
+       FROM studios
+       WHERE id = $1`,
+      [parsedStudioId]
+    );
+
+    if (!studio) {
+      return res.status(404).json({ error: 'Studio not found' });
+    }
+
+    const plan = studio.subscriptionPlan ? SUBSCRIPTION_PLANS[studio.subscriptionPlan] : null;
+
+    const albumStats = await queryRow(
+      `SELECT COUNT(*) as albumCount
+       FROM albums
+       WHERE studio_id = $1`,
+      [parsedStudioId]
+    );
+
+    const photoStats = await queryRow(
+      `SELECT
+         COUNT(*) as photoCount,
+         COALESCE(SUM(COALESCE(p.file_size_bytes, 0)), 0) as storageBytes
+       FROM photos p
+       INNER JOIN albums a ON a.id = p.album_id
+       WHERE a.studio_id = $1`,
+      [parsedStudioId]
+    );
+
+    const albumCount = Number(albumStats?.albumCount) || 0;
+    const photoCount = Number(photoStats?.photoCount) || 0;
+    const storageBytes = Number(photoStats?.storageBytes) || 0;
+    const storageGbUsed = storageBytes / (1024 ** 3);
+
+    res.json({
+      usage: {
+        albumCount,
+        photoCount,
+        storageBytes,
+        storageGbUsed,
+      },
+      limits: {
+        maxAlbums: plan?.maxAlbums ?? null,
+        maxPhotos: plan?.maxPhotos ?? null,
+        maxStorageGb: plan?.maxStorageGb ?? null,
+      },
+      plan: plan
+        ? {
+            id: plan.id,
+            name: plan.name,
+          }
+        : null,
+    });
+  } catch (error) {
+    console.error('Get studio usage error:', error);
+    res.status(500).json({ error: 'Failed to fetch studio usage' });
+  }
+});
+
 // Cancel subscription (takes effect at renewal date)
 router.post('/:studioId/subscription/cancel', authRequired, async (req, res) => {
   try {
