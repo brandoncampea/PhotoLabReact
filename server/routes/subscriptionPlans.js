@@ -9,7 +9,7 @@ const router = express.Router();
 router.get('/', async (req, res) => {
   try {
     const plans = await queryRows(`
-      SELECT id, name, description, monthly_price, max_albums, max_storage_gb, features, is_active
+      SELECT id, name, description, monthly_price, yearly_price, max_albums, max_storage_gb, features, is_active
       FROM subscription_plans
       ORDER BY monthly_price ASC
     `);
@@ -31,7 +31,7 @@ router.get('/:planId', async (req, res) => {
   try {
     const { planId } = req.params;
     const plan = await queryRow(`
-      SELECT id, name, description, monthly_price, max_albums, max_storage_gb, features, is_active
+      SELECT id, name, description, monthly_price, yearly_price, max_albums, max_storage_gb, features, is_active
       FROM subscription_plans
       WHERE id = $1
     `, [planId]);
@@ -47,6 +47,90 @@ router.get('/:planId', async (req, res) => {
   } catch (error) {
     console.error('Error fetching plan:', error);
     res.status(500).json({ error: 'Failed to fetch plan' });
+  }
+});
+
+// Create subscription plan (super admin only)
+router.post('/', authRequired, async (req, res) => {
+  try {
+    if (req.user.role !== 'super_admin') {
+      return res.status(403).json({ error: 'Only super admins can create plans' });
+    }
+
+    const {
+      name,
+      description,
+      monthly_price,
+      yearly_price,
+      max_albums,
+      max_storage_gb,
+      features,
+      is_active,
+    } = req.body || {};
+
+    if (!name || !String(name).trim()) {
+      return res.status(400).json({ error: 'Plan name is required' });
+    }
+
+    if (typeof monthly_price !== 'number' || Number.isNaN(monthly_price) || monthly_price < 0) {
+      return res.status(400).json({ error: 'monthly_price must be a non-negative number' });
+    }
+
+    if (yearly_price !== undefined && (typeof yearly_price !== 'number' || Number.isNaN(yearly_price) || yearly_price < 0)) {
+      return res.status(400).json({ error: 'yearly_price must be a non-negative number' });
+    }
+
+    if (max_albums !== undefined && (!Number.isInteger(max_albums) || max_albums < 0)) {
+      return res.status(400).json({ error: 'max_albums must be a non-negative integer' });
+    }
+
+    if (max_storage_gb !== undefined && (!Number.isInteger(max_storage_gb) || max_storage_gb < 0)) {
+      return res.status(400).json({ error: 'max_storage_gb must be a non-negative integer' });
+    }
+
+    if (features !== undefined && !Array.isArray(features)) {
+      return res.status(400).json({ error: 'features must be an array' });
+    }
+
+    const existing = await queryRow('SELECT id FROM subscription_plans WHERE LOWER(name) = LOWER($1)', [String(name).trim()]);
+    if (existing) {
+      return res.status(409).json({ error: 'A subscription level with this name already exists' });
+    }
+
+    const inserted = await queryRow(
+      `INSERT INTO subscription_plans
+         (name, description, monthly_price, yearly_price, max_albums, max_storage_gb, features, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING id`,
+      [
+        String(name).trim(),
+        description || null,
+        monthly_price,
+        yearly_price ?? null,
+        max_albums ?? null,
+        max_storage_gb ?? null,
+        JSON.stringify(Array.isArray(features) ? features : []),
+        is_active === undefined ? true : !!is_active,
+      ]
+    );
+
+    const plan = await queryRow(
+      `SELECT id, name, description, monthly_price, yearly_price, max_albums, max_storage_gb, features, is_active
+       FROM subscription_plans
+       WHERE id = $1`,
+      [inserted.id]
+    );
+
+    res.status(201).json({
+      message: 'Plan created successfully',
+      plan: {
+        ...plan,
+        features: plan.features ? JSON.parse(plan.features) : [],
+      },
+    });
+  } catch (error) {
+    console.error('Error creating plan:', error);
+    res.status(500).json({ error: 'Failed to create plan' });
   }
 });
 
@@ -129,7 +213,7 @@ router.patch('/:planId', authRequired, async (req, res) => {
     `, updateValues);
 
     const updatedPlan = await queryRow(`
-      SELECT id, name, description, monthly_price, max_albums, max_storage_gb, features, is_active
+      SELECT id, name, description, monthly_price, yearly_price, max_albums, max_storage_gb, features, is_active
       FROM subscription_plans
       WHERE id = $1
     `, [planId]);
