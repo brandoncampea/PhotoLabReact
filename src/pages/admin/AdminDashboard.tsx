@@ -6,6 +6,84 @@ import { analyticsService } from '../../services/analyticsService';
 import { orderService } from '../../services/orderService';
 import { userAdminService } from '../../services/adminService';
 import { albumService } from '../../services/albumService';
+import api from '../../services/api';
+import { studioFeatureService } from '../../services/studioFeatureService';
+
+interface RevenueBreakdownSummary {
+  totalRevenue: number;
+  totalCost: number;
+  totalProfit: number;
+  totalItems: number;
+  totalOrders: number;
+}
+
+interface RevenueByCategory {
+  category: string;
+  revenue: number;
+  cost: number;
+  profit: number;
+  quantity: number;
+  orderCount: number;
+}
+
+interface RevenueByAlbum {
+  albumId: number;
+  albumName: string;
+  albumCategory: string;
+  photoCount: number;
+  revenue: number;
+  cost: number;
+  profit: number;
+  quantity: number;
+  orderCount: number;
+}
+
+interface RevenueByPhoto {
+  albumId: number;
+  albumName: string;
+  photoId: number;
+  fileName: string;
+  thumbnailUrl?: string;
+  revenue: number;
+  cost: number;
+  profit: number;
+  quantity: number;
+  orderCount: number;
+}
+
+interface RevenueBreakdown {
+  summary: RevenueBreakdownSummary;
+  byCategory: RevenueByCategory[];
+  byAlbum: RevenueByAlbum[];
+  byProduct: Array<{
+    productId: number;
+    productName: string;
+    category: string;
+    revenue: number;
+    cost: number;
+    profit: number;
+    quantity: number;
+    orderCount: number;
+  }>;
+  bySize: Array<{
+    productId: number;
+    productName: string;
+    productSizeId: number;
+    sizeName: string;
+    revenue: number;
+    cost: number;
+    profit: number;
+    quantity: number;
+    orderCount: number;
+  }>;
+  byPhoto: RevenueByPhoto[];
+}
+
+interface StudioSubscriptionAccess {
+  planId: string | null;
+  planName: string | null;
+  hasAdvancedAnalytics: boolean;
+}
 
 
 const AdminDashboard: React.FC = () => {
@@ -14,12 +92,49 @@ const AdminDashboard: React.FC = () => {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showRevenueModal, setShowRevenueModal] = useState(false);
+  const [revenueBreakdown, setRevenueBreakdown] = useState<RevenueBreakdown | null>(null);
+  const [revenueBreakdownLoading, setRevenueBreakdownLoading] = useState(false);
+  const [revenueBreakdownError, setRevenueBreakdownError] = useState('');
+  const [selectedAlbumId, setSelectedAlbumId] = useState<number | null>(null);
+  const [revenueFocus, setRevenueFocus] = useState<'revenue' | 'profit'>('revenue');
+  const [subscriptionAccess, setSubscriptionAccess] = useState<StudioSubscriptionAccess>({
+    planId: null,
+    planName: null,
+    hasAdvancedAnalytics: true,
+  });
 
   useEffect(() => {
     loadStats();
     // Refresh stats every 30 seconds
     const interval = setInterval(loadStats, 30000);
     return () => clearInterval(interval);
+  }, [user]);
+
+  useEffect(() => {
+    const loadSubscriptionAccess = async () => {
+      const effectiveStudioId = studioFeatureService.getEffectiveStudioId(user);
+      if (!effectiveStudioId) {
+        setSubscriptionAccess({ planId: null, planName: null, hasAdvancedAnalytics: true });
+        return;
+      }
+
+      try {
+        const response = await api.get(`/studios/${effectiveStudioId}/subscription`);
+        const plan = response.data?.plan || null;
+        const hasAdvancedAnalytics = Array.isArray(plan?.features) && plan.features.includes('Advanced analytics');
+        setSubscriptionAccess({
+          planId: plan?.id || null,
+          planName: plan?.name || null,
+          hasAdvancedAnalytics,
+        });
+      } catch (error) {
+        console.error('Failed to load studio subscription access:', error);
+        setSubscriptionAccess({ planId: null, planName: null, hasAdvancedAnalytics: false });
+      }
+    };
+
+    loadSubscriptionAccess();
   }, [user]);
 
   const loadStats = async () => {
@@ -140,6 +255,41 @@ const AdminDashboard: React.FC = () => {
 
   const profitData = calculateProfit();
 
+  const loadRevenueBreakdown = async () => {
+    try {
+      setRevenueBreakdownLoading(true);
+      const data = await analyticsService.getRevenueBreakdown();
+      setRevenueBreakdown(data);
+      setSelectedAlbumId(data.byAlbum?.[0]?.albumId || null);
+      setRevenueBreakdownError('');
+    } catch (error) {
+      console.error('Failed to load revenue breakdown:', error);
+      const responseError = error as any;
+      if (responseError?.response?.status === 403 && responseError?.response?.data?.code === 'ADVANCED_ANALYTICS_REQUIRED') {
+        setRevenueBreakdownError(responseError.response.data.error || 'Advanced analytics require a higher subscription');
+      } else {
+        setRevenueBreakdownError('Failed to load revenue details');
+      }
+    } finally {
+      setRevenueBreakdownLoading(false);
+    }
+  };
+
+  const openRevenueModal = async (focus: 'revenue' | 'profit') => {
+    setRevenueFocus(focus);
+    setShowRevenueModal(true);
+    if (!subscriptionAccess.hasAdvancedAnalytics) {
+      setRevenueBreakdown(null);
+      setRevenueBreakdownError('Advanced analytics require a Professional or Enterprise subscription');
+      return;
+    }
+    await loadRevenueBreakdown();
+  };
+
+  const formatCurrency = (value: number) => `$${value.toFixed(2)}`;
+  const albumPhotos = revenueBreakdown?.byPhoto.filter((photo) => photo.albumId === selectedAlbumId) || [];
+  const selectedAlbum = revenueBreakdown?.byAlbum.find((album) => album.albumId === selectedAlbumId) || null;
+
   return (
     <div className="admin-page">
       <div className="page-header">
@@ -154,15 +304,15 @@ const AdminDashboard: React.FC = () => {
         <div
           role="button"
           tabIndex={0}
-          onClick={() => navigate('/admin/analytics')}
-          onKeyDown={(e) => e.key === 'Enter' && navigate('/admin/analytics')}
+          onClick={() => openRevenueModal('revenue')}
+          onKeyDown={(e) => e.key === 'Enter' && openRevenueModal('revenue')}
           className="dashboard-card dashboard-card-revenue"
         >
           <span className="dashboard-card-icon">💰</span>
           <div className="dashboard-card-label">Total Revenue</div>
           <div className="dashboard-card-value">${stats?.totalRevenue.toFixed(2) || '0.00'}</div>
           <div className="dashboard-card-sub">Avg: ${averageOrderValue} per order</div>
-          <span className="dashboard-card-link">View analytics →</span>
+          <span className="dashboard-card-link">{subscriptionAccess.hasAdvancedAnalytics ? 'View revenue details →' : 'Advanced analytics upgrade required →'}</span>
         </div>
 
         <div
@@ -210,15 +360,15 @@ const AdminDashboard: React.FC = () => {
         <div
           role="button"
           tabIndex={0}
-          onClick={() => navigate('/admin/analytics')}
-          onKeyDown={(e) => e.key === 'Enter' && navigate('/admin/analytics')}
+          onClick={() => openRevenueModal('profit')}
+          onKeyDown={(e) => e.key === 'Enter' && openRevenueModal('profit')}
           className="dashboard-card dashboard-card-profit"
         >
           <span className="dashboard-card-icon">📈</span>
           <div className="dashboard-card-label">Total Profit</div>
           <div className="dashboard-card-value">${profitData.profit.toFixed(2)}</div>
           <div className="dashboard-card-sub">{profitData.margin}% margin</div>
-          <span className="dashboard-card-link">See profit details →</span>
+          <span className="dashboard-card-link">{subscriptionAccess.hasAdvancedAnalytics ? 'See profit details →' : 'Advanced analytics upgrade required →'}</span>
         </div>
       </div>
 
@@ -327,6 +477,246 @@ const AdminDashboard: React.FC = () => {
           <a href="/admin/shipping"  className="btn btn-secondary"  style={{ textDecoration: 'none', textAlign: 'center' }}>🚚 Shipping Settings</a>
         </div>
       </div>
+
+      {showRevenueModal && (
+        <div className="modal-overlay" onClick={() => setShowRevenueModal(false)}>
+          <div className="modal-content admin-modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '1100px', maxHeight: '90vh', overflowY: 'auto', padding: '2rem' }}>
+            <div className="modal-header admin-modal-header">
+              <h2>{revenueFocus === 'revenue' ? 'Revenue Details' : 'Profit Details'}</h2>
+              <button onClick={() => setShowRevenueModal(false)} className="btn-close">×</button>
+            </div>
+
+            {revenueBreakdownLoading ? (
+              <div className="loading" style={{ padding: '2rem 0' }}>Loading details...</div>
+            ) : revenueBreakdownError ? (
+              <div className="dashboard-widget" style={{ marginTop: '1rem' }}>
+                <h2><span>🔒</span> Advanced Analytics</h2>
+                <p style={{ color: 'var(--text-secondary)', marginBottom: '1rem' }}>{revenueBreakdownError}</p>
+                <p style={{ color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+                  {subscriptionAccess.planName
+                    ? `Your current plan is ${subscriptionAccess.planName}.`
+                    : 'Your current plan does not include advanced analytics.'}
+                  {' '}Upgrade to Professional or Enterprise to unlock revenue and profit analytics by category, album, product, size, and photo.
+                </p>
+                <button className="btn btn-primary" onClick={() => navigate('/studio-admin')}>
+                  View Upgrade Options
+                </button>
+              </div>
+            ) : revenueBreakdown ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
+                  <div className="dashboard-widget" style={{ padding: '1rem' }}>
+                    <div className="dashboard-card-label">Total Revenue</div>
+                    <div className="dashboard-card-value" style={{ fontSize: '1.6rem' }}>{formatCurrency(revenueBreakdown.summary.totalRevenue)}</div>
+                  </div>
+                  <div className="dashboard-widget" style={{ padding: '1rem' }}>
+                    <div className="dashboard-card-label">Total Cost</div>
+                    <div className="dashboard-card-value" style={{ fontSize: '1.6rem', color: '#f59e0b' }}>{formatCurrency(revenueBreakdown.summary.totalCost)}</div>
+                  </div>
+                  <div className="dashboard-widget" style={{ padding: '1rem' }}>
+                    <div className="dashboard-card-label">Total Profit</div>
+                    <div className="dashboard-card-value" style={{ fontSize: '1.6rem', color: '#10b981' }}>{formatCurrency(revenueBreakdown.summary.totalProfit)}</div>
+                  </div>
+                  <div className="dashboard-widget" style={{ padding: '1rem' }}>
+                    <div className="dashboard-card-label">Items Sold</div>
+                    <div className="dashboard-card-value" style={{ fontSize: '1.6rem', color: 'var(--text-primary)' }}>{revenueBreakdown.summary.totalItems}</div>
+                  </div>
+                </div>
+
+                <div className="dashboard-widget">
+                  <h2><span>🏷️</span> Revenue by Category</h2>
+                  {revenueBreakdown.byCategory.length === 0 ? (
+                    <p style={{ color: 'var(--text-secondary)', margin: 0 }}>No category sales yet.</p>
+                  ) : (
+                    <div style={{ overflowX: 'auto' }}>
+                      <table className="data-table">
+                        <thead>
+                          <tr>
+                            <th>Category</th>
+                            <th>Orders</th>
+                            <th>Items</th>
+                            <th>Revenue</th>
+                            <th>Cost</th>
+                            <th>Profit</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {revenueBreakdown.byCategory.map((row) => (
+                            <tr key={row.category}>
+                              <td>{row.category}</td>
+                              <td>{row.orderCount}</td>
+                              <td>{row.quantity}</td>
+                              <td>{formatCurrency(row.revenue)}</td>
+                              <td>{formatCurrency(row.cost)}</td>
+                              <td style={{ color: row.profit >= 0 ? '#10b981' : 'var(--error-color)', fontWeight: 600 }}>{formatCurrency(row.profit)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                <div className="dashboard-widget">
+                  <h2><span>📁</span> Revenue by Album</h2>
+                  {revenueBreakdown.byAlbum.length === 0 ? (
+                    <p style={{ color: 'var(--text-secondary)', margin: 0 }}>No album sales yet.</p>
+                  ) : (
+                    <div style={{ overflowX: 'auto' }}>
+                      <table className="data-table">
+                        <thead>
+                          <tr>
+                            <th>Album</th>
+                            <th>Category</th>
+                            <th>Photos</th>
+                            <th>Orders</th>
+                            <th>Items</th>
+                            <th>Revenue</th>
+                            <th>Profit</th>
+                            <th></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {revenueBreakdown.byAlbum.map((row) => (
+                            <tr key={row.albumId} style={{ backgroundColor: row.albumId === selectedAlbumId ? 'rgba(124, 92, 255, 0.12)' : 'transparent' }}>
+                              <td>{row.albumName}</td>
+                              <td>{row.albumCategory}</td>
+                              <td>{row.photoCount}</td>
+                              <td>{row.orderCount}</td>
+                              <td>{row.quantity}</td>
+                              <td>{formatCurrency(row.revenue)}</td>
+                              <td style={{ color: row.profit >= 0 ? '#10b981' : 'var(--error-color)', fontWeight: 600 }}>{formatCurrency(row.profit)}</td>
+                              <td>
+                                <button className="btn btn-secondary btn-sm" onClick={() => setSelectedAlbumId(row.albumId)}>
+                                  View Photos
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                <div className="dashboard-widget">
+                  <h2><span>📦</span> Revenue by Product</h2>
+                  {revenueBreakdown.byProduct.length === 0 ? (
+                    <p style={{ color: 'var(--text-secondary)', margin: 0 }}>No product sales yet.</p>
+                  ) : (
+                    <div style={{ overflowX: 'auto' }}>
+                      <table className="data-table">
+                        <thead>
+                          <tr>
+                            <th>Product</th>
+                            <th>Category</th>
+                            <th>Orders</th>
+                            <th>Items</th>
+                            <th>Revenue</th>
+                            <th>Cost</th>
+                            <th>Profit</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {revenueBreakdown.byProduct.map((row) => (
+                            <tr key={row.productId || row.productName}>
+                              <td>{row.productName}</td>
+                              <td>{row.category}</td>
+                              <td>{row.orderCount}</td>
+                              <td>{row.quantity}</td>
+                              <td>{formatCurrency(row.revenue)}</td>
+                              <td>{formatCurrency(row.cost)}</td>
+                              <td style={{ color: row.profit >= 0 ? '#10b981' : 'var(--error-color)', fontWeight: 600 }}>{formatCurrency(row.profit)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                <div className="dashboard-widget">
+                  <h2><span>📐</span> Revenue by Size</h2>
+                  {revenueBreakdown.bySize.length === 0 ? (
+                    <p style={{ color: 'var(--text-secondary)', margin: 0 }}>No size-level sales yet.</p>
+                  ) : (
+                    <div style={{ overflowX: 'auto' }}>
+                      <table className="data-table">
+                        <thead>
+                          <tr>
+                            <th>Product</th>
+                            <th>Size</th>
+                            <th>Orders</th>
+                            <th>Items</th>
+                            <th>Revenue</th>
+                            <th>Cost</th>
+                            <th>Profit</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {revenueBreakdown.bySize.map((row) => (
+                            <tr key={`${row.productId}-${row.productSizeId}-${row.sizeName}`}>
+                              <td>{row.productName}</td>
+                              <td>{row.sizeName}</td>
+                              <td>{row.orderCount}</td>
+                              <td>{row.quantity}</td>
+                              <td>{formatCurrency(row.revenue)}</td>
+                              <td>{formatCurrency(row.cost)}</td>
+                              <td style={{ color: row.profit >= 0 ? '#10b981' : 'var(--error-color)', fontWeight: 600 }}>{formatCurrency(row.profit)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                <div className="dashboard-widget">
+                  <h2><span>🖼️</span> {selectedAlbum ? `Photo Revenue — ${selectedAlbum.albumName}` : 'Photo Revenue by Album'}</h2>
+                  {!selectedAlbum ? (
+                    <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Select an album above to see photo-level stats.</p>
+                  ) : albumPhotos.length === 0 ? (
+                    <p style={{ color: 'var(--text-secondary)', margin: 0 }}>No photo sales recorded for this album yet.</p>
+                  ) : (
+                    <div style={{ overflowX: 'auto' }}>
+                      <table className="data-table">
+                        <thead>
+                          <tr>
+                            <th>Photo</th>
+                            <th>Filename</th>
+                            <th>Orders</th>
+                            <th>Items</th>
+                            <th>Revenue</th>
+                            <th>Cost</th>
+                            <th>Profit</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {albumPhotos.map((row) => (
+                            <tr key={row.photoId}>
+                              <td>
+                                {row.thumbnailUrl ? (
+                                  <img src={row.thumbnailUrl} alt={row.fileName} style={{ width: '56px', height: '56px', objectFit: 'cover', borderRadius: '6px', border: '1px solid var(--border-color)' }} />
+                                ) : '—'}
+                              </td>
+                              <td>{row.fileName}</td>
+                              <td>{row.orderCount}</td>
+                              <td>{row.quantity}</td>
+                              <td>{formatCurrency(row.revenue)}</td>
+                              <td>{formatCurrency(row.cost)}</td>
+                              <td style={{ color: row.profit >= 0 ? '#10b981' : 'var(--error-color)', fontWeight: 600 }}>{formatCurrency(row.profit)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

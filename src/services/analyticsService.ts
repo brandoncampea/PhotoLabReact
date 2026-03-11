@@ -79,6 +79,26 @@ export const analyticsService = {
     }
   },
 
+  async getRevenueBreakdown() {
+    try {
+      const response = await api.get('/analytics/revenue-breakdown');
+      return response.data;
+    } catch (error) {
+      console.warn('Failed to load revenue breakdown:', error);
+      if ((error as any)?.response?.status === 403) {
+        throw error;
+      }
+      return {
+        summary: { totalRevenue: 0, totalCost: 0, totalProfit: 0, totalItems: 0, totalOrders: 0 },
+        byCategory: [],
+        byAlbum: [],
+        byProduct: [],
+        bySize: [],
+        byPhoto: [],
+      };
+    }
+  },
+
   // Get all analytics data
   async getAnalytics(): Promise<AnalyticsData> {
     const [summary, details] = await Promise.all([

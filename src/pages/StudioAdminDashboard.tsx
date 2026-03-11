@@ -22,6 +22,8 @@ interface SubscriptionInfo {
     yearlyPrice?: number;
     maxAlbums?: number;
     maxUsers?: number;
+    maxPhotos?: number;
+    maxStorageGb?: number;
     features: string[];
   };
 }
@@ -33,7 +35,23 @@ interface Plan {
   yearlyPrice?: number;
   maxAlbums?: number;
   maxUsers?: number;
+  maxPhotos?: number;
+  maxStorageGb?: number;
   features: string[];
+}
+
+interface StudioUsageStats {
+  usage: {
+    albumCount: number;
+    photoCount: number;
+    storageBytes: number;
+    storageGbUsed: number;
+  };
+  limits: {
+    maxAlbums: number | null;
+    maxPhotos: number | null;
+    maxStorageGb: number | null;
+  };
 }
 
 interface InvoiceItem {
@@ -75,6 +93,7 @@ interface HistoryInvoice {
 export default function StudioAdminDashboard() {
   const { user } = useAuth();
   const location = useLocation();
+  const effectiveStudioId = Number(localStorage.getItem('viewAsStudioId')) || user?.studioId;
   const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null);
   const [availablePlans, setAvailablePlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(false);
@@ -86,16 +105,18 @@ export default function StudioAdminDashboard() {
   const [currentInvoice, setCurrentInvoice] = useState<CurrentInvoice | null>(null);
   const [invoiceHistory, setInvoiceHistory] = useState<HistoryInvoice[]>([]);
   const [showInvoiceItems, setShowInvoiceItems] = useState(false);
+  const [usageStats, setUsageStats] = useState<StudioUsageStats | null>(null);
 
   useEffect(() => {
-    if (user?.studioId) {
+    if (effectiveStudioId) {
       fetchSubscriptionInfo();
       fetchAvailablePlans();
       fetchStudioFees();
       fetchCurrentInvoice();
       fetchInvoiceHistory();
+      fetchUsageStats();
     }
-  }, [user]);
+  }, [user, effectiveStudioId]);
 
   useEffect(() => {
     if (location.hash === '#invoices') {
@@ -105,15 +126,24 @@ export default function StudioAdminDashboard() {
     }
   }, [location.hash]);
 
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem('authToken');
+    const headers: Record<string, string> = {
+      'Authorization': `Bearer ${token}`,
+    };
+    const actingStudioId = localStorage.getItem('viewAsStudioId');
+    if (actingStudioId) {
+      headers['x-acting-studio-id'] = actingStudioId;
+    }
+    return headers;
+  };
+
   const fetchStudioFees = async () => {
     try {
-      const token = localStorage.getItem('authToken');
       const response = await fetch(
-        `/api/studios/${user?.studioId}/fees`,
+        `/api/studios/${effectiveStudioId}/fees`,
         {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
+          headers: getAuthHeaders()
         }
       );
 
@@ -128,9 +158,8 @@ export default function StudioAdminDashboard() {
 
   const fetchCurrentInvoice = async () => {
     try {
-      const token = localStorage.getItem('authToken');
       const response = await fetch('/api/invoices/current', {
-        headers: { 'Authorization': `Bearer ${token}` },
+        headers: getAuthHeaders(),
       });
       if (response.ok) {
         const data = await response.json();
@@ -143,9 +172,8 @@ export default function StudioAdminDashboard() {
 
   const fetchInvoiceHistory = async () => {
     try {
-      const token = localStorage.getItem('authToken');
       const response = await fetch('/api/invoices/history', {
-        headers: { 'Authorization': `Bearer ${token}` },
+        headers: getAuthHeaders(),
       });
       if (response.ok) {
         const data = await response.json();
@@ -159,13 +187,10 @@ export default function StudioAdminDashboard() {
   const fetchSubscriptionInfo = async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem('authToken');
       const response = await fetch(
-        `/api/studios/${user?.studioId}/subscription`,
+        `/api/studios/${effectiveStudioId}/subscription`,
         {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
+          headers: getAuthHeaders()
         }
       );
 
@@ -180,6 +205,21 @@ export default function StudioAdminDashboard() {
       setError(err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchUsageStats = async () => {
+    try {
+      const response = await fetch(`/api/studios/${effectiveStudioId}/usage`, {
+        headers: getAuthHeaders(),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setUsageStats(data);
+      }
+    } catch (err) {
+      console.error('Failed to load usage stats:', err);
     }
   };
 
@@ -304,6 +344,18 @@ export default function StudioAdminDashboard() {
   const needsSubscription = subscription?.studio.subscription_status === 'inactive' || 
     subscription?.studio.is_free_subscription;
 
+  const formatStorage = (storageBytes: number) => {
+    const gb = storageBytes / (1024 ** 3);
+    if (gb >= 1) return `${gb.toFixed(2)} GB`;
+    const mb = storageBytes / (1024 ** 2);
+    return `${mb.toFixed(1)} MB`;
+  };
+
+  const getUsagePercent = (used: number, limit: number | null) => {
+    if (!limit || limit <= 0) return 0;
+    return Math.min((used / limit) * 100, 100);
+  };
+
   return (
     <div className="admin-container">
       <h1>Studio Dashboard</h1>
@@ -422,6 +474,58 @@ export default function StudioAdminDashboard() {
                 </p>
               </div>
             </div>
+
+            {usageStats && (
+              <div style={{ marginTop: '24px' }}>
+                <h3 style={{ marginBottom: '12px' }}>Plan Usage</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+                  <div style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '16px' }}>
+                    <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '8px' }}>Albums</div>
+                    <div style={{ fontSize: '22px', fontWeight: 'bold' }}>
+                      {usageStats.usage.albumCount}
+                      <span style={{ fontSize: '14px', color: 'var(--text-secondary)', marginLeft: '6px' }}>
+                        / {usageStats.limits.maxAlbums ?? 'Unlimited'}
+                      </span>
+                    </div>
+                    {usageStats.limits.maxAlbums && (
+                      <div style={{ marginTop: '10px', height: '8px', backgroundColor: 'var(--bg-tertiary)', borderRadius: '999px', overflow: 'hidden' }}>
+                        <div style={{ width: `${getUsagePercent(usageStats.usage.albumCount, usageStats.limits.maxAlbums)}%`, height: '100%', backgroundColor: 'var(--primary-color)' }} />
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '16px' }}>
+                    <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '8px' }}>Photos</div>
+                    <div style={{ fontSize: '22px', fontWeight: 'bold' }}>
+                      {usageStats.usage.photoCount}
+                      <span style={{ fontSize: '14px', color: 'var(--text-secondary)', marginLeft: '6px' }}>
+                        / {usageStats.limits.maxPhotos ?? 'Unlimited'}
+                      </span>
+                    </div>
+                    {usageStats.limits.maxPhotos && (
+                      <div style={{ marginTop: '10px', height: '8px', backgroundColor: 'var(--bg-tertiary)', borderRadius: '999px', overflow: 'hidden' }}>
+                        <div style={{ width: `${getUsagePercent(usageStats.usage.photoCount, usageStats.limits.maxPhotos)}%`, height: '100%', backgroundColor: '#10b981' }} />
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '16px' }}>
+                    <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '8px' }}>Storage Used</div>
+                    <div style={{ fontSize: '22px', fontWeight: 'bold' }}>
+                      {formatStorage(usageStats.usage.storageBytes)}
+                      <span style={{ fontSize: '14px', color: 'var(--text-secondary)', marginLeft: '6px' }}>
+                        / {usageStats.limits.maxStorageGb ? `${usageStats.limits.maxStorageGb} GB` : 'Unlimited'}
+                      </span>
+                    </div>
+                    {usageStats.limits.maxStorageGb && (
+                      <div style={{ marginTop: '10px', height: '8px', backgroundColor: 'var(--bg-tertiary)', borderRadius: '999px', overflow: 'hidden' }}>
+                        <div style={{ width: `${getUsagePercent(usageStats.usage.storageGbUsed, usageStats.limits.maxStorageGb)}%`, height: '100%', backgroundColor: '#f59e0b' }} />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {isExpiringSoon && (
               <div style={{

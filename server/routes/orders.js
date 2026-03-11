@@ -312,29 +312,46 @@ router.get('/', async (req, res) => {
     for (const order of orders) {
       const items = await queryRows(
         `SELECT id, photo_id as photoId, photo_ids as photoIds, product_id as productId,
-                quantity, price, crop_data as cropData
+                product_size_id as productSizeId, quantity, price, crop_data as cropData
          FROM order_items WHERE order_id = $1`,
         [order.id]
       );
       const itemsWithPhotos = [];
       for (const item of items) {
         const photo = await queryRow(
-          `SELECT id, file_name as fileName, thumbnail_url as thumbnailUrl, full_image_url as fullImageUrl
+          `SELECT id, album_id as albumId, file_name as fileName, thumbnail_url as thumbnailUrl, full_image_url as fullImageUrl
            FROM photos WHERE id = $1`,
           [item.photoId]
         );
+        let unitCost = 0;
+        if (item.productSizeId) {
+          const size = await queryRow(
+            `SELECT price FROM product_sizes WHERE id = $1`,
+            [item.productSizeId]
+          );
+          unitCost = Number(size?.price) || 0;
+        } else if (item.productId) {
+          const product = await queryRow(
+            `SELECT price FROM products WHERE id = $1`,
+            [item.productId]
+          );
+          unitCost = Number(product?.price) || 0;
+        }
         itemsWithPhotos.push({
           ...item,
           price: item.price || 0,
+          cost: unitCost,
           cropData: item.cropData ? JSON.parse(item.cropData) : null,
           photoIds: item.photoIds ? JSON.parse(item.photoIds) : item.photoId ? [item.photoId] : [],
           photo: photo ? {
             id: photo.id,
+            albumId: photo.albumId,
             fileName: photo.filename ?? photo.fileName,
             thumbnailUrl: `/api/photos/${photo.id}/asset?variant=thumbnail`,
             url: `/api/photos/${photo.id}/asset?variant=full`,
           } : {
             id: item.photoId,
+            albumId: 0,
             fileName: `Photo #${item.photoId}`,
             thumbnailUrl: `https://picsum.photos/seed/photo${item.photoId}/300/300`,
             url: `https://picsum.photos/seed/photo${item.photoId}/1200/900`,
