@@ -1,4 +1,4 @@
-import { AnalyticsData, ActivityLog, AlbumViewStats, PhotoViewStats } from '../types';
+import { AnalyticsData, ActivityLog } from '../types';
 import api from './api';
 
 // In-memory storage for demo purposes
@@ -129,36 +129,35 @@ export const analyticsService = {
         totalVisits: 0,
         albumViews: 0,
         photoViews: 0,
+        totalPageViews: 0,
       };
+    }
+  },
+
+  // Get full analytics details (per-album/per-photo) from backend
+  async getDetails() {
+    try {
+      const response = await api.get('/analytics/details');
+      return response.data;
+    } catch (error) {
+      console.warn('Failed to load analytics details:', error);
+      return { albumViews: [], photoViews: [], recentActivity: [] };
     }
   },
 
   // Get all analytics data
   async getAnalytics(): Promise<AnalyticsData> {
-    const summary = await this.getSummary();
-    
-    const albumViews: AlbumViewStats[] = Array.from(albumViewsMap.entries()).map(([albumId, data]) => ({
-      albumId,
-      albumName: data.albumName,
-      views: data.views,
-      lastViewed: data.lastViewed,
-    })).sort((a, b) => b.views - a.views);
-
-    const photoViews: PhotoViewStats[] = Array.from(photoViewsMap.entries()).map(([photoId, data]) => ({
-      photoId,
-      photoFileName: data.photoFileName,
-      albumId: data.albumId,
-      albumName: data.albumName,
-      views: data.views,
-      lastViewed: data.lastViewed,
-    })).sort((a, b) => b.views - a.views);
+    const [summary, details] = await Promise.all([
+      this.getSummary(),
+      this.getDetails(),
+    ]);
 
     return {
-      totalVisitors: summary.totalVisits || totalVisitors,
-      totalPageViews: summary.albumViews + summary.photoViews + summary.totalVisits || totalPageViews,
-      albumViews,
-      photoViews,
-      recentActivity: activityLog.slice(0, 50), // Return last 50 activities
+      totalVisitors: summary.totalVisits || 0,
+      totalPageViews: summary.totalPageViews || 0,
+      albumViews: details.albumViews || [],
+      photoViews: details.photoViews || [],
+      recentActivity: details.recentActivity || [],
     };
   },
 

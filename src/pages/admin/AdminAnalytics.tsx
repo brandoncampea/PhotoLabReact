@@ -109,10 +109,10 @@ const AdminAnalytics: React.FC = () => {
           border: '2px solid #4caf50'
         }}>
           <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: '#4caf50' }}>
-            {analytics.albumViews.length}
+            {analytics.albumViews.reduce((sum, a) => sum + a.views, 0)}
           </div>
           <div style={{ fontSize: '1rem', color: '#666', marginTop: '0.5rem' }}>
-            Albums Viewed
+            Album Views
           </div>
         </div>
 
@@ -123,10 +123,10 @@ const AdminAnalytics: React.FC = () => {
           border: '2px solid #ff9800'
         }}>
           <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: '#ff9800' }}>
-            {analytics.photoViews.length}
+            {analytics.photoViews.reduce((sum, p) => sum + p.views, 0)}
           </div>
           <div style={{ fontSize: '1rem', color: '#666', marginTop: '0.5rem' }}>
-            Photos Viewed
+            Photo Views
           </div>
         </div>
       </div>
