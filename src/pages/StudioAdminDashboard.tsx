@@ -124,7 +124,7 @@ export default function StudioAdminDashboard() {
         document.getElementById('studio-invoices')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       });
     }
-  }, [location.hash]);
+  }, [location.hash, subscription, currentInvoice, invoiceHistory.length]);
 
   const getAuthHeaders = () => {
     const token = localStorage.getItem('authToken');
@@ -158,29 +158,35 @@ export default function StudioAdminDashboard() {
 
   const fetchCurrentInvoice = async () => {
     try {
-      const response = await fetch('/api/invoices/current', {
+      const response = await fetch(`/api/invoices/current${effectiveStudioId ? `?studioId=${effectiveStudioId}` : ''}`, {
         headers: getAuthHeaders(),
       });
       if (response.ok) {
         const data = await response.json();
         setCurrentInvoice(data);
+      } else {
+        setCurrentInvoice(null);
       }
     } catch (err) {
       console.error('Failed to load current invoice:', err);
+      setCurrentInvoice(null);
     }
   };
 
   const fetchInvoiceHistory = async () => {
     try {
-      const response = await fetch('/api/invoices/history', {
+      const response = await fetch(`/api/invoices/history${effectiveStudioId ? `?studioId=${effectiveStudioId}` : ''}`, {
         headers: getAuthHeaders(),
       });
       if (response.ok) {
         const data = await response.json();
         setInvoiceHistory(Array.isArray(data) ? data : []);
+      } else {
+        setInvoiceHistory([]);
       }
     } catch (err) {
       console.error('Failed to load invoice history:', err);
+      setInvoiceHistory([]);
     }
   };
 
@@ -414,6 +420,19 @@ export default function StudioAdminDashboard() {
           >
             {loading ? 'Processing...' : 'Reactivate Subscription'}
           </button>
+        </div>
+      )}
+
+      {!effectiveStudioId && user?.role === 'super_admin' && (
+        <div style={{
+          backgroundColor: 'rgba(59, 130, 246, 0.12)',
+          border: '1px solid rgba(59, 130, 246, 0.4)',
+          borderRadius: '8px',
+          padding: '16px',
+          marginBottom: '24px',
+          color: '#bfdbfe'
+        }}>
+          Select a studio from Studio Admins and choose view-as-studio to see that studio’s invoice details.
         </div>
       )}
 
