@@ -414,7 +414,7 @@ export default function SuperAdminDashboard() {
         </button>
       </div>
 
-      <div id="super-admin-invoices" className="stats-grid">
+      <div className="stats-grid">
         <div className="stat-card">
           <h3>Total Studios</h3>
           <p className="stat-value">{studios.length}</p>
@@ -427,16 +427,25 @@ export default function SuperAdminDashboard() {
           <h3>Monthly Revenue</h3>
           <p className="stat-value">${studios.reduce((sum, s) => sum + parseFloat(s.subscription_plan || '0'), 0).toFixed(2)}</p>
         </div>
-        <div className="stat-card" style={{ borderColor: 'rgba(251,191,36,0.5)' }}>
-          <h3>💳 Total Outstanding</h3>
-          <p className="stat-value" style={{ color: totalOutstanding > 0 ? '#fbbf24' : 'var(--text-primary)' }}>
-            ${totalOutstanding.toFixed(2)}
-          </p>
-          <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0 }}>Open invoice balances</p>
-        </div>
       </div>
 
-      <h2>Studios Management</h2>
+      <div id="super-admin-invoices" className="admin-summary-box" style={{ marginBottom: '24px' }}>
+        <h2 style={{ marginTop: 0 }}>🧾 Studio Invoices</h2>
+        <p style={{ marginTop: '0.5rem', color: 'var(--text-secondary)' }}>
+          Review open studio balances and manage invoice billing status.
+        </p>
+
+        <div className="stats-grid" style={{ marginBottom: '16px' }}>
+          <div className="stat-card" style={{ borderColor: 'rgba(251,191,36,0.5)' }}>
+            <h3>💳 Total Outstanding</h3>
+            <p className="stat-value" style={{ color: totalOutstanding > 0 ? '#fbbf24' : 'var(--text-primary)' }}>
+              ${totalOutstanding.toFixed(2)}
+            </p>
+            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0 }}>Open invoice balances</p>
+          </div>
+        </div>
+
+        <h3 style={{ marginTop: 0 }}>Studios Management</h3>
       <div style={{ overflowX: 'auto' }}>
         <table className="data-table">
           <thead>
@@ -545,6 +554,7 @@ export default function SuperAdminDashboard() {
             ))}
           </tbody>
         </table>
+      </div>
       </div>
 
       {/* Subscription Modal */}
