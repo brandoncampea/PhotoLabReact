@@ -1,13 +1,13 @@
 // Add items (products with sizes) to a price list
 import express from 'express';
 import { queryRow, query } from '../mssql.js';
-import { adminRequired } from '../middleware/auth.js';
+import { superAdminRequired } from '../middleware/auth.js';
 const router = express.Router();
 
 // ...existing routes...
 
 // Add items to price list (products with sizes)
-router.post('/:id/items', adminRequired, async (req, res) => {
+router.post('/:id/items', superAdminRequired, async (req, res) => {
   try {
     console.log('[PriceListItems] Received request:', { params: req.params, body: req.body });
     const priceListId = parseInt(req.params.id, 10);

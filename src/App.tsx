@@ -154,7 +154,14 @@ function App() {
                           <Route path="albums" element={<AdminAlbums />} />
                           <Route path="photos" element={<AdminPhotos />} />
                           <Route path="products" element={<AdminProducts />} />
-                          <Route path="price-lists" element={<AdminPriceLists />} />
+                          <Route
+                            path="price-lists"
+                            element={
+                              <SuperAdminProtectedRoute>
+                                <AdminPriceLists />
+                              </SuperAdminProtectedRoute>
+                            }
+                          />
                           <Route path="watermarks" element={<AdminWatermarks />} />
                           <Route path="orders" element={<AdminOrders />} />
                           <Route path="customers" element={<AdminCustomers />} />

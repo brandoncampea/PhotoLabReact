@@ -6,8 +6,11 @@ import { parseCSVData, createPriceListFromImport, detectColumnsFromCSV, ColumnSu
 import { siteConfigService } from '../../services/siteConfigService';
 import AdminWhccImport from '../../components/AdminWhccImport';
 import AdminMpixImport from '../../components/AdminMpixImport';
+import { useAuth } from '../../contexts/AuthContext';
 
 const AdminPriceLists: React.FC = () => {
+  const { user } = useAuth();
+  const isSuperAdmin = user?.role === 'super_admin';
   const [priceLists, setPriceLists] = useState<PriceList[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -394,6 +397,19 @@ const AdminPriceLists: React.FC = () => {
 
   if (loading) {
     return <div className="loading">Loading...</div>;
+  }
+
+  if (!isSuperAdmin) {
+    return (
+      <div className="admin-page">
+        <div className="page-header">
+          <h1>Price Lists</h1>
+        </div>
+        <div className="info-box" style={{ border: '1px solid var(--border-color)' }}>
+          Price list management is available to super admins only.
+        </div>
+      </div>
+    );
   }
 
   // Fetch latest price list details (with products) when selected
