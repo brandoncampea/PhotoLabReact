@@ -15,6 +15,10 @@ const AdminPhotos: React.FC = () => {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ completed: number; total: number }>({ completed: 0, total: 0 });
+  const [uploadMessage, setUploadMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [showUploadPanel, setShowUploadPanel] = useState(true);
+  const [metadataPhoto, setMetadataPhoto] = useState<Photo | null>(null);
   const [albumId, setAlbumId] = useState<number | null>(null);
   const [coverMessage, setCoverMessage] = useState<string | null>(null);
   const [coverLoadingId, setCoverLoadingId] = useState<number | null>(null);
@@ -79,18 +83,39 @@ const AdminPhotos: React.FC = () => {
     if (files.length === 0 || !albumId) return;
 
     setUploading(true);
+    setUploadMessage(null);
+    setUploadProgress({ completed: 0, total: files.length });
     try {
       // Extract metadata from each file
       // Metadata extraction is currently unused
       
       // Descriptions currently unused; we pass files only
-      await photoService.uploadPhotos(albumId, files);
-      loadPhotos();
-      loadAlbums(); // Reload albums to update photo count
+      const result = await photoService.uploadPhotos(albumId, files, undefined, {
+        onProgress: (completed, total) => setUploadProgress({ completed, total }),
+      });
+      await loadPhotos();
+      await loadAlbums(); // Reload albums to update photo count
+
+      if (result.failedFiles.length === 0) {
+        setUploadMessage({
+          type: 'success',
+          text: `Uploaded ${result.uploadedPhotos.length}/${result.totalFiles} photos successfully.${result.retriedBatches > 0 ? ` Auto-retried ${result.retriedBatches} batches.` : ''}`,
+        });
+      } else {
+        setUploadMessage({
+          type: 'error',
+          text: `Uploaded ${result.uploadedPhotos.length}/${result.totalFiles} photos. ${result.failedFiles.length} failed after automatic retries.`,
+        });
+      }
+
+      setShowUploadPanel(false);
     } catch (error) {
       console.error('Failed to upload photos:', error);
+      setUploadMessage({ type: 'error', text: 'Upload failed. Please try again.' });
     } finally {
       setUploading(false);
+      setUploadProgress({ completed: 0, total: 0 });
+      e.target.value = '';
     }
   };
 
@@ -155,7 +180,43 @@ const AdminPhotos: React.FC = () => {
 
   const handleAlbumChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newAlbumId = e.target.value;
+    setShowUploadPanel(true);
     navigate(`/admin/photos?album=${newAlbumId}`);
+  };
+
+  const getMetadataForDisplay = (photo: Photo): Record<string, string> => {
+    const rawMetadata = photo.metadata;
+    let parsedMetadata: Record<string, any> = {};
+
+    if (typeof rawMetadata === 'string') {
+      try {
+        parsedMetadata = JSON.parse(rawMetadata);
+      } catch {
+        parsedMetadata = { raw: rawMetadata };
+      }
+    } else if (rawMetadata && typeof rawMetadata === 'object') {
+      parsedMetadata = rawMetadata as Record<string, any>;
+    }
+
+    const metadata: Record<string, string> = {
+      'File Name': photo.fileName || 'N/A',
+      'Photo ID': String(photo.id),
+    };
+
+    if (photo.width && photo.height) {
+      metadata.Dimensions = `${photo.width} × ${photo.height}`;
+    }
+
+    Object.entries(parsedMetadata).forEach(([key, value]) => {
+      if (value === undefined || value === null || value === '') return;
+      const label = key
+        .replace(/([A-Z])/g, ' $1')
+        .replace(/^./, (s) => s.toUpperCase())
+        .trim();
+      metadata[label] = String(value);
+    });
+
+    return metadata;
   };
 
   const currentAlbum = albums.find(a => a.id === albumId);
@@ -201,29 +262,52 @@ const AdminPhotos: React.FC = () => {
               ))}
             </select>
           </div>
-          <div className="upload-btn" style={{ marginTop: '1.5rem' }}>
-            <input
-              type="file"
-              id="photo-upload"
-              multiple
-              accept="image/*"
-              onChange={handleUpload}
-              style={{ display: 'none' }}
-              disabled={uploading}
-            />
-            <label htmlFor="photo-upload" className="btn btn-primary">
-              {uploading ? 'Uploading...' : '+ Upload Photos'}
-            </label>
-            {photos.length > 0 && (
+          {showUploadPanel ? (
+            <div className="upload-btn" style={{ marginTop: '1.5rem' }}>
+              <input
+                type="file"
+                id="photo-upload"
+                multiple
+                accept="image/*"
+                onChange={handleUpload}
+                style={{ display: 'none' }}
+                disabled={uploading}
+              />
+              <label htmlFor="photo-upload" className="btn btn-primary">
+                {uploading
+                  ? `Uploading ${uploadProgress.completed}/${uploadProgress.total}...`
+                  : '+ Upload Photos'}
+              </label>
+              {photos.length > 0 && (
+                <button
+                  onClick={handleDeleteAll}
+                  className="btn btn-danger"
+                  style={{ marginLeft: '0.5rem' }}
+                >
+                  🗑️ Delete All ({photos.length})
+                </button>
+              )}
+            </div>
+          ) : (
+            <div style={{ marginTop: '1.5rem' }}>
               <button
-                onClick={handleDeleteAll}
-                className="btn btn-danger"
-                style={{ marginLeft: '0.5rem' }}
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setShowUploadPanel(true)}
               >
-                🗑️ Delete All ({photos.length})
+                + Upload More Photos
               </button>
-            )}
-          </div>
+              {photos.length > 0 && (
+                <button
+                  onClick={handleDeleteAll}
+                  className="btn btn-danger"
+                  style={{ marginLeft: '0.5rem' }}
+                >
+                  🗑️ Delete All ({photos.length})
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -240,6 +324,11 @@ const AdminPhotos: React.FC = () => {
           <p className="muted-text" style={{ margin: '0.5rem 0 0 0', fontSize: '0.85rem' }}>
             All photos must belong to an album. Select an album above to upload or manage photos.
           </p>
+          {uploadMessage && (
+            <p className={uploadMessage.type === 'success' ? 'success-text' : 'danger-text'} style={{ margin: '0.5rem 0 0 0', fontSize: '0.85rem' }}>
+              {uploadMessage.text}
+            </p>
+          )}
         </div>
       )}
 
@@ -248,7 +337,19 @@ const AdminPhotos: React.FC = () => {
           <div key={photo.id} className="admin-photo-card">
             <img src={photo.thumbnailUrl} alt={photo.fileName} />
             <div className="photo-info">
-              <p className="photo-filename">{photo.fileName}</p>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+                <p className="photo-filename" style={{ margin: 0 }}>{photo.fileName}</p>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ padding: '0.2rem 0.45rem', fontSize: '0.85rem', lineHeight: 1 }}
+                  onClick={() => setMetadataPhoto(photo)}
+                  title="View photo metadata"
+                  aria-label={`View metadata for ${photo.fileName}`}
+                >
+                  i
+                </button>
+              </div>
             </div>
             {currentAlbum && currentAlbum.coverPhotoId === photo.id && (
               <div className="cover-photo-badge">
@@ -282,6 +383,59 @@ const AdminPhotos: React.FC = () => {
           </div>
         ))}
       </div>
+
+      {metadataPhoto && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.55)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1100,
+            padding: '1rem'
+          }}
+          onClick={() => setMetadataPhoto(null)}
+        >
+          <div
+            style={{
+              width: 'min(680px, 100%)',
+              maxHeight: '80vh',
+              overflowY: 'auto',
+              background: 'var(--bg-primary)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '10px',
+              padding: '1rem'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+              <h3 style={{ margin: 0 }}>Photo Metadata</h3>
+              <button type="button" className="btn btn-secondary" onClick={() => setMetadataPhoto(null)}>
+                Close
+              </button>
+            </div>
+            <div style={{ display: 'grid', gap: '0.5rem' }}>
+              {Object.entries(getMetadataForDisplay(metadataPhoto)).map(([label, value]) => (
+                <div
+                  key={label}
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '180px 1fr',
+                    gap: '0.75rem',
+                    padding: '0.5rem 0',
+                    borderBottom: '1px solid var(--border-color)'
+                  }}
+                >
+                  <strong>{label}</strong>
+                  <span style={{ wordBreak: 'break-word' }}>{value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

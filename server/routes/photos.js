@@ -4,8 +4,14 @@ import path from 'path';
 import { queryRow, queryRows, query } from '../mssql.js';
 import csv from 'csv-parser';
 import sharp from 'sharp';
-import { uploadImageBufferToAzure, deleteBlobByUrl } from '../services/azureStorage.js';
+import { uploadImageBufferToAzure, deleteBlobByUrl, getSignedReadUrl } from '../services/azureStorage.js';
 const router = express.Router();
+
+const signPhotoForResponse = (photo) => ({
+  ...photo,
+  thumbnailUrl: photo?.thumbnailUrl ? getSignedReadUrl(photo.thumbnailUrl) : photo?.thumbnailUrl,
+  fullImageUrl: photo?.fullImageUrl ? getSignedReadUrl(photo.fullImageUrl) : photo?.fullImageUrl,
+});
 
 const photoUpload = multer({
   storage: multer.memoryStorage(),
@@ -66,7 +72,7 @@ router.get('/album/:albumId', async (req, res) => {
     query += ` ORDER BY created_at DESC`;
     
     const photos = await queryRows(query, params);
-    res.json(photos);
+    res.json(photos.map(signPhotoForResponse));
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -120,7 +126,24 @@ router.post('/upload', photoUpload.array('photos', 50), async (req, res) => {
       WHERE id = $1
     `, [albumId]);
 
-    res.status(201).json(photos);
+    // Auto-select cover photo if none is currently selected
+    const album = await queryRow(
+      `SELECT cover_photo_id as coverPhotoId, cover_image_url as coverImageUrl FROM albums WHERE id = $1`,
+      [albumId]
+    );
+
+    if ((!album?.coverPhotoId || !album?.coverImageUrl) && photos.length > 0) {
+      const fallback = photos[0];
+      await query(
+        `UPDATE albums
+         SET cover_photo_id = $1,
+             cover_image_url = $2
+         WHERE id = $3`,
+        [fallback.id, fallback.fullImageUrl, albumId]
+      );
+    }
+
+    res.status(201).json(photos.map(signPhotoForResponse));
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -144,7 +167,7 @@ router.put('/:id', async (req, res) => {
       FROM photos 
       WHERE id = $1
     `, [req.params.id]);
-    res.json(photo);
+    res.json(signPhotoForResponse(photo));
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -170,6 +193,33 @@ router.delete('/:id', async (req, res) => {
       SET photo_count = (SELECT COUNT(*) FROM photos WHERE album_id = $1)
       WHERE id = $1
     `, [photo.album_id]);
+
+    // If album cover is missing (or deleted), pick the most recent remaining photo as fallback
+    const album = await queryRow(
+      `SELECT id, cover_photo_id as coverPhotoId, cover_image_url as coverImageUrl
+       FROM albums
+       WHERE id = $1`,
+      [photo.album_id]
+    );
+
+    const coverWasDeleted = Number(album?.coverPhotoId) === Number(req.params.id);
+    if (album && (coverWasDeleted || !album.coverPhotoId || !album.coverImageUrl)) {
+      const fallback = await queryRow(
+        `SELECT id, full_image_url as fullImageUrl
+         FROM photos
+         WHERE album_id = $1
+         ORDER BY created_at DESC`,
+        [photo.album_id]
+      );
+
+      await query(
+        `UPDATE albums
+         SET cover_photo_id = $1,
+             cover_image_url = $2
+         WHERE id = $3`,
+        [fallback?.id || null, fallback?.fullImageUrl || null, photo.album_id]
+      );
+    }
 
     res.json({ message: 'Photo deleted successfully' });
   } catch (error) {
@@ -213,7 +263,7 @@ router.get('/search', async (req, res) => {
       const result = field === 'camera' 
         ? await queryRows(query, [searchPattern, searchPattern])
         : await queryRows(query, [searchPattern]);
-      res.json(result);
+      res.json(result.map(signPhotoForResponse));
     } else {
       // Search all fields (default)
       query += ` p.file_name LIKE $1 
@@ -224,7 +274,7 @@ router.get('/search', async (req, res) => {
       OFFSET 0 ROWS FETCH NEXT 100 ROWS ONLY`;
       
       const photos = await queryRows(query, [searchPattern, searchPattern, searchPattern, searchPattern]);
-      res.json(photos);
+      res.json(photos.map(signPhotoForResponse));
     }
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -281,7 +331,7 @@ router.get('/search/metadata', async (req, res) => {
       }
     }).slice(0, 100);
     
-    res.json(filtered);
+    res.json(filtered.map(signPhotoForResponse));
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

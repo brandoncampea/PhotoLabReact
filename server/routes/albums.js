@@ -1,7 +1,13 @@
 import express from 'express';
 import { queryRow, queryRows, query } from '../mssql.js';
 import { requireActiveSubscription } from '../middleware/subscription.js';
+import { getSignedReadUrl } from '../services/azureStorage.js';
 const router = express.Router();
+
+const signAlbumForResponse = (album) => ({
+  ...album,
+  coverImageUrl: album?.coverImageUrl ? getSignedReadUrl(album.coverImageUrl) : album?.coverImageUrl,
+});
 
 // Get all albums
 router.get('/', async (req, res) => {
@@ -23,7 +29,7 @@ router.get('/', async (req, res) => {
       FROM albums 
       ORDER BY created_at DESC
     `);
-    res.json(albums);
+    res.json(albums.map(signAlbumForResponse));
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -51,7 +57,7 @@ router.get('/:id', async (req, res) => {
     if (!album) {
       return res.status(404).json({ error: 'Album not found' });
     }
-    res.json(album);
+    res.json(signAlbumForResponse(album));
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -101,7 +107,7 @@ router.post('/', requireActiveSubscription, async (req, res) => {
         created_at as createdDate
       FROM albums WHERE id = $1
     `, [result.id]);
-    res.status(201).json(album);
+    res.status(201).json(signAlbumForResponse(album));
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -121,8 +127,15 @@ router.put('/:id', async (req, res) => {
     // Use provided values or keep existing ones
     const albumName = title || name || currentAlbum.name || currentAlbum.title || '';
     const newDescription = description !== undefined ? description : currentAlbum.description;
-    const newCoverUrl = coverImageUrl !== undefined ? coverImageUrl : currentAlbum.cover_image_url;
+    let newCoverUrl = coverImageUrl !== undefined ? coverImageUrl : currentAlbum.cover_image_url;
     const newCoverPhotoId = coverPhotoId !== undefined ? coverPhotoId : currentAlbum.cover_photo_id;
+        if (newCoverPhotoId) {
+          const selectedPhoto = await queryRow('SELECT full_image_url as fullImageUrl FROM photos WHERE id = $1', [newCoverPhotoId]);
+          if (selectedPhoto?.fullImageUrl) {
+            newCoverUrl = selectedPhoto.fullImageUrl;
+          }
+        }
+
     const newCategory = category !== undefined ? category : currentAlbum.category;
     const newPriceListId = priceListId !== undefined ? priceListId : currentAlbum.price_list_id;
     const newIsProtected = isPasswordProtected !== undefined ? isPasswordProtected : currentAlbum.is_password_protected;
@@ -164,7 +177,7 @@ router.put('/:id', async (req, res) => {
         created_at as createdDate
       FROM albums WHERE id = $1
     `, [req.params.id]);
-    res.json(album);
+    res.json(signAlbumForResponse(album));
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
