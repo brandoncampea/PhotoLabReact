@@ -18,6 +18,8 @@ const AdminProducts: React.FC = () => {
   const [showPackageModal, setShowPackageModal] = useState(false);
   const [editingPackage, setEditingPackage] = useState<Package | null>(null);
   const [studioFees, setStudioFees] = useState<{ feeType: string; feeValue: number } | null>(null);
+  const [offeredProductIds, setOfferedProductIds] = useState<number[]>([]);
+  const [savingOfferingProductId, setSavingOfferingProductId] = useState<number | null>(null);
   
   const [productForm, setProductForm] = useState({
     name: '',
@@ -63,6 +65,7 @@ const AdminProducts: React.FC = () => {
         // Fetch full details for the first price list (with products)
         const full = await api.get(`/price-lists/${data[0].id}`);
         setSelectedPriceList(full.data);
+        await loadStudioOfferings(full.data.id, full.data.products || []);
       }
     } catch (error) {
       console.error('Failed to load price lists:', error);
@@ -91,6 +94,51 @@ const AdminProducts: React.FC = () => {
       }
     } catch (error) {
       console.error('Failed to load studio fees:', error);
+    }
+  };
+
+  const loadStudioOfferings = async (priceListId: number, products: PriceListProduct[] = []) => {
+    if (canManagePriceListProducts) {
+      setOfferedProductIds(products.map((product) => product.id));
+      return;
+    }
+
+    try {
+      const response = await api.get(`/price-lists/${priceListId}/studio-offerings`);
+      const ids = Array.isArray(response.data?.offeredProductIds) ? response.data.offeredProductIds : [];
+      setOfferedProductIds(ids.map((id: any) => Number(id)).filter((id: number) => Number.isInteger(id) && id > 0));
+    } catch (error) {
+      console.error('Failed to load studio offerings:', error);
+      setOfferedProductIds(products.map((product) => product.id));
+    }
+  };
+
+  const isProductOffered = (productId: number) => {
+    if (canManagePriceListProducts) return true;
+    return offeredProductIds.includes(productId);
+  };
+
+  const handleToggleProductOffering = async (productId: number, offered: boolean) => {
+    if (canManagePriceListProducts || !selectedPriceList) return;
+
+    const nextIds = offered
+      ? Array.from(new Set([...offeredProductIds, productId]))
+      : offeredProductIds.filter((id) => id !== productId);
+
+    setOfferedProductIds(nextIds);
+    setSavingOfferingProductId(productId);
+
+    try {
+      const response = await api.put(`/price-lists/${selectedPriceList.id}/studio-offerings`, {
+        offeredProductIds: nextIds,
+      });
+      const syncedIds = Array.isArray(response.data?.offeredProductIds) ? response.data.offeredProductIds : nextIds;
+      setOfferedProductIds(syncedIds.map((id: any) => Number(id)).filter((id: number) => Number.isInteger(id) && id > 0));
+    } catch (error) {
+      console.error('Failed to update studio product offerings:', error);
+      setOfferedProductIds(offeredProductIds);
+    } finally {
+      setSavingOfferingProductId(null);
     }
   };
 
@@ -311,7 +359,7 @@ const AdminProducts: React.FC = () => {
 
       {!canManagePriceListProducts && (
         <div className="info-box" style={{ border: '1px solid var(--border-color)', marginBottom: '1rem' }}>
-          Product and size management is super-admin only. You can still choose products from this price list and create packages.
+          Super admins can add and edit products in price lists. Studio admins can choose which products to offer from each price list and can create packages.
         </div>
       )}
 
@@ -326,6 +374,7 @@ const AdminProducts: React.FC = () => {
             const selectedId = parseInt(e.target.value);
             const full = await api.get(`/price-lists/${selectedId}`);
             setSelectedPriceList(full.data);
+            await loadStudioOfferings(full.data.id, full.data.products || []);
           }}
           style={{
             padding: '0.5rem',
@@ -384,6 +433,17 @@ const AdminProducts: React.FC = () => {
                       </p>
                     </div>
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      {!canManagePriceListProducts && (
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.85rem' }}>
+                          <input
+                            type="checkbox"
+                            checked={isProductOffered(product.id)}
+                            onChange={(e) => handleToggleProductOffering(product.id, e.target.checked)}
+                            disabled={savingOfferingProductId === product.id}
+                          />
+                          Offer
+                        </label>
+                      )}
                       {canManagePriceListProducts && (
                         <>
                           <button

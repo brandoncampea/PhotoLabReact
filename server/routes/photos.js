@@ -5,6 +5,7 @@ import { queryRow, queryRows, query } from '../mssql.js';
 import csv from 'csv-parser';
 import sharp from 'sharp';
 import { uploadImageBufferToAzure, deleteBlobByUrl, downloadBlob } from '../services/azureStorage.js';
+import { requireActiveSubscription, enforceStorageQuotaForStudio } from '../middleware/subscription.js';
 const router = express.Router();
 
 const getPhotoAssetUrl = (photoId, variant = 'full') => `/api/photos/${photoId}/asset?variant=${variant}`;
@@ -164,7 +165,7 @@ router.get('/:id/asset', async (req, res) => {
 });
 
 // Upload photos
-router.post('/upload', (req, res, next) => {
+router.post('/upload', requireActiveSubscription, (req, res, next) => {
   photoUpload.array('photos', 50)(req, res, (err) => {
     if (err) {
       if (err instanceof multer.MulterError) {
@@ -198,6 +199,24 @@ router.post('/upload', (req, res, next) => {
     } catch {
       parsedMetadata = [];
     }
+
+    const parsedAlbumId = Number(albumId);
+    if (!parsedAlbumId) {
+      return res.status(400).json({ error: 'albumId is required' });
+    }
+
+    if (req.studioId) {
+      const album = await queryRow('SELECT id, studio_id as studioId FROM albums WHERE id = $1', [parsedAlbumId]);
+      if (!album) {
+        return res.status(404).json({ error: 'Album not found' });
+      }
+      if (album.studioId && Number(album.studioId) !== Number(req.studioId)) {
+        return res.status(403).json({ error: 'Cannot upload to an album outside your studio' });
+      }
+
+      const additionalBytes = req.files.reduce((sum, file) => sum + Number(file.size || file.buffer?.length || 0), 0);
+      await enforceStorageQuotaForStudio(req.studioId, additionalBytes);
+    }
     
     const photos = [];
     for (let index = 0; index < req.files.length; index++) {
@@ -217,11 +236,11 @@ router.post('/upload', (req, res, next) => {
       }
       
       const result = await queryRow(`
-        INSERT INTO photos (album_id, file_name, thumbnail_url, full_image_url, description, metadata, width, height)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        INSERT INTO photos (album_id, file_name, thumbnail_url, full_image_url, description, metadata, width, height, file_size_bytes)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         RETURNING id
       `, [
-        albumId,
+        parsedAlbumId,
         file.originalname,
         photoUrl,
         photoUrl,
@@ -229,11 +248,12 @@ router.post('/upload', (req, res, next) => {
         parsedMetadata[index] ? JSON.stringify(parsedMetadata[index]) : null,
         width,
         height,
+        Number(file.size || file.buffer?.length || 0),
       ]);
       
       photos.push({
         id: result.id,
-        albumId: parseInt(albumId),
+        albumId: parsedAlbumId,
         fileName: file.originalname,
         thumbnailUrl: photoUrl,
         fullImageUrl: photoUrl,
@@ -249,12 +269,12 @@ router.post('/upload', (req, res, next) => {
       UPDATE albums 
       SET photo_count = (SELECT COUNT(*) FROM photos WHERE album_id = $1)
       WHERE id = $1
-    `, [albumId]);
+    `, [parsedAlbumId]);
 
     // Auto-select cover photo if none is currently selected
     const album = await queryRow(
       `SELECT cover_photo_id as coverPhotoId, cover_image_url as coverImageUrl FROM albums WHERE id = $1`,
-      [albumId]
+      [parsedAlbumId]
     );
 
     if ((!album?.coverPhotoId || !album?.coverImageUrl) && photos.length > 0) {
@@ -264,12 +284,15 @@ router.post('/upload', (req, res, next) => {
          SET cover_photo_id = $1,
              cover_image_url = $2
          WHERE id = $3`,
-        [fallback.id, fallback.fullImageUrl, albumId]
+        [fallback.id, fallback.fullImageUrl, parsedAlbumId]
       );
     }
 
     res.status(201).json(photos.map(signPhotoForResponse));
   } catch (error) {
+    if (error.code === 'STORAGE_QUOTA_EXCEEDED') {
+      return res.status(403).json({ error: error.message, quotaExceeded: true });
+    }
     res.status(500).json({ error: error.message });
   }
 });

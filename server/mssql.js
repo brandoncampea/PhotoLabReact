@@ -192,6 +192,7 @@ export async function initializeDatabase() {
           name NVARCHAR(255),
           title NVARCHAR(255),
           description NVARCHAR(MAX),
+          studio_id INT FOREIGN KEY REFERENCES studios(id),
           cover_image_url NVARCHAR(MAX),
           cover_photo_id INT,
           photo_count INT DEFAULT 0,
@@ -217,6 +218,7 @@ export async function initializeDatabase() {
           description NVARCHAR(MAX),
           metadata NVARCHAR(MAX),
           player_names NVARCHAR(MAX),
+          file_size_bytes BIGINT,
           width INT,
           height INT,
           created_at DATETIME2 DEFAULT CURRENT_TIMESTAMP
@@ -300,6 +302,22 @@ export async function initializeDatabase() {
           price_list_id INT NOT NULL FOREIGN KEY REFERENCES price_lists(id) ON DELETE CASCADE,
           product_id INT NOT NULL FOREIGN KEY REFERENCES products(id) ON DELETE CASCADE,
           CONSTRAINT uq_price_list_products UNIQUE (price_list_id, product_id)
+        )
+      END
+    `);
+
+    await query(`
+      IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'studio_price_list_offerings')
+      BEGIN
+        CREATE TABLE studio_price_list_offerings (
+          id INT IDENTITY(1,1) PRIMARY KEY,
+          studio_id INT NOT NULL FOREIGN KEY REFERENCES studios(id) ON DELETE CASCADE,
+          price_list_id INT NOT NULL FOREIGN KEY REFERENCES price_lists(id) ON DELETE CASCADE,
+          product_id INT NOT NULL FOREIGN KEY REFERENCES products(id) ON DELETE CASCADE,
+          is_offered BIT NOT NULL DEFAULT 1,
+          created_at DATETIME2 DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME2 DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT uq_studio_price_list_offerings UNIQUE (studio_id, price_list_id, product_id)
         )
       END
     `);
@@ -573,6 +591,20 @@ export async function initializeDatabase() {
     `);
 
     await query(`
+      IF COL_LENGTH('albums', 'studio_id') IS NULL
+      BEGIN
+        ALTER TABLE albums ADD studio_id INT NULL
+      END
+    `);
+
+    await query(`
+      IF COL_LENGTH('photos', 'file_size_bytes') IS NULL
+      BEGIN
+        ALTER TABLE photos ADD file_size_bytes BIGINT NULL
+      END
+    `);
+
+    await query(`
       IF COL_LENGTH('orders', 'batch_queue_status') IS NULL
       BEGIN
         ALTER TABLE orders ADD batch_queue_status NVARCHAR(50) NULL
@@ -583,6 +615,22 @@ export async function initializeDatabase() {
       IF COL_LENGTH('orders', 'batch_lab_vendor') IS NULL
       BEGIN
         ALTER TABLE orders ADD batch_lab_vendor NVARCHAR(50) NULL
+      END
+    `);
+
+    await query(`
+      IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'studio_price_list_offerings')
+      BEGIN
+        CREATE TABLE studio_price_list_offerings (
+          id INT IDENTITY(1,1) PRIMARY KEY,
+          studio_id INT NOT NULL FOREIGN KEY REFERENCES studios(id) ON DELETE CASCADE,
+          price_list_id INT NOT NULL FOREIGN KEY REFERENCES price_lists(id) ON DELETE CASCADE,
+          product_id INT NOT NULL FOREIGN KEY REFERENCES products(id) ON DELETE CASCADE,
+          is_offered BIT NOT NULL DEFAULT 1,
+          created_at DATETIME2 DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME2 DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT uq_studio_price_list_offerings UNIQUE (studio_id, price_list_id, product_id)
+        )
       END
     `);
 
