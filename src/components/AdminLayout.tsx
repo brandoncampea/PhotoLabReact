@@ -72,7 +72,10 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const studioAdminLinks = useMemo(
     () => [
       { to: '/admin/dashboard', label: '📊 Dashboard' },
-      { to: '/admin/studio-dashboard#invoices', label: '🧾 Invoices' },
+      {
+        to: isSuperAdmin && !viewAsStudioName ? '/super-admin#invoices' : '/admin/studio-dashboard#invoices',
+        label: '🧾 Invoices'
+      },
       { to: '/admin/analytics', label: '📈 Analytics' },
       { to: '/admin/albums', label: '📁 Albums' },
       { to: '/admin/photos', label: '📷 Photos' },
@@ -86,7 +89,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       { to: '/admin/watermarks', label: '💧 Watermarks' },
       { to: '/admin/profile', label: '👤 Profile' },
     ],
-    []
+    [isSuperAdmin, viewAsStudioName]
   );
 
   const linksToRender = menuMode === 'super' ? superAdminLinks : studioAdminLinks;
