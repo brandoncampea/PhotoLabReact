@@ -134,35 +134,95 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
         selectedProducts.has(p.productUID)
       );
 
-      // Convert WHCC products to price list items
-      const itemsToAdd = selectedWhccProducts.map((product) => {
-        const mapping = selectedProducts.get(product.productUID)!;
-        const cost = product.basePrice; // WHCC price becomes the cost
-        
-        // Calculate retail price based on markup or custom price
-        let price = cost;
-        if (mapping.useCustomPrice && mapping.customPrice) {
-          price = mapping.customPrice;
-        } else {
-          // Default: 2x markup on WHCC cost (100% margin)
-          const markup = mapping.markupPercentage ?? 100;
-          price = cost * (1 + markup / 100);
+      // Get existing price list to check for duplicates
+      const priceList = await priceListAdminService.getById(selectedPriceListId);
+      const existingProductNames = new Set(priceList?.products?.map(p => p.name.toLowerCase()) || []);
+
+      // Group similar products by base name to create a product with multiple sizes
+      const groupedProducts = new Map<string, typeof selectedWhccProducts>();
+
+      const getBaseName = (name: string, category?: string) => {
+        const cleaned = name
+          .replace(/\b\d+(?:\.\d+)?\s*[x×]\s*\d+(?:\.\d+)?\b/gi, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+        return cleaned || category || 'Other';
+      };
+
+      selectedWhccProducts.forEach((product) => {
+        const baseName = getBaseName(product.name, product.category);
+
+        if (!groupedProducts.has(baseName)) {
+          groupedProducts.set(baseName, []);
+        }
+        groupedProducts.get(baseName)!.push(product);
+      });
+
+      const itemsToAdd: any[] = [];
+      const skippedDuplicates: string[] = [];
+
+      groupedProducts.forEach((products, baseName) => {
+        const productName = baseName;
+
+        // Skip if product already exists in selected price list
+        if (existingProductNames.has(productName.toLowerCase())) {
+          skippedDuplicates.push(productName);
+          return;
         }
 
-        return {
-          productName: product.name,
-          description: product.description || '',
-          width: product.width,
-          height: product.height,
-          price,
-          cost,
-          whccProductUID: product.productUID,
-          category: product.category,
-        };
+        // Deduplicate sizes by dimensions/name
+        const seenSizes = new Set<string>();
+        const uniqueProducts = products.filter((product) => {
+          const sizeKey = `${product.width ?? ''}x${product.height ?? ''}|${product.name.toLowerCase()}`;
+          if (seenSizes.has(sizeKey)) return false;
+          seenSizes.add(sizeKey);
+          return true;
+        });
+
+        const sizes = uniqueProducts.map((product) => {
+          const mapping = selectedProducts.get(product.productUID)!;
+          const cost = product.basePrice;
+
+          let price = cost;
+          if (mapping.useCustomPrice && mapping.customPrice) {
+            price = mapping.customPrice;
+          } else {
+            const markup = mapping.markupPercentage ?? 100;
+            price = cost * (1 + markup / 100);
+          }
+
+          return {
+            name: product.width && product.height ? `${product.width}x${product.height}` : product.name,
+            width: product.width,
+            height: product.height,
+            price,
+            cost,
+          };
+        });
+
+        itemsToAdd.push({
+          productName,
+          description: uniqueProducts[0].description || `${productName} - Multiple sizes`,
+          category: uniqueProducts[0].category || 'Other',
+          sizes,
+          whccProductUIDs: uniqueProducts.map(p => p.productUID),
+        });
       });
+
+      if (itemsToAdd.length === 0) {
+        setError('All selected products already exist in this price list');
+        setImporting(false);
+        return;
+      }
 
       // Add to price list
       await priceListAdminService.addItemsToPriceList(selectedPriceListId, itemsToAdd);
+
+      let confirmMsg = `✓ Successfully imported ${itemsToAdd.length} product group(s)`;
+      if (skippedDuplicates.length > 0) {
+        confirmMsg += ` (${skippedDuplicates.length} duplicate(s) skipped)`;
+      }
+      alert(confirmMsg);
 
       onImportComplete();
     } catch (err) {
