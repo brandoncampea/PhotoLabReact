@@ -1,6 +1,6 @@
 import express from 'express';
 import multer from 'multer';
-import { queryRow, queryRows, query } from '../mssql.js';
+import { queryRow, queryRows, query, tableExists, columnExists } from '../mssql.js';
 import { adminRequired, superAdminRequired } from '../middleware/auth.js';
 import { uploadImageBufferToAzure, deleteBlobByUrl } from '../services/azureStorage.js';
 const router = express.Router();
@@ -98,31 +98,51 @@ router.get('/:id', adminRequired, async (req, res) => {
       return res.status(404).json({ error: 'Price list not found' });
     }
 
+    const [hasSamplePhotoUrl, hasStudioSizeOverrideTable, hasStudioSizeOverrideIsOffered] = await Promise.all([
+      columnExists('products', 'sample_photo_url'),
+      tableExists('studio_price_list_size_overrides'),
+      columnExists('studio_price_list_size_overrides', 'is_offered'),
+    ]);
+
     // Get products for this price list
     const products = await queryRows(`
-      SELECT DISTINCT p.id, p.name, p.category, p.price, p.description, p.cost, p.options, p.sample_photo_url as samplePhotoUrl
+      SELECT DISTINCT p.id, p.name, p.category, p.price, p.description, p.cost, p.options,
+             ${hasSamplePhotoUrl ? 'p.sample_photo_url' : 'CAST(NULL AS NVARCHAR(MAX))'} as samplePhotoUrl
       FROM products p
       JOIN price_list_products plp ON p.id = plp.product_id
       WHERE plp.price_list_id = $1
     `, [req.params.id]);
 
     // Get product sizes for this price list, including studio-specific price overrides
-    const productSizes = await queryRows(`
-      SELECT
-        ps.id,
-        ps.product_id as productId,
-        ps.size_name as sizeName,
-        COALESCE(spsso.price, ps.price) as price,
-        ps.price as basePrice,
-        ps.cost,
-        COALESCE(spsso.is_offered, 1) as isOffered
-      FROM product_sizes ps
-      LEFT JOIN studio_price_list_size_overrides spsso
-        ON spsso.product_size_id = ps.id
-       AND spsso.price_list_id = ps.price_list_id
-       AND spsso.studio_id = $2
-      WHERE ps.price_list_id = $1
-    `, [req.params.id, studioId]);
+    const productSizes = hasStudioSizeOverrideTable
+      ? await queryRows(`
+          SELECT
+            ps.id,
+            ps.product_id as productId,
+            ps.size_name as sizeName,
+            COALESCE(spsso.price, ps.price) as price,
+            ps.price as basePrice,
+            ps.cost,
+            ${hasStudioSizeOverrideIsOffered ? 'COALESCE(spsso.is_offered, 1)' : 'CAST(1 AS BIT)'} as isOffered
+          FROM product_sizes ps
+          LEFT JOIN studio_price_list_size_overrides spsso
+            ON spsso.product_size_id = ps.id
+           AND spsso.price_list_id = ps.price_list_id
+           AND spsso.studio_id = $2
+          WHERE ps.price_list_id = $1
+        `, [req.params.id, studioId])
+      : await queryRows(`
+          SELECT
+            ps.id,
+            ps.product_id as productId,
+            ps.size_name as sizeName,
+            ps.price as price,
+            ps.price as basePrice,
+            ps.cost,
+            CAST(1 AS BIT) as isOffered
+          FROM product_sizes ps
+          WHERE ps.price_list_id = $1
+        `, [req.params.id]);
 
     // Attach sizes to each product, mapping sizeName -> name
     const productsWithSizes = products.map((product) => {

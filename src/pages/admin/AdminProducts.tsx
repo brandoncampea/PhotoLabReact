@@ -5,7 +5,8 @@ import { useAuth } from '../../contexts/AuthContext';
 
 const AdminProducts: React.FC = () => {
   const { user } = useAuth();
-  const canManagePriceListProducts = user?.role === 'super_admin';
+  const normalizedRole = typeof user?.role === 'string' ? user.role.trim().toLowerCase() : '';
+  const canManagePriceListProducts = normalizedRole === 'super_admin';
   const [priceLists, setPriceLists] = useState<PriceList[]>([]);
   const [selectedPriceList, setSelectedPriceList] = useState<PriceList | null>(null);
   const [loading, setLoading] = useState(true);
@@ -297,6 +298,8 @@ const AdminProducts: React.FC = () => {
   };
 
   const handleCreateProduct = () => {
+    if (!canManagePriceListProducts) return;
+
     setEditingProduct(null);
     setProductForm({
       name: '',
@@ -312,6 +315,8 @@ const AdminProducts: React.FC = () => {
   };
 
   const handleEditProduct = (product: PriceListProduct) => {
+    if (!canManagePriceListProducts) return;
+
     setEditingProduct(product);
     setProductForm({
       name: product.name,
@@ -328,7 +333,7 @@ const AdminProducts: React.FC = () => {
 
   const handleSubmitProduct = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedPriceList) return;
+    if (!selectedPriceList || !canManagePriceListProducts) return;
 
     try {
       if (editingProduct) {
@@ -346,7 +351,7 @@ const AdminProducts: React.FC = () => {
   };
 
   const handleDeleteProduct = async (productId: number) => {
-    if (!selectedPriceList || !confirm('Delete this product?')) return;
+    if (!selectedPriceList || !canManagePriceListProducts || !confirm('Delete this product?')) return;
 
     try {
       await api.delete(`/price-lists/${selectedPriceList.id}/products/${productId}`);
@@ -358,6 +363,8 @@ const AdminProducts: React.FC = () => {
   };
 
   const handleCreateSize = (product: PriceListProduct) => {
+    if (!canManagePriceListProducts) return;
+
     setEditingSize(null);
     setEditingProduct(product);
     setSizeForm({ name: '', width: 0, height: 0, price: 0, cost: 0 });
@@ -365,6 +372,8 @@ const AdminProducts: React.FC = () => {
   };
 
   const handleEditSize = (product: PriceListProduct, size: PriceListProductSize) => {
+    if (!canManagePriceListProducts) return;
+
     setEditingProduct(product);
     setEditingSize({ productId: product.id, size });
     setSizeForm({ name: size.name, width: size.width, height: size.height, price: size.price, cost: size.cost });
@@ -373,7 +382,7 @@ const AdminProducts: React.FC = () => {
 
   const handleSubmitSize = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedPriceList || !editingProduct) return;
+    if (!selectedPriceList || !editingProduct || !canManagePriceListProducts) return;
 
     try {
       if (editingSize) {
@@ -390,7 +399,7 @@ const AdminProducts: React.FC = () => {
   };
 
   const handleDeleteSize = async (productId: number, sizeId: number) => {
-    if (!selectedPriceList || !confirm('Delete this size?')) return;
+    if (!selectedPriceList || !canManagePriceListProducts || !confirm('Delete this size?')) return;
 
     try {
       await api.delete(`/price-lists/${selectedPriceList.id}/products/${productId}/sizes/${sizeId}`);

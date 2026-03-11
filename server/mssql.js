@@ -110,6 +110,27 @@ export async function queryRows(text, params) {
   return result.rows;
 }
 
+export async function tableExists(tableName) {
+  const row = await queryRow(
+    `SELECT TOP 1 1 as existsFlag
+     FROM sys.tables
+     WHERE name = $1`,
+    [tableName]
+  );
+  return !!row;
+}
+
+export async function columnExists(tableName, columnName) {
+  const row = await queryRow(
+    `SELECT TOP 1 1 as existsFlag
+     FROM sys.columns c
+     INNER JOIN sys.tables t ON t.object_id = c.object_id
+     WHERE t.name = $1 AND c.name = $2`,
+    [tableName, columnName]
+  );
+  return !!row;
+}
+
 // Helper function to run a transaction
 export async function transaction(callback) {
   const poolInstance = await poolPromise;

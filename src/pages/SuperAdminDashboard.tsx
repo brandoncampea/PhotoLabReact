@@ -81,9 +81,10 @@ export default function SuperAdminDashboard() {
   }, [user]);
 
   useEffect(() => {
-    if (location.hash === '#subscription-payment-gateway') {
+    if (location.hash === '#subscription-payment-gateway' || location.hash === '#invoices') {
       requestAnimationFrame(() => {
-        document.getElementById('subscription-payment-gateway')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        const targetId = location.hash === '#invoices' ? 'super-admin-invoices' : 'subscription-payment-gateway';
+        document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       });
     }
   }, [location.hash]);
@@ -182,7 +183,7 @@ export default function SuperAdminDashboard() {
       });
       if (response.ok) {
         const data = await response.json();
-        setInvoiceBalances(data.studios || []);
+        setInvoiceBalances(data.studioBalances || data.studios || []);
         setTotalOutstanding(data.totalOutstanding || 0);
       }
     } catch (err) {
@@ -413,7 +414,7 @@ export default function SuperAdminDashboard() {
         </button>
       </div>
 
-      <div className="stats-grid">
+      <div id="super-admin-invoices" className="stats-grid">
         <div className="stat-card">
           <h3>Total Studios</h3>
           <p className="stat-value">{studios.length}</p>
