@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { PriceList, PriceListProduct, PriceListProductSize, Package } from '../../types';
 import api from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
@@ -20,11 +20,21 @@ const AdminProducts: React.FC = () => {
   const [studioFees, setStudioFees] = useState<{ feeType: string; feeValue: number } | null>(null);
   const [offeredProductIds, setOfferedProductIds] = useState<number[]>([]);
   const [savingOfferingProductId, setSavingOfferingProductId] = useState<number | null>(null);
+  const [studioSizePriceDrafts, setStudioSizePriceDrafts] = useState<Record<number, number>>({});
+  const [savingStudioSizeId, setSavingStudioSizeId] = useState<number | null>(null);
+  const [studioSizeOfferedDrafts, setStudioSizeOfferedDrafts] = useState<Record<number, boolean>>({});
+  const [uploadingForProductId, setUploadingForProductId] = useState<number | null>(null);
+  const samplePhotoInputRef = useRef<HTMLInputElement>(null);
   
   const [productForm, setProductForm] = useState({
     name: '',
     description: '',
+    category: 'General',
+    basePrice: 0,
+    cost: 0,
     isDigital: false,
+    isActive: true,
+    popularity: 0,
   });
 
   const [sizeForm, setSizeForm] = useState({
@@ -55,6 +65,25 @@ const AdminProducts: React.FC = () => {
       setPackages([]);
     }
   }, [selectedPriceList]);
+
+  useEffect(() => {
+    if (!selectedPriceList || canManagePriceListProducts) {
+      setStudioSizePriceDrafts({});
+      setStudioSizeOfferedDrafts({});
+      return;
+    }
+
+    const priceDrafts: Record<number, number> = {};
+    const offeredDrafts: Record<number, boolean> = {};
+    selectedPriceList.products.forEach((product) => {
+      product.sizes.forEach((size) => {
+        priceDrafts[size.id] = Number(size.price) || 0;
+        offeredDrafts[size.id] = size.isOffered !== false;
+      });
+    });
+    setStudioSizePriceDrafts(priceDrafts);
+    setStudioSizeOfferedDrafts(offeredDrafts);
+  }, [selectedPriceList, canManagePriceListProducts]);
 
   const loadPriceLists = async () => {
     try {
@@ -142,6 +171,121 @@ const AdminProducts: React.FC = () => {
     }
   };
 
+  const handleSaveStudioSizePrice = async (productId: number, sizeId: number) => {
+    if (!selectedPriceList || canManagePriceListProducts) return;
+
+    const draft = studioSizePriceDrafts[sizeId];
+    const nextPrice = Number(draft);
+    if (!Number.isFinite(nextPrice) || nextPrice < 0) {
+      alert('Price must be a non-negative number');
+      return;
+    }
+
+    setSavingStudioSizeId(sizeId);
+    try {
+      await api.put(`/price-lists/${selectedPriceList.id}/studio-products/${productId}/sizes/${sizeId}/price`, {
+        price: nextPrice,
+      });
+
+      setSelectedPriceList((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          products: prev.products.map((product) =>
+            product.id !== productId
+              ? product
+              : {
+                  ...product,
+                  sizes: product.sizes.map((size) =>
+                    size.id === sizeId ? { ...size, price: nextPrice } : size
+                  )
+                }
+          ),
+        };
+      });
+    } catch (error) {
+      console.error('Failed to save studio size price:', error);
+      alert('Failed to save price');
+    } finally {
+      setSavingStudioSizeId(null);
+    }
+  };
+
+  const handleToggleSizeOffering = async (productId: number, sizeId: number, offered: boolean) => {
+    if (!selectedPriceList || canManagePriceListProducts) return;
+
+    setStudioSizeOfferedDrafts((prev) => ({ ...prev, [sizeId]: offered }));
+
+    try {
+      await api.put(`/price-lists/${selectedPriceList.id}/studio-products/${productId}/sizes/${sizeId}/price`, {
+        isOffered: offered,
+      });
+    } catch (error) {
+      console.error('Failed to toggle size offering:', error);
+      setStudioSizeOfferedDrafts((prev) => ({ ...prev, [sizeId]: !offered }));
+    }
+  };
+
+  const handleUploadSamplePhoto = (productId: number) => {
+    setUploadingForProductId(productId);
+    samplePhotoInputRef.current?.click();
+  };
+
+  const handleSamplePhotoFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !uploadingForProductId || !selectedPriceList) {
+      setUploadingForProductId(null);
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('photo', file);
+
+    try {
+      const response = await api.post(
+        `/price-lists/${selectedPriceList.id}/products/${uploadingForProductId}/sample-photo`,
+        formData,
+        { headers: { 'Content-Type': 'multipart/form-data' } }
+      );
+      const { samplePhotoUrl } = response.data;
+      setSelectedPriceList((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          products: prev.products.map((p) =>
+            p.id === uploadingForProductId ? { ...p, samplePhotoUrl } : p
+          ),
+        };
+      });
+    } catch (error) {
+      console.error('Failed to upload sample photo:', error);
+      alert('Failed to upload sample photo');
+    } finally {
+      setUploadingForProductId(null);
+      if (samplePhotoInputRef.current) samplePhotoInputRef.current.value = '';
+    }
+  };
+
+  const handleRemoveSamplePhoto = async (productId: number) => {
+    if (!selectedPriceList || !confirm('Remove this sample photo?')) return;
+
+    try {
+      await api.delete(`/price-lists/${selectedPriceList.id}/products/${productId}/sample-photo`);
+      setSelectedPriceList((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          products: prev.products.map((p) =>
+            p.id === productId ? { ...p, samplePhotoUrl: undefined } : p
+          ),
+        };
+      });
+    } catch (error) {
+      console.error('Failed to remove sample photo:', error);
+      alert('Failed to remove sample photo');
+    }
+  };
+
   const calculatePriceWithFees = (basePrice: number): number => {
     if (!studioFees || studioFees.feeValue === 0) return basePrice;
     
@@ -154,7 +298,16 @@ const AdminProducts: React.FC = () => {
 
   const handleCreateProduct = () => {
     setEditingProduct(null);
-    setProductForm({ name: '', description: '', isDigital: false });
+    setProductForm({
+      name: '',
+      description: '',
+      category: 'General',
+      basePrice: 0,
+      cost: 0,
+      isDigital: false,
+      isActive: true,
+      popularity: 0,
+    });
     setShowProductModal(true);
   };
 
@@ -163,7 +316,12 @@ const AdminProducts: React.FC = () => {
     setProductForm({
       name: product.name,
       description: product.description || '',
+      category: product.category || 'General',
+      basePrice: Number(product.price) || 0,
+      cost: Number(product.cost) || 0,
       isDigital: product.isDigital,
+      isActive: product.isActive !== undefined ? !!product.isActive : true,
+      popularity: Number(product.popularity) || 0,
     });
     setShowProductModal(true);
   };
@@ -359,7 +517,7 @@ const AdminProducts: React.FC = () => {
 
       {!canManagePriceListProducts && (
         <div className="info-box" style={{ border: '1px solid var(--border-color)', marginBottom: '1rem' }}>
-          Super admins can add and edit products in price lists. Studio admins can choose which products to offer from each price list and can create packages.
+          Super admins manage products and sizes, setting a <strong>price</strong> (which is your cost) based on lab costs from CSV/WHCC/mpix imports. You can activate products to offer them, set your own customer price per size, and create packages.
         </div>
       )}
 
@@ -431,6 +589,22 @@ const AdminProducts: React.FC = () => {
                       <p className="muted-text" style={{ fontSize: '0.9rem', margin: 0 }}>
                         {product.isDigital ? '🖥️ Digital' : '🖨️ Physical'}
                       </p>
+                      <p className="muted-text" style={{ fontSize: '0.85rem', margin: '0.35rem 0 0 0' }}>
+                        Category: {product.category || 'General'}
+                        {canManagePriceListProducts
+                          ? (
+                            <>
+                              {typeof product.cost === 'number' && Number(product.cost) > 0 ? ` | Lab Cost: $${Number(product.cost).toFixed(2)}` : ''}
+                              {typeof product.price === 'number' && Number(product.price) > 0 ? ` | Your Price: $${Number(product.price).toFixed(2)}` : ''}
+                            </>
+                          ) : (
+                            <>
+                              {typeof product.price === 'number' && Number(product.price) > 0 ? ` | Your Cost: $${Number(product.price).toFixed(2)}` : ''}
+                            </>
+                          )
+                        }
+                        {product.isActive === false ? ' | Inactive' : ''}
+                      </p>
                     </div>
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
                       {!canManagePriceListProducts && (
@@ -461,6 +635,42 @@ const AdminProducts: React.FC = () => {
                         </>
                       )}
                     </div>
+                  </div>
+
+                  {/* Sample Photo */}
+                  <div style={{ marginBottom: '1rem' }}>
+                    {product.samplePhotoUrl && (
+                      <div style={{ marginBottom: '0.5rem' }}>
+                        <img
+                          src={product.samplePhotoUrl}
+                          alt={`${product.name} sample`}
+                          style={{ width: '90px', height: '90px', objectFit: 'cover', borderRadius: '6px', border: '1px solid var(--border-color)', display: 'block' }}
+                        />
+                      </div>
+                    )}
+                    {canManagePriceListProducts && (
+                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                        <button
+                          onClick={() => handleUploadSamplePhoto(product.id)}
+                          className="btn btn-secondary btn-sm"
+                          disabled={uploadingForProductId === product.id}
+                        >
+                          {uploadingForProductId === product.id
+                            ? '⏳ Uploading...'
+                            : product.samplePhotoUrl
+                            ? '🖼️ Change Sample Photo'
+                            : '📷 Add Sample Photo'}
+                        </button>
+                        {product.samplePhotoUrl && (
+                          <button
+                            onClick={() => handleRemoveSamplePhoto(product.id)}
+                            className="btn btn-danger btn-sm"
+                          >
+                            Remove Photo
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {product.description && (
@@ -496,30 +706,47 @@ const AdminProducts: React.FC = () => {
                               display: 'flex',
                               justifyContent: 'space-between',
                               alignItems: 'center',
+                              opacity: !canManagePriceListProducts && studioSizeOfferedDrafts[size.id] === false ? 0.6 : 1,
                             }}
                           >
                             <div style={{ fontSize: '0.85rem' }}>
                               <strong>{size.name}</strong>
                               {size.width > 0 && ` (${size.width}x${size.height})`}
                               <div className="muted-text" style={{ fontSize: '0.8rem' }}>
-                                Base: ${size.price.toFixed(2)}
-                                {studioFees && studioFees.feeValue > 0 && (
-                                  <span className="warning-text" style={{ fontWeight: 'bold' }}>
-                                    {' → Customer Price: $'}{calculatePriceWithFees(size.price).toFixed(2)}
-                                  </span>
-                                )}
-                                {size.cost > 0 && (
+                                {canManagePriceListProducts ? (
+                                  // Super admin view: Lab Cost → Your Price → Lab Profit
                                   <>
-                                    {' | Cost: $'}{size.cost.toFixed(2)}{' | '}
-                                    <span className={size.price > size.cost ? 'success-text' : 'danger-text'}>
-                                      Profit: ${(size.price - size.cost).toFixed(2)}
-                                    </span>
+                                    {size.cost > 0 && (
+                                      <span>Lab Cost: ${size.cost.toFixed(2)}{' | '}</span>
+                                    )}
+                                    <span>Your Price (Studio Cost): ${size.price.toFixed(2)}</span>
+                                    {size.cost > 0 && (
+                                      <span className={size.price > size.cost ? ' success-text' : ' danger-text'}>
+                                        {' | Lab Profit: $'}{(size.price - size.cost).toFixed(2)}
+                                      </span>
+                                    )}
+                                  </>
+                                ) : (
+                                  // Studio admin view: Your Cost (super admin price) → Your Price → Customer Price → Your Profit
+                                  <>
+                                    <span>Your Cost: ${(size.basePrice ?? size.price).toFixed(2)}</span>
+                                    <span>{' | Your Price: $'}{size.price.toFixed(2)}</span>
+                                    {studioFees && studioFees.feeValue > 0 && (
+                                      <span className="warning-text" style={{ fontWeight: 'bold' }}>
+                                        {' → Customer Price: $'}{calculatePriceWithFees(size.price).toFixed(2)}
+                                      </span>
+                                    )}
+                                    {size.basePrice !== undefined && (
+                                      <span className={size.price > size.basePrice ? ' success-text' : ' danger-text'}>
+                                        {' | Your Profit: $'}{(size.price - size.basePrice).toFixed(2)}
+                                      </span>
+                                    )}
                                   </>
                                 )}
                               </div>
                             </div>
-                            <div className="row-actions">
-                              {canManagePriceListProducts && (
+                            <div className="row-actions" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                              {canManagePriceListProducts ? (
                                 <>
                                   <button
                                     onClick={() => handleEditSize(product, size)}
@@ -532,6 +759,37 @@ const AdminProducts: React.FC = () => {
                                     className="btn btn-danger btn-sm"
                                   >
                                     Delete
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.82rem', cursor: 'pointer' }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={studioSizeOfferedDrafts[size.id] !== false}
+                                      onChange={(e) => handleToggleSizeOffering(product.id, size.id, e.target.checked)}
+                                      disabled={!isProductOffered(product.id)}
+                                    />
+                                    Offer
+                                  </label>
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    min={0}
+                                    value={studioSizePriceDrafts[size.id] ?? size.price}
+                                    onChange={(e) => setStudioSizePriceDrafts((prev) => ({
+                                      ...prev,
+                                      [size.id]: parseFloat(e.target.value) || 0,
+                                    }))}
+                                    style={{ width: '90px' }}
+                                    disabled={studioSizeOfferedDrafts[size.id] === false || !isProductOffered(product.id)}
+                                  />
+                                  <button
+                                    onClick={() => handleSaveStudioSizePrice(product.id, size.id)}
+                                    className="btn btn-primary btn-sm"
+                                    disabled={savingStudioSizeId === size.id || !isProductOffered(product.id) || studioSizeOfferedDrafts[size.id] === false}
+                                  >
+                                    {savingStudioSizeId === size.id ? 'Saving...' : 'Save Price'}
                                   </button>
                                 </>
                               )}
@@ -547,6 +805,15 @@ const AdminProducts: React.FC = () => {
           )}
         </div>
       )}
+
+      {/* Hidden file input for sample photo upload */}
+      <input
+        type="file"
+        ref={samplePhotoInputRef}
+        accept="image/*"
+        style={{ display: 'none' }}
+        onChange={handleSamplePhotoFileChange}
+      />
 
       {/* Package Modal */}
       {showPackageModal && selectedPriceList && (
@@ -769,6 +1036,58 @@ const AdminProducts: React.FC = () => {
                 />
               </div>
               <div className="form-group">
+                <label>Category</label>
+                <input
+                  type="text"
+                  value={productForm.category}
+                  onChange={e => setProductForm({ ...productForm, category: e.target.value })}
+                />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div className="form-group">
+                  <label>Your Price (Studio Cost)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={productForm.basePrice}
+                    onChange={e => setProductForm({ ...productForm, basePrice: parseFloat(e.target.value) || 0 })}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Lab Cost (from import)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={productForm.cost}
+                    onChange={e => setProductForm({ ...productForm, cost: parseFloat(e.target.value) || 0 })}
+                  />
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div className="form-group">
+                  <label>Popularity</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={productForm.popularity}
+                    onChange={e => setProductForm({ ...productForm, popularity: parseInt(e.target.value || '0', 10) || 0 })}
+                  />
+                </div>
+                <div className="form-group" style={{ display: 'flex', alignItems: 'center', marginTop: '1.8rem' }}>
+                  <label style={{ margin: 0 }}>
+                    <input
+                      type="checkbox"
+                      checked={productForm.isActive}
+                      onChange={e => setProductForm({ ...productForm, isActive: e.target.checked })}
+                      style={{ marginRight: '8px' }}
+                    />
+                    Active Product
+                  </label>
+                </div>
+              </div>
+              <div className="form-group">
                 <label>
                   <input
                     type="checkbox"
@@ -831,7 +1150,7 @@ const AdminProducts: React.FC = () => {
                 </div>
               </div>
               <div className="form-group">
-                <label>Price *</label>
+                <label>Your Price (Studio Cost) *</label>
                 <input
                   type="number"
                   value={sizeForm.price}
@@ -842,7 +1161,7 @@ const AdminProducts: React.FC = () => {
                 />
               </div>
               <div className="form-group">
-                <label>Cost (Internal - Not shown to customers)</label>
+                <label>Lab Cost (from import — not shown to studios)</label>
                 <input
                   type="number"
                   value={sizeForm.cost}

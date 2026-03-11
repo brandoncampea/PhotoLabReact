@@ -360,8 +360,14 @@ export interface PriceListProduct {
   id: number;
   priceListId: number;
   name: string;
+  category?: string;
+  price?: number;
+  cost?: number;
   description?: string;
   isDigital: boolean;
+  isActive?: boolean;
+  popularity?: number;
+  samplePhotoUrl?: string;
   sizes: PriceListProductSize[];
 }
 
@@ -372,7 +378,9 @@ export interface PriceListProductSize {
   width: number;
   height: number;
   price: number;
+  basePrice?: number;
   cost: number;
+  isOffered?: boolean;
 }
 
 export interface PriceListItem {

@@ -140,17 +140,114 @@ router.post('/', requireActiveSubscription, async (req, res) => {
       }
 
       await query(`
-        INSERT INTO order_items (order_id, photo_id, photo_ids, product_id, quantity, price, crop_data)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        INSERT INTO order_items (order_id, photo_id, photo_ids, product_id, product_size_id, quantity, price, crop_data)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       `, [
         orderId,
         primaryPhotoId,
         JSON.stringify(photoIds),
         item.productId,
+        item.productSizeId || null,
         item.quantity,
         item.price,
         item.cropData ? JSON.stringify(item.cropData) : null,
       ]);
+    }
+
+    // Generate studio invoice line items for each order item
+    try {
+      // Collect per-studio invoice items
+      const studioItemMap = new Map(); // studio_id -> { subscriptionEnd, items: [] }
+
+      for (const item of items) {
+        if (!item.productSizeId && !item.productId) continue;
+        const photoIds = Array.isArray(item.photoIds) ? item.photoIds : item.photoId ? [item.photoId] : [];
+        const primaryPhotoId = photoIds[0];
+        if (!primaryPhotoId) continue;
+
+        // Resolve studio via photo -> album
+        const photo = await queryRow('SELECT album_id FROM photos WHERE id = $1', [primaryPhotoId]);
+        if (!photo?.album_id) continue;
+
+        const album = await queryRow(
+          'SELECT studio_id, price_list_id FROM albums WHERE id = $1',
+          [photo.album_id]
+        );
+        if (!album?.studio_id) continue;
+
+        // Get the super admin price for this size (studio's cost)
+        let unitCost = 0;
+        if (item.productSizeId) {
+          const sizeRow = await queryRow(
+            'SELECT price FROM product_sizes WHERE id = $1',
+            [item.productSizeId]
+          );
+          unitCost = Number(sizeRow?.price) || 0;
+        }
+
+        const studioId = Number(album.studio_id);
+        if (!studioItemMap.has(studioId)) {
+          const studio = await queryRow(
+            'SELECT subscription_end FROM studios WHERE id = $1',
+            [studioId]
+          );
+          studioItemMap.set(studioId, { subscriptionEnd: studio?.subscription_end || null, items: [] });
+        }
+        studioItemMap.get(studioId).items.push({
+          productId: item.productId || null,
+          productSizeId: item.productSizeId || null,
+          quantity: Number(item.quantity) || 1,
+          unitCost,
+        });
+      }
+
+      // For each studio, upsert the open invoice and add line items
+      for (const [studioId, { items: invoiceItems }] of studioItemMap) {
+        let invoice = await queryRow(
+          `SELECT id, total_amount, item_count FROM studio_invoices
+           WHERE studio_id = $1 AND status = 'open'
+           ORDER BY created_at DESC`,
+          [studioId]
+        );
+
+        if (!invoice) {
+          const result = await queryRow(
+            `INSERT INTO studio_invoices (studio_id, billing_period_start, status, total_amount, item_count)
+             VALUES ($1, CURRENT_TIMESTAMP, 'open', 0, 0)
+             RETURNING id`,
+            [studioId]
+          );
+          invoice = { id: result.id, total_amount: 0, item_count: 0 };
+        }
+
+        let addedTotal = 0;
+        let addedItemCount = 0;
+        for (const invoiceItem of invoiceItems) {
+          const totalCost = invoiceItem.unitCost * invoiceItem.quantity;
+          await query(
+            `INSERT INTO studio_invoice_items
+               (invoice_id, studio_id, order_id, product_id, product_size_id, quantity, unit_cost, total_cost, order_date)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP)`,
+            [
+              invoice.id, studioId, orderId,
+              invoiceItem.productId, invoiceItem.productSizeId,
+              invoiceItem.quantity, invoiceItem.unitCost, totalCost,
+            ]
+          );
+          addedTotal += totalCost;
+          addedItemCount += invoiceItem.quantity;
+        }
+
+        await query(
+          `UPDATE studio_invoices
+           SET total_amount = total_amount + $1, item_count = item_count + $2, updated_at = CURRENT_TIMESTAMP
+           WHERE id = $3`,
+          [addedTotal, addedItemCount, invoice.id]
+        );
+      }
+    } catch (invoiceErr) {
+      // Invoice generation is non-blocking — log but don't fail the order
+      console.error('Invoice generation error (non-fatal):', invoiceErr);
     }
 
     // Return the created order
