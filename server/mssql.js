@@ -338,6 +338,23 @@ export async function initializeDatabase() {
     `);
 
     await query(`
+      IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'studio_price_list_size_overrides')
+      BEGIN
+        CREATE TABLE studio_price_list_size_overrides (
+          id INT IDENTITY(1,1) PRIMARY KEY,
+          studio_id INT NOT NULL FOREIGN KEY REFERENCES studios(id) ON DELETE CASCADE,
+          price_list_id INT NOT NULL FOREIGN KEY REFERENCES price_lists(id) ON DELETE CASCADE,
+          product_id INT NOT NULL FOREIGN KEY REFERENCES products(id) ON DELETE CASCADE,
+          product_size_id INT NOT NULL FOREIGN KEY REFERENCES product_sizes(id) ON DELETE CASCADE,
+          price FLOAT NOT NULL,
+          created_at DATETIME2 DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME2 DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT uq_studio_price_list_size_overrides UNIQUE (studio_id, price_list_id, product_size_id)
+        )
+      END
+    `);
+
+    await query(`
       IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'packages')
       BEGIN
         CREATE TABLE packages (
@@ -605,6 +622,49 @@ export async function initializeDatabase() {
     `);
 
     await query(`
+      IF COL_LENGTH('order_items', 'product_size_id') IS NULL
+      BEGIN
+        ALTER TABLE order_items ADD product_size_id INT NULL
+      END
+    `);
+
+    await query(`
+      IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'studio_invoices')
+      BEGIN
+        CREATE TABLE studio_invoices (
+          id INT IDENTITY(1,1) PRIMARY KEY,
+          studio_id INT NOT NULL FOREIGN KEY REFERENCES studios(id) ON DELETE CASCADE,
+          billing_period_start DATETIME2 NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          billing_period_end DATETIME2 NULL,
+          status NVARCHAR(50) NOT NULL DEFAULT 'open',
+          total_amount FLOAT NOT NULL DEFAULT 0,
+          item_count INT NOT NULL DEFAULT 0,
+          created_at DATETIME2 DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME2 DEFAULT CURRENT_TIMESTAMP
+        )
+      END
+    `);
+
+    await query(`
+      IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'studio_invoice_items')
+      BEGIN
+        CREATE TABLE studio_invoice_items (
+          id INT IDENTITY(1,1) PRIMARY KEY,
+          invoice_id INT NOT NULL FOREIGN KEY REFERENCES studio_invoices(id) ON DELETE CASCADE,
+          studio_id INT NOT NULL,
+          order_id INT NOT NULL,
+          product_id INT NOT NULL,
+          product_size_id INT NULL,
+          quantity INT NOT NULL DEFAULT 1,
+          unit_cost FLOAT NOT NULL DEFAULT 0,
+          total_cost FLOAT NOT NULL DEFAULT 0,
+          order_date DATETIME2 DEFAULT CURRENT_TIMESTAMP,
+          created_at DATETIME2 DEFAULT CURRENT_TIMESTAMP
+        )
+      END
+    `);
+
+    await query(`
       IF COL_LENGTH('orders', 'batch_queue_status') IS NULL
       BEGIN
         ALTER TABLE orders ADD batch_queue_status NVARCHAR(50) NULL
@@ -631,6 +691,74 @@ export async function initializeDatabase() {
           updated_at DATETIME2 DEFAULT CURRENT_TIMESTAMP,
           CONSTRAINT uq_studio_price_list_offerings UNIQUE (studio_id, price_list_id, product_id)
         )
+      END
+    `);
+
+    await query(`
+      IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'studio_price_list_size_overrides')
+      BEGIN
+        CREATE TABLE studio_price_list_size_overrides (
+          id INT IDENTITY(1,1) PRIMARY KEY,
+          studio_id INT NOT NULL FOREIGN KEY REFERENCES studios(id) ON DELETE CASCADE,
+          price_list_id INT NOT NULL FOREIGN KEY REFERENCES price_lists(id) ON DELETE CASCADE,
+          product_id INT NOT NULL FOREIGN KEY REFERENCES products(id) ON DELETE CASCADE,
+          product_size_id INT NOT NULL FOREIGN KEY REFERENCES product_sizes(id) ON DELETE CASCADE,
+          price FLOAT NOT NULL,
+          is_offered BIT NOT NULL DEFAULT 1,
+          created_at DATETIME2 DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME2 DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT uq_studio_price_list_size_overrides UNIQUE (studio_id, price_list_id, product_size_id)
+        )
+      END
+    `);
+
+    await query(`
+      IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'studio_invoices')
+      BEGIN
+        CREATE TABLE studio_invoices (
+          id INT IDENTITY(1,1) PRIMARY KEY,
+          studio_id INT NOT NULL FOREIGN KEY REFERENCES studios(id) ON DELETE CASCADE,
+          billing_period_start DATETIME2 NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          billing_period_end DATETIME2 NULL,
+          status NVARCHAR(50) NOT NULL DEFAULT 'open',
+          total_amount FLOAT NOT NULL DEFAULT 0,
+          item_count INT NOT NULL DEFAULT 0,
+          created_at DATETIME2 DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME2 DEFAULT CURRENT_TIMESTAMP
+        )
+      END
+    `);
+
+    await query(`
+      IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'studio_invoice_items')
+      BEGIN
+        CREATE TABLE studio_invoice_items (
+          id INT IDENTITY(1,1) PRIMARY KEY,
+          invoice_id INT NOT NULL FOREIGN KEY REFERENCES studio_invoices(id) ON DELETE CASCADE,
+          studio_id INT NOT NULL,
+          order_id INT NOT NULL,
+          product_id INT NOT NULL,
+          product_size_id INT NULL,
+          quantity INT NOT NULL DEFAULT 1,
+          unit_cost FLOAT NOT NULL DEFAULT 0,
+          total_cost FLOAT NOT NULL DEFAULT 0,
+          order_date DATETIME2 DEFAULT CURRENT_TIMESTAMP,
+          created_at DATETIME2 DEFAULT CURRENT_TIMESTAMP
+        )
+      END
+    `);
+
+    await query(`
+      IF COL_LENGTH('products', 'sample_photo_url') IS NULL
+      BEGIN
+        ALTER TABLE products ADD sample_photo_url NVARCHAR(MAX) NULL
+      END
+    `);
+
+    await query(`
+      IF COL_LENGTH('studio_price_list_size_overrides', 'is_offered') IS NULL
+      BEGIN
+        ALTER TABLE studio_price_list_size_overrides ADD is_offered BIT NOT NULL DEFAULT 1
       END
     `);
 

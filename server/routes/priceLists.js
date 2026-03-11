@@ -1,7 +1,18 @@
 import express from 'express';
+import multer from 'multer';
 import { queryRow, queryRows, query } from '../mssql.js';
 import { adminRequired, superAdminRequired } from '../middleware/auth.js';
+import { uploadImageBufferToAzure, deleteBlobByUrl } from '../services/azureStorage.js';
 const router = express.Router();
+
+const samplePhotoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) cb(null, true);
+    else cb(new Error('Only image files are allowed'));
+  },
+});
 
 const SIZE_DIMENSION_DELIMITER = '__';
 
@@ -75,48 +86,68 @@ router.get('/', adminRequired, async (req, res) => {
 // Get price list by ID with all products and packages
 router.get('/:id', adminRequired, async (req, res) => {
   try {
+    const studioId = getStudioIdFromRequest(req);
+
     const priceList = await queryRow(`
       SELECT id, name, description, is_default as isDefault, created_at as createdDate
       FROM price_lists
       WHERE id = $1
     `, [req.params.id]);
-    
+
     if (!priceList) {
       return res.status(404).json({ error: 'Price list not found' });
     }
 
     // Get products for this price list
     const products = await queryRows(`
-      SELECT DISTINCT p.id, p.name, p.category, p.price, p.description, p.cost, p.options
+      SELECT DISTINCT p.id, p.name, p.category, p.price, p.description, p.cost, p.options, p.sample_photo_url as samplePhotoUrl
       FROM products p
       JOIN price_list_products plp ON p.id = plp.product_id
       WHERE plp.price_list_id = $1
     `, [req.params.id]);
 
-    // Get product sizes for this price list
+    // Get product sizes for this price list, including studio-specific price overrides
     const productSizes = await queryRows(`
-      SELECT id, product_id as productId, size_name as sizeName, price, cost
-      FROM product_sizes
-      WHERE price_list_id = $1
-    `, [req.params.id]);
+      SELECT
+        ps.id,
+        ps.product_id as productId,
+        ps.size_name as sizeName,
+        COALESCE(spsso.price, ps.price) as price,
+        ps.price as basePrice,
+        ps.cost,
+        COALESCE(spsso.is_offered, 1) as isOffered
+      FROM product_sizes ps
+      LEFT JOIN studio_price_list_size_overrides spsso
+        ON spsso.product_size_id = ps.id
+       AND spsso.price_list_id = ps.price_list_id
+       AND spsso.studio_id = $2
+      WHERE ps.price_list_id = $1
+    `, [req.params.id, studioId]);
 
     // Attach sizes to each product, mapping sizeName -> name
-    const productsWithSizes = products.map(product => ({
-      ...product,
-      isDigital: !!parseProductOptions(product.options).isDigital,
-      sizes: productSizes
-        .filter(size => size.productId === product.id)
-        .map(size => {
-          const decoded = decodeSizeName(size.sizeName);
-          return {
-            ...size,
-            name: decoded.name,
-            width: decoded.width,
-            height: decoded.height,
-            ...(() => { const s = { ...size }; delete s.sizeName; return s; })()
-          };
-        })
-    }));
+    const productsWithSizes = products.map((product) => {
+      const productOptions = parseProductOptions(product.options);
+      return {
+        ...product,
+        samplePhotoUrl: product.samplePhotoUrl || null,
+        isDigital: !!productOptions.isDigital,
+        isActive: productOptions.isActive !== undefined ? !!productOptions.isActive : true,
+        popularity: Number(productOptions.popularity) || 0,
+        sizes: productSizes
+          .filter((size) => size.productId === product.id)
+          .map((size) => {
+            const decoded = decodeSizeName(size.sizeName);
+            const { sizeName: _ignore, ...rest } = size;
+            return {
+              ...rest,
+              name: decoded.name,
+              width: decoded.width,
+              height: decoded.height,
+              isOffered: rest.isOffered === undefined || rest.isOffered === null ? true : !!rest.isOffered,
+            };
+          })
+      };
+    });
 
     // Get packages for this price list
     const packages = await queryRows(`
@@ -132,7 +163,6 @@ router.get('/:id', adminRequired, async (req, res) => {
     `);
 
     priceList.products = productsWithSizes;
-    // priceList.sizes = productSizes; // No longer needed by frontend
     priceList.packages = packages.map(pkg => ({
       ...pkg,
       items: packageItems.filter(item => item.packageId === pkg.id)
@@ -238,22 +268,157 @@ router.put('/:id/studio-offerings', adminRequired, async (req, res) => {
   }
 });
 
+router.put('/:id/studio-products/:productId/sizes/:sizeId/price', adminRequired, async (req, res) => {
+  try {
+    const studioId = getStudioIdFromRequest(req);
+    if (!studioId) {
+      return res.status(400).json({ error: 'Studio context is required' });
+    }
+
+    const priceListId = Number(req.params.id);
+    const productId = Number(req.params.productId);
+    const sizeId = Number(req.params.sizeId);
+
+    if (!priceListId || !productId || !sizeId) {
+      return res.status(400).json({ error: 'Invalid price list/product/size id' });
+    }
+
+    const size = await queryRow(
+      `SELECT id, price FROM product_sizes
+       WHERE id = $1 AND price_list_id = $2 AND product_id = $3`,
+      [sizeId, priceListId, productId]
+    );
+
+    if (!size) {
+      return res.status(404).json({ error: 'Product size not found in this price list' });
+    }
+
+    // Get existing override (if any) to preserve fields not being updated
+    const existing = await queryRow(
+      `SELECT price, is_offered FROM studio_price_list_size_overrides
+       WHERE studio_id = $1 AND price_list_id = $2 AND product_size_id = $3`,
+      [studioId, priceListId, sizeId]
+    );
+
+    let finalPrice = existing ? Number(existing.price) : Number(size.price);
+    let finalIsOffered = existing ? (existing.is_offered !== 0 && existing.is_offered !== false) : true;
+
+    if (req.body.price !== undefined) {
+      const price = Number(req.body.price);
+      if (!Number.isFinite(price) || price < 0) {
+        return res.status(400).json({ error: 'Price must be a non-negative number' });
+      }
+      finalPrice = price;
+    }
+
+    if (req.body.isOffered !== undefined) {
+      finalIsOffered = !!req.body.isOffered;
+    }
+
+    await query(
+      `IF EXISTS (
+         SELECT 1
+         FROM studio_price_list_size_overrides
+         WHERE studio_id = $1 AND price_list_id = $2 AND product_size_id = $3
+       )
+       BEGIN
+         UPDATE studio_price_list_size_overrides
+         SET price = $4,
+             product_id = $5,
+             is_offered = $6,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE studio_id = $1 AND price_list_id = $2 AND product_size_id = $3
+       END
+       ELSE
+       BEGIN
+         INSERT INTO studio_price_list_size_overrides (studio_id, price_list_id, product_id, product_size_id, price, is_offered)
+         VALUES ($1, $2, $5, $3, $4, $6)
+       END`,
+      [studioId, priceListId, sizeId, finalPrice, productId, finalIsOffered ? 1 : 0]
+    );
+
+    res.json({ success: true, price: finalPrice, isOffered: finalIsOffered });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/:id/products/:productId/sample-photo', superAdminRequired, (req, res, next) => {
+  samplePhotoUpload.single('photo')(req, res, (err) => {
+    if (err) return res.status(400).json({ error: err.message || 'Upload error' });
+    next();
+  });
+}, async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+    const productId = Number(req.params.productId);
+    if (!productId) return res.status(400).json({ error: 'Invalid product id' });
+
+    // Delete existing sample photo from Azure if present
+    const existing = await queryRow('SELECT sample_photo_url FROM products WHERE id = $1', [productId]);
+    if (existing?.sample_photo_url) {
+      await deleteBlobByUrl(existing.sample_photo_url).catch(() => {});
+    }
+
+    const blobName = `product-samples/${productId}/${Date.now()}-${req.file.originalname}`;
+    const photoUrl = await uploadImageBufferToAzure(req.file.buffer, blobName, req.file.mimetype);
+
+    await query('UPDATE products SET sample_photo_url = $1 WHERE id = $2', [photoUrl, productId]);
+
+    res.json({ samplePhotoUrl: photoUrl });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.delete('/:id/products/:productId/sample-photo', superAdminRequired, async (req, res) => {
+  try {
+    const productId = Number(req.params.productId);
+    if (!productId) return res.status(400).json({ error: 'Invalid product id' });
+
+    const existing = await queryRow('SELECT sample_photo_url FROM products WHERE id = $1', [productId]);
+    if (existing?.sample_photo_url) {
+      await deleteBlobByUrl(existing.sample_photo_url).catch(() => {});
+    }
+
+    await query('UPDATE products SET sample_photo_url = NULL WHERE id = $1', [productId]);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 router.post('/:id/products', superAdminRequired, async (req, res) => {
   try {
     const priceListId = Number(req.params.id);
-    const { name, description, isDigital } = req.body;
+    const { name, description, isDigital, category, basePrice, cost, isActive, popularity } = req.body;
 
     if (!name || !String(name).trim()) {
       return res.status(400).json({ error: 'Product name is required' });
     }
 
-    const options = { isDigital: !!isDigital };
+    const options = {
+      isDigital: !!isDigital,
+      isActive: isActive === undefined ? true : !!isActive,
+      popularity: Number(popularity) || 0,
+    };
     const result = await queryRow(
       `INSERT INTO products (name, category, price, description, options)
        VALUES ($1, $2, $3, $4, $5)
        RETURNING id`,
-      [String(name).trim(), 'General', 0, description || null, JSON.stringify(options)]
+      [
+        String(name).trim(),
+        String(category || 'General').trim() || 'General',
+        Number(basePrice) || 0,
+        description || null,
+        JSON.stringify(options),
+      ]
     );
+
+    if (cost !== undefined) {
+      await query(`UPDATE products SET cost = $1 WHERE id = $2`, [Number(cost) || 0, result.id]);
+    }
 
     await query(
       `INSERT INTO price_list_products (price_list_id, product_id)
@@ -261,12 +426,19 @@ router.post('/:id/products', superAdminRequired, async (req, res) => {
       [priceListId, result.id]
     );
 
-    const product = await queryRow('SELECT id, name, description, options FROM products WHERE id = $1', [result.id]);
+    const product = await queryRow('SELECT id, name, description, category, price, cost, options FROM products WHERE id = $1', [result.id]);
+    const productOptions = parseProductOptions(product.options);
     res.status(201).json({
       id: product.id,
       name: product.name,
       description: product.description,
-      isDigital: !!parseProductOptions(product.options).isDigital,
+      category: product.category,
+      price: Number(product.price) || 0,
+      cost: Number(product.cost) || 0,
+      samplePhotoUrl: product.sample_photo_url || null,
+      isDigital: !!productOptions.isDigital,
+      isActive: productOptions.isActive !== undefined ? !!productOptions.isActive : true,
+      popularity: Number(productOptions.popularity) || 0,
       sizes: [],
     });
   } catch (error) {
@@ -276,7 +448,7 @@ router.post('/:id/products', superAdminRequired, async (req, res) => {
 
 router.put('/:id/products/:productId', superAdminRequired, async (req, res) => {
   try {
-    const { name, description, isDigital } = req.body;
+    const { name, description, isDigital, category, basePrice, cost, isActive, popularity } = req.body;
     const existing = await queryRow('SELECT id, options FROM products WHERE id = $1', [req.params.productId]);
     if (!existing) {
       return res.status(404).json({ error: 'Product not found' });
@@ -287,12 +459,23 @@ router.put('/:id/products/:productId', superAdminRequired, async (req, res) => {
       `UPDATE products
        SET name = $1,
            description = $2,
-           options = $3
-       WHERE id = $4`,
+           category = $3,
+           price = $4,
+           cost = $5,
+           options = $6
+       WHERE id = $7`,
       [
         String(name || '').trim(),
         description || null,
-        JSON.stringify({ ...currentOptions, isDigital: !!isDigital }),
+        String(category || 'General').trim() || 'General',
+        Number(basePrice) || 0,
+        Number(cost) || 0,
+        JSON.stringify({
+          ...currentOptions,
+          isDigital: !!isDigital,
+          isActive: isActive === undefined ? (currentOptions.isActive !== undefined ? !!currentOptions.isActive : true) : !!isActive,
+          popularity: popularity === undefined ? Number(currentOptions.popularity) || 0 : Number(popularity) || 0,
+        }),
         req.params.productId,
       ]
     );

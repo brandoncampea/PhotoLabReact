@@ -98,14 +98,23 @@ router.get('/active', async (req, res) => {
         );
 
         const productSizes = await queryRows(
-          `SELECT id,
-                  product_id as productId,
-                  size_name as sizeName,
-                  price,
-                  cost
-           FROM product_sizes
-           WHERE price_list_id = $1`,
-          [album.priceListId]
+          `SELECT
+              ps.id,
+              ps.product_id as productId,
+              ps.size_name as sizeName,
+              COALESCE(spsso.price, ps.price) as price,
+              ps.cost
+           FROM product_sizes ps
+           LEFT JOIN studio_price_list_size_overrides spsso
+             ON spsso.product_size_id = ps.id
+            AND spsso.price_list_id = ps.price_list_id
+            AND spsso.studio_id = $2
+           WHERE ps.price_list_id = $1
+             AND (
+               $2 IS NULL
+               OR COALESCE(spsso.is_offered, 1) = 1
+             )`,
+          [album.priceListId, album.studioId || null]
         );
 
         const parsedProducts = products.map((product) => {

@@ -30,6 +30,15 @@ interface Plan {
   features: string[];
 }
 
+interface StudioInvoiceBalance {
+  studioId: number;
+  studioName: string;
+  invoiceId: number | null;
+  openBalance: number;
+  itemCount: number;
+  periodStart: string | null;
+}
+
 export default function SuperAdminDashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -59,12 +68,15 @@ export default function SuperAdminDashboard() {
     isActive: false,
   });
   const [savingSubscriptionConfig, setSavingSubscriptionConfig] = useState(false);
+  const [invoiceBalances, setInvoiceBalances] = useState<StudioInvoiceBalance[]>([]);
+  const [totalOutstanding, setTotalOutstanding] = useState(0);
 
   useEffect(() => {
     if (user?.role === 'super_admin') {
       fetchStudios();
       fetchPlans();
       fetchSubscriptionPaymentConfig();
+      fetchInvoiceBalances();
     }
   }, [user]);
 
@@ -159,6 +171,58 @@ export default function SuperAdminDashboard() {
       }
     } catch (err) {
       console.error('Failed to fetch plans:', err);
+    }
+  };
+
+  const fetchInvoiceBalances = async () => {
+    try {
+      const token = localStorage.getItem('authToken');
+      const response = await fetch('/api/invoices/admin/all', {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setInvoiceBalances(data.studios || []);
+        setTotalOutstanding(data.totalOutstanding || 0);
+      }
+    } catch (err) {
+      console.error('Failed to load invoice balances:', err);
+    }
+  };
+
+  const handleCloseInvoice = async (invoiceId: number) => {
+    if (!confirm('Close this invoice and open a new billing period?')) return;
+    try {
+      const token = localStorage.getItem('authToken');
+      const response = await fetch(`/api/invoices/${invoiceId}/close`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (response.ok) {
+        fetchInvoiceBalances();
+      } else {
+        alert('Failed to close invoice');
+      }
+    } catch (err) {
+      console.error('Failed to close invoice:', err);
+    }
+  };
+
+  const handleMarkInvoicePaid = async (invoiceId: number) => {
+    try {
+      const token = localStorage.getItem('authToken');
+      const response = await fetch(`/api/invoices/${invoiceId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ status: 'paid' }),
+      });
+      if (response.ok) {
+        fetchInvoiceBalances();
+      } else {
+        alert('Failed to mark invoice as paid');
+      }
+    } catch (err) {
+      console.error('Failed to mark paid:', err);
     }
   };
 
@@ -362,6 +426,13 @@ export default function SuperAdminDashboard() {
           <h3>Monthly Revenue</h3>
           <p className="stat-value">${studios.reduce((sum, s) => sum + parseFloat(s.subscription_plan || '0'), 0).toFixed(2)}</p>
         </div>
+        <div className="stat-card" style={{ borderColor: 'rgba(251,191,36,0.5)' }}>
+          <h3>💳 Total Outstanding</h3>
+          <p className="stat-value" style={{ color: totalOutstanding > 0 ? '#fbbf24' : 'var(--text-primary)' }}>
+            ${totalOutstanding.toFixed(2)}
+          </p>
+          <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0 }}>Open invoice balances</p>
+        </div>
       </div>
 
       <h2>Studios Management</h2>
@@ -375,6 +446,7 @@ export default function SuperAdminDashboard() {
               <th>Billing</th>
               <th>Status</th>
               <th>Fee</th>
+              <th>Outstanding</th>
               <th>Created</th>
               <th>Users</th>
               <th>Actions</th>
@@ -407,6 +479,18 @@ export default function SuperAdminDashboard() {
                       : `$${(studio.fee_value || 0).toFixed(2)}`}
                   </span>
                 </td>
+                <td>
+                  {(() => {
+                    const bal = invoiceBalances.find(b => b.studioId === studio.id);
+                    return bal && bal.openBalance > 0 ? (
+                      <span style={{ color: '#fbbf24', fontWeight: 'bold' }}>
+                        ${bal.openBalance.toFixed(2)}
+                      </span>
+                    ) : (
+                      <span style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>—</span>
+                    );
+                  })()}
+                </td>
                 <td>{new Date(studio.created_at).toLocaleDateString()}</td>
                 <td>{studio.userCount || 0}</td>
                 <td>
@@ -429,9 +513,32 @@ export default function SuperAdminDashboard() {
                   <button
                     onClick={() => handleOpenFeeModal(studio)}
                     className="btn btn-secondary btn-sm"
+                    style={{ marginRight: '8px' }}
                   >
                     Edit Fees
                   </button>
+                  {(() => {
+                    const bal = invoiceBalances.find(b => b.studioId === studio.id);
+                    return bal?.invoiceId ? (
+                      <>
+                        <button
+                          onClick={() => handleCloseInvoice(bal.invoiceId!)}
+                          className="btn btn-warning btn-sm"
+                          style={{ marginRight: '8px' }}
+                          title="Close current billing period and open a new invoice"
+                        >
+                          Close Invoice
+                        </button>
+                        <button
+                          onClick={() => handleMarkInvoicePaid(bal.invoiceId!)}
+                          className="btn btn-success btn-sm"
+                          title="Mark current open invoice as paid"
+                        >
+                          Mark Paid
+                        </button>
+                      </>
+                    ) : null;
+                  })()}
                 </td>
               </tr>
             ))}

@@ -35,6 +35,42 @@ interface Plan {
   features: string[];
 }
 
+interface InvoiceItem {
+  id: number;
+  orderId: number;
+  productId: number;
+  productSizeId: number;
+  quantity: number;
+  unitCost: number;
+  totalCost: number;
+  orderDate: string;
+  productName: string;
+  sizeName: string;
+}
+
+interface CurrentInvoice {
+  id: number;
+  studioId: number;
+  periodStart: string;
+  periodEnd: string | null;
+  status: string;
+  totalAmount: number;
+  itemCount: number;
+  createdAt: string;
+  dueDate: string | null;
+  items: InvoiceItem[];
+}
+
+interface HistoryInvoice {
+  id: number;
+  periodStart: string;
+  periodEnd: string | null;
+  status: string;
+  totalAmount: number;
+  itemCount: number;
+  createdAt: string;
+}
+
 export default function StudioAdminDashboard() {
   const { user } = useAuth();
   const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null);
@@ -45,12 +81,17 @@ export default function StudioAdminDashboard() {
   const [selectedUpgradePlan, setSelectedUpgradePlan] = useState<string>('');
   const [selectedBillingCycle, setSelectedBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
   const [studioFees, setStudioFees] = useState<{ feeType: string; feeValue: number } | null>(null);
+  const [currentInvoice, setCurrentInvoice] = useState<CurrentInvoice | null>(null);
+  const [invoiceHistory, setInvoiceHistory] = useState<HistoryInvoice[]>([]);
+  const [showInvoiceItems, setShowInvoiceItems] = useState(false);
 
   useEffect(() => {
     if (user?.studioId) {
       fetchSubscriptionInfo();
       fetchAvailablePlans();
       fetchStudioFees();
+      fetchCurrentInvoice();
+      fetchInvoiceHistory();
     }
   }, [user]);
 
@@ -72,6 +113,36 @@ export default function StudioAdminDashboard() {
       }
     } catch (err: any) {
       console.error('Failed to load studio fees:', err);
+    }
+  };
+
+  const fetchCurrentInvoice = async () => {
+    try {
+      const token = localStorage.getItem('authToken');
+      const response = await fetch('/api/invoices/current', {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setCurrentInvoice(data);
+      }
+    } catch (err) {
+      console.error('Failed to load current invoice:', err);
+    }
+  };
+
+  const fetchInvoiceHistory = async () => {
+    try {
+      const token = localStorage.getItem('authToken');
+      const response = await fetch('/api/invoices/history', {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setInvoiceHistory(Array.isArray(data) ? data : []);
+      }
+    } catch (err) {
+      console.error('Failed to load invoice history:', err);
     }
   };
 
@@ -406,6 +477,152 @@ export default function StudioAdminDashboard() {
               </div>
             </div>
           )}
+
+          {/* Current Invoice Widget */}
+          <div style={{
+            backgroundColor: 'var(--bg-tertiary)',
+            padding: '20px',
+            borderRadius: '8px',
+            marginBottom: '30px',
+            border: '1px solid var(--border-color)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+              <h3 style={{ margin: 0 }}>🧾 Current Monthly Invoice</h3>
+              {currentInvoice && (
+                <button
+                  onClick={() => setShowInvoiceItems(v => !v)}
+                  style={{
+                    background: 'none',
+                    border: '1px solid var(--border-color)',
+                    color: 'var(--text-primary)',
+                    padding: '5px 12px',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '13px'
+                  }}
+                >
+                  {showInvoiceItems ? 'Hide Details' : 'View Details'}
+                </button>
+              )}
+            </div>
+
+            {currentInvoice ? (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px', marginBottom: '15px' }}>
+                  <div style={{ backgroundColor: 'var(--bg-primary)', padding: '12px', borderRadius: '6px', textAlign: 'center' }}>
+                    <div style={{ fontSize: '22px', fontWeight: 'bold', color: 'var(--primary-color)' }}>
+                      ${currentInvoice.totalAmount.toFixed(2)}
+                    </div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>Total Owed</div>
+                  </div>
+                  <div style={{ backgroundColor: 'var(--bg-primary)', padding: '12px', borderRadius: '6px', textAlign: 'center' }}>
+                    <div style={{ fontSize: '22px', fontWeight: 'bold' }}>{currentInvoice.itemCount}</div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>Items Ordered</div>
+                  </div>
+                  <div style={{ backgroundColor: 'var(--bg-primary)', padding: '12px', borderRadius: '6px', textAlign: 'center' }}>
+                    <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#86efac' }}>
+                      {currentInvoice.dueDate
+                        ? new Date(currentInvoice.dueDate).toLocaleDateString()
+                        : 'At Renewal'}
+                    </div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>Due Date</div>
+                  </div>
+                </div>
+
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '12px' }}>
+                  Billing period: {new Date(currentInvoice.periodStart).toLocaleDateString()} — Present
+                </div>
+
+                {showInvoiceItems && currentInvoice.items.length > 0 && (
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                      <thead>
+                        <tr style={{ backgroundColor: 'var(--bg-primary)', borderBottom: '1px solid var(--border-color)' }}>
+                          <th style={{ padding: '8px 10px', textAlign: 'left' }}>Order Date</th>
+                          <th style={{ padding: '8px 10px', textAlign: 'left' }}>Product</th>
+                          <th style={{ padding: '8px 10px', textAlign: 'left' }}>Size</th>
+                          <th style={{ padding: '8px 10px', textAlign: 'center' }}>Qty</th>
+                          <th style={{ padding: '8px 10px', textAlign: 'right' }}>Unit Cost</th>
+                          <th style={{ padding: '8px 10px', textAlign: 'right' }}>Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {currentInvoice.items.map(item => (
+                          <tr key={item.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                            <td style={{ padding: '7px 10px' }}>{new Date(item.orderDate).toLocaleDateString()}</td>
+                            <td style={{ padding: '7px 10px' }}>{item.productName}</td>
+                            <td style={{ padding: '7px 10px' }}>{item.sizeName || '—'}</td>
+                            <td style={{ padding: '7px 10px', textAlign: 'center' }}>{item.quantity}</td>
+                            <td style={{ padding: '7px 10px', textAlign: 'right' }}>${item.unitCost.toFixed(2)}</td>
+                            <td style={{ padding: '7px 10px', textAlign: 'right' }}>${item.totalCost.toFixed(2)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr style={{ borderTop: '2px solid var(--border-color)', fontWeight: 'bold' }}>
+                          <td colSpan={5} style={{ padding: '8px 10px', textAlign: 'right' }}>Total:</td>
+                          <td style={{ padding: '8px 10px', textAlign: 'right' }}>
+                            ${currentInvoice.totalAmount.toFixed(2)}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                )}
+
+                {showInvoiceItems && currentInvoice.items.length === 0 && (
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '14px', margin: 0 }}>
+                    No order items recorded for this billing period yet.
+                  </p>
+                )}
+              </>
+            ) : (
+              <p style={{ color: 'var(--text-secondary)', fontSize: '14px', margin: 0 }}>
+                No open invoice found. Your invoice will be created automatically when your first order comes in.
+              </p>
+            )}
+
+            {/* Invoice History */}
+            {invoiceHistory.length > 0 && (
+              <div style={{ marginTop: '20px', borderTop: '1px solid var(--border-color)', paddingTop: '15px' }}>
+                <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', color: 'var(--text-secondary)' }}>Invoice History</h4>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                  <thead>
+                    <tr style={{ backgroundColor: 'var(--bg-primary)', borderBottom: '1px solid var(--border-color)' }}>
+                      <th style={{ padding: '7px 10px', textAlign: 'left' }}>Period</th>
+                      <th style={{ padding: '7px 10px', textAlign: 'center' }}>Items</th>
+                      <th style={{ padding: '7px 10px', textAlign: 'right' }}>Amount</th>
+                      <th style={{ padding: '7px 10px', textAlign: 'center' }}>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {invoiceHistory.map(inv => (
+                      <tr key={inv.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                        <td style={{ padding: '7px 10px' }}>
+                          {new Date(inv.periodStart).toLocaleDateString()} —{' '}
+                          {inv.periodEnd ? new Date(inv.periodEnd).toLocaleDateString() : '—'}
+                        </td>
+                        <td style={{ padding: '7px 10px', textAlign: 'center' }}>{inv.itemCount}</td>
+                        <td style={{ padding: '7px 10px', textAlign: 'right' }}>${inv.totalAmount.toFixed(2)}</td>
+                        <td style={{ padding: '7px 10px', textAlign: 'center' }}>
+                          <span style={{
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            fontSize: '11px',
+                            fontWeight: 'bold',
+                            backgroundColor: inv.status === 'paid' ? 'rgba(134,239,172,0.2)' : inv.status === 'billed' ? 'rgba(251,191,36,0.2)' : 'rgba(124,92,255,0.2)',
+                            color: inv.status === 'paid' ? '#86efac' : inv.status === 'billed' ? '#fbbf24' : '#a78bfa',
+                          }}>
+                            {inv.status.toUpperCase()}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
 
           {/* Plan Features */}
           {subscription.plan && (

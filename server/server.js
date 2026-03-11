@@ -26,6 +26,7 @@ import stripeRoutes from './routes/stripe.js';
 import studiosRoutes from './routes/studios.js';
 import webhookRoutes from './routes/webhooks.js';
 import subscriptionPlansRoutes from './routes/subscriptionPlans.js';
+import invoicesRoutes from './routes/invoices.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -63,6 +64,7 @@ app.use('/api/stripe', stripeRoutes);
 app.use('/api/studios', studiosRoutes);
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api/subscription-plans', subscriptionPlansRoutes);
+app.use('/api/invoices', invoicesRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
