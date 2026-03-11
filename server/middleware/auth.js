@@ -28,6 +28,17 @@ export const authRequired = async (req, res, next) => {
       admins = ['admin@photolab.com'];
     }
     if (admins.includes((payload.email || '').toLowerCase())) role = 'admin';
+
+    const actingStudioIdRaw = req.headers['x-acting-studio-id'];
+    const actingStudioId = Number(Array.isArray(actingStudioIdRaw) ? actingStudioIdRaw[0] : actingStudioIdRaw);
+    if (role === 'super_admin' && Number.isInteger(actingStudioId) && actingStudioId > 0) {
+      const studio = await queryRow('SELECT id FROM studios WHERE id = $1', [actingStudioId]);
+      if (studio) {
+        studio_id = actingStudioId;
+        role = 'studio_admin';
+      }
+    }
+
     req.user = { id: userId, email: payload.email, role, studio_id };
     next();
   } catch (err) {

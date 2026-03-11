@@ -125,148 +125,88 @@ export default function SuperAdminPricing() {
   };
 
   if (user?.role !== 'super_admin') {
-    return <div style={{ padding: '20px' }}>Access denied. Super admin only.</div>;
+    return <div className="admin-page">Access denied. Super admin only.</div>;
   }
 
   return (
-    <div className="admin-container">
-      <h1>Subscription Plan Pricing</h1>
-      {error && <div style={{ color: '#d32f2f', marginBottom: '20px' }}>{error}</div>}
+    <div className="admin-page">
+      <div className="page-header">
+        <h1>Subscription Plan Pricing</h1>
+      </div>
 
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-        gap: '30px',
-        marginTop: '30px'
-      }}>
+      {error && <div className="info-box-error" style={{ marginBottom: '1rem' }}>{error}</div>}
+
+      <div className="super-pricing-grid">
         {plans.map(plan => (
           <div
             key={plan.id}
-            style={{
-              border: '2px solid #ddd',
-              borderRadius: '8px',
-              padding: '20px',
-              backgroundColor: editingPlan === plan.id ? '#f0f7ff' : '#fff'
-            }}
+            className={`super-pricing-card ${editingPlan === plan.id ? 'editing' : ''}`}
           >
             {editingPlan === plan.id ? (
               // Edit Mode
               <div>
                 <h3>{plan.name}</h3>
 
-                <div style={{ marginBottom: '15px' }}>
+                <div className="form-group">
                   <label>Monthly Price ($)</label>
                   <input
                     type="number"
                     value={formData.monthly_price || 0}
                     onChange={(e) => handleInputChange('monthly_price', parseFloat(e.target.value))}
-                    style={{
-                      width: '100%',
-                      padding: '8px',
-                      border: '1px solid #ddd',
-                      borderRadius: '4px',
-                      fontSize: '16px'
-                    }}
                   />
                 </div>
 
-                <div style={{ marginBottom: '15px' }}>
+                <div className="form-group">
                   <label>Yearly Price ($) - Recommended: Monthly × 10</label>
                   <input
                     type="number"
                     value={formData.yearly_price || 0}
                     onChange={(e) => handleInputChange('yearly_price', parseFloat(e.target.value))}
-                    style={{
-                      width: '100%',
-                      padding: '8px',
-                      border: '1px solid #ddd',
-                      borderRadius: '4px',
-                      fontSize: '16px'
-                    }}
                   />
-                  <small style={{ color: '#666', fontSize: '12px' }}>
+                  <small className="muted-text">
                     Suggested: ${((formData.monthly_price || 0) * 10).toFixed(2)} (2 months free)
                   </small>
                 </div>
 
-                <div style={{ marginBottom: '15px' }}>
+                <div className="form-group">
                   <label>Description</label>
                   <input
                     type="text"
                     value={formData.description || ''}
                     onChange={(e) => handleInputChange('description', e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '8px',
-                      border: '1px solid #ddd',
-                      borderRadius: '4px',
-                      fontSize: '14px'
-                    }}
                   />
                 </div>
 
-                <div style={{ marginBottom: '15px' }}>
+                <div className="form-group">
                   <label>Features</label>
-                  <div style={{ display: 'flex', gap: '5px', marginBottom: '10px' }}>
+                  <div className="super-pricing-feature-row">
                     <input
                       type="text"
                       value={featureInput}
                       onChange={(e) => setFeatureInput(e.target.value)}
                       placeholder="Add a feature..."
-                      style={{
-                        flex: 1,
-                        padding: '8px',
-                        border: '1px solid #ddd',
-                        borderRadius: '4px',
-                        fontSize: '14px'
-                      }}
-                      onKeyPress={(e) => {
+                      onKeyDown={(e) => {
                         if (e.key === 'Enter') {
+                          e.preventDefault();
                           handleAddFeature();
                         }
                       }}
                     />
                     <button
                       onClick={handleAddFeature}
-                      style={{
-                        padding: '8px 12px',
-                        backgroundColor: '#4caf50',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: 'pointer'
-                      }}
+                      className="btn btn-secondary"
                     >
                       Add
                     </button>
                   </div>
 
-                  <ul style={{ listStyle: 'none', padding: 0 }}>
+                  <ul className="super-pricing-feature-list">
                     {(formData.features || []).map((feature, idx) => (
-                      <li
-                        key={idx}
-                        style={{
-                          padding: '8px',
-                          backgroundColor: '#f5f5f5',
-                          borderRadius: '4px',
-                          marginBottom: '5px',
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center'
-                        }}
-                      >
+                      <li key={idx}>
                         <span>{feature}</span>
                         <button
                           onClick={() => handleRemoveFeature(idx)}
-                          style={{
-                            padding: '4px 8px',
-                            backgroundColor: '#f44336',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '4px',
-                            cursor: 'pointer',
-                            fontSize: '12px'
-                          }}
+                          className="btn btn-danger btn-sm"
                         >
                           Remove
                         </button>
@@ -275,7 +215,7 @@ export default function SuperAdminPricing() {
                   </ul>
                 </div>
 
-                <div style={{ marginBottom: '15px' }}>
+                <div className="form-group">
                   <label>
                     <input
                       type="checkbox"
@@ -287,33 +227,16 @@ export default function SuperAdminPricing() {
                   </label>
                 </div>
 
-                <div style={{ display: 'flex', gap: '10px' }}>
+                <div className="super-pricing-actions">
                   <button
                     onClick={handleSavePlan}
-                    style={{
-                      flex: 1,
-                      padding: '10px',
-                      backgroundColor: '#007bff',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      fontWeight: 'bold'
-                    }}
+                    className="btn btn-primary"
                   >
                     Save
                   </button>
                   <button
                     onClick={handleCancel}
-                    style={{
-                      flex: 1,
-                      padding: '10px',
-                      backgroundColor: '#ccc',
-                      color: '#333',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: 'pointer'
-                    }}
+                    className="btn btn-secondary"
                   >
                     Cancel
                   </button>
@@ -323,27 +246,18 @@ export default function SuperAdminPricing() {
               // Display Mode
               <div>
                 <h3>{plan.name}</h3>
-                <p style={{ color: '#666', marginBottom: '15px' }}>
+                <p className="muted-text" style={{ marginBottom: '15px' }}>
                   {plan.description}
                 </p>
 
-                <div style={{
-                  fontSize: '28px',
-                  fontWeight: 'bold',
-                  color: '#007bff',
-                  marginBottom: '5px'
-                }}>
+                <div className="super-pricing-monthly">
                   ${plan.monthly_price}/month
                 </div>
                 
                 {plan.yearly_price && (
-                  <div style={{
-                    fontSize: '18px',
-                    color: '#4caf50',
-                    marginBottom: '15px'
-                  }}>
+                  <div className="super-pricing-yearly">
                     or ${plan.yearly_price}/year
-                    <span style={{ fontSize: '14px', marginLeft: '8px' }}>
+                    <span className="super-pricing-savings">
                       (Save ${((plan.monthly_price * 12) - plan.yearly_price).toFixed(2)})
                     </span>
                   </div>
@@ -351,38 +265,23 @@ export default function SuperAdminPricing() {
 
                 <div style={{ marginBottom: '15px' }}>
                   <h4>Features:</h4>
-                  <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                  <ul className="super-pricing-feature-checklist">
                     {(plan.features || []).map((feature, idx) => (
-                      <li key={idx} style={{ padding: '4px 0', fontSize: '14px' }}>
+                      <li key={idx}>
                         ✓ {feature}
                       </li>
                     ))}
                   </ul>
                 </div>
 
-                <div style={{
-                  padding: '10px',
-                  backgroundColor: plan.is_active ? '#e8f5e9' : '#ffebee',
-                  borderRadius: '4px',
-                  marginBottom: '15px',
-                  fontSize: '12px',
-                  color: plan.is_active ? '#2e7d32' : '#c62828'
-                }}>
+                <div className={`super-pricing-status ${plan.is_active ? 'active' : 'inactive'}`}>
                   {plan.is_active ? '✓ Active' : '✗ Inactive'}
                 </div>
 
                 <button
                   onClick={() => handleEditPlan(plan)}
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    backgroundColor: '#2196F3',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    fontWeight: 'bold'
-                  }}
+                  className="btn btn-primary"
+                  style={{ width: '100%' }}
                 >
                   Edit Pricing
                 </button>

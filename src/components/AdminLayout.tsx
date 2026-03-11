@@ -8,12 +8,13 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const location = useLocation();
   const isSuperAdmin = user?.role === 'super_admin';
   const isStudioAdmin = user?.role === 'studio_admin';
-  const canSwitchMenu = isSuperAdmin && !!user?.studioId;
+  const canSwitchMenu = isSuperAdmin;
 
   const [menuMode, setMenuMode] = useState<'super' | 'studio'>(() => {
     const stored = localStorage.getItem('adminMenuMode');
     return stored === 'studio' ? 'studio' : 'super';
   });
+  const [viewAsStudioName, setViewAsStudioName] = useState<string | null>(() => localStorage.getItem('viewAsStudioName'));
 
   useEffect(() => {
     if (isStudioAdmin) {
@@ -22,9 +23,6 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     }
 
     if (isSuperAdmin) {
-      if (!canSwitchMenu && menuMode !== 'super') {
-        setMenuMode('super');
-      }
       return;
     }
 
@@ -35,7 +33,14 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     localStorage.setItem('adminMenuMode', menuMode);
   }, [menuMode]);
 
+  const clearStudioView = () => {
+    localStorage.removeItem('viewAsStudioId');
+    localStorage.removeItem('viewAsStudioName');
+    setViewAsStudioName(null);
+  };
+
   const handleLogout = () => {
+    clearStudioView();
     localStorage.removeItem('adminToken');
     localStorage.removeItem('adminUser');
     navigate('/admin/login');
@@ -46,6 +51,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const superAdminLinks = useMemo(
     () => [
       { to: '/super-admin', label: '🛡️ Super Admin Dashboard' },
+      { to: '/admin/dashboard', label: '🏢 Studio Admin Dashboard' },
       { to: '/super-admin-pricing', label: '💼 Subscription Pricing' },
       { to: '/admin/price-lists', label: '💰 Price Lists' },
       { to: '/admin/users', label: '👥 Users' },
@@ -87,7 +93,10 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         {canSwitchMenu && (
           <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', padding: '0 0.5rem' }}>
             <button
-              onClick={() => setMenuMode('super')}
+              onClick={() => {
+                clearStudioView();
+                setMenuMode('super');
+              }}
               className={menuMode === 'super' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'}
               style={{ flex: 1 }}
             >
@@ -100,6 +109,25 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             >
               Studio
             </button>
+          </div>
+        )}
+
+        {viewAsStudioName && isSuperAdmin && (
+          <div style={{ padding: '0 0.75rem 0.75rem 0.75rem' }}>
+            <div className="admin-summary-box" style={{ fontSize: '0.8rem' }}>
+              Viewing as studio: <strong>{viewAsStudioName}</strong>
+              <button
+                onClick={() => {
+                  clearStudioView();
+                  setMenuMode('super');
+                  navigate('/super-admin');
+                }}
+                className="btn btn-secondary btn-sm"
+                style={{ marginTop: '0.5rem', width: '100%' }}
+              >
+                Exit Studio View
+              </button>
+            </div>
           </div>
         )}
 
