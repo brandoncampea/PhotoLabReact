@@ -123,8 +123,8 @@ export const StudioSignup: React.FC<StudioSignupProps> = ({ onSignupSuccess }) =
     <div className="studio-signup-form">
       <h2>Create Your Studio</h2>
       <p className="selected-plan">
-        Selected Plan: <strong>{SUBSCRIPTION_PLANS[selectedPlan].name}</strong> - 
-        ${SUBSCRIPTION_PLANS[selectedPlan].monthlyPrice}/month
+        Selected Plan: <strong>{(SUBSCRIPTION_PLANS as any)[selectedPlan]?.name}</strong> - 
+        ${(SUBSCRIPTION_PLANS as any)[selectedPlan]?.monthlyPrice}/month
       </p>
 
       <form onSubmit={handleSubmit}>
@@ -233,7 +233,7 @@ export const StudioSignup: React.FC<StudioSignupProps> = ({ onSignupSuccess }) =
         </div>
       </form>
 
-      <style jsx>{`
+      <style>{`
         .studio-signup-plans {
           max-width: 1200px;
           margin: 0 auto;

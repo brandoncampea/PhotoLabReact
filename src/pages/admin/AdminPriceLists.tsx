@@ -830,12 +830,12 @@ const AdminPriceLists: React.FC = () => {
                           <td style={{ padding: '0.75rem' }}>
                             {idx === 0 ? (
                               <>
-                                <strong>{product.name || product.productName || 'Unnamed Product'}</strong>
+                                <strong>{product.name || 'Unnamed Product'}</strong>
                                 <div style={{ fontSize: '0.8rem', color: '#999' }}>{product.isDigital ? 'Digital' : 'Physical'}</div>
                               </>
                             ) : null}
                           </td>
-                          <td style={{ padding: '0.75rem' }}>{size.name || size.sizeName || ''}</td>
+                          <td style={{ padding: '0.75rem' }}>{size.name || ''}</td>
                           <td style={{ padding: '0.75rem', textAlign: 'right' }}>
                             {typeof size.price === 'number' ? `$${size.price.toFixed(2)}` : ''}
                           </td>
@@ -863,7 +863,7 @@ const AdminPriceLists: React.FC = () => {
                       return [
                         <tr key={String(product.id) + '-no-sizes'} style={{ borderBottom: '1px solid #dee2e6' }}>
                           <td style={{ padding: '0.75rem' }}>
-                            <strong>{product.name || product.productName || 'Unnamed Product'}</strong>
+                            <strong>{product.name || 'Unnamed Product'}</strong>
                             <div style={{ fontSize: '0.8rem', color: '#999' }}>{product.isDigital ? 'Digital' : 'Physical'}</div>
                           </td>
                           <td style={{ padding: '0.75rem' }} colSpan={2}>
