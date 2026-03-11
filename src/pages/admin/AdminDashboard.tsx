@@ -96,10 +96,9 @@ const AdminDashboard: React.FC = () => {
     const loadAnalytics = async () => {
       try {
         const summary = await analyticsService.getSummary();
-        const totalPageViews = (summary.albumViews || 0) + (summary.photoViews || 0) + (summary.totalVisits || 0);
         setAnalytics({
           totalVisitors: summary.totalVisits || 0,
-          totalPageViews,
+          totalPageViews: summary.totalPageViews || 0,
           albumViews: summary.albumViews || 0,
           photoViews: summary.photoViews || 0,
         });
