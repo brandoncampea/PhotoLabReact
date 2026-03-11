@@ -127,17 +127,25 @@ function App() {
                 <Route
                   path="/super-admin"
                   element={
-                    <SuperAdminProtectedRoute>
-                      <SuperAdminDashboard />
-                    </SuperAdminProtectedRoute>
+                    <AdminProtectedRoute>
+                      <AdminLayout>
+                        <SuperAdminProtectedRoute>
+                          <SuperAdminDashboard />
+                        </SuperAdminProtectedRoute>
+                      </AdminLayout>
+                    </AdminProtectedRoute>
                   }
                 />
                 <Route
                   path="/super-admin-pricing"
                   element={
-                    <SuperAdminProtectedRoute>
-                      <SuperAdminPricing />
-                    </SuperAdminProtectedRoute>
+                    <AdminProtectedRoute>
+                      <AdminLayout>
+                        <SuperAdminProtectedRoute>
+                          <SuperAdminPricing />
+                        </SuperAdminProtectedRoute>
+                      </AdminLayout>
+                    </AdminProtectedRoute>
                   }
                 />
 
