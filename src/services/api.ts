@@ -15,6 +15,11 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+
+    const actingStudioId = localStorage.getItem('viewAsStudioId');
+    if (actingStudioId) {
+      config.headers['x-acting-studio-id'] = actingStudioId;
+    }
     return config;
   },
   (error) => {

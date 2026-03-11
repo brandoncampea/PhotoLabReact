@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { studioFeatureService, StudioFeatureSettings } from '../../services/studioFeatureService';
 import '../../AdminStyles.css';
@@ -22,10 +23,12 @@ interface Studio {
 }
 
 const AdminStudioAdmins: React.FC = () => {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [studios, setStudios] = useState<Studio[]>([]);
   const [selectedStudio, setSelectedStudio] = useState<Studio | null>(null);
   const [admins, setAdmins] = useState<StudioAdmin[]>([]);
+  const [adminsByStudio, setAdminsByStudio] = useState<Record<number, StudioAdmin[]>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -56,10 +59,23 @@ const AdminStudioAdmins: React.FC = () => {
       if (response.ok) {
         const data = await response.json();
         setStudios(data);
+
+        const adminRows = await Promise.all(
+          data.map(async (studio: Studio) => ({
+            studioId: studio.id,
+            admins: await fetchAdminsForStudio(studio.id),
+          }))
+        );
+        const mapped: Record<number, StudioAdmin[]> = {};
+        adminRows.forEach((row) => {
+          mapped[row.studioId] = row.admins;
+        });
+        setAdminsByStudio(mapped);
+
         if (data.length > 0) {
           setSelectedStudio(data[0]);
           setFeatureSettings(studioFeatureService.getStudioSettings(data[0].id));
-          fetchAdmins(data[0].id);
+          setAdmins(mapped[data[0].id] || []);
         }
       }
     } catch (err: any) {
@@ -69,23 +85,24 @@ const AdminStudioAdmins: React.FC = () => {
     }
   };
 
+  const fetchAdminsForStudio = async (studioId: number): Promise<StudioAdmin[]> => {
+    const token = localStorage.getItem('authToken');
+    const response = await fetch(`/api/studios/${studioId}/admins`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    if (!response.ok) return [];
+    return response.json();
+  };
+
   const fetchAdmins = async (studioId: number) => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('authToken');
-      const response = await fetch(`/api/studios/${studioId}/admins`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setAdmins(data);
-        setError('');
-      } else {
-        setError('Failed to load studio admins');
-      }
+      const data = await fetchAdminsForStudio(studioId);
+      setAdmins(data);
+      setAdminsByStudio((prev) => ({ ...prev, [studioId]: data }));
+      setError('');
     } catch (err: any) {
       setError('Failed to load studio admins');
     } finally {
@@ -98,7 +115,19 @@ const AdminStudioAdmins: React.FC = () => {
     setFeatureSettings(studioFeatureService.getStudioSettings(studio.id));
     setShowAddForm(false);
     setFormData({ email: '', name: '', role: 'studio_admin' });
-    fetchAdmins(studio.id);
+    const cached = adminsByStudio[studio.id];
+    if (cached) {
+      setAdmins(cached);
+    } else {
+      fetchAdmins(studio.id);
+    }
+  };
+
+  const handleViewStudio = (studio: Studio) => {
+    localStorage.setItem('viewAsStudioId', String(studio.id));
+    localStorage.setItem('viewAsStudioName', studio.name);
+    localStorage.setItem('adminMenuMode', 'studio');
+    navigate('/admin/dashboard');
   };
 
   const togglePaymentVendor = (vendor: 'stripe') => {
@@ -233,6 +262,48 @@ const AdminStudioAdmins: React.FC = () => {
       )}
 
       {/* Studio Selector */}
+      <div style={{ marginBottom: '24px' }}>
+        <h3 style={{ marginBottom: '12px' }}>All Studios & Admin Users</h3>
+        <div style={{ display: 'grid', gap: '12px' }}>
+          {studios.map((studio) => {
+            const studioAdmins = adminsByStudio[studio.id] || [];
+            return (
+              <div
+                key={studio.id}
+                style={{
+                  padding: '12px',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '8px',
+                  backgroundColor: 'var(--bg-tertiary)'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <div>
+                    <strong>{studio.name}</strong>
+                    <div className="muted-text" style={{ fontSize: '0.85rem' }}>{studio.email}</div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button className="btn btn-secondary btn-sm" onClick={() => handleSelectStudio(studio)}>Manage</button>
+                    <button className="btn btn-primary btn-sm" onClick={() => handleViewStudio(studio)}>View</button>
+                  </div>
+                </div>
+                {studioAdmins.length === 0 ? (
+                  <div className="muted-text" style={{ fontSize: '0.85rem' }}>No admin users</div>
+                ) : (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                    {studioAdmins.map((admin) => (
+                      <span key={admin.id} className="status-badge status-active" style={{ fontSize: '0.75rem' }}>
+                        {admin.name} • {admin.email}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       <div style={{
         marginBottom: '24px',
         padding: '16px',

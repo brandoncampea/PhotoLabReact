@@ -348,6 +348,109 @@
 .dashboard-mini-stat-value.accent-green  { color: #4caf50; }
 .dashboard-mini-stat-value.accent-orange { color: #ff9800; }
 
+/* Super Admin Pricing */
+.super-pricing-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
+  margin-top: 1rem;
+}
+
+.super-pricing-card {
+  border: 1px solid var(--border-color);
+  border-radius: 0.75rem;
+  padding: 1.25rem;
+  background-color: var(--bg-primary);
+  box-shadow: var(--shadow-sm);
+}
+
+.super-pricing-card.editing {
+  border-color: var(--primary-color);
+  box-shadow: var(--shadow-md);
+  background-color: var(--bg-secondary);
+}
+
+.super-pricing-monthly {
+  font-size: 1.9rem;
+  font-weight: 700;
+  color: var(--primary-color);
+  margin-bottom: 0.25rem;
+}
+
+.super-pricing-yearly {
+  font-size: 1.05rem;
+  color: #2e7d32;
+  margin-bottom: 0.9rem;
+}
+
+.super-pricing-savings {
+  font-size: 0.85rem;
+  margin-left: 0.4rem;
+  color: var(--text-secondary);
+}
+
+.super-pricing-feature-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+}
+
+.super-pricing-feature-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.super-pricing-feature-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.4rem;
+  margin-bottom: 0.4rem;
+  background-color: var(--bg-primary);
+}
+
+.super-pricing-feature-checklist {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.super-pricing-feature-checklist li {
+  padding: 0.2rem 0;
+  font-size: 0.92rem;
+}
+
+.super-pricing-status {
+  padding: 0.55rem;
+  border-radius: 0.4rem;
+  margin-bottom: 0.9rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.super-pricing-status.active {
+  background-color: #e8f5e9;
+  color: #2e7d32;
+}
+
+.super-pricing-status.inactive {
+  background-color: #ffebee;
+  color: #c62828;
+}
+
+.super-pricing-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.super-pricing-actions .btn {
+  flex: 1;
+}
+
 /* Progress bars */
 .dashboard-progress-item {
   display: flex;
