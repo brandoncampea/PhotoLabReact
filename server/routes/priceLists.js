@@ -3,6 +3,48 @@ import { queryRow, queryRows, query } from '../mssql.js';
 import { adminRequired } from '../middleware/auth.js';
 const router = express.Router();
 
+const SIZE_DIMENSION_DELIMITER = '__';
+
+const encodeSizeName = (name, width, height) => {
+  const trimmedName = String(name || '').trim();
+  const safeWidth = Number(width) || 0;
+  const safeHeight = Number(height) || 0;
+  if (safeWidth > 0 && safeHeight > 0) {
+    return `${trimmedName}${SIZE_DIMENSION_DELIMITER}${safeWidth}x${safeHeight}`;
+  }
+  return trimmedName;
+};
+
+const decodeSizeName = (storedName) => {
+  const raw = String(storedName || '');
+  if (!raw.includes(SIZE_DIMENSION_DELIMITER)) {
+    const matched = raw.match(/^(.*?)(?:\s*\(?([0-9.]+)x([0-9.]+)\)?)?$/i);
+    if (!matched) {
+      return { name: raw, width: 0, height: 0 };
+    }
+    const width = Number(matched[2]) || 0;
+    const height = Number(matched[3]) || 0;
+    return { name: matched[1].trim() || raw, width, height };
+  }
+
+  const [namePart, dimensionPart] = raw.split(SIZE_DIMENSION_DELIMITER);
+  const [widthPart, heightPart] = String(dimensionPart || '').split('x');
+  return {
+    name: (namePart || raw).trim(),
+    width: Number(widthPart) || 0,
+    height: Number(heightPart) || 0,
+  };
+};
+
+const parseProductOptions = (options) => {
+  if (!options) return {};
+  try {
+    return typeof options === 'string' ? JSON.parse(options) : options;
+  } catch {
+    return {};
+  }
+};
+
 // Get all price lists
 router.get('/', adminRequired, async (req, res) => {
   try {
@@ -32,7 +74,7 @@ router.get('/:id', adminRequired, async (req, res) => {
 
     // Get products for this price list
     const products = await queryRows(`
-      SELECT DISTINCT p.id, p.name, p.category, p.price, p.description, p.cost
+      SELECT DISTINCT p.id, p.name, p.category, p.price, p.description, p.cost, p.options
       FROM products p
       JOIN price_list_products plp ON p.id = plp.product_id
       WHERE plp.price_list_id = $1
@@ -48,15 +90,19 @@ router.get('/:id', adminRequired, async (req, res) => {
     // Attach sizes to each product, mapping sizeName -> name
     const productsWithSizes = products.map(product => ({
       ...product,
+      isDigital: !!parseProductOptions(product.options).isDigital,
       sizes: productSizes
         .filter(size => size.productId === product.id)
-        .map(size => ({
-          ...size,
-          name: size.sizeName,
-          // Remove sizeName from the returned object
-          // (delete after spreading, so 'name' takes precedence)
-          ...(() => { const s = { ...size }; delete s.sizeName; return s; })()
-        }))
+        .map(size => {
+          const decoded = decodeSizeName(size.sizeName);
+          return {
+            ...size,
+            name: decoded.name,
+            width: decoded.width,
+            height: decoded.height,
+            ...(() => { const s = { ...size }; delete s.sizeName; return s; })()
+          };
+        })
     }));
 
     // Get packages for this price list
@@ -80,6 +126,138 @@ router.get('/:id', adminRequired, async (req, res) => {
     }));
 
     res.json(priceList);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/:id/products', adminRequired, async (req, res) => {
+  try {
+    const priceListId = Number(req.params.id);
+    const { name, description, isDigital } = req.body;
+
+    if (!name || !String(name).trim()) {
+      return res.status(400).json({ error: 'Product name is required' });
+    }
+
+    const options = { isDigital: !!isDigital };
+    const result = await queryRow(
+      `INSERT INTO products (name, category, price, description, options)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id`,
+      [String(name).trim(), 'General', 0, description || null, JSON.stringify(options)]
+    );
+
+    await query(
+      `INSERT INTO price_list_products (price_list_id, product_id)
+       VALUES ($1, $2)`,
+      [priceListId, result.id]
+    );
+
+    const product = await queryRow('SELECT id, name, description, options FROM products WHERE id = $1', [result.id]);
+    res.status(201).json({
+      id: product.id,
+      name: product.name,
+      description: product.description,
+      isDigital: !!parseProductOptions(product.options).isDigital,
+      sizes: [],
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.put('/:id/products/:productId', adminRequired, async (req, res) => {
+  try {
+    const { name, description, isDigital } = req.body;
+    const existing = await queryRow('SELECT id, options FROM products WHERE id = $1', [req.params.productId]);
+    if (!existing) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
+
+    const currentOptions = parseProductOptions(existing.options);
+    await query(
+      `UPDATE products
+       SET name = $1,
+           description = $2,
+           options = $3
+       WHERE id = $4`,
+      [
+        String(name || '').trim(),
+        description || null,
+        JSON.stringify({ ...currentOptions, isDigital: !!isDigital }),
+        req.params.productId,
+      ]
+    );
+
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.delete('/:id/products/:productId', adminRequired, async (req, res) => {
+  try {
+    await query('DELETE FROM price_list_products WHERE price_list_id = $1 AND product_id = $2', [req.params.id, req.params.productId]);
+    await query('DELETE FROM product_sizes WHERE price_list_id = $1 AND product_id = $2', [req.params.id, req.params.productId]);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/:id/products/:productId/sizes', adminRequired, async (req, res) => {
+  try {
+    const { name, width, height, price, cost } = req.body;
+    const encodedName = encodeSizeName(name, width, height);
+    const result = await queryRow(
+      `INSERT INTO product_sizes (product_id, price_list_id, size_name, price, cost)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id`,
+      [req.params.productId, req.params.id, encodedName, Number(price) || 0, Number(cost) || 0]
+    );
+
+    res.status(201).json({
+      id: result.id,
+      productId: Number(req.params.productId),
+      name: String(name || '').trim(),
+      width: Number(width) || 0,
+      height: Number(height) || 0,
+      price: Number(price) || 0,
+      cost: Number(cost) || 0,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.put('/:id/products/:productId/sizes/:sizeId', adminRequired, async (req, res) => {
+  try {
+    const { name, width, height, price, cost } = req.body;
+    const encodedName = encodeSizeName(name, width, height);
+    await query(
+      `UPDATE product_sizes
+       SET size_name = $1,
+           price = $2,
+           cost = $3
+       WHERE id = $4 AND price_list_id = $5 AND product_id = $6`,
+      [encodedName, Number(price) || 0, Number(cost) || 0, req.params.sizeId, req.params.id, req.params.productId]
+    );
+
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.delete('/:id/products/:productId/sizes/:sizeId', adminRequired, async (req, res) => {
+  try {
+    await query(
+      `DELETE FROM product_sizes
+       WHERE id = $1 AND price_list_id = $2 AND product_id = $3`,
+      [req.params.sizeId, req.params.id, req.params.productId]
+    );
+    res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

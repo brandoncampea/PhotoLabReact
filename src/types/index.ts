@@ -88,6 +88,9 @@ export interface Order {
   shippingAddress: ShippingAddress;
   isBatch?: boolean; // True if order is for batch shipping
   batchShippingAddress?: ShippingAddress; // Batch address set by admin
+  batchReadyDate?: string; // Date when batch becomes eligible for submission
+  batchQueueStatus?: 'queued' | 'submitted' | string;
+  batchLabVendor?: string; // Selected photo lab vendor for batch submission
   labSubmitted?: boolean; // True if batch order has been submitted to lab
   labSubmittedAt?: string; // Timestamp when submitted to lab
   taxAmount?: number; // Tax calculated based on shipping address
