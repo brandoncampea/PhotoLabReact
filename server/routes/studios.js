@@ -110,6 +110,75 @@ router.get('/', authRequired, async (req, res) => {
   }
 });
 
+// Get super-admin subscription payment configuration
+router.get('/subscription-payment-config', authRequired, async (req, res) => {
+  try {
+    if (req.user.role !== 'super_admin') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    const config = await queryRow('SELECT * FROM subscription_stripe_config WHERE id = 1');
+    if (!config) {
+      return res.status(404).json({ error: 'Subscription payment config not found' });
+    }
+
+    res.json({
+      id: config.id,
+      publishableKey: config.publishable_key,
+      secretKey: config.secret_key,
+      webhookSecret: config.webhook_secret,
+      isLiveMode: Boolean(config.is_live_mode),
+      isActive: Boolean(config.is_active),
+    });
+  } catch (error) {
+    console.error('Get subscription payment config error:', error);
+    res.status(500).json({ error: 'Failed to fetch subscription payment config' });
+  }
+});
+
+// Update super-admin subscription payment configuration
+router.put('/subscription-payment-config', authRequired, async (req, res) => {
+  try {
+    if (req.user.role !== 'super_admin') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    const { publishableKey, secretKey, webhookSecret, isLiveMode, isActive } = req.body || {};
+
+    await query(`
+      IF EXISTS (SELECT 1 FROM subscription_stripe_config WHERE id = 1)
+      BEGIN
+        UPDATE subscription_stripe_config
+        SET publishable_key = $1,
+            secret_key = $2,
+            webhook_secret = $3,
+            is_live_mode = $4,
+            is_active = $5,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = 1
+      END
+      ELSE
+      BEGIN
+        INSERT INTO subscription_stripe_config (id, publishable_key, secret_key, webhook_secret, is_live_mode, is_active)
+        VALUES (1, $1, $2, $3, $4, $5)
+      END
+    `, [publishableKey || null, secretKey || null, webhookSecret || null, !!isLiveMode, !!isActive]);
+
+    const updated = await queryRow('SELECT * FROM subscription_stripe_config WHERE id = 1');
+    res.json({
+      id: updated.id,
+      publishableKey: updated.publishable_key,
+      secretKey: updated.secret_key,
+      webhookSecret: updated.webhook_secret,
+      isLiveMode: Boolean(updated.is_live_mode),
+      isActive: Boolean(updated.is_active),
+    });
+  } catch (error) {
+    console.error('Update subscription payment config error:', error);
+    res.status(500).json({ error: 'Failed to update subscription payment config' });
+  }
+});
+
 // Get studio by ID
 router.get('/:studioId', authRequired, async (req, res) => {
   try {
@@ -451,6 +520,102 @@ router.put('/:studioId/fees', authRequired, async (req, res) => {
   } catch (error) {
     console.error('Error updating studio fees:', error);
     res.status(500).json({ error: 'Failed to update fees' });
+  }
+});
+
+// Get studio feature availability (labs/payment vendors)
+router.get('/:studioId/features', authRequired, async (req, res) => {
+  try {
+    const { studioId } = req.params;
+    const parsedStudioId = parseInt(studioId, 10);
+
+    if (req.user.role !== 'super_admin' && req.user.studio_id !== parsedStudioId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    const studio = await queryRow(
+      'SELECT id, payment_vendors as paymentVendors, lab_vendors as labVendors FROM studios WHERE id = $1',
+      [parsedStudioId]
+    );
+
+    if (!studio) {
+      return res.status(404).json({ error: 'Studio not found' });
+    }
+
+    const defaultSettings = {
+      paymentVendors: ['stripe'],
+      labVendors: ['roes', 'whcc', 'mpix'],
+    };
+
+    let paymentVendors = defaultSettings.paymentVendors;
+    let labVendors = defaultSettings.labVendors;
+
+    try {
+      if (studio.paymentVendors) {
+        const parsed = JSON.parse(studio.paymentVendors);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          paymentVendors = parsed;
+        }
+      }
+    } catch {
+      // keep default
+    }
+
+    try {
+      if (studio.labVendors) {
+        const parsed = JSON.parse(studio.labVendors);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          labVendors = parsed;
+        }
+      }
+    } catch {
+      // keep default
+    }
+
+    res.json({ paymentVendors, labVendors });
+  } catch (error) {
+    console.error('Error fetching studio features:', error);
+    res.status(500).json({ error: 'Failed to fetch studio feature settings' });
+  }
+});
+
+// Update studio feature availability (super admin only)
+router.put('/:studioId/features', authRequired, async (req, res) => {
+  try {
+    const { studioId } = req.params;
+    const parsedStudioId = parseInt(studioId, 10);
+    const { paymentVendors, labVendors } = req.body || {};
+
+    if (req.user.role !== 'super_admin') {
+      return res.status(403).json({ error: 'Only super admins can update studio feature settings' });
+    }
+
+    const allowedPayment = ['stripe'];
+    const allowedLabs = ['roes', 'whcc', 'mpix'];
+
+    const safePaymentVendors = Array.isArray(paymentVendors)
+      ? paymentVendors.filter((vendor) => allowedPayment.includes(vendor))
+      : ['stripe'];
+    const safeLabVendors = Array.isArray(labVendors)
+      ? labVendors.filter((vendor) => allowedLabs.includes(vendor))
+      : ['roes', 'whcc', 'mpix'];
+
+    await query(
+      `UPDATE studios
+       SET payment_vendors = $1,
+           lab_vendors = $2
+       WHERE id = $3`,
+      [JSON.stringify(safePaymentVendors), JSON.stringify(safeLabVendors), parsedStudioId]
+    );
+
+    res.json({
+      message: 'Studio feature settings updated',
+      paymentVendors: safePaymentVendors,
+      labVendors: safeLabVendors,
+    });
+  } catch (error) {
+    console.error('Error updating studio features:', error);
+    res.status(500).json({ error: 'Failed to update studio feature settings' });
   }
 });
 

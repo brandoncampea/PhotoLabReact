@@ -74,7 +74,8 @@ const AdminStudioAdmins: React.FC = () => {
 
         if (data.length > 0) {
           setSelectedStudio(data[0]);
-          setFeatureSettings(studioFeatureService.getStudioSettings(data[0].id));
+          const settings = await studioFeatureService.getStudioSettings(data[0].id);
+          setFeatureSettings(settings);
           setAdmins(mapped[data[0].id] || []);
         }
       }
@@ -112,7 +113,7 @@ const AdminStudioAdmins: React.FC = () => {
 
   const handleSelectStudio = (studio: Studio) => {
     setSelectedStudio(studio);
-    setFeatureSettings(studioFeatureService.getStudioSettings(studio.id));
+    studioFeatureService.getStudioSettings(studio.id).then(setFeatureSettings);
     setShowAddForm(false);
     setFormData({ email: '', name: '', role: 'studio_admin' });
     const cached = adminsByStudio[studio.id];
@@ -154,11 +155,15 @@ const AdminStudioAdmins: React.FC = () => {
     });
   };
 
-  const handleSaveFeatureSettings = () => {
+  const handleSaveFeatureSettings = async () => {
     if (!selectedStudio) return;
-    studioFeatureService.saveStudioSettings(selectedStudio.id, featureSettings);
-    setSuccess(`Studio access settings saved for ${selectedStudio.name}`);
-    setTimeout(() => setSuccess(''), 4000);
+    try {
+      await studioFeatureService.saveStudioSettings(selectedStudio.id, featureSettings);
+      setSuccess(`Studio access settings saved for ${selectedStudio.name}`);
+      setTimeout(() => setSuccess(''), 4000);
+    } catch {
+      setError('Failed to save studio access settings');
+    }
   };
 
   const handleAddAdmin = async (e: React.FormEvent) => {

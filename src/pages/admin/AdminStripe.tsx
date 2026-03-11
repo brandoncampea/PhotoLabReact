@@ -6,6 +6,7 @@ import { studioFeatureService } from '../../services/studioFeatureService';
 
 const AdminPayments: React.FC = () => {
   const { user } = useAuth();
+  const [stripeAvailable, setStripeAvailable] = useState(true);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'stripe' | null>('stripe');
   const [config, setConfig] = useState<StripeConfig | null>(null);
   const [loading, setLoading] = useState(true);
@@ -21,6 +22,21 @@ const AdminPayments: React.FC = () => {
   useEffect(() => {
     loadConfig();
   }, []);
+
+  useEffect(() => {
+    const loadFeatureSettings = async () => {
+      const effectiveStudioId = studioFeatureService.getEffectiveStudioId(user);
+      if (!effectiveStudioId) {
+        setStripeAvailable(true);
+        return;
+      }
+
+      const settings = await studioFeatureService.getStudioSettings(effectiveStudioId);
+      setStripeAvailable((settings.paymentVendors || []).includes('stripe'));
+    };
+
+    loadFeatureSettings();
+  }, [user?.id, user?.role, user?.studioId]);
 
   const loadConfig = async () => {
     try {
@@ -90,8 +106,6 @@ const AdminPayments: React.FC = () => {
   if (loading) {
     return <div className="loading">Loading payment configuration...</div>;
   }
-
-  const stripeAvailable = studioFeatureService.isPaymentVendorAvailable(user, 'stripe');
 
   if (!stripeAvailable) {
     return (

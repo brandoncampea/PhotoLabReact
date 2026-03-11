@@ -38,6 +38,7 @@ const AdminLabs: React.FC = () => {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'roes' | 'whcc' | 'mpix'>('roes');
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [availableLabs, setAvailableLabs] = useState<Array<'roes' | 'whcc' | 'mpix'>>(['roes', 'whcc', 'mpix']);
 
   // ROES State
   const [roesConfig, setRoesConfig] = useState<RoesConfig>({
@@ -76,8 +77,26 @@ const AdminLabs: React.FC = () => {
     loadConfigs();
   }, []);
 
+  useEffect(() => {
+    const loadFeatureSettings = async () => {
+      const effectiveStudioId = studioFeatureService.getEffectiveStudioId(user);
+      if (!effectiveStudioId) {
+        setAvailableLabs(['roes', 'whcc', 'mpix']);
+        return;
+      }
+
+      const settings = await studioFeatureService.getStudioSettings(effectiveStudioId);
+      const labs = (settings.labVendors || []).filter((lab): lab is 'roes' | 'whcc' | 'mpix' =>
+        ['roes', 'whcc', 'mpix'].includes(lab)
+      );
+      setAvailableLabs(labs.length > 0 ? labs : []);
+    };
+
+    loadFeatureSettings();
+  }, [user?.id, user?.role, user?.studioId]);
+
   const allowedTabs = (['roes', 'whcc', 'mpix'] as const).filter((lab) =>
-    studioFeatureService.isLabVendorAvailable(user, lab)
+    availableLabs.includes(lab)
   );
 
   useEffect(() => {
