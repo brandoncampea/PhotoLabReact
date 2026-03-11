@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import '../AdminStyles.css';
 
@@ -73,6 +74,7 @@ interface HistoryInvoice {
 
 export default function StudioAdminDashboard() {
   const { user } = useAuth();
+  const location = useLocation();
   const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null);
   const [availablePlans, setAvailablePlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(false);
@@ -94,6 +96,14 @@ export default function StudioAdminDashboard() {
       fetchInvoiceHistory();
     }
   }, [user]);
+
+  useEffect(() => {
+    if (location.hash === '#invoices') {
+      requestAnimationFrame(() => {
+        document.getElementById('studio-invoices')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    }
+  }, [location.hash]);
 
   const fetchStudioFees = async () => {
     try {
@@ -358,7 +368,7 @@ export default function StudioAdminDashboard() {
       {subscription && (
         <>
           {/* Current Subscription Card */}
-          <div style={{
+          <div id="studio-invoices" style={{
             backgroundColor: 'var(--bg-tertiary)',
             padding: '20px',
             borderRadius: '8px',
