@@ -150,6 +150,11 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         </div>
       </aside>
       <main className="admin-content">
+        {viewAsStudioName && isSuperAdmin && (
+          <div className="info-box-blue" style={{ marginBottom: '1rem' }}>
+            Viewing as studio: <strong>{viewAsStudioName}</strong>
+          </div>
+        )}
         {children}
       </main>
     </div>
