@@ -167,34 +167,15 @@ const AdminAlbums: React.FC = () => {
       </div>
 
       {categories.length > 0 && (
-        <div style={{ marginBottom: '2rem', padding: '1rem', backgroundColor: '#f9f9f9', borderRadius: '8px' }}>
-          <h3 style={{ marginTop: 0, marginBottom: '0.75rem' }}>Categories ({categories.length})</h3>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+        <div className="categories-section">
+          <h3>Categories ({categories.length})</h3>
+          <div className="category-tags">
             {categories.map((category) => (
-              <div
-                key={category}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  backgroundColor: '#e8f4f8',
-                  border: '1px solid #0066cc',
-                  borderRadius: '20px',
-                  padding: '0.5rem 0.75rem',
-                  gap: '0.5rem'
-                }}
-              >
+              <div key={category} className="category-tag">
                 <span>{category}</span>
                 <button
                   onClick={() => handleDeleteCategory(category)}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: '#d32f2f',
-                    cursor: 'pointer',
-                    fontSize: '1rem',
-                    padding: 0,
-                    lineHeight: 1
-                  }}
+                  className="category-tag-delete"
                   title="Delete category"
                 >
                   ×

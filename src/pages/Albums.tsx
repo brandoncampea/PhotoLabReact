@@ -112,13 +112,7 @@ const Albums: React.FC = () => {
             id="category-filter"
             value={selectedCategory}
             onChange={(e) => setSelectedCategory(e.target.value)}
-            style={{
-              padding: '0.5rem 1rem',
-              borderRadius: '8px',
-              border: '1px solid #ddd',
-              fontSize: '1rem',
-              cursor: 'pointer'
-            }}
+            className="sort-select"
           >
             <option value="all">All Categories</option>
             {categories.map((cat) => (
