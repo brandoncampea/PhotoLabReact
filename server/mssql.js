@@ -513,6 +513,35 @@ export async function initializeDatabase() {
        END`
     );
 
+    await query(`
+      IF COL_LENGTH('orders', 'batch_ready_date') IS NULL
+      BEGIN
+        ALTER TABLE orders ADD batch_ready_date DATETIME2 NULL
+      END
+    `);
+
+    await query(`
+      IF COL_LENGTH('orders', 'batch_queue_status') IS NULL
+      BEGIN
+        ALTER TABLE orders ADD batch_queue_status NVARCHAR(50) NULL
+      END
+    `);
+
+    await query(`
+      IF COL_LENGTH('orders', 'batch_lab_vendor') IS NULL
+      BEGIN
+        ALTER TABLE orders ADD batch_lab_vendor NVARCHAR(50) NULL
+      END
+    `);
+
+    await query(`
+      UPDATE orders
+      SET batch_queue_status = 'queued'
+      WHERE is_batch = 1
+        AND (lab_submitted = 0 OR lab_submitted IS NULL)
+        AND (batch_queue_status IS NULL OR batch_queue_status = '')
+    `);
+
     const planPayloads = [
       {
         name: 'Starter',

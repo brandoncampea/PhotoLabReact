@@ -62,39 +62,39 @@ router.get('/details', async (req, res) => {
   try {
     const albumViewRows = await queryRows(`
       SELECT
-        JSON_VALUE(event_data, '$.albumId') AS albumId,
-        JSON_VALUE(event_data, '$.albumName') AS albumName,
+        JSON_VALUE(an.event_data, '$.albumId') AS albumId,
+        JSON_VALUE(an.event_data, '$.albumName') AS albumName,
         a.cover_photo_id as coverPhotoId,
         a.cover_image_url as coverImageUrl,
         COUNT(*) AS views,
-        MAX(created_at) AS lastViewed
-      FROM analytics
+        MAX(an.created_at) AS lastViewed
+      FROM analytics an
       LEFT JOIN albums a
-        ON a.id = TRY_CAST(JSON_VALUE(event_data, '$.albumId') AS INT)
-      WHERE event_type = 'album_view' AND event_data IS NOT NULL
-      GROUP BY JSON_VALUE(event_data, '$.albumId'), JSON_VALUE(event_data, '$.albumName'), a.cover_photo_id, a.cover_image_url
+        ON a.id = TRY_CAST(JSON_VALUE(an.event_data, '$.albumId') AS INT)
+      WHERE an.event_type = 'album_view' AND an.event_data IS NOT NULL
+      GROUP BY JSON_VALUE(an.event_data, '$.albumId'), JSON_VALUE(an.event_data, '$.albumName'), a.cover_photo_id, a.cover_image_url
       ORDER BY views DESC
     `);
 
     const photoViewRows = await queryRows(`
       SELECT
-        JSON_VALUE(event_data, '$.photoId') AS photoId,
-        JSON_VALUE(event_data, '$.photoFileName') AS photoFileName,
-        JSON_VALUE(event_data, '$.albumId') AS albumId,
-        JSON_VALUE(event_data, '$.albumName') AS albumName,
+        JSON_VALUE(an.event_data, '$.photoId') AS photoId,
+        JSON_VALUE(an.event_data, '$.photoFileName') AS photoFileName,
+        JSON_VALUE(an.event_data, '$.albumId') AS albumId,
+        JSON_VALUE(an.event_data, '$.albumName') AS albumName,
         p.thumbnail_url as thumbnailUrl,
         p.full_image_url as fullImageUrl,
         COUNT(*) AS views,
-        MAX(created_at) AS lastViewed
-      FROM analytics
+        MAX(an.created_at) AS lastViewed
+      FROM analytics an
       LEFT JOIN photos p
-        ON p.id = TRY_CAST(JSON_VALUE(event_data, '$.photoId') AS INT)
-      WHERE event_type = 'photo_view' AND event_data IS NOT NULL
+        ON p.id = TRY_CAST(JSON_VALUE(an.event_data, '$.photoId') AS INT)
+      WHERE an.event_type = 'photo_view' AND an.event_data IS NOT NULL
       GROUP BY
-        JSON_VALUE(event_data, '$.photoId'),
-        JSON_VALUE(event_data, '$.photoFileName'),
-        JSON_VALUE(event_data, '$.albumId'),
-        JSON_VALUE(event_data, '$.albumName')
+        JSON_VALUE(an.event_data, '$.photoId'),
+        JSON_VALUE(an.event_data, '$.photoFileName'),
+        JSON_VALUE(an.event_data, '$.albumId'),
+        JSON_VALUE(an.event_data, '$.albumName')
         , p.thumbnail_url
         , p.full_image_url
       ORDER BY views DESC
@@ -125,7 +125,14 @@ router.get('/details', async (req, res) => {
         fullImageUrl: parseInt(r.photoId) ? photoAssetUrl(parseInt(r.photoId), 'full') : undefined,
       })),
       recentActivity: recentRows.map(r => {
-        const data = r.event_data ? JSON.parse(r.event_data) : {};
+        let data = {};
+        if (r.event_data) {
+          try {
+            data = JSON.parse(r.event_data);
+          } catch {
+            data = {};
+          }
+        }
         return { id: r.id, type: r.event_type, timestamp: r.created_at, ...data };
       }),
     });

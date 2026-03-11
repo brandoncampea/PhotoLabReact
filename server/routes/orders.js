@@ -4,6 +4,15 @@ import { authRequired, adminRequired } from '../middleware/auth.js';
 import { requireActiveSubscription } from '../middleware/subscription.js';
 const router = express.Router();
 
+const safeJsonParse = (value, fallback = null) => {
+  if (!value) return fallback;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+};
+
 // Protect all order routes
 router.use(authRequired);
 
@@ -60,8 +69,22 @@ router.post('/', requireActiveSubscription, async (req, res) => {
       shippingCost, 
       discountCode,
       isBatch,
-      labSubmitted 
+      labSubmitted,
+      batchShippingAddress,
+      batchLabVendor,
     } = req.body;
+
+    const batchOrder = !!isBatch;
+    let batchReadyDate = null;
+    if (batchOrder) {
+      const shippingConfig = await queryRow('SELECT batch_deadline as batchDeadline FROM shipping_config WHERE id = 1');
+      if (shippingConfig?.batchDeadline) {
+        const parsedDate = new Date(shippingConfig.batchDeadline);
+        if (!Number.isNaN(parsedDate.getTime())) {
+          batchReadyDate = parsedDate.toISOString();
+        }
+      }
+    }
 
     // Insert order and get the returned id
     const orderResult = await queryRow(`
@@ -76,9 +99,13 @@ router.post('/', requireActiveSubscription, async (req, res) => {
         shipping_cost,
         discount_code,
         is_batch,
+        batch_shipping_address,
+        batch_ready_date,
+        batch_queue_status,
+        batch_lab_vendor,
         lab_submitted
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
       RETURNING id
     `, [
       userId, 
@@ -90,7 +117,11 @@ router.post('/', requireActiveSubscription, async (req, res) => {
       shippingOption || 'direct',
       shippingCost || 0,
       discountCode || null,
-      !!isBatch,
+      batchOrder,
+      batchShippingAddress ? JSON.stringify(batchShippingAddress) : null,
+      batchReadyDate,
+      batchOrder ? 'queued' : null,
+      batchLabVendor || null,
       !!labSubmitted,
     ]);
 
@@ -136,8 +167,13 @@ router.post('/', requireActiveSubscription, async (req, res) => {
       shippingAddress: createdOrder.shipping_address ? JSON.parse(createdOrder.shipping_address) : null,
       shippingOption: createdOrder.shipping_option,
       shippingCost: createdOrder.shipping_cost,
+      batchShippingAddress: safeJsonParse(createdOrder.batch_shipping_address),
+      batchReadyDate: createdOrder.batch_ready_date,
+      batchQueueStatus: createdOrder.batch_queue_status,
+      batchLabVendor: createdOrder.batch_lab_vendor,
       isBatch: Boolean(createdOrder.is_batch),
       labSubmitted: Boolean(createdOrder.lab_submitted),
+      labSubmittedAt: createdOrder.lab_submitted_at,
       items: [],
       message: 'Order created successfully'
     });
@@ -163,7 +199,12 @@ router.get('/', async (req, res) => {
         o.shipping_option as shippingOption,
         o.shipping_cost as shippingCost,
         o.is_batch as isBatch,
+        o.batch_shipping_address as batchShippingAddress,
+        o.batch_ready_date as batchReadyDate,
+        o.batch_queue_status as batchQueueStatus,
+        o.batch_lab_vendor as batchLabVendor,
         o.lab_submitted as labSubmitted,
+        o.lab_submitted_at as labSubmittedAt,
         o.created_at as orderDate
       FROM orders o
       WHERE o.user_id = $1
@@ -208,7 +249,12 @@ router.get('/', async (req, res) => {
         status: order.status || 'Pending',
         isBatch: Boolean(order.isBatch),
         labSubmitted: Boolean(order.labSubmitted),
-        shippingAddress: order.shippingAddress ? JSON.parse(order.shippingAddress) : null,
+        shippingAddress: safeJsonParse(order.shippingAddress),
+        batchShippingAddress: safeJsonParse(order.batchShippingAddress),
+        batchReadyDate: order.batchReadyDate,
+        batchQueueStatus: order.batchQueueStatus,
+        batchLabVendor: order.batchLabVendor,
+        labSubmittedAt: order.labSubmittedAt,
         items: itemsWithPhotos,
       });
     }
@@ -234,7 +280,12 @@ router.get('/admin/all-orders', adminRequired, async (req, res) => {
         o.shipping_option as shippingOption,
         o.shipping_cost as shippingCost,
         o.is_batch as isBatch,
+        o.batch_shipping_address as batchShippingAddress,
+        o.batch_ready_date as batchReadyDate,
+        o.batch_queue_status as batchQueueStatus,
+        o.batch_lab_vendor as batchLabVendor,
         o.lab_submitted as labSubmitted,
+        o.lab_submitted_at as labSubmittedAt,
         o.created_at as orderDate
       FROM orders o
     `;
@@ -285,7 +336,12 @@ router.get('/admin/all-orders', adminRequired, async (req, res) => {
         status: order.status || 'Pending',
         isBatch: Boolean(order.isBatch),
         labSubmitted: Boolean(order.labSubmitted),
-        shippingAddress: order.shippingAddress ? JSON.parse(order.shippingAddress) : null,
+        shippingAddress: safeJsonParse(order.shippingAddress),
+        batchShippingAddress: safeJsonParse(order.batchShippingAddress),
+        batchReadyDate: order.batchReadyDate,
+        batchQueueStatus: order.batchQueueStatus,
+        batchLabVendor: order.batchLabVendor,
+        labSubmittedAt: order.labSubmittedAt,
         items: itemsWithPhotos,
       });
     }
@@ -348,10 +404,26 @@ router.patch('/admin/:orderId/status', adminRequired, async (req, res) => {
 // Submit batch orders to lab (admin)
 router.post('/admin/submit-batch', adminRequired, async (req, res) => {
   try {
-    const { orderIds } = req.body;
+    const { orderIds, batchAddress, selectedLab } = req.body;
 
     if (!Array.isArray(orderIds) || orderIds.length === 0) {
       return res.status(400).json({ error: 'orderIds must be a non-empty array' });
+    }
+
+    if (!selectedLab || typeof selectedLab !== 'string') {
+      return res.status(400).json({ error: 'selectedLab is required' });
+    }
+
+    if (
+      !batchAddress ||
+      !batchAddress.fullName ||
+      !batchAddress.addressLine1 ||
+      !batchAddress.city ||
+      !batchAddress.state ||
+      !batchAddress.zipCode ||
+      !batchAddress.email
+    ) {
+      return res.status(400).json({ error: 'Valid batchAddress is required' });
     }
 
     const ids = orderIds.map((id) => Number(id)).filter(Boolean);
@@ -360,16 +432,27 @@ router.post('/admin/submit-batch', adminRequired, async (req, res) => {
     }
 
     let updatedCount = 0;
+    let notReadyCount = 0;
+    const now = new Date();
 
     for (const orderId of ids) {
       const order = await queryRow(
-        `SELECT o.id, o.user_id as userId, o.is_batch as isBatch
+        `SELECT o.id, o.user_id as userId, o.is_batch as isBatch, o.lab_submitted as labSubmitted,
+                o.batch_ready_date as batchReadyDate
          FROM orders o
          WHERE o.id = $1`,
         [orderId]
       );
 
-      if (!order || !order.isBatch) continue;
+      if (!order || !order.isBatch || order.labSubmitted) continue;
+
+      if (order.batchReadyDate) {
+        const readyDate = new Date(order.batchReadyDate);
+        if (!Number.isNaN(readyDate.getTime()) && readyDate > now) {
+          notReadyCount += 1;
+          continue;
+        }
+      }
 
       if (req.user.role === 'studio_admin') {
         const user = await queryRow(
@@ -385,15 +468,69 @@ router.post('/admin/submit-batch', adminRequired, async (req, res) => {
       await query(
         `UPDATE orders
          SET lab_submitted = true,
+             lab_submitted_at = CURRENT_TIMESTAMP,
+             batch_shipping_address = $2,
+             batch_lab_vendor = $3,
+             batch_queue_status = 'submitted',
              status = CASE WHEN status = 'pending' THEN 'processing' ELSE status END
          WHERE id = $1`,
-        [orderId]
+        [orderId, JSON.stringify(batchAddress), selectedLab]
       );
 
       updatedCount += 1;
     }
 
-    res.json({ success: true, updatedCount });
+    res.json({ success: true, selectedLab, updatedCount, notReadyCount });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get batch queue summary (admin)
+router.get('/admin/batch-queue', adminRequired, async (req, res) => {
+  try {
+    let queryText = `
+      SELECT
+        o.id,
+        o.user_id as userId,
+        o.batch_ready_date as batchReadyDate,
+        o.created_at as createdAt
+      FROM orders o
+      WHERE o.is_batch = 1
+        AND (o.lab_submitted = 0 OR o.lab_submitted IS NULL)
+    `;
+    const params = [];
+    if (req.user.role === 'studio_admin') {
+      queryText += ` AND o.user_id IN (SELECT u.id FROM users u WHERE u.studio_id = $1)`;
+      params.push(req.user.studio_id);
+    }
+    queryText += ` ORDER BY o.created_at ASC`;
+
+    const queuedOrders = await queryRows(queryText, params);
+    const now = new Date();
+    const eligibleOrderIds = [];
+    let nextBatchDate = null;
+
+    for (const order of queuedOrders) {
+      const readyDate = order.batchReadyDate ? new Date(order.batchReadyDate) : null;
+      if (!readyDate || Number.isNaN(readyDate.getTime()) || readyDate <= now) {
+        eligibleOrderIds.push(order.id);
+        continue;
+      }
+
+      if (!nextBatchDate || readyDate < new Date(nextBatchDate)) {
+        nextBatchDate = readyDate.toISOString();
+      }
+    }
+
+    res.json({
+      totalQueued: queuedOrders.length,
+      eligibleCount: eligibleOrderIds.length,
+      eligibleOrderIds,
+      shouldPromptSubmission: eligibleOrderIds.length > 0,
+      nextBatchDate,
+      labOptions: ['roes', 'whcc', 'mpix'],
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

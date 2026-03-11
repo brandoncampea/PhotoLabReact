@@ -2,6 +2,15 @@ import React, { useEffect, useState } from 'react';
 import { Order } from '../../types';
 import api from '../../services/api';
 
+type BatchQueueSummary = {
+  totalQueued: number;
+  eligibleCount: number;
+  eligibleOrderIds: number[];
+  shouldPromptSubmission: boolean;
+  nextBatchDate: string | null;
+  labOptions: string[];
+};
+
 const AdminOrders: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -18,6 +27,8 @@ const AdminOrders: React.FC = () => {
     email: ''
   });
   const [submitting, setSubmitting] = useState(false);
+  const [selectedLab, setSelectedLab] = useState('whcc');
+  const [batchQueueSummary, setBatchQueueSummary] = useState<BatchQueueSummary | null>(null);
 
   useEffect(() => {
     loadOrders();
@@ -25,9 +36,16 @@ const AdminOrders: React.FC = () => {
 
   const loadOrders = async () => {
     try {
-      // Fetch all orders from backend (admin endpoint)
-      const response = await api.get<Order[]>('/orders/admin/all-orders');
-      setOrders(response.data);
+      const [ordersResponse, queueResponse] = await Promise.all([
+        api.get<Order[]>('/orders/admin/all-orders'),
+        api.get<BatchQueueSummary>('/orders/admin/batch-queue'),
+      ]);
+      setOrders(ordersResponse.data);
+      setBatchQueueSummary(queueResponse.data);
+
+      if (queueResponse.data.labOptions?.length > 0 && !queueResponse.data.labOptions.includes(selectedLab)) {
+        setSelectedLab(queueResponse.data.labOptions[0]);
+      }
     } catch (error) {
       console.error('Failed to load orders:', error);
     } finally {
@@ -52,20 +70,24 @@ const AdminOrders: React.FC = () => {
       return;
     }
 
-    const batchOrders = orders.filter(o => o.isBatch && !o.labSubmitted);
-    if (batchOrders.length === 0) {
+    const eligibleOrderIds = batchQueueSummary?.eligibleOrderIds || [];
+    if (eligibleOrderIds.length === 0) {
       alert('No batch orders to submit');
       return;
     }
 
-    if (!confirm(`Submit ${batchOrders.length} batch order(s) to lab?`)) {
+    if (!selectedLab) {
+      alert('Please select a photo lab before submitting batch orders.');
+      return;
+    }
+
+    if (!confirm(`Submit ${eligibleOrderIds.length} batch order(s) to ${selectedLab.toUpperCase()}?`)) {
       return;
     }
 
     setSubmitting(true);
     try {
-      const orderIds = batchOrders.map(o => o.id);
-      await api.post('/orders/admin/submit-batch', { orderIds, batchAddress });
+      await api.post('/orders/admin/submit-batch', { orderIds: eligibleOrderIds, batchAddress, selectedLab });
       alert('Batch orders submitted successfully!');
       loadOrders(); // Refresh the list
       
@@ -134,6 +156,33 @@ const AdminOrders: React.FC = () => {
 
       {activeTab === 'batch' && (
         <div className="batch-submission-panel admin-section-card" style={{ marginBottom: '20px' }}>
+          <h2>Batch Queue</h2>
+          <p className="muted-text" style={{ marginBottom: '10px' }}>
+            Queued: <strong>{batchQueueSummary?.totalQueued || 0}</strong> • Ready to submit today: <strong>{batchQueueSummary?.eligibleCount || 0}</strong>
+          </p>
+          {batchQueueSummary?.shouldPromptSubmission ? (
+            <div className="info-box-blue" style={{ marginBottom: '15px' }}>
+              📣 Batch date reached. Submit ready orders to your selected lab.
+            </div>
+          ) : (
+            <div className="admin-summary-box" style={{ marginBottom: '15px' }}>
+              Next batch date: {batchQueueSummary?.nextBatchDate ? new Date(batchQueueSummary.nextBatchDate).toLocaleDateString() : 'Not scheduled'}
+            </div>
+          )}
+
+          <div style={{ marginBottom: '20px' }}>
+            <label>Photo Lab *</label>
+            <select
+              value={selectedLab}
+              onChange={(e) => setSelectedLab(e.target.value)}
+              style={{ width: '100%', marginTop: '6px' }}
+            >
+              {(batchQueueSummary?.labOptions || ['whcc', 'mpix', 'roes']).map((lab) => (
+                <option key={lab} value={lab}>{lab.toUpperCase()}</option>
+              ))}
+            </select>
+          </div>
+
           <h2>Batch Shipping Address</h2>
           <p className="muted-text" style={{ marginBottom: '15px' }}>
             Enter the batch shipping address to submit all pending batch orders to the lab
@@ -224,10 +273,10 @@ const AdminOrders: React.FC = () => {
           <button 
             className="btn-primary" 
             onClick={handleSubmitBatchOrders}
-            disabled={submitting || filteredOrders.length === 0}
+            disabled={submitting || (batchQueueSummary?.eligibleCount || 0) === 0}
             style={{ marginTop: '20px', width: '100%' }}
           >
-            {submitting ? 'Submitting...' : `Submit ${filteredOrders.length} Batch Order(s) to Lab`}
+            {submitting ? 'Submitting...' : `Submit ${(batchQueueSummary?.eligibleCount || 0)} Ready Batch Order(s) to ${selectedLab.toUpperCase()}`}
           </button>
         </div>
       )}
@@ -263,6 +312,16 @@ const AdminOrders: React.FC = () => {
                       ⚠️ Awaiting batch submission
                     </p>
                   )}
+                  {order.batchReadyDate && !order.labSubmitted && (
+                    <p className="muted-text" style={{ fontSize: '0.85em', marginTop: '4px' }}>
+                      Batch date: {new Date(order.batchReadyDate).toLocaleDateString()}
+                    </p>
+                  )}
+                  {order.batchLabVendor && (
+                    <p className="muted-text" style={{ fontSize: '0.85em', marginTop: '4px' }}>
+                      Lab: {order.batchLabVendor.toUpperCase()}
+                    </p>
+                  )}
                 </div>
                 <div className="order-status">
                   <select
@@ -280,10 +339,10 @@ const AdminOrders: React.FC = () => {
               </div>
               <div className="order-shipping-info admin-summary-box" style={{ marginBottom: '10px', fontSize: '0.9em' }}>
                 <strong>Ship to:</strong>
-                <p>{order.shippingAddress.fullName}</p>
-                <p>{order.shippingAddress.addressLine1}</p>
-                {order.shippingAddress.addressLine2 && <p>{order.shippingAddress.addressLine2}</p>}
-                <p>{order.shippingAddress.city}, {order.shippingAddress.state} {order.shippingAddress.zipCode}</p>
+                <p>{order.shippingAddress?.fullName || 'N/A'}</p>
+                <p>{order.shippingAddress?.addressLine1 || 'N/A'}</p>
+                {order.shippingAddress?.addressLine2 && <p>{order.shippingAddress.addressLine2}</p>}
+                <p>{order.shippingAddress?.city || ''}{order.shippingAddress?.city ? ',' : ''} {order.shippingAddress?.state || ''} {order.shippingAddress?.zipCode || ''}</p>
                 {order.batchShippingAddress && (
                   <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid var(--border-color)' }}>
                     <strong>Batch Shipping Address Used:</strong>
