@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import '../AdminStyles.css';
@@ -34,7 +34,7 @@ export default function SuperAdminDashboard() {
   const navigate = useNavigate();
   const [studios, setStudios] = useState<Studio[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [_loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [selectedStudio, setSelectedStudio] = useState<Studio | null>(null);
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);

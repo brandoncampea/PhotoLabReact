@@ -236,7 +236,7 @@ export const AdminDashboard: React.FC = () => {
         </div>
       )}
 
-      <style jsx>{`
+      <style>{`
         .admin-dashboard {
           max-width: 1400px;
           margin: 0 auto;

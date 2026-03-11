@@ -9,6 +9,7 @@ interface StudioAdmin {
   role: 'studio_admin' | 'super_admin';
   isActive: boolean;
   createdAt: string;
+  lastLoginAt?: string;
   studioId: number;
   studioName: string;
 }
