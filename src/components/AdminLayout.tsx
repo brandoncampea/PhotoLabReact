@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -7,6 +7,33 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const isSuperAdmin = user?.role === 'super_admin';
+  const isStudioAdmin = user?.role === 'studio_admin';
+  const canSwitchMenu = isSuperAdmin && !!user?.studioId;
+
+  const [menuMode, setMenuMode] = useState<'super' | 'studio'>(() => {
+    const stored = localStorage.getItem('adminMenuMode');
+    return stored === 'studio' ? 'studio' : 'super';
+  });
+
+  useEffect(() => {
+    if (isStudioAdmin) {
+      setMenuMode('studio');
+      return;
+    }
+
+    if (isSuperAdmin) {
+      if (!canSwitchMenu && menuMode !== 'super') {
+        setMenuMode('super');
+      }
+      return;
+    }
+
+    setMenuMode('studio');
+  }, [isStudioAdmin, isSuperAdmin, canSwitchMenu, menuMode]);
+
+  useEffect(() => {
+    localStorage.setItem('adminMenuMode', menuMode);
+  }, [menuMode]);
 
   const handleLogout = () => {
     localStorage.removeItem('adminToken');
@@ -16,113 +43,76 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
   const isActive = (path: string) => location.pathname === path;
 
+  const superAdminLinks = useMemo(
+    () => [
+      { to: '/super-admin', label: '🛡️ Super Admin Dashboard' },
+      { to: '/super-admin-pricing', label: '💼 Subscription Pricing' },
+      { to: '/admin/price-lists', label: '💰 Price Lists' },
+      { to: '/admin/users', label: '👥 Users' },
+      { to: '/admin/studio-admins', label: '🏢 Studio Admins' },
+      { to: '/admin/analytics', label: '📈 Analytics' },
+      { to: '/admin/profile', label: '👤 Profile' },
+    ],
+    []
+  );
+
+  const studioAdminLinks = useMemo(
+    () => [
+      { to: '/admin/dashboard', label: '📊 Dashboard' },
+      { to: '/admin/analytics', label: '📈 Analytics' },
+      { to: '/admin/albums', label: '📁 Albums' },
+      { to: '/admin/photos', label: '📷 Photos' },
+      { to: '/admin/products', label: '📦 Products' },
+      { to: '/admin/orders', label: '🛒 Orders' },
+      { to: '/admin/customers', label: '👥 Customers' },
+      { to: '/admin/shipping', label: '🚚 Shipping' },
+      { to: '/admin/payments', label: '💳 Payments' },
+      { to: '/admin/discount-codes', label: '🎟️ Discount Codes' },
+      { to: '/admin/configuration', label: '🖼️ Lab Configuration' },
+      { to: '/admin/watermarks', label: '💧 Watermarks' },
+      { to: '/admin/profile', label: '👤 Profile' },
+    ],
+    []
+  );
+
+  const linksToRender = menuMode === 'super' ? superAdminLinks : studioAdminLinks;
+
   return (
     <div className="admin-layout">
       <aside className="admin-panel">
         <div className="admin-brand">
           <h2>📸 Photo Lab Admin</h2>
         </div>
-        <nav className="admin-nav">
-          <Link
-            to="/admin/dashboard"
-            className={`admin-nav-link ${isActive('/admin/dashboard') ? 'active' : ''}`}
-          >
-            📊 Dashboard
-          </Link>
-          <Link
-            to="/admin/analytics"
-            className={`admin-nav-link ${isActive('/admin/analytics') ? 'active' : ''}`}
-          >
-            📈 Analytics
-          </Link>
-          <Link
-            to="/admin/albums"
-            className={`admin-nav-link ${isActive('/admin/albums') ? 'active' : ''}`}
-          >
-            📁 Albums
-          </Link>
-          <Link
-            to="/admin/photos"
-            className={`admin-nav-link ${isActive('/admin/photos') ? 'active' : ''}`}
-          >
-            📷 Photos
-          </Link>
-          <Link
-            to="/admin/products"
-            className={`admin-nav-link ${isActive('/admin/products') ? 'active' : ''}`}
-          >
-            📦 Products
-          </Link>
-          {isSuperAdmin && (
-            <Link
-              to="/admin/price-lists"
-              className={`admin-nav-link ${isActive('/admin/price-lists') ? 'active' : ''}`}
-            >
-              💰 Price Lists
-            </Link>
-          )}
-          <Link
-            to="/admin/watermarks"
-            className={`admin-nav-link ${isActive('/admin/watermarks') ? 'active' : ''}`}
-          >
-            💧 Watermarks
-          </Link>
-          <Link
-            to="/admin/orders"
-            className={`admin-nav-link ${isActive('/admin/orders') ? 'active' : ''}`}
-          >
-            🛒 Orders
-          </Link>
-          <Link
-            to="/admin/customers"
-            className={`admin-nav-link ${isActive('/admin/customers') ? 'active' : ''}`}
-          >
-            👥 Customers
-          </Link>
-          <Link
-            to="/admin/shipping"
-            className={`admin-nav-link ${isActive('/admin/shipping') ? 'active' : ''}`}
-          >
-            🚚 Shipping
-          </Link>
-          <Link
-            to="/admin/payments"
-            className={`admin-nav-link ${isActive('/admin/payments') ? 'active' : ''}`}
-          >
-            💳 Payments
-          </Link>
-          <Link
-            to="/admin/users"
-            className={`admin-nav-link ${isActive('/admin/users') ? 'active' : ''}`}
-          >
-            👥 Users
-          </Link>
-          <Link
-            to="/admin/studio-admins"
-            className={`admin-nav-link ${isActive('/admin/studio-admins') ? 'active' : ''}`}
-          >
-            🏢 Studio Admins
-          </Link>
-          <Link
-            to="/admin/profile"
-            className={`admin-nav-link ${isActive('/admin/profile') ? 'active' : ''}`}
-          >
-            👤 Profile
-          </Link>
-          <Link
-            to="/admin/discount-codes"
-            className={`admin-nav-link ${isActive('/admin/discount-codes') ? 'active' : ''}`}
-          >
-            🎟️ Discount Codes
-          </Link>
 
-          {/* Photo Lab Section */}
-          <Link
-            to="/admin/configuration"
-            className={`admin-nav-link ${isActive('/admin/configuration') ? 'active' : ''}`}
-          >
-            🖼️ Lab Configuration
-          </Link>
+        {canSwitchMenu && (
+          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', padding: '0 0.5rem' }}>
+            <button
+              onClick={() => setMenuMode('super')}
+              className={menuMode === 'super' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'}
+              style={{ flex: 1 }}
+            >
+              Super
+            </button>
+            <button
+              onClick={() => setMenuMode('studio')}
+              className={menuMode === 'studio' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'}
+              style={{ flex: 1 }}
+            >
+              Studio
+            </button>
+          </div>
+        )}
+
+        <nav className="admin-nav">
+          {linksToRender.map((link) => (
+            <Link
+              key={link.to}
+              to={link.to}
+              className={`admin-nav-link ${isActive(link.to) ? 'active' : ''}`}
+            >
+              {link.label}
+            </Link>
+          ))}
         </nav>
         <div className="admin-panel-footer">
           <Link to="/" className="admin-nav-link">🏠 Customer Site</Link>
