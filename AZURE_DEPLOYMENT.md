@@ -225,7 +225,7 @@ VITE_USE_MOCK_API=false
 
 Active workflow in `.github/workflows/`:
 
-1. **azure-appservice-fullstack.yml** - Deploys frontend + API to one Azure App Service
+1. **deploy.yml** - Deploys frontend + API to one Azure App Service
 
 ### Quick Setup
 

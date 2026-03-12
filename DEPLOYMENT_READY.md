@@ -3,7 +3,7 @@
 ## What Was Created
 
 ### GitHub Actions Workflows (`.github/workflows/`)
-1. **azure-appservice-fullstack.yml** - Automated full-stack deployment to Azure App Service
+1. **deploy.yml** - Automated full-stack deployment to Azure App Service
 
 ### Documentation
 1. **AZURE_DEPLOYMENT.md** - Complete deployment guide
