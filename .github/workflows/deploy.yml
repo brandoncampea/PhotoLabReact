@@ -170,13 +170,7 @@ jobs:
           wait_for_idle_deployment() {
             for check in $(seq 1 60); do
               LATEST=$(curl -sS -u "$USERNAME:$PASSWORD" "https://${APP_HOST}.scm.azurewebsites.net/api/deployments/latest" || true)
-              STATUS=$(echo "$LATEST" | python3 -c "import json,sys; raw=sys.stdin.read().strip();\
-if not raw: print(-1);\
-else:\
-  try:\
-    print(json.loads(raw).get('status',-1))\
-  except Exception:\
-    print(-1)")
+              STATUS=$(echo "$LATEST" | python3 -c "import json,sys; raw=sys.stdin.read().strip(); print((json.loads(raw).get('status',-1) if raw else -1))" 2>/dev/null || echo -1)
 
               if [ "$STATUS" = "0" ] || [ "$STATUS" = "1" ] || [ "$STATUS" = "2" ]; then
                 echo "Another deployment is still running (status=${STATUS}). Waiting 20s..."
