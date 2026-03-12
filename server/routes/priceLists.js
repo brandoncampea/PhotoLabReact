@@ -363,6 +363,77 @@ router.put('/:id/studio-products/:productId/sizes/:sizeId/price', adminRequired,
   }
 });
 
+router.put('/:id/studio-products/batch-price', adminRequired, async (req, res) => {
+  try {
+    const studioId = getStudioIdFromRequest(req);
+    if (!studioId) {
+      return res.status(400).json({ error: 'Studio context is required' });
+    }
+
+    const priceListId = Number(req.params.id);
+    const percentage = Number(req.body?.percentage);
+
+    if (!priceListId) {
+      return res.status(400).json({ error: 'Invalid price list id' });
+    }
+
+    if (!Number.isFinite(percentage) || percentage < 0) {
+      return res.status(400).json({ error: 'Percentage must be a non-negative number' });
+    }
+
+    const multiplier = percentage / 100;
+
+    const sizes = await queryRows(
+      `SELECT ps.id, ps.product_id as productId, ps.price as basePrice
+       FROM product_sizes ps
+       INNER JOIN price_list_products plp ON plp.product_id = ps.product_id AND plp.price_list_id = ps.price_list_id
+       WHERE ps.price_list_id = $1`,
+      [priceListId]
+    );
+
+    for (const size of sizes) {
+      const sizeId = Number(size.id);
+      const productId = Number(size.productId);
+      const basePrice = Number(size.basePrice) || 0;
+      const finalPrice = Number((basePrice * multiplier).toFixed(2));
+
+      const existing = await queryRow(
+        `SELECT is_offered FROM studio_price_list_size_overrides
+         WHERE studio_id = $1 AND price_list_id = $2 AND product_size_id = $3`,
+        [studioId, priceListId, sizeId]
+      );
+
+      const finalIsOffered = existing ? (existing.is_offered !== 0 && existing.is_offered !== false) : true;
+
+      await query(
+        `IF EXISTS (
+           SELECT 1
+           FROM studio_price_list_size_overrides
+           WHERE studio_id = $1 AND price_list_id = $2 AND product_size_id = $3
+         )
+         BEGIN
+           UPDATE studio_price_list_size_overrides
+           SET price = $4,
+               product_id = $5,
+               is_offered = $6,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE studio_id = $1 AND price_list_id = $2 AND product_size_id = $3
+         END
+         ELSE
+         BEGIN
+           INSERT INTO studio_price_list_size_overrides (studio_id, price_list_id, product_id, product_size_id, price, is_offered)
+           VALUES ($1, $2, $5, $3, $4, $6)
+         END`,
+        [studioId, priceListId, sizeId, finalPrice, productId, finalIsOffered ? 1 : 0]
+      );
+    }
+
+    res.json({ success: true, updatedCount: sizes.length, percentage });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 router.post('/:id/products/:productId/sample-photo', superAdminRequired, (req, res, next) => {
   samplePhotoUpload.single('photo')(req, res, (err) => {
     if (err) return res.status(400).json({ error: err.message || 'Upload error' });
