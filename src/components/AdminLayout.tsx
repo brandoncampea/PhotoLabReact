@@ -57,9 +57,9 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const superAdminLinks = useMemo(
     () => [
       { to: '/super-admin', label: '🛡️ Super Admin Dashboard' },
-      { to: '/super-admin#invoices', label: '🧾 Invoices' },
       { to: '/super-admin#subscription-payment-gateway', label: '💳 Studio Subscription Payment Gateway' },
       { to: '/super-admin-pricing', label: '💼 Subscription Pricing' },
+      { to: '/admin/configuration', label: '🖼️ Lab Configuration' },
       { to: '/admin/price-lists', label: '💰 Price Lists' },
       { to: '/admin/users', label: '👥 Users' },
       { to: '/admin/studio-admins', label: '🏢 Studio Admins' },
@@ -72,7 +72,6 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const studioAdminLinks = useMemo(
     () => [
       { to: '/admin/dashboard', label: '📊 Dashboard' },
-      { to: '/admin/studio-dashboard#invoices', label: '🧾 Invoices' },
       { to: '/admin/analytics', label: '📈 Analytics' },
       { to: '/admin/albums', label: '📁 Albums' },
       { to: '/admin/photos', label: '📷 Photos' },
@@ -80,9 +79,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       { to: '/admin/orders', label: '🛒 Orders' },
       { to: '/admin/customers', label: '👥 Customers' },
       { to: '/admin/shipping', label: '🚚 Shipping' },
-      { to: '/admin/payments', label: '💳 Payments' },
       { to: '/admin/discount-codes', label: '🎟️ Discount Codes' },
-      { to: '/admin/configuration', label: '🖼️ Lab Configuration' },
       { to: '/admin/watermarks', label: '💧 Watermarks' },
       { to: '/admin/profile', label: '👤 Profile' },
     ],

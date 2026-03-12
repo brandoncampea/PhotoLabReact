@@ -1,11 +1,75 @@
 import express from 'express';
 import crypto from 'crypto';
-import { queryRow, queryRows, query, transaction } from '../mssql.js';
+import { queryRow, queryRows, query, transaction, tableExists } from '../mssql.js';
 import { SUBSCRIPTION_PLANS, SUBSCRIPTION_STATUSES } from '../constants/subscriptions.js';
 import { authRequired } from '../middleware/auth.js';
 import stripeService from '../services/stripeService.js';
 
 const router = express.Router();
+
+const getStudioProfitPayoutThreshold = async () => {
+  const hasTable = await tableExists('studio_profit_payout_config');
+  if (!hasTable) return 500;
+  const row = await queryRow('SELECT payout_threshold as payoutThreshold FROM studio_profit_payout_config WHERE id = 1');
+  return Number(row?.payoutThreshold) || 500;
+};
+
+const getStudioProfitPayoutsTotal = async (studioId) => {
+  const hasTable = await tableExists('studio_profit_payouts');
+  if (!hasTable) return 0;
+  const row = await queryRow(
+    'SELECT COALESCE(SUM(amount), 0) as totalPayouts FROM studio_profit_payouts WHERE studio_id = $1',
+    [studioId]
+  );
+  return Number(row?.totalPayouts) || 0;
+};
+
+const getStudioProfitGross = async (studioId) => {
+  const hasInvoiceItems = await tableExists('studio_invoice_items');
+
+  const revenueRow = await queryRow(
+    `SELECT COALESCE(SUM(oi.price * oi.quantity), 0) as studioRevenue
+     FROM orders o
+     INNER JOIN order_items oi ON oi.order_id = o.id
+     INNER JOIN photos ph ON ph.id = oi.photo_id
+     INNER JOIN albums a ON a.id = ph.album_id
+     WHERE a.studio_id = $1
+       AND (o.status IS NULL OR LOWER(o.status) <> 'cancelled')`,
+    [studioId]
+  );
+
+  let superAdminProfit = 0;
+  if (hasInvoiceItems) {
+    const costRow = await queryRow(
+      `SELECT COALESCE(SUM(total_cost), 0) as superAdminProfit
+       FROM studio_invoice_items
+       WHERE studio_id = $1`,
+      [studioId]
+    );
+    superAdminProfit = Number(costRow?.superAdminProfit) || 0;
+  } else {
+    const costRow = await queryRow(
+      `SELECT COALESCE(SUM(COALESCE(ps.price, p.price, 0) * oi.quantity), 0) as superAdminProfit
+       FROM orders o
+       INNER JOIN order_items oi ON oi.order_id = o.id
+       INNER JOIN photos ph ON ph.id = oi.photo_id
+       INNER JOIN albums a ON a.id = ph.album_id
+       LEFT JOIN products p ON p.id = oi.product_id
+       LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id
+       WHERE a.studio_id = $1
+         AND (o.status IS NULL OR LOWER(o.status) <> 'cancelled')`,
+      [studioId]
+    );
+    superAdminProfit = Number(costRow?.superAdminProfit) || 0;
+  }
+
+  const studioRevenue = Number(revenueRow?.studioRevenue) || 0;
+  return {
+    studioRevenue,
+    superAdminProfit,
+    studioProfitGross: studioRevenue - superAdminProfit,
+  };
+};
 
 // Create/signup new studio
 router.post('/signup', async (req, res) => {
@@ -176,6 +240,427 @@ router.put('/subscription-payment-config', authRequired, async (req, res) => {
   } catch (error) {
     console.error('Update subscription payment config error:', error);
     res.status(500).json({ error: 'Failed to update subscription payment config' });
+  }
+});
+
+// Get studio profit payout threshold config (super admin configurable)
+router.get('/profit-payout-config', authRequired, async (req, res) => {
+  try {
+    if (req.user.role !== 'super_admin' && req.user.role !== 'studio_admin') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    const payoutThreshold = await getStudioProfitPayoutThreshold();
+    res.json({ payoutThreshold });
+  } catch (error) {
+    console.error('Get payout config error:', error);
+    res.status(500).json({ error: 'Failed to fetch payout config' });
+  }
+});
+
+router.put('/profit-payout-config', authRequired, async (req, res) => {
+  try {
+    if (req.user.role !== 'super_admin') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    const threshold = Number(req.body?.payoutThreshold);
+    if (!Number.isFinite(threshold) || threshold < 0) {
+      return res.status(400).json({ error: 'Payout threshold must be a non-negative number' });
+    }
+
+    await query(
+      `IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'studio_profit_payout_config')
+       BEGIN
+         CREATE TABLE studio_profit_payout_config (
+           id INT PRIMARY KEY,
+           payout_threshold FLOAT NOT NULL DEFAULT 500,
+           updated_at DATETIME2 DEFAULT CURRENT_TIMESTAMP,
+           CONSTRAINT ck_studio_profit_payout_config_id CHECK (id = 1)
+         )
+       END
+
+       IF EXISTS (SELECT 1 FROM studio_profit_payout_config WHERE id = 1)
+       BEGIN
+         UPDATE studio_profit_payout_config
+         SET payout_threshold = $1,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = 1
+       END
+       ELSE
+       BEGIN
+         INSERT INTO studio_profit_payout_config (id, payout_threshold)
+         VALUES (1, $1)
+       END`,
+      [threshold]
+    );
+
+    res.json({ payoutThreshold: threshold });
+  } catch (error) {
+    console.error('Update payout config error:', error);
+    res.status(500).json({ error: 'Failed to update payout config' });
+  }
+});
+
+// Get payout history for a studio
+router.get('/:studioId/profit-payouts', authRequired, async (req, res) => {
+  try {
+    const studioId = Number(req.params.studioId);
+    if (!Number.isInteger(studioId) || studioId <= 0) {
+      return res.status(400).json({ error: 'Invalid studio id' });
+    }
+
+    if (req.user.role !== 'super_admin' && req.user.studio_id !== studioId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    const hasTable = await tableExists('studio_profit_payouts');
+    if (!hasTable) {
+      return res.json({ studioId, payouts: [], totalPayouts: 0 });
+    }
+
+    const payouts = await queryRows(
+      `SELECT
+         spp.id,
+         spp.studio_id as studioId,
+         spp.amount,
+         spp.notes,
+         spp.created_at as createdAt,
+         spp.created_by_user_id as createdByUserId,
+         u.name as createdByName
+       FROM studio_profit_payouts spp
+       LEFT JOIN users u ON u.id = spp.created_by_user_id
+       WHERE spp.studio_id = $1
+       ORDER BY spp.created_at DESC`,
+      [studioId]
+    );
+
+    const totalPayouts = payouts.reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
+    res.json({ studioId, payouts, totalPayouts });
+  } catch (error) {
+    console.error('Get studio payout history error:', error);
+    res.status(500).json({ error: 'Failed to fetch payout history' });
+  }
+});
+
+// Mark payout sent for a studio (super admin only)
+router.post('/:studioId/profit-payouts', authRequired, async (req, res) => {
+  try {
+    if (req.user.role !== 'super_admin') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    const studioId = Number(req.params.studioId);
+    if (!Number.isInteger(studioId) || studioId <= 0) {
+      return res.status(400).json({ error: 'Invalid studio id' });
+    }
+
+    const studio = await queryRow('SELECT id, name FROM studios WHERE id = $1', [studioId]);
+    if (!studio) {
+      return res.status(404).json({ error: 'Studio not found' });
+    }
+
+    const payoutThreshold = await getStudioProfitPayoutThreshold();
+    const gross = await getStudioProfitGross(studioId);
+    const totalPayouts = await getStudioProfitPayoutsTotal(studioId);
+    const availableProfit = (Number(gross.studioProfitGross) || 0) - totalPayouts;
+
+    const requestedAmount = req.body?.amount !== undefined ? Number(req.body.amount) : availableProfit;
+    if (!Number.isFinite(requestedAmount) || requestedAmount <= 0) {
+      return res.status(400).json({ error: 'Payout amount must be greater than 0' });
+    }
+
+    if (requestedAmount > availableProfit) {
+      return res.status(400).json({
+        error: 'Payout amount exceeds available studio profit',
+        availableProfit,
+      });
+    }
+
+    const hasTable = await tableExists('studio_profit_payouts');
+    if (!hasTable) {
+      await query(`
+        CREATE TABLE studio_profit_payouts (
+          id INT IDENTITY(1,1) PRIMARY KEY,
+          studio_id INT NOT NULL FOREIGN KEY REFERENCES studios(id) ON DELETE CASCADE,
+          amount FLOAT NOT NULL,
+          notes NVARCHAR(MAX) NULL,
+          created_by_user_id INT NULL FOREIGN KEY REFERENCES users(id),
+          created_at DATETIME2 DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+    }
+
+    const inserted = await queryRow(
+      `INSERT INTO studio_profit_payouts (studio_id, amount, notes, created_by_user_id)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, studio_id as studioId, amount, notes, created_at as createdAt`,
+      [studioId, requestedAmount, req.body?.notes || null, req.user.id || null]
+    );
+
+    const nextTotalPayouts = totalPayouts + requestedAmount;
+    const netStudioProfit = (Number(gross.studioProfitGross) || 0) - nextTotalPayouts;
+
+    res.status(201).json({
+      message: 'Payout recorded successfully',
+      payoutThreshold,
+      payout: inserted,
+      availableProfit: netStudioProfit,
+      isPayoutEligible: netStudioProfit >= payoutThreshold,
+      amountToNextPayout: Math.max(0, payoutThreshold - netStudioProfit),
+    });
+  } catch (error) {
+    console.error('Create studio payout error:', error);
+    res.status(500).json({ error: 'Failed to record payout' });
+  }
+});
+
+// Get studio profit breakdown by order (studio admin / super admin)
+router.get('/:studioId/profit', authRequired, async (req, res) => {
+  try {
+    const studioId = Number(req.params.studioId);
+    if (!Number.isInteger(studioId) || studioId <= 0) {
+      return res.status(400).json({ error: 'Invalid studio id' });
+    }
+
+    if (req.user.role !== 'super_admin' && req.user.studio_id !== studioId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    const studio = await queryRow('SELECT id, name FROM studios WHERE id = $1', [studioId]);
+    if (!studio) {
+      return res.status(404).json({ error: 'Studio not found' });
+    }
+
+    const hasInvoiceItems = await tableExists('studio_invoice_items');
+    const payoutThreshold = await getStudioProfitPayoutThreshold();
+
+    const byOrder = hasInvoiceItems
+      ? await queryRows(
+          `SELECT
+             o.id as orderId,
+             o.created_at as orderDate,
+             COALESCE(SUM(oi.price * oi.quantity), 0) as studioRevenue,
+             COALESCE(MAX(invAgg.superAdminProfit), 0) as superAdminProfit,
+             COALESCE(SUM(oi.quantity), 0) as itemCount
+           FROM orders o
+           INNER JOIN order_items oi ON oi.order_id = o.id
+           INNER JOIN photos ph ON ph.id = oi.photo_id
+           INNER JOIN albums a ON a.id = ph.album_id
+           LEFT JOIN (
+             SELECT order_id as orderId, studio_id as studioId, COALESCE(SUM(total_cost), 0) as superAdminProfit
+             FROM studio_invoice_items
+             WHERE studio_id = $1
+             GROUP BY order_id, studio_id
+           ) invAgg ON invAgg.orderId = o.id AND invAgg.studioId = $1
+           WHERE a.studio_id = $1
+             AND (o.status IS NULL OR LOWER(o.status) <> 'cancelled')
+           GROUP BY o.id, o.created_at
+           ORDER BY o.created_at DESC`,
+          [studioId]
+        )
+      : await queryRows(
+          `SELECT
+             o.id as orderId,
+             o.created_at as orderDate,
+             COALESCE(SUM(oi.price * oi.quantity), 0) as studioRevenue,
+             COALESCE(SUM(COALESCE(ps.price, p.price, 0) * oi.quantity), 0) as superAdminProfit,
+             COALESCE(SUM(oi.quantity), 0) as itemCount
+           FROM orders o
+           INNER JOIN order_items oi ON oi.order_id = o.id
+           INNER JOIN photos ph ON ph.id = oi.photo_id
+           INNER JOIN albums a ON a.id = ph.album_id
+           LEFT JOIN products p ON p.id = oi.product_id
+           LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id
+           WHERE a.studio_id = $1
+             AND (o.status IS NULL OR LOWER(o.status) <> 'cancelled')
+           GROUP BY o.id, o.created_at
+           ORDER BY o.created_at DESC`,
+          [studioId]
+        );
+
+    const orders = byOrder.map((row) => {
+      const revenue = Number(row.studioRevenue) || 0;
+      const superAdminProfit = Number(row.superAdminProfit) || 0;
+      return {
+        orderId: Number(row.orderId) || 0,
+        orderDate: row.orderDate,
+        itemCount: Number(row.itemCount) || 0,
+        studioRevenue: revenue,
+        superAdminProfit,
+        studioProfit: revenue - superAdminProfit,
+      };
+    });
+
+    const summary = orders.reduce(
+      (acc, row) => {
+        acc.totalStudioRevenue += row.studioRevenue;
+        acc.totalSuperAdminProfit += row.superAdminProfit;
+        acc.totalStudioProfitGross += row.studioProfit;
+        acc.totalItems += row.itemCount;
+        return acc;
+      },
+      {
+        totalStudioRevenue: 0,
+        totalSuperAdminProfit: 0,
+        totalStudioProfitGross: 0,
+        totalItems: 0,
+      }
+    );
+
+    const totalPayouts = await getStudioProfitPayoutsTotal(studioId);
+    const totalStudioProfit = summary.totalStudioProfitGross - totalPayouts;
+
+    const isPayoutEligible = totalStudioProfit >= payoutThreshold;
+    const amountToNextPayout = Math.max(0, payoutThreshold - totalStudioProfit);
+
+    res.json({
+      studioId,
+      studioName: studio.name,
+      totalOrders: orders.length,
+      payoutThreshold,
+      isPayoutEligible,
+      amountToNextPayout,
+      totalPayouts,
+      totalStudioProfit,
+      ...summary,
+      orders,
+    });
+  } catch (error) {
+    console.error('Get studio profit error:', error);
+    res.status(500).json({ error: 'Failed to fetch studio profit' });
+  }
+});
+
+// Get profit summary for all studios (super admin only)
+router.get('/profit/summary', authRequired, async (req, res) => {
+  try {
+    if (req.user.role !== 'super_admin') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    const hasInvoiceItems = await tableExists('studio_invoice_items');
+    const payoutThreshold = await getStudioProfitPayoutThreshold();
+
+    const byStudioRows = hasInvoiceItems
+      ? await queryRows(
+          `SELECT
+             s.id as studioId,
+             s.name as studioName,
+             COALESCE(rev.studioRevenue, 0) as studioRevenue,
+             COALESCE(cost.superAdminProfit, 0) as superAdminProfit,
+             COALESCE(rev.orderCount, 0) as orderCount
+           FROM studios s
+           LEFT JOIN (
+             SELECT
+               a.studio_id as studioId,
+               COALESCE(SUM(oi.price * oi.quantity), 0) as studioRevenue,
+               COUNT(DISTINCT o.id) as orderCount
+             FROM orders o
+             INNER JOIN order_items oi ON oi.order_id = o.id
+             INNER JOIN photos ph ON ph.id = oi.photo_id
+             INNER JOIN albums a ON a.id = ph.album_id
+             WHERE (o.status IS NULL OR LOWER(o.status) <> 'cancelled')
+             GROUP BY a.studio_id
+           ) rev ON rev.studioId = s.id
+           LEFT JOIN (
+             SELECT
+               studio_id as studioId,
+               COALESCE(SUM(total_cost), 0) as superAdminProfit
+             FROM studio_invoice_items
+             GROUP BY studio_id
+           ) cost ON cost.studioId = s.id
+           ORDER BY s.name ASC`,
+          []
+        )
+      : await queryRows(
+          `SELECT
+             s.id as studioId,
+             s.name as studioName,
+             COALESCE(SUM(oi.price * oi.quantity), 0) as studioRevenue,
+             COALESCE(SUM(COALESCE(ps.price, p.price, 0) * oi.quantity), 0) as superAdminProfit,
+             COUNT(DISTINCT o.id) as orderCount
+           FROM studios s
+           LEFT JOIN albums a ON a.studio_id = s.id
+           LEFT JOIN photos ph ON ph.album_id = a.id
+           LEFT JOIN order_items oi ON oi.photo_id = ph.id
+           LEFT JOIN orders o ON o.id = oi.order_id AND (o.status IS NULL OR LOWER(o.status) <> 'cancelled')
+           LEFT JOIN products p ON p.id = oi.product_id
+           LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id
+           GROUP BY s.id, s.name
+           ORDER BY s.name ASC`,
+          []
+        );
+
+    const payoutRows = await tableExists('studio_profit_payouts')
+      ? await queryRows(
+          `SELECT studio_id as studioId, COALESCE(SUM(amount), 0) as totalPayouts, COUNT(*) as payoutCount
+           FROM studio_profit_payouts
+           GROUP BY studio_id`,
+          []
+        )
+      : [];
+
+    const payoutMap = new Map(
+      payoutRows.map((row) => [Number(row.studioId) || 0, {
+        totalPayouts: Number(row.totalPayouts) || 0,
+        payoutCount: Number(row.payoutCount) || 0,
+      }])
+    );
+
+    const byStudio = byStudioRows.map((row) => {
+      const studioRevenue = Number(row.studioRevenue) || 0;
+      const superAdminProfit = Number(row.superAdminProfit) || 0;
+      const studioProfitGross = studioRevenue - superAdminProfit;
+      const payout = payoutMap.get(Number(row.studioId) || 0);
+      const totalPayouts = payout?.totalPayouts || 0;
+      const studioProfit = studioProfitGross - totalPayouts;
+      const isPayoutEligible = studioProfit >= payoutThreshold;
+      return {
+        studioId: Number(row.studioId) || 0,
+        studioName: row.studioName || 'Unknown Studio',
+        orderCount: Number(row.orderCount) || 0,
+        studioRevenue,
+        superAdminProfit,
+        studioProfitGross,
+        totalPayouts,
+        payoutCount: payout?.payoutCount || 0,
+        studioProfit,
+        isPayoutEligible,
+        amountToNextPayout: Math.max(0, payoutThreshold - studioProfit),
+      };
+    });
+
+    const totals = byStudio.reduce(
+      (acc, row) => {
+        acc.totalStudioRevenue += row.studioRevenue;
+        acc.totalSuperAdminProfit += row.superAdminProfit;
+        acc.totalStudioProfitGross += row.studioProfitGross;
+        acc.totalPayouts += row.totalPayouts;
+        acc.totalStudioProfit += row.studioProfit;
+        acc.totalOrders += row.orderCount;
+        if (row.isPayoutEligible) {
+          acc.eligibleStudioCount += 1;
+          acc.totalEligibleStudioPayout += row.studioProfit;
+        }
+        return acc;
+      },
+      {
+        totalStudioRevenue: 0,
+        totalSuperAdminProfit: 0,
+        totalStudioProfitGross: 0,
+        totalPayouts: 0,
+        totalStudioProfit: 0,
+        totalOrders: 0,
+        eligibleStudioCount: 0,
+        totalEligibleStudioPayout: 0,
+      }
+    );
+
+    res.json({ payoutThreshold, totals, byStudio });
+  } catch (error) {
+    console.error('Get super admin profit summary error:', error);
+    res.status(500).json({ error: 'Failed to fetch profit summary' });
   }
 });
 
@@ -373,10 +858,7 @@ router.post('/:studioId/subscription/cancel', authRequired, async (req, res) => 
     // If using Stripe, cancel at period end
     if (studio.stripe_subscription_id) {
       try {
-        const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-        await stripe.subscriptions.update(studio.stripe_subscription_id, {
-          cancel_at_period_end: true
-        });
+        await stripeService.setCancelAtPeriodEnd(studio.stripe_subscription_id, true);
       } catch (stripeError) {
         console.error('Stripe cancellation error:', stripeError);
         // Continue anyway - we've marked it in our DB
@@ -423,13 +905,10 @@ router.post('/:studioId/subscription/reactivate', authRequired, async (req, res)
       WHERE id = $2
     `, [0, studioId]);
 
-    // If using Stripe, update subscription
+    // If using Stripe, un-cancel subscription
     if (studio.stripe_subscription_id) {
       try {
-        const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-        await stripe.subscriptions.update(studio.stripe_subscription_id, {
-          cancel_at_period_end: false
-        });
+        await stripeService.setCancelAtPeriodEnd(studio.stripe_subscription_id, false);
       } catch (stripeError) {
         console.error('Stripe reactivation error:', stripeError);
       }
@@ -846,9 +1325,9 @@ router.post('/:studioId/checkout', authRequired, async (req, res) => {
       }
     }
 
-    // Validate plan
-    const plan = SUBSCRIPTION_PLANS[planId];
-    if (!plan) {
+    // Validate plan against constants
+    const planConstant = SUBSCRIPTION_PLANS[planId];
+    if (!planConstant) {
       return res.status(400).json({ error: 'Invalid plan' });
     }
 
@@ -866,8 +1345,34 @@ router.post('/:studioId/checkout', authRequired, async (req, res) => {
     const successUrl = `${baseUrl}/admin/dashboard?session_id={CHECKOUT_SESSION_ID}`;
     const cancelUrl = `${baseUrl}/admin/dashboard`;
 
-    // Use yearly or monthly price ID based on billing cycle
-    const priceId = billingCycle === 'yearly' ? plan.stripeYearlyPriceId : plan.stripePriceId;
+    // Prefer price IDs stored in DB over hardcoded constants
+    let priceId;
+    try {
+      const dbPlan = await queryRow(
+        `SELECT stripe_monthly_price_id, stripe_yearly_price_id
+         FROM subscription_plans
+         WHERE LOWER(name) = LOWER($1) AND is_active = 1`,
+        [planId]
+      );
+      if (dbPlan) {
+        priceId = billingCycle === 'yearly'
+          ? dbPlan.stripe_yearly_price_id
+          : dbPlan.stripe_monthly_price_id;
+      }
+    } catch (_) { /* table may not exist yet */ }
+
+    // Fall back to hardcoded constants if DB has none
+    if (!priceId) {
+      priceId = billingCycle === 'yearly'
+        ? planConstant.stripeYearlyPriceId
+        : planConstant.stripePriceId;
+    }
+
+    if (!priceId) {
+      return res.status(400).json({
+        error: 'No Stripe price ID configured for this plan. Set one in the Super Admin Dashboard → Subscription Plans.'
+      });
+    }
 
     // Create Stripe checkout session
     const session = await stripeService.createCheckoutSession(

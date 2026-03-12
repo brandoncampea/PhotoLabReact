@@ -131,18 +131,6 @@ const AdminStudioAdmins: React.FC = () => {
     navigate('/admin/dashboard');
   };
 
-  const togglePaymentVendor = (vendor: 'stripe') => {
-    setFeatureSettings((prev) => {
-      const alreadyEnabled = prev.paymentVendors.includes(vendor);
-      return {
-        ...prev,
-        paymentVendors: alreadyEnabled
-          ? prev.paymentVendors.filter((v) => v !== vendor)
-          : [...prev.paymentVendors, vendor],
-      };
-    });
-  };
-
   const toggleLabVendor = (vendor: 'roes' | 'whcc' | 'mpix') => {
     setFeatureSettings((prev) => {
       const alreadyEnabled = prev.labVendors.includes(vendor);
@@ -350,20 +338,8 @@ const AdminStudioAdmins: React.FC = () => {
           }}>
             <h3 style={{ marginTop: 0 }}>Studio Access Settings</h3>
             <p style={{ color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
-              Choose which payment vendors and lab configurations are available to this studio.
+              Choose which lab configurations are available to this studio.
             </p>
-
-            <div style={{ marginTop: '1rem' }}>
-              <h4 style={{ marginBottom: '0.75rem' }}>Payment Vendors</h4>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-                <input
-                  type="checkbox"
-                  checked={featureSettings.paymentVendors.includes('stripe')}
-                  onChange={() => togglePaymentVendor('stripe')}
-                />
-                Stripe
-              </label>
-            </div>
 
             <div style={{ marginTop: '1rem' }}>
               <h4 style={{ marginBottom: '0.75rem' }}>Lab Configurations</h4>

@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import '../AdminStyles.css';
 
@@ -54,45 +53,41 @@ interface StudioUsageStats {
   };
 }
 
-interface InvoiceItem {
-  id: number;
+interface StudioProfitOrder {
   orderId: number;
-  productId: number;
-  productSizeId: number;
-  quantity: number;
-  unitCost: number;
-  totalCost: number;
   orderDate: string;
-  productName: string;
-  sizeName: string;
+  itemCount: number;
+  studioRevenue: number;
+  superAdminProfit: number;
+  studioProfit: number;
 }
 
-interface CurrentInvoice {
-  id: number;
+interface StudioProfitSummary {
   studioId: number;
-  periodStart: string;
-  periodEnd: string | null;
-  status: string;
-  totalAmount: number;
-  itemCount: number;
-  createdAt: string;
-  dueDate: string | null;
-  items: InvoiceItem[];
+  studioName: string;
+  totalOrders: number;
+  totalItems: number;
+  totalStudioRevenue: number;
+  totalSuperAdminProfit: number;
+  totalStudioProfitGross: number;
+  totalStudioProfit: number;
+  totalPayouts: number;
+  payoutThreshold: number;
+  isPayoutEligible: boolean;
+  amountToNextPayout: number;
+  orders: StudioProfitOrder[];
 }
 
-interface HistoryInvoice {
+interface StudioPayoutHistoryItem {
   id: number;
-  periodStart: string;
-  periodEnd: string | null;
-  status: string;
-  totalAmount: number;
-  itemCount: number;
+  amount: number;
+  notes?: string;
   createdAt: string;
+  createdByName?: string;
 }
 
 export default function StudioAdminDashboard() {
   const { user } = useAuth();
-  const location = useLocation();
   const effectiveStudioId = Number(localStorage.getItem('viewAsStudioId')) || user?.studioId;
   const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null);
   const [availablePlans, setAvailablePlans] = useState<Plan[]>([]);
@@ -102,29 +97,22 @@ export default function StudioAdminDashboard() {
   const [selectedUpgradePlan, setSelectedUpgradePlan] = useState<string>('');
   const [selectedBillingCycle, setSelectedBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
   const [studioFees, setStudioFees] = useState<{ feeType: string; feeValue: number } | null>(null);
-  const [currentInvoice, setCurrentInvoice] = useState<CurrentInvoice | null>(null);
-  const [invoiceHistory, setInvoiceHistory] = useState<HistoryInvoice[]>([]);
-  const [showInvoiceItems, setShowInvoiceItems] = useState(false);
   const [usageStats, setUsageStats] = useState<StudioUsageStats | null>(null);
+  const [profitSummary, setProfitSummary] = useState<StudioProfitSummary | null>(null);
+  const [showProfitOrders, setShowProfitOrders] = useState(false);
+  const [payoutHistory, setPayoutHistory] = useState<StudioPayoutHistoryItem[]>([]);
+  const [showPayoutHistory, setShowPayoutHistory] = useState(false);
 
   useEffect(() => {
     if (effectiveStudioId) {
       fetchSubscriptionInfo();
       fetchAvailablePlans();
       fetchStudioFees();
-      fetchCurrentInvoice();
-      fetchInvoiceHistory();
       fetchUsageStats();
+      fetchProfitSummary();
+      fetchPayoutHistory();
     }
   }, [user, effectiveStudioId]);
-
-  useEffect(() => {
-    if (location.hash === '#invoices') {
-      requestAnimationFrame(() => {
-        document.getElementById('studio-invoices')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      });
-    }
-  }, [location.hash, subscription, currentInvoice, invoiceHistory.length]);
 
   const getAuthHeaders = () => {
     const token = localStorage.getItem('authToken');
@@ -153,40 +141,6 @@ export default function StudioAdminDashboard() {
       }
     } catch (err: any) {
       console.error('Failed to load studio fees:', err);
-    }
-  };
-
-  const fetchCurrentInvoice = async () => {
-    try {
-      const response = await fetch(`/api/invoices/current${effectiveStudioId ? `?studioId=${effectiveStudioId}` : ''}`, {
-        headers: getAuthHeaders(),
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setCurrentInvoice(data);
-      } else {
-        setCurrentInvoice(null);
-      }
-    } catch (err) {
-      console.error('Failed to load current invoice:', err);
-      setCurrentInvoice(null);
-    }
-  };
-
-  const fetchInvoiceHistory = async () => {
-    try {
-      const response = await fetch(`/api/invoices/history${effectiveStudioId ? `?studioId=${effectiveStudioId}` : ''}`, {
-        headers: getAuthHeaders(),
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setInvoiceHistory(Array.isArray(data) ? data : []);
-      } else {
-        setInvoiceHistory([]);
-      }
-    } catch (err) {
-      console.error('Failed to load invoice history:', err);
-      setInvoiceHistory([]);
     }
   };
 
@@ -238,6 +192,43 @@ export default function StudioAdminDashboard() {
       }
     } catch (err) {
       console.error('Failed to fetch plans:', err);
+    }
+  };
+
+  const fetchProfitSummary = async () => {
+    if (!effectiveStudioId) return;
+    try {
+      const response = await fetch(`/api/studios/${effectiveStudioId}/profit`, {
+        headers: getAuthHeaders(),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setProfitSummary(data);
+      } else {
+        setProfitSummary(null);
+      }
+    } catch (err) {
+      console.error('Failed to load studio profit summary:', err);
+      setProfitSummary(null);
+    }
+  };
+
+  const fetchPayoutHistory = async () => {
+    if (!effectiveStudioId) return;
+    try {
+      const response = await fetch(`/api/studios/${effectiveStudioId}/profit-payouts`, {
+        headers: getAuthHeaders(),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setPayoutHistory(Array.isArray(data.payouts) ? data.payouts : []);
+      } else {
+        setPayoutHistory([]);
+      }
+    } catch (err) {
+      console.error('Failed to load payout history:', err);
+      setPayoutHistory([]);
     }
   };
 
@@ -432,7 +423,7 @@ export default function StudioAdminDashboard() {
           marginBottom: '24px',
           color: '#bfdbfe'
         }}>
-          Select a studio from Studio Admins and choose view-as-studio to see that studio’s invoice details.
+          Select a studio from Studio Admins and choose view-as-studio to see that studio’s dashboard details.
         </div>
       )}
 
@@ -611,151 +602,152 @@ export default function StudioAdminDashboard() {
             </div>
           )}
 
-          {/* Current Invoice Widget */}
-          <div id="studio-invoices" style={{
-            backgroundColor: 'var(--bg-tertiary)',
-            padding: '20px',
-            borderRadius: '8px',
-            marginBottom: '30px',
-            border: '1px solid var(--border-color)'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-              <h3 style={{ margin: 0 }}>🧾 Current Monthly Invoice</h3>
-              {currentInvoice && (
-                <button
-                  onClick={() => setShowInvoiceItems(v => !v)}
-                  style={{
-                    background: 'none',
-                    border: '1px solid var(--border-color)',
-                    color: 'var(--text-primary)',
-                    padding: '5px 12px',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    fontSize: '13px'
-                  }}
-                >
-                  {showInvoiceItems ? 'Hide Details' : 'View Details'}
-                </button>
-              )}
-            </div>
+          {/* Studio Profit Summary */}
+          {profitSummary && (
+            <div style={{
+              backgroundColor: 'var(--bg-tertiary)',
+              padding: '20px',
+              borderRadius: '8px',
+              marginBottom: '30px',
+              border: '1px solid var(--border-color)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <h3 style={{ margin: 0 }}>📈 Studio Profit</h3>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => setShowProfitOrders((prev) => !prev)}
+                  >
+                    {showProfitOrders ? 'Hide Orders' : 'Drill into Orders'}
+                  </button>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => setShowPayoutHistory((prev) => !prev)}
+                  >
+                    {showPayoutHistory ? 'Hide Payouts' : 'View Payout History'}
+                  </button>
+                </div>
+              </div>
 
-            {currentInvoice ? (
-              <>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px', marginBottom: '15px' }}>
-                  <div style={{ backgroundColor: 'var(--bg-primary)', padding: '12px', borderRadius: '6px', textAlign: 'center' }}>
-                    <div style={{ fontSize: '22px', fontWeight: 'bold', color: 'var(--primary-color)' }}>
-                      ${currentInvoice.totalAmount.toFixed(2)}
-                    </div>
-                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>Total Owed</div>
-                  </div>
-                  <div style={{ backgroundColor: 'var(--bg-primary)', padding: '12px', borderRadius: '6px', textAlign: 'center' }}>
-                    <div style={{ fontSize: '22px', fontWeight: 'bold' }}>{currentInvoice.itemCount}</div>
-                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>Items Ordered</div>
-                  </div>
-                  <div style={{ backgroundColor: 'var(--bg-primary)', padding: '12px', borderRadius: '6px', textAlign: 'center' }}>
-                    <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#86efac' }}>
-                      {currentInvoice.dueDate
-                        ? new Date(currentInvoice.dueDate).toLocaleDateString()
-                        : 'At Renewal'}
-                    </div>
-                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>Due Date</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
+                <div className="admin-summary-box">
+                  <div className="muted-text" style={{ fontSize: '12px' }}>Available Studio Profit</div>
+                  <div style={{ fontSize: '22px', fontWeight: 'bold', color: '#86efac' }}>
+                    ${profitSummary.totalStudioProfit.toFixed(2)}
                   </div>
                 </div>
-
-                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '12px' }}>
-                  Billing period: {new Date(currentInvoice.periodStart).toLocaleDateString()} — Present
+                <div className="admin-summary-box">
+                  <div className="muted-text" style={{ fontSize: '12px' }}>Total Paid Out</div>
+                  <div style={{ fontSize: '22px', fontWeight: 'bold' }}>
+                    ${Number(profitSummary.totalPayouts || 0).toFixed(2)}
+                  </div>
                 </div>
+                <div className="admin-summary-box">
+                  <div className="muted-text" style={{ fontSize: '12px' }}>Studio Revenue</div>
+                  <div style={{ fontSize: '22px', fontWeight: 'bold' }}>
+                    ${profitSummary.totalStudioRevenue.toFixed(2)}
+                  </div>
+                </div>
+                <div className="admin-summary-box">
+                  <div className="muted-text" style={{ fontSize: '12px' }}>Super Admin Cost</div>
+                  <div style={{ fontSize: '22px', fontWeight: 'bold', color: '#fbbf24' }}>
+                    ${profitSummary.totalSuperAdminProfit.toFixed(2)}
+                  </div>
+                </div>
+                <div className="admin-summary-box">
+                  <div className="muted-text" style={{ fontSize: '12px' }}>Orders</div>
+                  <div style={{ fontSize: '22px', fontWeight: 'bold' }}>{profitSummary.totalOrders}</div>
+                </div>
+              </div>
 
-                {showInvoiceItems && currentInvoice.items.length > 0 && (
-                  <div style={{ overflowX: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-                      <thead>
-                        <tr style={{ backgroundColor: 'var(--bg-primary)', borderBottom: '1px solid var(--border-color)' }}>
-                          <th style={{ padding: '8px 10px', textAlign: 'left' }}>Order Date</th>
-                          <th style={{ padding: '8px 10px', textAlign: 'left' }}>Product</th>
-                          <th style={{ padding: '8px 10px', textAlign: 'left' }}>Size</th>
-                          <th style={{ padding: '8px 10px', textAlign: 'center' }}>Qty</th>
-                          <th style={{ padding: '8px 10px', textAlign: 'right' }}>Unit Cost</th>
-                          <th style={{ padding: '8px 10px', textAlign: 'right' }}>Total</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {currentInvoice.items.map(item => (
-                          <tr key={item.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                            <td style={{ padding: '7px 10px' }}>{new Date(item.orderDate).toLocaleDateString()}</td>
-                            <td style={{ padding: '7px 10px' }}>{item.productName}</td>
-                            <td style={{ padding: '7px 10px' }}>{item.sizeName || '—'}</td>
-                            <td style={{ padding: '7px 10px', textAlign: 'center' }}>{item.quantity}</td>
-                            <td style={{ padding: '7px 10px', textAlign: 'right' }}>${item.unitCost.toFixed(2)}</td>
-                            <td style={{ padding: '7px 10px', textAlign: 'right' }}>${item.totalCost.toFixed(2)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot>
-                        <tr style={{ borderTop: '2px solid var(--border-color)', fontWeight: 'bold' }}>
-                          <td colSpan={5} style={{ padding: '8px 10px', textAlign: 'right' }}>Total:</td>
-                          <td style={{ padding: '8px 10px', textAlign: 'right' }}>
-                            ${currentInvoice.totalAmount.toFixed(2)}
+              <div style={{ marginTop: '12px', fontSize: '13px', color: 'var(--text-secondary)' }}>
+                Payout threshold: <strong>${profitSummary.payoutThreshold.toFixed(2)}</strong>
+              </div>
+              <div style={{ marginTop: '6px' }}>
+                {profitSummary.isPayoutEligible ? (
+                  <span className="status-badge status-active">Payout Eligible</span>
+                ) : (
+                  <span className="status-badge status-inactive">
+                    ${(profitSummary.amountToNextPayout || 0).toFixed(2)} more to reach payout
+                  </span>
+                )}
+              </div>
+
+              {showPayoutHistory && (
+                <div style={{ marginTop: '16px', overflowX: 'auto' }}>
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Payout ID</th>
+                        <th>Date</th>
+                        <th style={{ textAlign: 'right' }}>Amount</th>
+                        <th>Created By</th>
+                        <th>Notes</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {payoutHistory.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
+                            No payouts recorded yet.
                           </td>
                         </tr>
-                      </tfoot>
-                    </table>
-                  </div>
-                )}
+                      ) : (
+                        payoutHistory.map((payout) => (
+                          <tr key={payout.id}>
+                            <td>#{payout.id}</td>
+                            <td>{new Date(payout.createdAt).toLocaleString()}</td>
+                            <td style={{ textAlign: 'right' }}>${Number(payout.amount || 0).toFixed(2)}</td>
+                            <td>{payout.createdByName || '—'}</td>
+                            <td>{payout.notes || '—'}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
 
-                {showInvoiceItems && currentInvoice.items.length === 0 && (
-                  <p style={{ color: 'var(--text-secondary)', fontSize: '14px', margin: 0 }}>
-                    No order items recorded for this billing period yet.
-                  </p>
-                )}
-              </>
-            ) : (
-              <p style={{ color: 'var(--text-secondary)', fontSize: '14px', margin: 0 }}>
-                No open invoice found. Your invoice will be created automatically when your first order comes in.
-              </p>
-            )}
-
-            {/* Invoice History */}
-            {invoiceHistory.length > 0 && (
-              <div style={{ marginTop: '20px', borderTop: '1px solid var(--border-color)', paddingTop: '15px' }}>
-                <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', color: 'var(--text-secondary)' }}>Invoice History</h4>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-                  <thead>
-                    <tr style={{ backgroundColor: 'var(--bg-primary)', borderBottom: '1px solid var(--border-color)' }}>
-                      <th style={{ padding: '7px 10px', textAlign: 'left' }}>Period</th>
-                      <th style={{ padding: '7px 10px', textAlign: 'center' }}>Items</th>
-                      <th style={{ padding: '7px 10px', textAlign: 'right' }}>Amount</th>
-                      <th style={{ padding: '7px 10px', textAlign: 'center' }}>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {invoiceHistory.map(inv => (
-                      <tr key={inv.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                        <td style={{ padding: '7px 10px' }}>
-                          {new Date(inv.periodStart).toLocaleDateString()} —{' '}
-                          {inv.periodEnd ? new Date(inv.periodEnd).toLocaleDateString() : '—'}
-                        </td>
-                        <td style={{ padding: '7px 10px', textAlign: 'center' }}>{inv.itemCount}</td>
-                        <td style={{ padding: '7px 10px', textAlign: 'right' }}>${inv.totalAmount.toFixed(2)}</td>
-                        <td style={{ padding: '7px 10px', textAlign: 'center' }}>
-                          <span style={{
-                            padding: '2px 8px',
-                            borderRadius: '12px',
-                            fontSize: '11px',
-                            fontWeight: 'bold',
-                            backgroundColor: inv.status === 'paid' ? 'rgba(134,239,172,0.2)' : inv.status === 'billed' ? 'rgba(251,191,36,0.2)' : 'rgba(124,92,255,0.2)',
-                            color: inv.status === 'paid' ? '#86efac' : inv.status === 'billed' ? '#fbbf24' : '#a78bfa',
-                          }}>
-                            {inv.status.toUpperCase()}
-                          </span>
-                        </td>
+              {showProfitOrders && (
+                <div style={{ marginTop: '16px', overflowX: 'auto' }}>
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Order</th>
+                        <th>Date</th>
+                        <th>Items</th>
+                        <th style={{ textAlign: 'right' }}>Revenue</th>
+                        <th style={{ textAlign: 'right' }}>Super Admin Cost</th>
+                        <th style={{ textAlign: 'right' }}>Studio Profit</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+                    </thead>
+                    <tbody>
+                      {profitSummary.orders.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
+                            No order profit data yet.
+                          </td>
+                        </tr>
+                      ) : (
+                        profitSummary.orders.map((order) => (
+                          <tr key={order.orderId}>
+                            <td>#{order.orderId}</td>
+                            <td>{new Date(order.orderDate).toLocaleDateString()}</td>
+                            <td>{order.itemCount}</td>
+                            <td style={{ textAlign: 'right' }}>${order.studioRevenue.toFixed(2)}</td>
+                            <td style={{ textAlign: 'right' }}>${order.superAdminProfit.toFixed(2)}</td>
+                            <td style={{ textAlign: 'right', fontWeight: 'bold', color: '#86efac' }}>
+                              ${order.studioProfit.toFixed(2)}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Plan Features */}
           {subscription.plan && (

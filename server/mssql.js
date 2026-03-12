@@ -537,6 +537,18 @@ export async function initializeDatabase() {
     `);
 
     await query(`
+      IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'studio_profit_payout_config')
+      BEGIN
+        CREATE TABLE studio_profit_payout_config (
+          id INT PRIMARY KEY,
+          payout_threshold FLOAT NOT NULL DEFAULT 500,
+          updated_at DATETIME2 DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT ck_studio_profit_payout_config_id CHECK (id = 1)
+        )
+      END
+    `);
+
+    await query(`
       IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'categories')
       BEGIN
         CREATE TABLE categories (
@@ -559,9 +571,31 @@ export async function initializeDatabase() {
           max_albums INT,
           max_storage_gb INT,
           features NVARCHAR(MAX),
+          stripe_monthly_price_id NVARCHAR(255),
+          stripe_yearly_price_id NVARCHAR(255),
           is_active BIT DEFAULT 1,
           created_at DATETIME2 DEFAULT CURRENT_TIMESTAMP
         )
+      END
+    `);
+
+    // Add stripe price ID columns to existing subscription_plans tables (migration)
+    await query(`
+      IF NOT EXISTS (
+        SELECT 1 FROM sys.columns
+        WHERE object_id = OBJECT_ID('subscription_plans') AND name = 'stripe_monthly_price_id'
+      )
+      BEGIN
+        ALTER TABLE subscription_plans ADD stripe_monthly_price_id NVARCHAR(255)
+      END
+    `);
+    await query(`
+      IF NOT EXISTS (
+        SELECT 1 FROM sys.columns
+        WHERE object_id = OBJECT_ID('subscription_plans') AND name = 'stripe_yearly_price_id'
+      )
+      BEGIN
+        ALTER TABLE subscription_plans ADD stripe_yearly_price_id NVARCHAR(255)
       END
     `);
 
@@ -592,6 +626,14 @@ export async function initializeDatabase() {
        BEGIN
          INSERT INTO subscription_stripe_config (id, publishable_key, secret_key, webhook_secret, is_live_mode, is_active)
          VALUES (1, 'pk_test_example', 'sk_test_example', NULL, 0, 0)
+       END`
+    );
+
+    await query(
+      `IF NOT EXISTS (SELECT 1 FROM studio_profit_payout_config WHERE id = 1)
+       BEGIN
+         INSERT INTO studio_profit_payout_config (id, payout_threshold)
+         VALUES (1, 500)
        END`
     );
 

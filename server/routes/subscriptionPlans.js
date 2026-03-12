@@ -9,7 +9,8 @@ const router = express.Router();
 router.get('/', async (req, res) => {
   try {
     const plans = await queryRows(`
-      SELECT id, name, description, monthly_price, yearly_price, max_albums, max_storage_gb, features, is_active
+      SELECT id, name, description, monthly_price, yearly_price, max_albums, max_storage_gb, features,
+             stripe_monthly_price_id, stripe_yearly_price_id, is_active
       FROM subscription_plans
       ORDER BY monthly_price ASC
     `);
@@ -31,7 +32,8 @@ router.get('/:planId', async (req, res) => {
   try {
     const { planId } = req.params;
     const plan = await queryRow(`
-      SELECT id, name, description, monthly_price, yearly_price, max_albums, max_storage_gb, features, is_active
+      SELECT id, name, description, monthly_price, yearly_price, max_albums, max_storage_gb, features,
+             stripe_monthly_price_id, stripe_yearly_price_id, is_active
       FROM subscription_plans
       WHERE id = $1
     `, [planId]);
@@ -65,6 +67,8 @@ router.post('/', authRequired, async (req, res) => {
       max_albums,
       max_storage_gb,
       features,
+      stripe_monthly_price_id,
+      stripe_yearly_price_id,
       is_active,
     } = req.body || {};
 
@@ -99,8 +103,9 @@ router.post('/', authRequired, async (req, res) => {
 
     const inserted = await queryRow(
       `INSERT INTO subscription_plans
-         (name, description, monthly_price, yearly_price, max_albums, max_storage_gb, features, is_active)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         (name, description, monthly_price, yearly_price, max_albums, max_storage_gb, features,
+          stripe_monthly_price_id, stripe_yearly_price_id, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING id`,
       [
         String(name).trim(),
@@ -110,12 +115,15 @@ router.post('/', authRequired, async (req, res) => {
         max_albums ?? null,
         max_storage_gb ?? null,
         JSON.stringify(Array.isArray(features) ? features : []),
+        stripe_monthly_price_id || null,
+        stripe_yearly_price_id || null,
         is_active === undefined ? true : !!is_active,
       ]
     );
 
     const plan = await queryRow(
-      `SELECT id, name, description, monthly_price, yearly_price, max_albums, max_storage_gb, features, is_active
+      `SELECT id, name, description, monthly_price, yearly_price, max_albums, max_storage_gb, features,
+              stripe_monthly_price_id, stripe_yearly_price_id, is_active
        FROM subscription_plans
        WHERE id = $1`,
       [inserted.id]
@@ -138,7 +146,8 @@ router.post('/', authRequired, async (req, res) => {
 router.patch('/:planId', authRequired, async (req, res) => {
   try {
     const { planId } = req.params;
-    const { monthly_price, yearly_price, description, features, is_active } = req.body;
+    const { monthly_price, yearly_price, description, features, is_active,
+            stripe_monthly_price_id, stripe_yearly_price_id } = req.body;
 
     // Verify super admin role
     if (req.user.role !== 'super_admin') {
@@ -200,6 +209,16 @@ router.patch('/:planId', authRequired, async (req, res) => {
       updateValues.push(!!is_active);
     }
 
+    if (stripe_monthly_price_id !== undefined) {
+      updateFields.push('stripe_monthly_price_id = $' + (updateFields.length + 1));
+      updateValues.push(stripe_monthly_price_id || null);
+    }
+
+    if (stripe_yearly_price_id !== undefined) {
+      updateFields.push('stripe_yearly_price_id = $' + (updateFields.length + 1));
+      updateValues.push(stripe_yearly_price_id || null);
+    }
+
     if (updateFields.length === 0) {
       return res.status(400).json({ error: 'No fields to update' });
     }
@@ -213,7 +232,8 @@ router.patch('/:planId', authRequired, async (req, res) => {
     `, updateValues);
 
     const updatedPlan = await queryRow(`
-      SELECT id, name, description, monthly_price, yearly_price, max_albums, max_storage_gb, features, is_active
+      SELECT id, name, description, monthly_price, yearly_price, max_albums, max_storage_gb,
+             features, stripe_monthly_price_id, stripe_yearly_price_id, is_active
       FROM subscription_plans
       WHERE id = $1
     `, [planId]);

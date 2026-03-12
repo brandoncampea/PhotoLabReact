@@ -36,6 +36,10 @@ const PORT = process.env.PORT || 3001;
 const clientDistPath = path.resolve(__dirname, '../dist');
 const hasClientBuild = fs.existsSync(path.join(clientDistPath, 'index.html'));
 
+// Stripe webhooks MUST be registered before express.json() so the raw
+// request body is available for signature verification.
+app.use('/api/webhooks', webhookRoutes);
+
 // Middleware
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
@@ -62,7 +66,6 @@ app.use('/api/users', userRoutes);
 app.use('/api/shipping', shippingRoutes);
 app.use('/api/stripe', stripeRoutes);
 app.use('/api/studios', studiosRoutes);
-app.use('/api/webhooks', webhookRoutes);
 app.use('/api/subscription-plans', subscriptionPlansRoutes);
 app.use('/api/invoices', invoicesRoutes);
 

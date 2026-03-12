@@ -196,6 +196,16 @@ const AdminLabs: React.FC = () => {
     }
   };
 
+  if (user?.role !== 'super_admin') {
+    return (
+      <div className="admin-page">
+        <div className="info-box" style={{ border: '1px solid var(--border-color)' }}>
+          Lab configuration is available to super admins only.
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="admin-page">
       <div className="page-header">
