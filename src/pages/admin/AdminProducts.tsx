@@ -9,6 +9,7 @@ const AdminProducts: React.FC = () => {
   const viewAsStudioId = Number(localStorage.getItem('viewAsStudioId'));
   const isViewingAsStudio = Number.isInteger(viewAsStudioId) && viewAsStudioId > 0;
   const canManagePriceListProducts = normalizedRole === 'super_admin' && !isViewingAsStudio;
+  const canManagePackages = normalizedRole === 'studio_admin';
   const [priceLists, setPriceLists] = useState<PriceList[]>([]);
   const [selectedPriceList, setSelectedPriceList] = useState<PriceList | null>(null);
   const [loading, setLoading] = useState(true);
@@ -450,20 +451,53 @@ const AdminProducts: React.FC = () => {
     }
   };
 
+  const getActivePackageProducts = () => {
+    if (!selectedPriceList) return [] as PriceListProduct[];
+    return selectedPriceList.products.filter((product) => {
+      const isActive = product.isActive !== false;
+      const hasSizes = Array.isArray(product.sizes) && product.sizes.length > 0;
+      const isOfferedForStudio = isProductOffered(product.id);
+      return isActive && hasSizes && isOfferedForStudio;
+    });
+  };
+
+  const calculatePackageCost = (items: { productId: number; productSizeId: number; quantity: number }[]) => {
+    if (!selectedPriceList) return 0;
+    return items.reduce((total, item) => {
+      const product = selectedPriceList.products.find((p) => p.id === item.productId);
+      const size = product?.sizes.find((s) => s.id === item.productSizeId);
+      const price = Number(size?.price) || 0;
+      return total + price * (Number(item.quantity) || 0);
+    }, 0);
+  };
+
   // Package management
   const handleCreatePackage = () => {
+    if (!canManagePackages) return;
+
+    const activeProducts = getActivePackageProducts();
+    if (activeProducts.length === 0) {
+      alert('No active offered products with sizes are available for packaging.');
+      return;
+    }
+
+    const firstProduct = activeProducts[0];
+    const firstSize = firstProduct.sizes[0];
+
     setEditingPackage(null);
     setPackageForm({
       name: '',
       description: '',
       packagePrice: 0,
-      items: [],
+      items: firstSize ? [{ productId: firstProduct.id, productSizeId: firstSize.id, quantity: 1 }] : [],
       isActive: true,
     });
     setShowPackageModal(true);
   };
 
   const handleEditPackage = (pkg: Package) => {
+    if (!canManagePackages) return;
+
     setEditingPackage(pkg);
     setPackageForm({
       name: pkg.name,
@@ -476,6 +510,8 @@ const AdminProducts: React.FC = () => {
   };
 
   const handleDeletePackage = async (id: number) => {
+    if (!canManagePackages) return;
+
     if (!selectedPriceList) return;
     if (confirm('Delete this package?')) {
       try {
@@ -488,8 +524,9 @@ const AdminProducts: React.FC = () => {
   };
 
   const addPackageItem = () => {
-    if (!selectedPriceList || selectedPriceList.products.length === 0) return;
-    const firstProduct = selectedPriceList.products[0];
+    const activeProducts = getActivePackageProducts();
+    if (activeProducts.length === 0) return;
+    const firstProduct = activeProducts[0];
     const firstSize = firstProduct.sizes[0];
     if (!firstSize) return;
     setPackageForm({
@@ -509,8 +546,8 @@ const AdminProducts: React.FC = () => {
     const newItems = [...packageForm.items];
     newItems[index] = { ...newItems[index], [field]: value };
 
-    if (field === 'productId' && selectedPriceList) {
-      const product = selectedPriceList.products.find(p => p.id === value);
+    if (field === 'productId') {
+      const product = getActivePackageProducts().find(p => p.id === value);
       if (product && product.sizes.length > 0) {
         newItems[index].productSizeId = product.sizes[0].id;
       }
@@ -521,7 +558,13 @@ const AdminProducts: React.FC = () => {
 
   const handleSubmitPackage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedPriceList) return;
+    if (!selectedPriceList || !canManagePackages) return;
+
+    if (!packageForm.items.length) {
+      alert('Please add at least one package item');
+      return;
+    }
+
     try {
       if (editingPackage) {
         await api.put(`/packages/${editingPackage.id}`, { ...packageForm, priceListId: selectedPriceList.id });
@@ -566,7 +609,7 @@ const AdminProducts: React.FC = () => {
 
       {!canManagePriceListProducts && (
         <div className="info-box" style={{ border: '1px solid var(--border-color)', marginBottom: '1rem' }}>
-          Super admins manage product costs and sizes based on lab imports. You can choose which products to offer, set your own selling price per size, and create packages.
+          Super admins manage product costs and sizes based on lab imports. Studio admins can choose which products/sizes to offer, set prices, and create packages from active products.
         </div>
       )}
 
@@ -894,7 +937,7 @@ const AdminProducts: React.FC = () => {
       />
 
       {/* Package Modal */}
-      {showPackageModal && selectedPriceList && (
+      {showPackageModal && selectedPriceList && canManagePackages && (
         <div className="modal-overlay" onClick={() => setShowPackageModal(false)}>
           <div className="modal-content admin-modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '720px' }}>
             <div className="modal-header admin-modal-header">
@@ -902,6 +945,9 @@ const AdminProducts: React.FC = () => {
               <button onClick={() => setShowPackageModal(false)} className="btn-close">×</button>
             </div>
             <form onSubmit={handleSubmitPackage} className="modal-body admin-modal-body">
+              <div className="info-box" style={{ marginBottom: '1rem', border: '1px solid var(--border-color)' }}>
+                Calculated package cost (from selected products × quantities): <strong>${calculatePackageCost(packageForm.items).toFixed(2)}</strong>
+              </div>
               <div className="form-group">
                 <label>Package Name</label>
                 <input
@@ -936,7 +982,8 @@ const AdminProducts: React.FC = () => {
                 ) : (
                   <div className="compact-item-list">
                     {packageForm.items.map((item, index) => {
-                      const product = selectedPriceList.products.find(p => p.id === item.productId);
+                      const activeProducts = getActivePackageProducts();
+                      const product = activeProducts.find(p => p.id === item.productId);
                       return (
                         <div key={index} className="compact-item-row">
                           <select
@@ -944,7 +991,7 @@ const AdminProducts: React.FC = () => {
                             onChange={(e) => updatePackageItem(index, 'productId', parseInt(e.target.value))}
                             style={{ flex: 2 }}
                           >
-                            {selectedPriceList.products.map(product => (
+                            {activeProducts.map(product => (
                               <option key={product.id} value={product.id}>{product.name}</option>
                             ))}
                           </select>
@@ -1010,7 +1057,8 @@ const AdminProducts: React.FC = () => {
       )}
 
 
-                            {/* Packages for this price list */}
+                            {/* Packages for this price list (studio admins only) */}
+                            {canManagePackages && (
                             <div style={{ marginTop: '2.5rem' }}>
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
                                 <h2 style={{ margin: 0 }}>Packages</h2>
@@ -1087,6 +1135,7 @@ const AdminProducts: React.FC = () => {
                                 </div>
                               )}
                             </div>
+                            )}
       {/* Product Modal */}
       {showProductModal && canManagePriceListProducts && (
         <div className="modal-overlay" onClick={() => setShowProductModal(false)}>
