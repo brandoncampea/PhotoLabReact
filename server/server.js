@@ -113,25 +113,27 @@ console.log('PORT:', PORT);
 console.log('NODE_ENV:', process.env.NODE_ENV);
 console.log('DB_HOST:', process.env.DB_HOST);
 
-// Start server first, then try database
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`✓ Server listening on port ${PORT}`);
-  console.log(`✓ API available at http://localhost:${PORT}/api`);
-});
+const startServer = () => {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`✓ Server listening on port ${PORT}`);
+    console.log(`✓ API available at http://localhost:${PORT}/api`);
+  });
+};
 
-// Try to initialize database in background with timeout
 const dbInitTimeout = setTimeout(() => {
-  console.warn('⚠ Database initialization timeout - proceeding without database');
+  console.warn('⚠ Database initialization timeout - still waiting before accepting requests');
 }, 8000);
 
 initializeDatabase()
   .then(() => {
     clearTimeout(dbInitTimeout);
     console.log('✓ Database initialized successfully');
+    startServer();
   })
   .catch((error) => {
     clearTimeout(dbInitTimeout);
     console.error('✗ Failed to initialize database:', error.message);
+    process.exit(1);
   });
 
 // Graceful shutdown

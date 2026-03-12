@@ -1,6 +1,6 @@
 import express from 'express';
 import crypto from 'crypto';
-import { queryRow, queryRows, query, transaction, tableExists } from '../mssql.js';
+import { queryRow, queryRows, query, transaction, tableExists, columnExists } from '../mssql.js';
 import { SUBSCRIPTION_PLANS, SUBSCRIPTION_STATUSES } from '../constants/subscriptions.js';
 import { authRequired } from '../middleware/auth.js';
 import stripeService from '../services/stripeService.js';
@@ -540,6 +540,7 @@ router.get('/profit/summary', authRequired, async (req, res) => {
     }
 
     const hasInvoiceItems = await tableExists('studio_invoice_items');
+    const hasOrderItemProductSizeId = await columnExists('order_items', 'product_size_id');
     const payoutThreshold = await getStudioProfitPayoutThreshold();
 
     const byStudioRows = hasInvoiceItems
@@ -578,7 +579,7 @@ router.get('/profit/summary', authRequired, async (req, res) => {
              s.id as studioId,
              s.name as studioName,
              COALESCE(SUM(oi.price * oi.quantity), 0) as studioRevenue,
-             COALESCE(SUM(COALESCE(ps.price, p.price, 0) * oi.quantity), 0) as superAdminProfit,
+             COALESCE(SUM(COALESCE(${hasOrderItemProductSizeId ? 'ps.price' : 'NULL'}, p.price, 0) * oi.quantity), 0) as superAdminProfit,
              COUNT(DISTINCT o.id) as orderCount
            FROM studios s
            LEFT JOIN albums a ON a.studio_id = s.id
@@ -586,7 +587,7 @@ router.get('/profit/summary', authRequired, async (req, res) => {
            LEFT JOIN order_items oi ON oi.photo_id = ph.id
            LEFT JOIN orders o ON o.id = oi.order_id AND (o.status IS NULL OR LOWER(o.status) <> 'cancelled')
            LEFT JOIN products p ON p.id = oi.product_id
-           LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id
+           ${hasOrderItemProductSizeId ? 'LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id' : ''}
            GROUP BY s.id, s.name
            ORDER BY s.name ASC`,
           []
