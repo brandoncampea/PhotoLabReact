@@ -7,6 +7,8 @@ import stripeService from '../services/stripeService.js';
 
 const router = express.Router();
 
+const isMissingColumnError = (error) => /Invalid column name/i.test(String(error?.message || ''));
+
 const getStudioProfitPayoutThreshold = async () => {
   const hasTable = await tableExists('studio_profit_payout_config');
   if (!hasTable) return 500;
@@ -142,30 +144,59 @@ router.get('/', authRequired, async (req, res) => {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
-    const studios = await queryRows(`
-      SELECT 
-        s.id,
-        s.name,
-        s.email,
-        s.subscription_plan,
-        s.subscription_status,
-        s.subscription_start,
-        s.subscription_end,
-        s.stripe_customer_id,
-        s.stripe_subscription_id,
-        s.fee_type,
-        s.fee_value,
-        s.billing_cycle,
-        s.is_free_subscription,
-        s.cancellation_requested,
-        s.cancellation_date,
-        s.created_at,
-        COUNT(DISTINCT u.id) as userCount
-      FROM studios s
-      LEFT JOIN users u ON u.studio_id = s.id AND u.role != 'super_admin'
-      GROUP BY s.id, s.name, s.email, s.subscription_plan, s.subscription_status, s.subscription_start, s.subscription_end, s.stripe_customer_id, s.stripe_subscription_id, s.fee_type, s.fee_value, s.billing_cycle, s.is_free_subscription, s.cancellation_requested, s.cancellation_date, s.created_at
-      ORDER BY s.created_at DESC
-    `);
+    let studios;
+    try {
+      studios = await queryRows(`
+        SELECT 
+          s.id,
+          s.name,
+          s.email,
+          s.subscription_plan,
+          s.subscription_status,
+          s.subscription_start,
+          s.subscription_end,
+          s.stripe_customer_id,
+          s.stripe_subscription_id,
+          s.fee_type,
+          s.fee_value,
+          s.billing_cycle,
+          s.is_free_subscription,
+          s.cancellation_requested,
+          s.cancellation_date,
+          s.created_at,
+          COUNT(DISTINCT u.id) as userCount
+        FROM studios s
+        LEFT JOIN users u ON u.studio_id = s.id AND u.role != 'super_admin'
+        GROUP BY s.id, s.name, s.email, s.subscription_plan, s.subscription_status, s.subscription_start, s.subscription_end, s.stripe_customer_id, s.stripe_subscription_id, s.fee_type, s.fee_value, s.billing_cycle, s.is_free_subscription, s.cancellation_requested, s.cancellation_date, s.created_at
+        ORDER BY s.created_at DESC
+      `);
+    } catch (error) {
+      if (!isMissingColumnError(error)) throw error;
+      studios = await queryRows(`
+        SELECT 
+          s.id,
+          s.name,
+          s.email,
+          s.subscription_plan,
+          s.subscription_status,
+          s.subscription_start,
+          s.subscription_end,
+          s.stripe_customer_id,
+          s.stripe_subscription_id,
+          s.fee_type,
+          s.fee_value,
+          CAST('monthly' AS NVARCHAR(50)) as billing_cycle,
+          CAST(0 AS BIT) as is_free_subscription,
+          CAST(0 AS BIT) as cancellation_requested,
+          CAST(NULL AS DATETIME2) as cancellation_date,
+          s.created_at,
+          COUNT(DISTINCT u.id) as userCount
+        FROM studios s
+        LEFT JOIN users u ON u.studio_id = s.id AND u.role != 'super_admin'
+        GROUP BY s.id, s.name, s.email, s.subscription_plan, s.subscription_status, s.subscription_start, s.subscription_end, s.stripe_customer_id, s.stripe_subscription_id, s.fee_type, s.fee_value, s.created_at
+        ORDER BY s.created_at DESC
+      `);
+    }
 
     res.json(studios);
   } catch (error) {
@@ -675,30 +706,59 @@ router.get('/:studioId', authRequired, async (req, res) => {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
-    const studio = await queryRow(`
-      SELECT 
-        s.id,
-        s.name,
-        s.email,
-        s.subscription_plan,
-        s.subscription_status,
-        s.subscription_start,
-        s.subscription_end,
-        s.stripe_customer_id,
-        s.stripe_subscription_id,
-        s.fee_type,
-        s.fee_value,
-        s.billing_cycle,
-        s.is_free_subscription,
-        s.cancellation_requested,
-        s.cancellation_date,
-        s.created_at,
-        COUNT(DISTINCT u.id) as userCount
-      FROM studios s
-      LEFT JOIN users u ON u.studio_id = s.id AND u.role != 'super_admin'
-      WHERE s.id = $1
-      GROUP BY s.id, s.name, s.email, s.subscription_plan, s.subscription_status, s.subscription_start, s.subscription_end, s.stripe_customer_id, s.stripe_subscription_id, s.fee_type, s.fee_value, s.billing_cycle, s.is_free_subscription, s.cancellation_requested, s.cancellation_date, s.created_at
-    `, [studioId]);
+    let studio;
+    try {
+      studio = await queryRow(`
+        SELECT 
+          s.id,
+          s.name,
+          s.email,
+          s.subscription_plan,
+          s.subscription_status,
+          s.subscription_start,
+          s.subscription_end,
+          s.stripe_customer_id,
+          s.stripe_subscription_id,
+          s.fee_type,
+          s.fee_value,
+          s.billing_cycle,
+          s.is_free_subscription,
+          s.cancellation_requested,
+          s.cancellation_date,
+          s.created_at,
+          COUNT(DISTINCT u.id) as userCount
+        FROM studios s
+        LEFT JOIN users u ON u.studio_id = s.id AND u.role != 'super_admin'
+        WHERE s.id = $1
+        GROUP BY s.id, s.name, s.email, s.subscription_plan, s.subscription_status, s.subscription_start, s.subscription_end, s.stripe_customer_id, s.stripe_subscription_id, s.fee_type, s.fee_value, s.billing_cycle, s.is_free_subscription, s.cancellation_requested, s.cancellation_date, s.created_at
+      `, [studioId]);
+    } catch (error) {
+      if (!isMissingColumnError(error)) throw error;
+      studio = await queryRow(`
+        SELECT 
+          s.id,
+          s.name,
+          s.email,
+          s.subscription_plan,
+          s.subscription_status,
+          s.subscription_start,
+          s.subscription_end,
+          s.stripe_customer_id,
+          s.stripe_subscription_id,
+          s.fee_type,
+          s.fee_value,
+          CAST('monthly' AS NVARCHAR(50)) as billing_cycle,
+          CAST(0 AS BIT) as is_free_subscription,
+          CAST(0 AS BIT) as cancellation_requested,
+          CAST(NULL AS DATETIME2) as cancellation_date,
+          s.created_at,
+          COUNT(DISTINCT u.id) as userCount
+        FROM studios s
+        LEFT JOIN users u ON u.studio_id = s.id AND u.role != 'super_admin'
+        WHERE s.id = $1
+        GROUP BY s.id, s.name, s.email, s.subscription_plan, s.subscription_status, s.subscription_start, s.subscription_end, s.stripe_customer_id, s.stripe_subscription_id, s.fee_type, s.fee_value, s.created_at
+      `, [studioId]);
+    }
 
     if (!studio) {
       return res.status(404).json({ error: 'Studio not found' });

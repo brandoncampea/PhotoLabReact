@@ -1,9 +1,37 @@
 import express from 'express';
-import { queryRow, queryRows, query, columnExists } from '../mssql.js';
+import { queryRow, queryRows, query, columnExists, tableExists } from '../mssql.js';
 import { authRequired } from '../middleware/auth.js';
 import { SUBSCRIPTION_PLANS } from '../constants/subscriptions.js';
 
 const router = express.Router();
+
+const parseFeatures = (raw) => {
+  if (Array.isArray(raw)) return raw;
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const getFallbackPlansFromConstants = () =>
+  Object.values(SUBSCRIPTION_PLANS)
+    .map((plan) => ({
+      id: plan.id,
+      name: plan.name,
+      description: null,
+      monthly_price: Number(plan.monthlyPrice) || 0,
+      yearly_price: null,
+      max_albums: plan.maxAlbums ?? null,
+      max_storage_gb: plan.maxStorageGb ?? null,
+      features: Array.isArray(plan.features) ? plan.features : [],
+      stripe_monthly_price_id: plan.stripePriceId || null,
+      stripe_yearly_price_id: null,
+      is_active: true,
+    }))
+    .sort((a, b) => (Number(a.monthly_price) || 0) - (Number(b.monthly_price) || 0));
 
 const getPlanSelectClause = async () => {
   const hasMonthlyPriceId = await columnExists('subscription_plans', 'stripe_monthly_price_id');
@@ -27,6 +55,11 @@ const getPlanSelectClause = async () => {
 // Get all subscription plans with current pricing
 router.get('/', async (req, res) => {
   try {
+    const hasPlansTable = await tableExists('subscription_plans');
+    if (!hasPlansTable) {
+      return res.json(getFallbackPlansFromConstants());
+    }
+
     const selectClause = await getPlanSelectClause();
     const plans = await queryRows(`
       SELECT ${selectClause}
@@ -36,7 +69,7 @@ router.get('/', async (req, res) => {
 
     const plansWithFeatures = plans.map(plan => ({
       ...plan,
-      features: plan.features ? JSON.parse(plan.features) : []
+      features: parseFeatures(plan.features)
     }));
 
     res.json(plansWithFeatures);
@@ -50,6 +83,15 @@ router.get('/', async (req, res) => {
 router.get('/:planId', async (req, res) => {
   try {
     const { planId } = req.params;
+    const hasPlansTable = await tableExists('subscription_plans');
+    if (!hasPlansTable) {
+      const fallback = getFallbackPlansFromConstants().find((p) => String(p.id) === String(planId));
+      if (!fallback) {
+        return res.status(404).json({ error: 'Plan not found' });
+      }
+      return res.json(fallback);
+    }
+
     const selectClause = await getPlanSelectClause();
     const plan = await queryRow(`
       SELECT ${selectClause}
@@ -63,7 +105,7 @@ router.get('/:planId', async (req, res) => {
 
     res.json({
       ...plan,
-      features: plan.features ? JSON.parse(plan.features) : []
+      features: parseFeatures(plan.features)
     });
   } catch (error) {
     console.error('Error fetching plan:', error);
@@ -152,7 +194,7 @@ router.post('/', authRequired, async (req, res) => {
       message: 'Plan created successfully',
       plan: {
         ...plan,
-        features: plan.features ? JSON.parse(plan.features) : [],
+        features: parseFeatures(plan.features),
       },
     });
   } catch (error) {
@@ -261,7 +303,7 @@ router.patch('/:planId', authRequired, async (req, res) => {
       message: 'Plan updated successfully',
       plan: {
         ...updatedPlan,
-        features: updatedPlan.features ? JSON.parse(updatedPlan.features) : []
+        features: parseFeatures(updatedPlan.features)
       }
     });
   } catch (error) {
