@@ -4,7 +4,7 @@
 
 ## ✅ Single App Service (Frontend + API in one app)
 
-Use workflow: [.github/workflows/azure-appservice-fullstack.yml](.github/workflows/azure-appservice-fullstack.yml)
+Use workflow: [.github/workflows/deploy.yml](.github/workflows/deploy.yml)
 
 Required GitHub secrets:
 
@@ -67,7 +67,7 @@ git add .github/
 git commit -m "Use single Azure App Service workflow"
 git push origin main
 
-# 2. Go to GitHub → Actions → "Deploy Full Stack to Azure App Service" → Run workflow
+# 2. Go to GitHub → Actions → "Deploy to Azure (Easy Find)" → Run workflow
 ```
 
 **Option B - Automatic (Ongoing):**
@@ -113,7 +113,7 @@ chmod +x scripts/deploy-azure-appservice.sh
 
 ## 📋 Workflows Included
 
-1. **azure-appservice-fullstack.yml**
+1. **deploy.yml**
    - Triggers: Manual and `main` pushes affecting backend/frontend files
    - Deploys: React frontend + Express API to one Azure App Service
 
