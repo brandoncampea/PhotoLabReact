@@ -186,6 +186,30 @@ jobs:
             return 1
           }
 
+          wait_for_deployment_completion() {
+            for check in $(seq 1 90); do
+              LATEST=$(curl -sS -u "$USERNAME:$PASSWORD" "https://${KUDU_HOST}/api/deployments/latest" || true)
+              STATUS=$(echo "$LATEST" | python3 -c "import json,sys; raw=sys.stdin.read().strip(); print((json.loads(raw).get('status',-1) if raw else -1))" 2>/dev/null || echo -1)
+
+              if [ "$STATUS" = "4" ]; then
+                echo "Deployment completed successfully (status=4)."
+                return 0
+              fi
+
+              if [ "$STATUS" = "3" ]; then
+                echo "Deployment failed (status=3)."
+                echo "$LATEST" | cat
+                return 1
+              fi
+
+              echo "Deployment in progress (status=${STATUS}). Waiting 20s..."
+              sleep 20
+            done
+
+            echo "Timed out waiting for deployment completion"
+            return 1
+          }
+
           for attempt in 1 2 3; do
             echo "Deploy attempt ${attempt}/3"
             wait_for_idle_deployment
@@ -195,9 +219,11 @@ jobs:
               --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
               --src-path appservice-deploy.zip \
               --type zip \
-              --timeout 1800; then
-              echo "Deployment succeeded"
-              break
+              --async true; then
+              echo "Deployment started asynchronously. Monitoring Kudu status..."
+              if wait_for_deployment_completion; then
+                break
+              fi
             fi
 
             if [ "$attempt" -eq 3 ]; then
