@@ -120,21 +120,31 @@ const startServer = () => {
   });
 };
 
-const dbInitTimeout = setTimeout(() => {
-  console.warn('⚠ Database initialization timeout - still waiting before accepting requests');
-}, 8000);
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-initializeDatabase()
-  .then(() => {
-    clearTimeout(dbInitTimeout);
-    console.log('✓ Database initialized successfully');
-    startServer();
-  })
-  .catch((error) => {
-    clearTimeout(dbInitTimeout);
-    console.error('✗ Failed to initialize database:', error.message);
-    process.exit(1);
-  });
+const initializeDatabaseWithRetry = async () => {
+  let attempt = 0;
+  while (true) {
+    attempt += 1;
+    try {
+      await initializeDatabase();
+      console.log(`✓ Database initialized successfully (attempt ${attempt})`);
+      return;
+    } catch (error) {
+      const delayMs = Math.min(30000, 3000 * attempt);
+      console.error(`✗ Database initialization failed (attempt ${attempt}):`, error?.message || error);
+      console.warn(`⚠ Retrying database initialization in ${Math.round(delayMs / 1000)}s...`);
+      await sleep(delayMs);
+    }
+  }
+};
+
+// Start HTTP listener immediately so Azure health/startup probes succeed quickly.
+startServer();
+
+// Initialize DB in the background (with retries) so transient DB startup issues
+// do not crash the worker process during deployment.
+initializeDatabaseWithRetry();
 
 // Graceful shutdown
 process.on('SIGTERM', () => {
