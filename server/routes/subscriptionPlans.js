@@ -1,16 +1,35 @@
 import express from 'express';
-import { queryRow, queryRows, query } from '../mssql.js';
+import { queryRow, queryRows, query, columnExists } from '../mssql.js';
 import { authRequired } from '../middleware/auth.js';
 import { SUBSCRIPTION_PLANS } from '../constants/subscriptions.js';
 
 const router = express.Router();
 
+const getPlanSelectClause = async () => {
+  const hasMonthlyPriceId = await columnExists('subscription_plans', 'stripe_monthly_price_id');
+  const hasYearlyPriceId = await columnExists('subscription_plans', 'stripe_yearly_price_id');
+
+  return [
+    'id',
+    'name',
+    'description',
+    'monthly_price',
+    'yearly_price',
+    'max_albums',
+    'max_storage_gb',
+    'features',
+    hasMonthlyPriceId ? 'stripe_monthly_price_id' : 'CAST(NULL AS NVARCHAR(255)) as stripe_monthly_price_id',
+    hasYearlyPriceId ? 'stripe_yearly_price_id' : 'CAST(NULL AS NVARCHAR(255)) as stripe_yearly_price_id',
+    'is_active',
+  ].join(', ');
+};
+
 // Get all subscription plans with current pricing
 router.get('/', async (req, res) => {
   try {
+    const selectClause = await getPlanSelectClause();
     const plans = await queryRows(`
-      SELECT id, name, description, monthly_price, yearly_price, max_albums, max_storage_gb, features,
-             stripe_monthly_price_id, stripe_yearly_price_id, is_active
+      SELECT ${selectClause}
       FROM subscription_plans
       ORDER BY monthly_price ASC
     `);
@@ -31,9 +50,9 @@ router.get('/', async (req, res) => {
 router.get('/:planId', async (req, res) => {
   try {
     const { planId } = req.params;
+    const selectClause = await getPlanSelectClause();
     const plan = await queryRow(`
-      SELECT id, name, description, monthly_price, yearly_price, max_albums, max_storage_gb, features,
-             stripe_monthly_price_id, stripe_yearly_price_id, is_active
+      SELECT ${selectClause}
       FROM subscription_plans
       WHERE id = $1
     `, [planId]);
@@ -121,9 +140,9 @@ router.post('/', authRequired, async (req, res) => {
       ]
     );
 
+    const selectClause = await getPlanSelectClause();
     const plan = await queryRow(
-      `SELECT id, name, description, monthly_price, yearly_price, max_albums, max_storage_gb, features,
-              stripe_monthly_price_id, stripe_yearly_price_id, is_active
+      `SELECT ${selectClause}
        FROM subscription_plans
        WHERE id = $1`,
       [inserted.id]
@@ -231,9 +250,9 @@ router.patch('/:planId', authRequired, async (req, res) => {
       WHERE id = $${updateValues.length}
     `, updateValues);
 
+    const selectClause = await getPlanSelectClause();
     const updatedPlan = await queryRow(`
-      SELECT id, name, description, monthly_price, yearly_price, max_albums, max_storage_gb,
-             features, stripe_monthly_price_id, stripe_yearly_price_id, is_active
+      SELECT ${selectClause}
       FROM subscription_plans
       WHERE id = $1
     `, [planId]);
