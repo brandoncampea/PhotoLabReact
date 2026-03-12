@@ -14,7 +14,8 @@ on:
       - '.github/workflows/azure-appservice-fullstack.yml'
 
 env:
-  NODE_VERSION: '20.x'
+  NODE_VERSION: '24.x'
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
   AZURE_WEBAPP_NAME: CampeaPhotoLab
   AZURE_RESOURCE_GROUP: PhotoLab
 
@@ -24,10 +25,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
@@ -41,21 +42,18 @@ jobs:
           VITE_API_URL: /api
           VITE_USE_MOCK_API: false
 
-      - name: Prepare production dependencies
-        run: npm prune --omit=dev
-
       - name: Create deployment zip
         run: |
           zip -r appservice-deploy.zip \
             server \
             dist \
-            node_modules \
             package.json \
             package-lock.json \
             -x "**/.DS_Store" "**/*.log" "**/test-results/**" "**/playwright-report/**" "server/uploads/**" "server/*.db" "server/*.db.*"
+          ls -lh appservice-deploy.zip
 
       - name: Azure Login
-        uses: azure/login@v1
+        uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
@@ -89,8 +87,8 @@ jobs:
 
           APP_URL="https://${APP_HOST}"
           SETTINGS=(
-            "SCM_DO_BUILD_DURING_DEPLOYMENT=false"
-            "ENABLE_ORYX_BUILD=false"
+            "SCM_DO_BUILD_DURING_DEPLOYMENT=true"
+            "ENABLE_ORYX_BUILD=true"
             "NODE_ENV=production"
             "NODE_OPTIONS=--no-deprecation"
             "PORT=8080"
@@ -160,7 +158,8 @@ jobs:
               --name ${{ env.AZURE_WEBAPP_NAME }} \
               --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
               --src-path appservice-deploy.zip \
-              --type zip; then
+              --type zip \
+              --async true; then
               echo "Deployment succeeded"
               break
             fi
@@ -173,6 +172,25 @@ jobs:
             echo "Deployment conflict or transient failure. Waiting before retry..."
             sleep 45
           done
+
+      - name: Fetch latest Kudu deployment diagnostics on failure
+        if: failure()
+        run: |
+          APP_HOST=$(az webapp show \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --query defaultHostName -o tsv)
+
+          CREDS=$(az webapp deployment list-publishing-credentials \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            -o json)
+
+          USERNAME=$(echo "$CREDS" | python3 -c "import json,sys; print(json.load(sys.stdin).get('publishingUserName',''))")
+          PASSWORD=$(echo "$CREDS" | python3 -c "import json,sys; print(json.load(sys.stdin).get('publishingPassword',''))")
+
+          echo "Latest deployment summary:"
+          curl -sS -u "$USERNAME:$PASSWORD" "https://${APP_HOST}.scm.azurewebsites.net/api/deployments/latest" | cat
 
       - name: Verify health endpoint
         run: |
