@@ -1,6 +1,6 @@
 import express from 'express';
 import { queryRow, query } from '../mssql.js';
-import { authRequired } from '../middleware/auth.js';
+import { authRequired, superAdminRequired } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -28,7 +28,7 @@ router.get('/config', async (req, res) => {
 });
 
 // Test Stripe connection
-router.post('/test-connection', async (req, res) => {
+router.post('/test-connection', authRequired, superAdminRequired, async (req, res) => {
   try {
     const { secretKey } = req.body;
     
@@ -74,7 +74,7 @@ router.post('/test-connection', async (req, res) => {
 });
 
 // Update Stripe configuration (admin only)
-router.put('/config', async (req, res) => {
+router.put('/config', authRequired, superAdminRequired, async (req, res) => {
   try {
     const { publishableKey, secretKey, isLiveMode, isActive, webhookSecret } = req.body;
     

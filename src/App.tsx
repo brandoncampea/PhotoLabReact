@@ -176,16 +176,58 @@ function App() {
                           <Route path="orders" element={<AdminOrders />} />
                           <Route path="customers" element={<AdminCustomers />} />
                           <Route path="shipping" element={<AdminShipping />} />
-                          <Route path="payments" element={<AdminPayments />} />
+                          <Route
+                            path="payments"
+                            element={
+                              <SuperAdminProtectedRoute>
+                                <AdminPayments />
+                              </SuperAdminProtectedRoute>
+                            }
+                          />
                           <Route path="users" element={<AdminUsers />} />
                           <Route path="studio-admins" element={<AdminStudioAdmins />} />
                           <Route path="profile" element={<AdminProfile />} />
                           <Route path="discount-codes" element={<AdminDiscountCodes />} />
-                          <Route path="labs" element={<AdminLabs />} />
-                          <Route path="configuration" element={<AdminLabs />} />
-                          <Route path="roes-config" element={<AdminRoesConfig />} />
-                          <Route path="whcc-config" element={<AdminWhccConfig />} />
-                          <Route path="mpix-config" element={<AdminMpixConfig />} />
+                          <Route
+                            path="labs"
+                            element={
+                              <SuperAdminProtectedRoute>
+                                <AdminLabs />
+                              </SuperAdminProtectedRoute>
+                            }
+                          />
+                          <Route
+                            path="configuration"
+                            element={
+                              <SuperAdminProtectedRoute>
+                                <AdminLabs />
+                              </SuperAdminProtectedRoute>
+                            }
+                          />
+                          <Route
+                            path="roes-config"
+                            element={
+                              <SuperAdminProtectedRoute>
+                                <AdminRoesConfig />
+                              </SuperAdminProtectedRoute>
+                            }
+                          />
+                          <Route
+                            path="whcc-config"
+                            element={
+                              <SuperAdminProtectedRoute>
+                                <AdminWhccConfig />
+                              </SuperAdminProtectedRoute>
+                            }
+                          />
+                          <Route
+                            path="mpix-config"
+                            element={
+                              <SuperAdminProtectedRoute>
+                                <AdminMpixConfig />
+                              </SuperAdminProtectedRoute>
+                            }
+                          />
                           <Route path="*" element={<Navigate to="/admin/dashboard" replace />} />
                         </Routes>
                       </AdminLayout>

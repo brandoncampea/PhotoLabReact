@@ -6,7 +6,9 @@ import { useAuth } from '../../contexts/AuthContext';
 const AdminProducts: React.FC = () => {
   const { user } = useAuth();
   const normalizedRole = typeof user?.role === 'string' ? user.role.trim().toLowerCase() : '';
-  const canManagePriceListProducts = normalizedRole === 'super_admin';
+  const viewAsStudioId = Number(localStorage.getItem('viewAsStudioId'));
+  const isViewingAsStudio = Number.isInteger(viewAsStudioId) && viewAsStudioId > 0;
+  const canManagePriceListProducts = normalizedRole === 'super_admin' && !isViewingAsStudio;
   const [priceLists, setPriceLists] = useState<PriceList[]>([]);
   const [selectedPriceList, setSelectedPriceList] = useState<PriceList | null>(null);
   const [loading, setLoading] = useState(true);

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { PriceList, Package } from '../../types';
+import { PriceList, Package, PriceListProductSize } from '../../types';
 import { priceListAdminService } from '../../services/priceListAdminService';
 import { packageService } from '../../services/packageService';
 import { parseCSVData, createPriceListFromImport, detectColumnsFromCSV, ColumnSuggestion, ColumnMapping } from '../../services/priceListService';
@@ -28,6 +28,18 @@ const AdminPriceLists: React.FC = () => {
     packagePrice: 0,
     items: [] as { productId: number; productSizeId: number; quantity: number }[],
     isActive: true,
+  });
+  const [showAddProductModal, setShowAddProductModal] = useState(false);
+  const [productSubmitting, setProductSubmitting] = useState(false);
+  const [newProductForm, setNewProductForm] = useState({
+    name: '',
+    description: '',
+    category: 'General',
+    basePrice: 0,
+    cost: 0,
+    isDigital: false,
+    isActive: true,
+    popularity: 0,
   });
   
   // Form states
@@ -287,20 +299,75 @@ const AdminPriceLists: React.FC = () => {
     }
   };
 
+  const resetAddProductForm = () => {
+    setNewProductForm({
+      name: '',
+      description: '',
+      category: 'General',
+      basePrice: 0,
+      cost: 0,
+      isDigital: false,
+      isActive: true,
+      popularity: 0,
+    });
+  };
+
+  const refreshSelectedPriceList = async (priceListId: number) => {
+    const refreshed = await priceListAdminService.getById(priceListId);
+    if (refreshed) {
+      setSelectedPriceList(refreshed);
+      setPriceLists((prev) => prev.map((pl) => (pl.id === refreshed.id ? { ...pl, ...refreshed } : pl)));
+    }
+  };
+
+  const handleOpenAddProduct = () => {
+    if (!selectedPriceList) return;
+    resetAddProductForm();
+    setShowAddProductModal(true);
+  };
+
+  const handleSubmitAddProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedPriceList || !newProductForm.name.trim()) return;
+
+    setProductSubmitting(true);
+    try {
+      await priceListAdminService.addProduct(selectedPriceList.id, {
+        ...newProductForm,
+        name: newProductForm.name.trim(),
+      });
+      setShowAddProductModal(false);
+      resetAddProductForm();
+      await refreshSelectedPriceList(selectedPriceList.id);
+    } catch (error) {
+      console.error('Failed to add product:', error);
+      alert('Failed to add product');
+    } finally {
+      setProductSubmitting(false);
+    }
+  };
+
   const handleRemoveProduct = async (priceListId: number, productId: number) => {
+    if (!confirm('Delete this product from this price list?')) return;
+
     try {
       await priceListAdminService.removeProduct(priceListId, productId);
-      const updated = priceLists.map(pl =>
-        pl.id === priceListId
-          ? { ...pl, products: pl.products.filter(p => p.id !== productId) }
-          : pl
-      );
-      setPriceLists(updated);
-      if (selectedPriceList?.id === priceListId) {
-        setSelectedPriceList(updated.find(pl => pl.id === priceListId) || null);
-      }
+      await refreshSelectedPriceList(priceListId);
     } catch (error) {
       console.error('Failed to remove product:', error);
+      alert('Failed to remove product');
+    }
+  };
+
+  const handleRemoveProductSize = async (priceListId: number, productId: number, size: PriceListProductSize) => {
+    if (!confirm(`Delete size "${size.name}"?`)) return;
+
+    try {
+      await priceListAdminService.removeProductSize(priceListId, productId, size.id);
+      await refreshSelectedPriceList(priceListId);
+    } catch (error) {
+      console.error('Failed to remove product size:', error);
+      alert('Failed to remove size');
     }
   };
 
@@ -823,8 +890,13 @@ const AdminPriceLists: React.FC = () => {
       {/* Details Panel */}
       {selectedPriceList && (
         <div className="detail-panel">
-          <h2>{selectedPriceList.name} - Details</h2>
-          <p className="muted-text" style={{ marginBottom: '1rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
+            <h2 style={{ margin: 0 }}>{selectedPriceList.name} - Details</h2>
+            <button onClick={handleOpenAddProduct} className="btn btn-primary">
+              + Add Product
+            </button>
+          </div>
+          <p className="muted-text" style={{ marginBottom: '1rem', marginTop: '0.5rem' }}>
             {(Array.isArray(selectedPriceList.products) ? selectedPriceList.products.length : 0)} product(s)
           </p>
 
@@ -842,7 +914,7 @@ const AdminPriceLists: React.FC = () => {
                 {(Array.isArray(selectedPriceList.products) && selectedPriceList.products.length === 0) ? (
                   <tr>
                     <td colSpan={4} className="muted-text" style={{ padding: '1rem', textAlign: 'center' }}>
-                      No products yet. Use Products page to add them.
+                      No products yet. Click “Add Product” to create one.
                     </td>
                   </tr>
                 ) : (
@@ -867,14 +939,22 @@ const AdminPriceLists: React.FC = () => {
                             {typeof size.price === 'number' ? `$${size.price.toFixed(2)}` : ''}
                           </td>
                           <td style={{ textAlign: 'center' }}>
-                            {idx === 0 ? (
+                            <div style={{ display: 'inline-flex', gap: '0.5rem' }}>
                               <button
-                                onClick={() => handleRemoveProduct(selectedPriceList.id, product.id)}
-                                className="btn btn-danger btn-sm"
+                                onClick={() => handleRemoveProductSize(selectedPriceList.id, product.id, size)}
+                                className="btn btn-sm"
                               >
-                                Remove
+                                Remove Size
                               </button>
-                            ) : null}
+                              {idx === 0 ? (
+                                <button
+                                  onClick={() => handleRemoveProduct(selectedPriceList.id, product.id)}
+                                  className="btn btn-danger btn-sm"
+                                >
+                                  Remove Product
+                                </button>
+                              ) : null}
+                            </div>
                           </td>
                         </tr>
                       ));
@@ -1094,6 +1174,112 @@ const AdminPriceLists: React.FC = () => {
                 </button>
                 <button type="submit" className="btn btn-primary">
                   {editingPackage ? 'Update Package' : 'Create Package'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add Product Modal */}
+      {showAddProductModal && selectedPriceList && (
+        <div className="modal-overlay" onClick={() => setShowAddProductModal(false)}>
+          <div className="modal-content admin-modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '640px' }}>
+            <div className="modal-header admin-modal-header">
+              <h2>Add Product to {selectedPriceList.name}</h2>
+              <button onClick={() => setShowAddProductModal(false)} className="btn-close">×</button>
+            </div>
+            <form onSubmit={handleSubmitAddProduct} className="modal-body admin-modal-body">
+              <div className="form-group">
+                <label>Product Name *</label>
+                <input
+                  type="text"
+                  value={newProductForm.name}
+                  onChange={(e) => setNewProductForm({ ...newProductForm, name: e.target.value })}
+                  required
+                  placeholder="e.g., Print"
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Description</label>
+                <textarea
+                  rows={2}
+                  value={newProductForm.description}
+                  onChange={(e) => setNewProductForm({ ...newProductForm, description: e.target.value })}
+                  placeholder="Optional description"
+                />
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Category</label>
+                  <input
+                    type="text"
+                    value={newProductForm.category}
+                    onChange={(e) => setNewProductForm({ ...newProductForm, category: e.target.value })}
+                    placeholder="General"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Popularity</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={newProductForm.popularity}
+                    onChange={(e) => setNewProductForm({ ...newProductForm, popularity: Number(e.target.value) || 0 })}
+                  />
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Base Price</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    value={newProductForm.basePrice}
+                    onChange={(e) => setNewProductForm({ ...newProductForm, basePrice: Number(e.target.value) || 0 })}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Cost</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    value={newProductForm.cost}
+                    onChange={(e) => setNewProductForm({ ...newProductForm, cost: Number(e.target.value) || 0 })}
+                  />
+                </div>
+              </div>
+
+              <div className="form-row" style={{ gap: '1.5rem' }}>
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={newProductForm.isDigital}
+                    onChange={(e) => setNewProductForm({ ...newProductForm, isDigital: e.target.checked })}
+                  />
+                  Digital product
+                </label>
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={newProductForm.isActive}
+                    onChange={(e) => setNewProductForm({ ...newProductForm, isActive: e.target.checked })}
+                  />
+                  Active
+                </label>
+              </div>
+
+              <div className="modal-actions admin-modal-actions">
+                <button type="button" onClick={() => setShowAddProductModal(false)} className="btn btn-secondary" disabled={productSubmitting}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={productSubmitting || !newProductForm.name.trim()}>
+                  {productSubmitting ? 'Adding...' : 'Add Product'}
                 </button>
               </div>
             </form>

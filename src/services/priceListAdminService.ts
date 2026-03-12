@@ -1,5 +1,5 @@
 import api from './api';
-import { PriceList } from '../types';
+import { PriceList, PriceListProduct } from '../types';
 
 export const priceListAdminService = {
   async getAll(): Promise<PriceList[]> {
@@ -35,8 +35,29 @@ export const priceListAdminService = {
     await api.post(`/price-lists/${id}/setDefault`);
   },
 
+  async addProduct(
+    priceListId: number,
+    data: {
+      name: string;
+      description?: string;
+      category?: string;
+      basePrice?: number;
+      cost?: number;
+      isDigital?: boolean;
+      isActive?: boolean;
+      popularity?: number;
+    }
+  ): Promise<PriceListProduct> {
+    const response = await api.post(`/price-lists/${priceListId}/products`, data);
+    return response.data;
+  },
+
   async removeProduct(priceListId: number, productId: number): Promise<void> {
     await api.delete(`/price-lists/${priceListId}/products/${productId}`);
+  },
+
+  async removeProductSize(priceListId: number, productId: number, sizeId: number): Promise<void> {
+    await api.delete(`/price-lists/${priceListId}/products/${productId}/sizes/${sizeId}`);
   },
 
   async addItemsToPriceList(priceListId: number, items: any[]): Promise<void> {

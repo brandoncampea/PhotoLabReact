@@ -100,6 +100,22 @@ export const stripeService = {
   },
 
   /**
+   * Set cancel_at_period_end on a subscription
+   */
+  async setCancelAtPeriodEnd(subscriptionId, cancelAtPeriodEnd) {
+    try {
+      const { client } = await getConfiguredStripeClient();
+      const subscription = await client.subscriptions.update(subscriptionId, {
+        cancel_at_period_end: cancelAtPeriodEnd
+      });
+      return subscription;
+    } catch (error) {
+      console.error('Error setting cancel_at_period_end:', error);
+      throw error;
+    }
+  },
+
+  /**
    * Cancel subscription
    */
   async cancelSubscription(subscriptionId) {

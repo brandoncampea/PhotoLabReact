@@ -30,13 +30,53 @@ interface Plan {
   features: string[];
 }
 
-interface StudioInvoiceBalance {
+interface StudioProfitRow {
   studioId: number;
   studioName: string;
-  invoiceId: number | null;
-  openBalance: number;
-  itemCount: number;
-  periodStart: string | null;
+  orderCount: number;
+  studioRevenue: number;
+  superAdminProfit: number;
+  studioProfitGross: number;
+  totalPayouts: number;
+  payoutCount: number;
+  studioProfit: number;
+  isPayoutEligible: boolean;
+  amountToNextPayout: number;
+}
+
+interface StudioProfitPayout {
+  id: number;
+  studioId: number;
+  amount: number;
+  notes?: string;
+  createdAt: string;
+  createdByName?: string;
+}
+
+interface ProfitSummary {
+  payoutThreshold: number;
+  totals: {
+    totalStudioRevenue: number;
+    totalSuperAdminProfit: number;
+    totalStudioProfitGross: number;
+    totalPayouts: number;
+    totalStudioProfit: number;
+    totalOrders: number;
+    eligibleStudioCount: number;
+    totalEligibleStudioPayout: number;
+  };
+  byStudio: StudioProfitRow[];
+}
+
+interface SubscriptionPlanDB {
+  id: number;
+  name: string;
+  description?: string;
+  monthly_price: number;
+  yearly_price?: number;
+  stripe_monthly_price_id?: string;
+  stripe_yearly_price_id?: string;
+  is_active: boolean;
 }
 
 export default function SuperAdminDashboard() {
@@ -68,23 +108,32 @@ export default function SuperAdminDashboard() {
     isActive: false,
   });
   const [savingSubscriptionConfig, setSavingSubscriptionConfig] = useState(false);
-  const [invoiceBalances, setInvoiceBalances] = useState<StudioInvoiceBalance[]>([]);
-  const [totalOutstanding, setTotalOutstanding] = useState(0);
+  const [profitSummary, setProfitSummary] = useState<ProfitSummary | null>(null);
+  const [showSuperAdminProfitByStudio, setShowSuperAdminProfitByStudio] = useState(false);
+  const [showStudioProfitByStudio, setShowStudioProfitByStudio] = useState(false);
+  const [payoutThreshold, setPayoutThreshold] = useState(500);
+  const [savingPayoutThreshold, setSavingPayoutThreshold] = useState(false);
+  const [selectedPayoutStudio, setSelectedPayoutStudio] = useState<StudioProfitRow | null>(null);
+  const [studioPayoutHistory, setStudioPayoutHistory] = useState<StudioProfitPayout[]>([]);
+  const [subscriptionPlans, setSubscriptionPlans] = useState<SubscriptionPlanDB[]>([]);
+  const [editingPlanPrices, setEditingPlanPrices] = useState<Record<number, { monthly: string; yearly: string }>>({});
+  const [savingPlanPrices, setSavingPlanPrices] = useState<Record<number, boolean>>({});
 
   useEffect(() => {
     if (user?.role === 'super_admin') {
       fetchStudios();
       fetchPlans();
       fetchSubscriptionPaymentConfig();
-      fetchInvoiceBalances();
+      fetchPayoutThreshold();
+      fetchProfitSummary();
+      fetchSubscriptionPlans();
     }
   }, [user]);
 
   useEffect(() => {
-    if (location.hash === '#subscription-payment-gateway' || location.hash === '#invoices') {
+    if (location.hash === '#subscription-payment-gateway') {
       requestAnimationFrame(() => {
-        const targetId = location.hash === '#invoices' ? 'super-admin-invoices' : 'subscription-payment-gateway';
-        document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        document.getElementById('subscription-payment-gateway')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       });
     }
   }, [location.hash]);
@@ -175,55 +224,180 @@ export default function SuperAdminDashboard() {
     }
   };
 
-  const fetchInvoiceBalances = async () => {
+  const fetchPayoutThreshold = async () => {
     try {
       const token = localStorage.getItem('authToken');
-      const response = await fetch('/api/invoices/admin/all', {
-        headers: { 'Authorization': `Bearer ${token}` },
+      const response = await fetch('/api/studios/profit-payout-config', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
       });
+
       if (response.ok) {
         const data = await response.json();
-        setInvoiceBalances(data.studioBalances || data.studios || []);
-        setTotalOutstanding(data.totalOutstanding || 0);
+        setPayoutThreshold(Number(data.payoutThreshold) || 500);
       }
     } catch (err) {
-      console.error('Failed to load invoice balances:', err);
+      console.error('Failed to fetch payout threshold:', err);
     }
   };
 
-  const handleCloseInvoice = async (invoiceId: number) => {
-    if (!confirm('Close this invoice and open a new billing period?')) return;
+  const handleSavePayoutThreshold = async () => {
+    try {
+      setSavingPayoutThreshold(true);
+      const token = localStorage.getItem('authToken');
+      const response = await fetch('/api/studios/profit-payout-config', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ payoutThreshold }),
+      });
+
+      if (response.ok) {
+        await fetchProfitSummary();
+        alert('Profit payout threshold saved');
+      } else {
+        const data = await response.json();
+        setError(data.error || 'Failed to save payout threshold');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to save payout threshold');
+    } finally {
+      setSavingPayoutThreshold(false);
+    }
+  };
+
+  const fetchStudioPayoutHistory = async (studio: StudioProfitRow) => {
     try {
       const token = localStorage.getItem('authToken');
-      const response = await fetch(`/api/invoices/${invoiceId}/close`, {
+      const response = await fetch(`/api/studios/${studio.studioId}/profit-payouts`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setSelectedPayoutStudio(studio);
+        setStudioPayoutHistory(Array.isArray(data.payouts) ? data.payouts : []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch studio payout history:', err);
+    }
+  };
+
+  const handleMarkPayoutSent = async (studio: StudioProfitRow) => {
+    const defaultAmount = Number(studio.studioProfit || 0).toFixed(2);
+    const entered = window.prompt(`Enter payout amount for ${studio.studioName}`, defaultAmount);
+    if (entered === null) return;
+
+    const amount = Number(entered);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      alert('Please enter a valid payout amount greater than 0');
+      return;
+    }
+
+    const notes = window.prompt('Optional payout note', '') || undefined;
+
+    try {
+      const token = localStorage.getItem('authToken');
+      const response = await fetch(`/api/studios/${studio.studioId}/profit-payouts`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ amount, notes }),
       });
+
       if (response.ok) {
-        fetchInvoiceBalances();
+        await fetchProfitSummary();
+        if (selectedPayoutStudio?.studioId === studio.studioId) {
+          await fetchStudioPayoutHistory(studio);
+        }
+        alert('Payout recorded successfully');
       } else {
-        alert('Failed to close invoice');
+        const data = await response.json();
+        alert(data.error || 'Failed to record payout');
       }
     } catch (err) {
-      console.error('Failed to close invoice:', err);
+      console.error('Failed to mark payout sent:', err);
+      alert('Failed to record payout');
     }
   };
 
-  const handleMarkInvoicePaid = async (invoiceId: number) => {
+  const fetchProfitSummary = async () => {
     try {
       const token = localStorage.getItem('authToken');
-      const response = await fetch(`/api/invoices/${invoiceId}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ status: 'paid' }),
+      const response = await fetch('/api/studios/profit/summary', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
       });
+
       if (response.ok) {
-        fetchInvoiceBalances();
+        const data = await response.json();
+        setProfitSummary(data);
       } else {
-        alert('Failed to mark invoice as paid');
+        setProfitSummary(null);
       }
     } catch (err) {
-      console.error('Failed to mark paid:', err);
+      console.error('Failed to fetch profit summary:', err);
+      setProfitSummary(null);
+    }
+  };
+
+  const fetchSubscriptionPlans = async () => {
+    try {
+      const response = await fetch('/api/subscription-plans');
+      if (response.ok) {
+        const data: SubscriptionPlanDB[] = await response.json();
+        setSubscriptionPlans(data);
+        // Initialise editing state with current DB values
+        const initial: Record<number, { monthly: string; yearly: string }> = {};
+        data.forEach(p => {
+          initial[p.id] = {
+            monthly: p.stripe_monthly_price_id || '',
+            yearly: p.stripe_yearly_price_id || '',
+          };
+        });
+        setEditingPlanPrices(initial);
+      }
+    } catch (err) {
+      console.error('Failed to fetch subscription plans:', err);
+    }
+  };
+
+  const handleSavePlanPrices = async (planId: number) => {
+    const prices = editingPlanPrices[planId];
+    if (!prices) return;
+    setSavingPlanPrices(prev => ({ ...prev, [planId]: true }));
+    try {
+      const token = localStorage.getItem('authToken');
+      const response = await fetch(`/api/subscription-plans/${planId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          stripe_monthly_price_id: prices.monthly || null,
+          stripe_yearly_price_id: prices.yearly || null,
+        }),
+      });
+      if (response.ok) {
+        await fetchSubscriptionPlans();
+        alert('Stripe Price IDs saved');
+      } else {
+        const data = await response.json();
+        setError(data.error || 'Failed to save Price IDs');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to save Price IDs');
+    } finally {
+      setSavingPlanPrices(prev => ({ ...prev, [planId]: false }));
     }
   };
 
@@ -412,6 +586,103 @@ export default function SuperAdminDashboard() {
         >
           {savingSubscriptionConfig ? 'Saving...' : 'Save Subscription Gateway Config'}
         </button>
+
+        <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--border-color)' }}>
+          <h3 style={{ marginTop: 0 }}>Studio Profit Payout Threshold</h3>
+          <p style={{ marginTop: 0, color: 'var(--text-secondary)' }}>
+            Studio payouts are marked eligible once studio profit reaches this amount.
+          </p>
+          <div className="form-group" style={{ maxWidth: '280px' }}>
+            <label>Payout Threshold ($)</label>
+            <input
+              type="number"
+              min={0}
+              step="0.01"
+              value={payoutThreshold}
+              onChange={(e) => setPayoutThreshold(Number(e.target.value) || 0)}
+            />
+          </div>
+          <button
+            onClick={handleSavePayoutThreshold}
+            className="btn btn-primary"
+            disabled={savingPayoutThreshold}
+          >
+            {savingPayoutThreshold ? 'Saving...' : 'Save Payout Threshold'}
+          </button>
+        </div>
+      </div>
+
+      {/* Subscription Plans — Stripe Price ID configuration */}
+      <div className="admin-summary-box" style={{ marginBottom: '24px' }}>
+        <h2 style={{ marginTop: 0 }}>📋 Subscription Plans — Stripe Price IDs</h2>
+        <p style={{ marginTop: '0.25rem', color: 'var(--text-secondary)' }}>
+          Set the Stripe <code>price_xxx</code> IDs for each plan. Create them first in your Stripe Dashboard
+          under <strong>Products → Pricing</strong>, then paste the IDs here. Studios use these when
+          subscribing via Stripe Checkout.
+        </p>
+        {subscriptionPlans.length === 0 ? (
+          <p style={{ color: 'var(--text-secondary)' }}>No subscription plans found.</p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginTop: '1rem' }}>
+            {subscriptionPlans.map(plan => (
+              <div
+                key={plan.id}
+                style={{
+                  background: 'var(--bg-secondary)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '8px',
+                  padding: '1rem',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                  <strong style={{ fontSize: '1rem' }}>{plan.name}</strong>
+                  <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                    ${plan.monthly_price}/mo{plan.yearly_price ? ` · $${plan.yearly_price}/yr` : ''}
+                  </span>
+                  {!plan.is_active && (
+                    <span className="status-badge inactive" style={{ marginLeft: 'auto' }}>Inactive</span>
+                  )}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label style={{ fontSize: '0.8rem' }}>Monthly Price ID</label>
+                    <input
+                      type="text"
+                      placeholder="price_..."
+                      value={editingPlanPrices[plan.id]?.monthly ?? ''}
+                      onChange={e => setEditingPlanPrices(prev => ({
+                        ...prev,
+                        [plan.id]: { ...prev[plan.id], monthly: e.target.value },
+                      }))}
+                      style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}
+                    />
+                  </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label style={{ fontSize: '0.8rem' }}>Yearly Price ID</label>
+                    <input
+                      type="text"
+                      placeholder="price_... (optional)"
+                      value={editingPlanPrices[plan.id]?.yearly ?? ''}
+                      onChange={e => setEditingPlanPrices(prev => ({
+                        ...prev,
+                        [plan.id]: { ...prev[plan.id], yearly: e.target.value },
+                      }))}
+                      style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}
+                    />
+                  </div>
+                </div>
+                <button
+                  onClick={() => handleSavePlanPrices(plan.id)}
+                  className="btn btn-primary"
+                  disabled={savingPlanPrices[plan.id]}
+                  style={{ marginTop: '0.75rem', fontSize: '0.85rem' }}
+                >
+                  {savingPlanPrices[plan.id] ? 'Saving…' : `Save ${plan.name} Price IDs`}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="stats-grid">
@@ -427,24 +698,106 @@ export default function SuperAdminDashboard() {
           <h3>Monthly Revenue</h3>
           <p className="stat-value">${studios.reduce((sum, s) => sum + parseFloat(s.subscription_plan || '0'), 0).toFixed(2)}</p>
         </div>
+        <div className="stat-card">
+          <h3>Total Super Admin Profit</h3>
+          <p className="stat-value" style={{ color: '#fbbf24' }}>
+            ${Number(profitSummary?.totals?.totalSuperAdminProfit || 0).toFixed(2)}
+          </p>
+          <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0 }}>
+            Studio payout threshold: ${Number(profitSummary?.payoutThreshold ?? payoutThreshold).toFixed(2)}
+          </p>
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={() => setShowSuperAdminProfitByStudio((prev) => !prev)}
+            style={{ marginTop: '0.5rem' }}
+          >
+            {showSuperAdminProfitByStudio ? 'Hide by Studio' : 'Drill by Studio'}
+          </button>
+        </div>
+        <div className="stat-card">
+          <h3>Total Studio Profit</h3>
+          <p className="stat-value" style={{ color: '#86efac' }}>
+            ${Number(profitSummary?.totals?.totalStudioProfit || 0).toFixed(2)}
+          </p>
+          <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0 }}>
+            Eligible studios: {Number(profitSummary?.totals?.eligibleStudioCount || 0)}
+          </p>
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={() => setShowStudioProfitByStudio((prev) => !prev)}
+            style={{ marginTop: '0.5rem' }}
+          >
+            {showStudioProfitByStudio ? 'Hide by Studio' : 'Drill by Studio'}
+          </button>
+        </div>
       </div>
 
-      <div id="super-admin-invoices" className="admin-summary-box" style={{ marginBottom: '24px' }}>
-        <h2 style={{ marginTop: 0 }}>🧾 Studio Invoices</h2>
-        <p style={{ marginTop: '0.5rem', color: 'var(--text-secondary)' }}>
-          Review open studio balances and manage invoice billing status.
-        </p>
-
-        <div className="stats-grid" style={{ marginBottom: '16px' }}>
-          <div className="stat-card" style={{ borderColor: 'rgba(251,191,36,0.5)' }}>
-            <h3>💳 Total Outstanding</h3>
-            <p className="stat-value" style={{ color: totalOutstanding > 0 ? '#fbbf24' : 'var(--text-primary)' }}>
-              ${totalOutstanding.toFixed(2)}
-            </p>
-            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0 }}>Open invoice balances</p>
+      {(showSuperAdminProfitByStudio || showStudioProfitByStudio) && profitSummary && (
+        <div className="admin-summary-box" style={{ marginBottom: '24px' }}>
+          <h3 style={{ marginTop: 0 }}>Profit by Studio</h3>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Studio</th>
+                  <th>Orders</th>
+                  {showSuperAdminProfitByStudio && <th style={{ textAlign: 'right' }}>Super Admin Profit</th>}
+                  {showStudioProfitByStudio && <th style={{ textAlign: 'right' }}>Studio Profit</th>}
+                  <th style={{ textAlign: 'right' }}>Paid Out</th>
+                  <th style={{ textAlign: 'center' }}>Payout Status</th>
+                  <th style={{ textAlign: 'right' }}>Studio Revenue</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {profitSummary.byStudio.map((row) => (
+                  <tr key={row.studioId}>
+                    <td>{row.studioName}</td>
+                    <td>{row.orderCount}</td>
+                    {showSuperAdminProfitByStudio && (
+                      <td style={{ textAlign: 'right', color: '#fbbf24', fontWeight: 'bold' }}>
+                        ${row.superAdminProfit.toFixed(2)}
+                      </td>
+                    )}
+                    {showStudioProfitByStudio && (
+                      <td style={{ textAlign: 'right', color: '#86efac', fontWeight: 'bold' }}>
+                        ${row.studioProfit.toFixed(2)}
+                      </td>
+                    )}
+                    <td style={{ textAlign: 'right' }}>${(row.totalPayouts || 0).toFixed(2)}</td>
+                    <td style={{ textAlign: 'center' }}>
+                      {row.isPayoutEligible ? (
+                        <span className="status-badge status-active">Eligible</span>
+                      ) : (
+                        <span className="status-badge status-inactive">
+                          ${(row.amountToNextPayout || 0).toFixed(2)} to go
+                        </span>
+                      )}
+                    </td>
+                    <td style={{ textAlign: 'right' }}>${row.studioRevenue.toFixed(2)}</td>
+                    <td>
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button className="btn btn-secondary btn-sm" onClick={() => fetchStudioPayoutHistory(row)}>
+                          View Payouts
+                        </button>
+                        <button
+                          className="btn btn-success btn-sm"
+                          disabled={!row.isPayoutEligible}
+                          onClick={() => handleMarkPayoutSent(row)}
+                        >
+                          Mark Payout
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
+      )}
 
+      <div className="admin-summary-box" style={{ marginBottom: '24px' }}>
         <h3 style={{ marginTop: 0 }}>Studios Management</h3>
       <div style={{ overflowX: 'auto' }}>
         <table className="data-table">
@@ -456,7 +809,10 @@ export default function SuperAdminDashboard() {
               <th>Billing</th>
               <th>Status</th>
               <th>Fee</th>
-              <th>Outstanding</th>
+              <th style={{ textAlign: 'right' }}>Studio Profit</th>
+              <th style={{ textAlign: 'right' }}>Super Admin Profit</th>
+              <th style={{ textAlign: 'right' }}>Paid Out</th>
+              <th>Payout Status</th>
               <th>Created</th>
               <th>Users</th>
               <th>Actions</th>
@@ -489,16 +845,22 @@ export default function SuperAdminDashboard() {
                       : `$${(studio.fee_value || 0).toFixed(2)}`}
                   </span>
                 </td>
+                <td style={{ textAlign: 'right', color: '#86efac', fontWeight: 'bold' }}>
+                  ${Number(profitSummary?.byStudio?.find((row) => row.studioId === studio.id)?.studioProfit || 0).toFixed(2)}
+                </td>
+                <td style={{ textAlign: 'right', color: '#fbbf24', fontWeight: 'bold' }}>
+                  ${Number(profitSummary?.byStudio?.find((row) => row.studioId === studio.id)?.superAdminProfit || 0).toFixed(2)}
+                </td>
+                <td style={{ textAlign: 'right' }}>
+                  ${Number(profitSummary?.byStudio?.find((row) => row.studioId === studio.id)?.totalPayouts || 0).toFixed(2)}
+                </td>
                 <td>
                   {(() => {
-                    const bal = invoiceBalances.find(b => b.studioId === studio.id);
-                    return bal && bal.openBalance > 0 ? (
-                      <span style={{ color: '#fbbf24', fontWeight: 'bold' }}>
-                        ${bal.openBalance.toFixed(2)}
-                      </span>
-                    ) : (
-                      <span style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>—</span>
-                    );
+                    const row = profitSummary?.byStudio?.find((item) => item.studioId === studio.id);
+                    if (!row) return <span style={{ color: 'var(--text-secondary)' }}>—</span>;
+                    return row.isPayoutEligible
+                      ? <span className="status-badge status-active">Eligible</span>
+                      : <span className="status-badge status-inactive">${row.amountToNextPayout.toFixed(2)} to go</span>;
                   })()}
                 </td>
                 <td>{new Date(studio.created_at).toLocaleDateString()}</td>
@@ -528,26 +890,26 @@ export default function SuperAdminDashboard() {
                     Edit Fees
                   </button>
                   {(() => {
-                    const bal = invoiceBalances.find(b => b.studioId === studio.id);
-                    return bal?.invoiceId ? (
+                    const row = profitSummary?.byStudio?.find((item) => item.studioId === studio.id);
+                    if (!row) return null;
+                    return (
                       <>
                         <button
-                          onClick={() => handleCloseInvoice(bal.invoiceId!)}
-                          className="btn btn-warning btn-sm"
+                          onClick={() => fetchStudioPayoutHistory(row)}
+                          className="btn btn-secondary btn-sm"
                           style={{ marginRight: '8px' }}
-                          title="Close current billing period and open a new invoice"
                         >
-                          Close Invoice
+                          View Payouts
                         </button>
                         <button
-                          onClick={() => handleMarkInvoicePaid(bal.invoiceId!)}
+                          onClick={() => handleMarkPayoutSent(row)}
                           className="btn btn-success btn-sm"
-                          title="Mark current open invoice as paid"
+                          disabled={!row.isPayoutEligible}
                         >
-                          Mark Paid
+                          Mark Payout
                         </button>
                       </>
-                    ) : null;
+                    );
                   })()}
                 </td>
               </tr>
@@ -556,6 +918,52 @@ export default function SuperAdminDashboard() {
         </table>
       </div>
       </div>
+
+      {selectedPayoutStudio && (
+        <div className="admin-summary-box" style={{ marginBottom: '24px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h3 style={{ marginTop: 0, marginBottom: '0.75rem' }}>
+              Payout History — {selectedPayoutStudio.studioName}
+            </h3>
+            <button className="btn btn-secondary btn-sm" onClick={() => setSelectedPayoutStudio(null)}>
+              Close
+            </button>
+          </div>
+
+          <div style={{ overflowX: 'auto' }}>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Date</th>
+                  <th style={{ textAlign: 'right' }}>Amount</th>
+                  <th>Created By</th>
+                  <th>Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                {studioPayoutHistory.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
+                      No payout history for this studio.
+                    </td>
+                  </tr>
+                ) : (
+                  studioPayoutHistory.map((payout) => (
+                    <tr key={payout.id}>
+                      <td>#{payout.id}</td>
+                      <td>{new Date(payout.createdAt).toLocaleString()}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 'bold' }}>${Number(payout.amount || 0).toFixed(2)}</td>
+                      <td>{payout.createdByName || '—'}</td>
+                      <td>{payout.notes || '—'}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Subscription Modal */}
       {showSubscriptionModal && selectedStudio && (
