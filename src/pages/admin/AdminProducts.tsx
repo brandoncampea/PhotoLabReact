@@ -27,6 +27,8 @@ const AdminProducts: React.FC = () => {
   const [savingStudioSizeId, setSavingStudioSizeId] = useState<number | null>(null);
   const [studioSizeOfferedDrafts, setStudioSizeOfferedDrafts] = useState<Record<number, boolean>>({});
   const [uploadingForProductId, setUploadingForProductId] = useState<number | null>(null);
+  const [batchPercentage, setBatchPercentage] = useState<number>(500);
+  const [batchUpdatingPrices, setBatchUpdatingPrices] = useState(false);
   const samplePhotoInputRef = useRef<HTMLInputElement>(null);
   
   const [productForm, setProductForm] = useState({
@@ -226,6 +228,42 @@ const AdminProducts: React.FC = () => {
     } catch (error) {
       console.error('Failed to toggle size offering:', error);
       setStudioSizeOfferedDrafts((prev) => ({ ...prev, [sizeId]: !offered }));
+    }
+  };
+
+  const handleBatchApplyPricing = async () => {
+    if (!selectedPriceList || canManagePriceListProducts) return;
+
+    const percentage = Number(batchPercentage);
+    if (!Number.isFinite(percentage) || percentage < 0) {
+      alert('Please enter a valid non-negative percentage');
+      return;
+    }
+
+    setBatchUpdatingPrices(true);
+    try {
+      await api.put(`/price-lists/${selectedPriceList.id}/studio-products/batch-price`, {
+        percentage,
+      });
+
+      const updated = await api.get(`/price-lists/${selectedPriceList.id}`);
+      setSelectedPriceList(updated.data);
+
+      const priceDrafts: Record<number, number> = {};
+      const offeredDrafts: Record<number, boolean> = {};
+      (updated.data.products || []).forEach((product: PriceListProduct) => {
+        product.sizes.forEach((size: PriceListProductSize) => {
+          priceDrafts[size.id] = Number(size.price) || 0;
+          offeredDrafts[size.id] = size.isOffered !== false;
+        });
+      });
+      setStudioSizePriceDrafts(priceDrafts);
+      setStudioSizeOfferedDrafts(offeredDrafts);
+    } catch (error) {
+      console.error('Failed to batch update studio prices:', error);
+      alert('Failed to batch set prices');
+    } finally {
+      setBatchUpdatingPrices(false);
     }
   };
 
@@ -528,7 +566,37 @@ const AdminProducts: React.FC = () => {
 
       {!canManagePriceListProducts && (
         <div className="info-box" style={{ border: '1px solid var(--border-color)', marginBottom: '1rem' }}>
-          Super admins manage products and sizes, setting a <strong>price</strong> (which is your cost) based on lab costs from CSV/WHCC/mpix imports. You can activate products to offer them, set your own customer price per size, and create packages.
+          Super admins manage product costs and sizes based on lab imports. You can choose which products to offer, set your own selling price per size, and create packages.
+        </div>
+      )}
+
+      {!canManagePriceListProducts && selectedPriceList && (
+        <div className="selection-panel" style={{ marginBottom: '1rem' }}>
+          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'end', flexWrap: 'wrap' }}>
+            <div>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
+                Batch set prices as % of cost
+              </label>
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                value={batchPercentage}
+                onChange={(e) => setBatchPercentage(parseFloat(e.target.value) || 0)}
+                style={{ width: '160px' }}
+              />
+              <div className="muted-text" style={{ fontSize: '0.8rem', marginTop: '0.35rem' }}>
+                Example: 500 means price = 5× base cost.
+              </div>
+            </div>
+            <button
+              onClick={handleBatchApplyPricing}
+              className="btn btn-primary"
+              disabled={batchUpdatingPrices}
+            >
+              {batchUpdatingPrices ? 'Applying...' : 'Apply to All Sizes'}
+            </button>
+          </div>
         </div>
       )}
 
@@ -601,7 +669,6 @@ const AdminProducts: React.FC = () => {
                         {product.isDigital ? '🖥️ Digital' : '🖨️ Physical'}
                       </p>
                       <p className="muted-text" style={{ fontSize: '0.85rem', margin: '0.35rem 0 0 0' }}>
-                        Category: {product.category || 'General'}
                         {canManagePriceListProducts
                           ? (
                             <>
@@ -1046,14 +1113,6 @@ const AdminProducts: React.FC = () => {
                   rows={3}
                 />
               </div>
-              <div className="form-group">
-                <label>Category</label>
-                <input
-                  type="text"
-                  value={productForm.category}
-                  onChange={e => setProductForm({ ...productForm, category: e.target.value })}
-                />
-              </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                 <div className="form-group">
                   <label>Your Price (Studio Cost)</label>
@@ -1076,27 +1135,16 @@ const AdminProducts: React.FC = () => {
                   />
                 </div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                <div className="form-group">
-                  <label>Popularity</label>
+              <div className="form-group" style={{ display: 'flex', alignItems: 'center', marginTop: '0.5rem' }}>
+                <label style={{ margin: 0 }}>
                   <input
-                    type="number"
-                    min="0"
-                    value={productForm.popularity}
-                    onChange={e => setProductForm({ ...productForm, popularity: parseInt(e.target.value || '0', 10) || 0 })}
+                    type="checkbox"
+                    checked={productForm.isActive}
+                    onChange={e => setProductForm({ ...productForm, isActive: e.target.checked })}
+                    style={{ marginRight: '8px' }}
                   />
-                </div>
-                <div className="form-group" style={{ display: 'flex', alignItems: 'center', marginTop: '1.8rem' }}>
-                  <label style={{ margin: 0 }}>
-                    <input
-                      type="checkbox"
-                      checked={productForm.isActive}
-                      onChange={e => setProductForm({ ...productForm, isActive: e.target.checked })}
-                      style={{ marginRight: '8px' }}
-                    />
-                    Active Product
-                  </label>
-                </div>
+                  Active Product
+                </label>
               </div>
               <div className="form-group">
                 <label>
