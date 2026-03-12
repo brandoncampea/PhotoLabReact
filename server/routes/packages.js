@@ -4,6 +4,77 @@ import { adminRequired } from '../middleware/auth.js';
 
 const router = express.Router();
 
+const parseProductOptions = (options) => {
+  if (!options) return {};
+  try {
+    return typeof options === 'string' ? JSON.parse(options) : options;
+  } catch {
+    return {};
+  }
+};
+
+const ensureStudioAdminRole = (req, res) => {
+  if (req.user?.role !== 'studio_admin') {
+    res.status(403).json({ error: 'Only studio admins can manage packages' });
+    return false;
+  }
+  if (!req.user?.studio_id) {
+    res.status(400).json({ error: 'Studio context is required' });
+    return false;
+  }
+  return true;
+};
+
+const calculateItemsCost = async (priceListId, studioId, items = []) => {
+  let calculatedCost = 0;
+
+  for (const item of items) {
+    const quantity = Number(item.quantity);
+    const productId = Number(item.productId);
+    const productSizeId = Number(item.productSizeId);
+
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      throw new Error('Each package item must include quantity greater than 0');
+    }
+
+    if (!Number.isInteger(productId) || productId <= 0 || !Number.isInteger(productSizeId) || productSizeId <= 0) {
+      throw new Error('Each package item must include valid productId and productSizeId');
+    }
+
+    const sizeRow = await queryRow(
+      `SELECT
+         p.id as productId,
+         p.options,
+         COALESCE(spsso.price, ps.price) as effectivePrice
+       FROM product_sizes ps
+       INNER JOIN products p ON p.id = ps.product_id
+       INNER JOIN price_list_products plp ON plp.product_id = p.id AND plp.price_list_id = ps.price_list_id
+       LEFT JOIN studio_price_list_size_overrides spsso
+         ON spsso.product_size_id = ps.id
+        AND spsso.price_list_id = ps.price_list_id
+        AND spsso.studio_id = $4
+       WHERE ps.id = $1
+         AND ps.product_id = $2
+         AND ps.price_list_id = $3`,
+      [productSizeId, productId, priceListId, studioId]
+    );
+
+    if (!sizeRow) {
+      throw new Error('One or more package items are not valid for this price list');
+    }
+
+    const options = parseProductOptions(sizeRow.options);
+    const isActive = options.isActive !== undefined ? !!options.isActive : true;
+    if (!isActive) {
+      throw new Error('Packages can only include active products');
+    }
+
+    calculatedCost += (Number(sizeRow.effectivePrice) || 0) * quantity;
+  }
+
+  return Number(calculatedCost.toFixed(2));
+};
+
 // Compatibility: GET /api/packages?priceListId=1
 router.get('/', async (req, res) => {
   const priceListId = req.query.priceListId;
@@ -92,13 +163,35 @@ router.get('/:id', async (req, res) => {
 // Create package
 router.post('/', adminRequired, async (req, res) => {
   try {
+    if (!ensureStudioAdminRole(req, res)) return;
+
     const { priceListId, name, description, packagePrice, items, isActive } = req.body;
+
+    if (!name || !String(name).trim()) {
+      return res.status(400).json({ error: 'Package name is required' });
+    }
+
+    const parsedPriceListId = Number(priceListId);
+    if (!Number.isInteger(parsedPriceListId) || parsedPriceListId <= 0) {
+      return res.status(400).json({ error: 'Valid priceListId is required' });
+    }
+
+    const parsedPackagePrice = Number(packagePrice);
+    if (!Number.isFinite(parsedPackagePrice) || parsedPackagePrice < 0) {
+      return res.status(400).json({ error: 'Package price must be a non-negative number' });
+    }
+
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'At least one package item is required' });
+    }
+
+    const calculatedCost = await calculateItemsCost(parsedPriceListId, Number(req.user.studio_id), items);
 
     const result = await queryRow(`
       INSERT INTO packages (price_list_id, name, description, package_price, is_active)
       VALUES ($1, $2, $3, $4, $5)
       RETURNING id
-    `, [priceListId, name, description || null, packagePrice, !!isActive]);
+    `, [parsedPriceListId, String(name).trim(), description || null, parsedPackagePrice, !!isActive]);
 
     const packageId = result.id;
 
@@ -119,7 +212,7 @@ router.post('/', adminRequired, async (req, res) => {
       WHERE id = $1
     `, [packageId]);
 
-    res.status(201).json({ ...pkg, items: items || [] });
+    res.status(201).json({ ...pkg, items: items || [], calculatedCost });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -128,13 +221,35 @@ router.post('/', adminRequired, async (req, res) => {
 // Update package
 router.put('/:id', adminRequired, async (req, res) => {
   try {
+    if (!ensureStudioAdminRole(req, res)) return;
+
     const { name, description, packagePrice, items, isActive } = req.body;
+
+    const existing = await queryRow('SELECT id, price_list_id as priceListId FROM packages WHERE id = $1', [req.params.id]);
+    if (!existing) {
+      return res.status(404).json({ error: 'Package not found' });
+    }
+
+    if (!name || !String(name).trim()) {
+      return res.status(400).json({ error: 'Package name is required' });
+    }
+
+    const parsedPackagePrice = Number(packagePrice);
+    if (!Number.isFinite(parsedPackagePrice) || parsedPackagePrice < 0) {
+      return res.status(400).json({ error: 'Package price must be a non-negative number' });
+    }
+
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'At least one package item is required' });
+    }
+
+    const calculatedCost = await calculateItemsCost(Number(existing.priceListId), Number(req.user.studio_id), items);
 
     await query(`
       UPDATE packages
       SET name = $1, description = $2, package_price = $3, is_active = $4
       WHERE id = $5
-    `, [name, description || null, packagePrice, !!isActive, req.params.id]);
+    `, [String(name).trim(), description || null, parsedPackagePrice, !!isActive, req.params.id]);
 
     // Delete existing items
     await query('DELETE FROM package_items WHERE package_id = $1', [req.params.id]);
@@ -156,7 +271,7 @@ router.put('/:id', adminRequired, async (req, res) => {
       WHERE id = $1
     `, [req.params.id]);
 
-    res.json({ ...pkg, items: items || [] });
+    res.json({ ...pkg, items: items || [], calculatedCost });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -165,6 +280,7 @@ router.put('/:id', adminRequired, async (req, res) => {
 // Delete package
 router.delete('/:id', adminRequired, async (req, res) => {
   try {
+    if (!ensureStudioAdminRole(req, res)) return;
     await query('DELETE FROM packages WHERE id = $1', [req.params.id]);
     res.json({ message: 'Package deleted successfully' });
   } catch (error) {
