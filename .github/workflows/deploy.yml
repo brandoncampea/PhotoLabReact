@@ -42,14 +42,27 @@ jobs:
           VITE_API_URL: /api
           VITE_USE_MOCK_API: false
 
+      - name: Prepare deployment bundle
+        run: |
+          rm -rf deploy
+          mkdir -p deploy
+          cp -R server deploy/server
+          cp -R dist deploy/dist
+          cp package.json package-lock.json deploy/
+          cd deploy
+          npm ci --omit=dev
+
       - name: Create deployment zip
         run: |
-          zip -r appservice-deploy.zip \
+          cd deploy
+          zip -r ../appservice-deploy.zip \
             server \
             dist \
+            node_modules \
             package.json \
             package-lock.json \
             -x "**/.DS_Store" "**/*.log" "**/test-results/**" "**/playwright-report/**" "server/uploads/**" "server/*.db" "server/*.db.*"
+          cd ..
           ls -lh appservice-deploy.zip
 
       - name: Azure Login
@@ -87,11 +100,9 @@ jobs:
 
           APP_URL="https://${APP_HOST}"
           SETTINGS=(
-            "SCM_DO_BUILD_DURING_DEPLOYMENT=true"
-            "ENABLE_ORYX_BUILD=true"
+            "SCM_DO_BUILD_DURING_DEPLOYMENT=false"
+            "ENABLE_ORYX_BUILD=false"
             "NODE_ENV=production"
-            "NPM_CONFIG_PRODUCTION=false"
-            "NPM_CONFIG_INCLUDE=dev"
             "NODE_OPTIONS=--no-deprecation"
             "PORT=8080"
             "JWT_SECRET=$JWT_SECRET"
