@@ -14,7 +14,7 @@ on:
       - '.github/workflows/deploy.yml'
 
 env:
-  NODE_VERSION: '24.x'
+  NODE_VERSION: '20.x'
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
   AZURE_WEBAPP_NAME: CampeaPhotoLab
   AZURE_RESOURCE_GROUP: PhotoLab
@@ -103,6 +103,7 @@ jobs:
             "SCM_DO_BUILD_DURING_DEPLOYMENT=false"
             "ENABLE_ORYX_BUILD=false"
             "NODE_ENV=production"
+            "WEBSITE_NODE_DEFAULT_VERSION=~20"
             "NODE_OPTIONS=--no-deprecation"
             "PORT=8080"
             "JWT_SECRET=$JWT_SECRET"
@@ -161,7 +162,7 @@ jobs:
           az webapp config set \
             --name ${{ env.AZURE_WEBAPP_NAME }} \
             --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-            --startup-file "npm start"
+            --startup-file "node server/server.js"
 
       - name: Deploy to Azure Web App (zip deploy with retry)
         run: |
