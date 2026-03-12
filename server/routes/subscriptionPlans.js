@@ -34,21 +34,27 @@ const getFallbackPlansFromConstants = () =>
     .sort((a, b) => (Number(a.monthly_price) || 0) - (Number(b.monthly_price) || 0));
 
 const getPlanSelectClause = async () => {
+  const hasDescription = await columnExists('subscription_plans', 'description');
+  const hasYearlyPrice = await columnExists('subscription_plans', 'yearly_price');
+  const hasMaxAlbums = await columnExists('subscription_plans', 'max_albums');
+  const hasMaxStorage = await columnExists('subscription_plans', 'max_storage_gb');
+  const hasFeatures = await columnExists('subscription_plans', 'features');
   const hasMonthlyPriceId = await columnExists('subscription_plans', 'stripe_monthly_price_id');
   const hasYearlyPriceId = await columnExists('subscription_plans', 'stripe_yearly_price_id');
+  const hasIsActive = await columnExists('subscription_plans', 'is_active');
 
   return [
     'id',
     'name',
-    'description',
+    hasDescription ? 'description' : 'CAST(NULL AS NVARCHAR(MAX)) as description',
     'monthly_price',
-    'yearly_price',
-    'max_albums',
-    'max_storage_gb',
-    'features',
+    hasYearlyPrice ? 'yearly_price' : 'CAST(NULL AS FLOAT) as yearly_price',
+    hasMaxAlbums ? 'max_albums' : 'CAST(NULL AS INT) as max_albums',
+    hasMaxStorage ? 'max_storage_gb' : 'CAST(NULL AS INT) as max_storage_gb',
+    hasFeatures ? 'features' : 'CAST(NULL AS NVARCHAR(MAX)) as features',
     hasMonthlyPriceId ? 'stripe_monthly_price_id' : 'CAST(NULL AS NVARCHAR(255)) as stripe_monthly_price_id',
     hasYearlyPriceId ? 'stripe_yearly_price_id' : 'CAST(NULL AS NVARCHAR(255)) as stripe_yearly_price_id',
-    'is_active',
+    hasIsActive ? 'is_active' : 'CAST(1 AS BIT) as is_active',
   ].join(', ');
 };
 
@@ -247,17 +253,24 @@ router.patch('/:planId', authRequired, async (req, res) => {
       updateValues.push(monthly_price);
     }
 
-    if (yearly_price !== undefined) {
+    const hasYearlyPrice = await columnExists('subscription_plans', 'yearly_price');
+    const hasDescription = await columnExists('subscription_plans', 'description');
+    const hasFeatures = await columnExists('subscription_plans', 'features');
+    const hasIsActive = await columnExists('subscription_plans', 'is_active');
+    const hasStripeMonthlyPrice = await columnExists('subscription_plans', 'stripe_monthly_price_id');
+    const hasStripeYearlyPrice = await columnExists('subscription_plans', 'stripe_yearly_price_id');
+
+    if (yearly_price !== undefined && hasYearlyPrice) {
       updateFields.push('yearly_price = $' + (updateFields.length + 1));
       updateValues.push(yearly_price);
     }
 
-    if (description !== undefined) {
+    if (description !== undefined && hasDescription) {
       updateFields.push('description = $' + (updateFields.length + 1));
       updateValues.push(description);
     }
 
-    if (features !== undefined) {
+    if (features !== undefined && hasFeatures) {
       if (!Array.isArray(features)) {
         return res.status(400).json({ error: 'features must be an array' });
       }
@@ -265,17 +278,17 @@ router.patch('/:planId', authRequired, async (req, res) => {
       updateValues.push(JSON.stringify(features));
     }
 
-    if (is_active !== undefined) {
+    if (is_active !== undefined && hasIsActive) {
       updateFields.push('is_active = $' + (updateFields.length + 1));
       updateValues.push(!!is_active);
     }
 
-    if (stripe_monthly_price_id !== undefined) {
+    if (stripe_monthly_price_id !== undefined && hasStripeMonthlyPrice) {
       updateFields.push('stripe_monthly_price_id = $' + (updateFields.length + 1));
       updateValues.push(stripe_monthly_price_id || null);
     }
 
-    if (stripe_yearly_price_id !== undefined) {
+    if (stripe_yearly_price_id !== undefined && hasStripeYearlyPrice) {
       updateFields.push('stripe_yearly_price_id = $' + (updateFields.length + 1));
       updateValues.push(stripe_yearly_price_id || null);
     }
