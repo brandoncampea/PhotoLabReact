@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 import Stripe from 'stripe';
-import { queryRow, query, columnExists } from './mssql.js';
+import { queryRow, query, queryRows, columnExists, tableExists } from './mssql.js';
 
 const TEST_PASSWORD = 'Test1234!';
 const STUDIO_COUNT = 2;
@@ -20,6 +20,30 @@ const describeKey = (value) => {
   if (key.startsWith('sk_live_')) return 'live';
   if (key.includes('example') || key.includes('***')) return 'placeholder';
   return 'unknown';
+};
+
+const getSeedSubscriptionPlans = async () => {
+  const hasPlansTable = await tableExists('subscription_plans');
+  if (!hasPlansTable) {
+    return ['professional'];
+  }
+
+  const hasIsActive = await columnExists('subscription_plans', 'is_active');
+  const hasMonthlyPrice = await columnExists('subscription_plans', 'monthly_price');
+
+  const plans = await queryRows(
+    `SELECT name
+     FROM subscription_plans
+     ${hasIsActive ? 'WHERE is_active = 1' : ''}
+     ORDER BY ${hasMonthlyPrice ? 'monthly_price ASC,' : ''} name ASC`,
+    []
+  );
+
+  const names = plans
+    .map((plan) => String(plan.name || '').trim())
+    .filter(Boolean);
+
+  return names.length ? names : ['professional'];
 };
 
 const ensureStripeClient = async () => {
@@ -94,7 +118,7 @@ const ensureSeedProductAndSize = async (priceListId) => {
   };
 };
 
-const ensureStudio = async (index) => {
+const ensureStudio = async (index, subscriptionPlan) => {
   const email = `seed-studio-${index}@example.com`;
   const name = `Seed Studio ${index}`;
 
@@ -104,21 +128,21 @@ const ensureStudio = async (index) => {
       `INSERT INTO studios (name, email, subscription_plan, subscription_status, subscription_start, subscription_end, is_free_subscription, created_at)
        VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, DATEADD(month, 1, CURRENT_TIMESTAMP), $5, CURRENT_TIMESTAMP)
        RETURNING id`,
-      [name, email, 'professional', 'active', 0]
+      [name, email, subscriptionPlan, 'active', 0]
     );
   } else {
     await query(
       `UPDATE studios
        SET subscription_status = 'active',
            is_free_subscription = 0,
-           subscription_plan = COALESCE(subscription_plan, 'professional'),
+           subscription_plan = $2,
            billing_cycle = COALESCE(billing_cycle, 'monthly')
        WHERE id = $1`,
-      [studio.id]
+      [studio.id, subscriptionPlan]
     );
   }
 
-  return { id: Number(studio.id), email, name };
+  return { id: Number(studio.id), email, name, subscriptionPlan };
 };
 
 const ensureUser = async ({ email, name, role, studioId }) => {
@@ -285,6 +309,7 @@ const main = async () => {
   console.log('🌱 Seeding test commerce data...');
 
   const stripe = await ensureStripeClient();
+  const subscriptionPlans = await getSeedSubscriptionPlans();
   const priceListId = await ensureDefaultPriceList();
   const { productId, productSizeId, unitPrice } = await ensureSeedProductAndSize(priceListId);
 
@@ -294,7 +319,8 @@ const main = async () => {
   const summary = [];
 
   for (let i = 1; i <= STUDIO_COUNT; i += 1) {
-    const studio = await ensureStudio(i);
+    const studioPlan = subscriptionPlans[(i - 1) % subscriptionPlans.length];
+    const studio = await ensureStudio(i, studioPlan);
 
     const studioAdminId = await ensureUser({
       email: `seed-studio-admin-${i}@example.com`,
@@ -335,6 +361,7 @@ const main = async () => {
 
     summary.push({
       studioId: studio.id,
+      subscriptionPlan: studio.subscriptionPlan,
       studioAdminId,
       customerId,
       photoCount: photoIds.length,
@@ -350,7 +377,7 @@ const main = async () => {
   console.log('---');
 
   for (const studio of summary) {
-    console.log(`Studio ${studio.studioId} => photos: ${studio.photoCount}, orders: ${studio.purchases.length}`);
+    console.log(`Studio ${studio.studioId} (${studio.subscriptionPlan}) => photos: ${studio.photoCount}, orders: ${studio.purchases.length}`);
     studio.purchases.forEach((p) => {
       console.log(`  • order #${p.orderId} | payment_intent=${p.paymentIntentId} | $${p.amount.toFixed(2)}`);
     });
