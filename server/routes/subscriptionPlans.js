@@ -33,6 +33,28 @@ const getFallbackPlansFromConstants = () =>
     }))
     .sort((a, b) => (Number(a.monthly_price) || 0) - (Number(b.monthly_price) || 0));
 
+const ensureStripePriceColumns = async () => {
+  await query(`
+    IF NOT EXISTS (
+      SELECT 1 FROM sys.columns
+      WHERE object_id = OBJECT_ID('subscription_plans') AND name = 'stripe_monthly_price_id'
+    )
+    BEGIN
+      ALTER TABLE subscription_plans ADD stripe_monthly_price_id NVARCHAR(255)
+    END
+  `);
+
+  await query(`
+    IF NOT EXISTS (
+      SELECT 1 FROM sys.columns
+      WHERE object_id = OBJECT_ID('subscription_plans') AND name = 'stripe_yearly_price_id'
+    )
+    BEGIN
+      ALTER TABLE subscription_plans ADD stripe_yearly_price_id NVARCHAR(255)
+    END
+  `);
+};
+
 const getPlanSelectClause = async () => {
   const hasDescription = await columnExists('subscription_plans', 'description');
   const hasYearlyPrice = await columnExists('subscription_plans', 'yearly_price');
@@ -245,6 +267,10 @@ router.patch('/:planId', authRequired, async (req, res) => {
       return res.status(404).json({ error: 'Plan not found' });
     }
 
+    if (stripe_monthly_price_id !== undefined || stripe_yearly_price_id !== undefined) {
+      await ensureStripePriceColumns();
+    }
+
     const updateFields = [];
     const updateValues = [];
 
@@ -294,7 +320,20 @@ router.patch('/:planId', authRequired, async (req, res) => {
     }
 
     if (updateFields.length === 0) {
-      return res.status(400).json({ error: 'No fields to update' });
+      const selectClause = await getPlanSelectClause();
+      const existingPlan = await queryRow(`
+        SELECT ${selectClause}
+        FROM subscription_plans
+        WHERE id = $1
+      `, [planId]);
+
+      return res.json({
+        message: 'No compatible fields to update on current schema',
+        plan: {
+          ...existingPlan,
+          features: parseFeatures(existingPlan?.features),
+        },
+      });
     }
 
     updateValues.push(planId);
