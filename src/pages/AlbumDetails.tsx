@@ -10,7 +10,7 @@ import PhotoCard from '../components/PhotoCard';
 import CropperModal from '../components/CropperModal';
 
 const AlbumDetails: React.FC = () => {
-  const { id } = useParams<{ id: string }>();
+  const { id, slug } = useParams<{ id: string; slug?: string }>();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   
@@ -128,7 +128,9 @@ const AlbumDetails: React.FC = () => {
 
   const handleShareAlbum = async () => {
     if (!album) return;
-    const url = `${window.location.origin}/albums/${album.id}`;
+    const url = slug
+      ? `${window.location.origin}/s/${slug}/albums/${album.id}`
+      : `${window.location.origin}/albums/${album.id}`;
     
     if (navigator.share) {
       try {
@@ -153,7 +155,9 @@ const AlbumDetails: React.FC = () => {
 
   const handleSharePhoto = async (e: React.MouseEvent, photo: Photo) => {
     e.stopPropagation();
-    const url = `${window.location.origin}/albums/${id}?photo=${photo.id}`;
+    const url = slug
+      ? `${window.location.origin}/s/${slug}/albums/${id}?photo=${photo.id}`
+      : `${window.location.origin}/albums/${id}?photo=${photo.id}`;
     
     if (navigator.share) {
       try {
@@ -209,7 +213,7 @@ const AlbumDetails: React.FC = () => {
       <div className="page-header">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', width: '100%' }}>
           <div style={{ flex: 1 }}>
-            <button onClick={() => navigate('/albums')} className="btn-back">
+            <button onClick={() => navigate(slug ? `/s/${slug}` : '/albums')} className="btn-back">
               ← Back to Albums
             </button>
             <h1>{album.name}</h1>

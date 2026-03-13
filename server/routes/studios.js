@@ -7,6 +7,36 @@ import stripeService from '../services/stripeService.js';
 
 const router = express.Router();
 
+const slugifyStudioName = (value) =>
+  String(value || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80) || 'studio';
+
+const canManageStudio = (req, studioId) =>
+  req.user.role === 'super_admin' || (req.user.role === 'studio_admin' && Number(req.user.studio_id) === Number(studioId));
+
+const getPublicStudioBaseUrl = (req) => process.env.APP_BASE_URL || `${req.protocol}://${req.get('host')}`;
+
+const getUniqueStudioSlug = async (baseSlug, studioId) => {
+  let attempt = 0;
+  let slug = baseSlug;
+
+  while (attempt < 100) {
+    const existing = await queryRow(
+      'SELECT TOP 1 id FROM studios WHERE public_slug = $1 AND id <> $2',
+      [slug, studioId]
+    );
+    if (!existing) return slug;
+    attempt += 1;
+    slug = `${baseSlug}-${attempt + 1}`;
+  }
+
+  return `${baseSlug}-${Date.now()}`;
+};
+
 const isMissingColumnError = (error) => /Invalid column name/i.test(String(error?.message || ''));
 
 const getStudioProfitPayoutThreshold = async () => {
@@ -238,6 +268,115 @@ router.get('/', authRequired, async (req, res) => {
   } catch (error) {
     console.error('Get studios error:', error);
     res.status(500).json({ error: 'Failed to fetch studios' });
+  }
+});
+
+// Public studio profile by slug (for customer-facing direct links)
+router.get('/public/:slug', async (req, res) => {
+  try {
+    const { slug } = req.params;
+    const hasPublicSlug = await columnExists('studios', 'public_slug');
+    if (!hasPublicSlug) {
+      return res.status(404).json({ error: 'Studio not found' });
+    }
+
+    const studio = await queryRow(
+      `SELECT id, name, email, public_slug as publicSlug
+       FROM studios
+       WHERE public_slug = $1`,
+      [slug]
+    );
+
+    if (!studio) {
+      return res.status(404).json({ error: 'Studio not found' });
+    }
+
+    res.json({
+      ...studio,
+      publicUrl: `${getPublicStudioBaseUrl(req)}/s/${studio.publicSlug}`,
+    });
+  } catch (error) {
+    console.error('Get public studio by slug error:', error);
+    res.status(500).json({ error: 'Failed to fetch studio' });
+  }
+});
+
+// Get studio direct customer link
+router.get('/:studioId/public-link', authRequired, async (req, res) => {
+  try {
+    const studioId = Number(req.params.studioId);
+    if (!canManageStudio(req, studioId)) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    const hasPublicSlug = await columnExists('studios', 'public_slug');
+    if (!hasPublicSlug) {
+      return res.status(500).json({ error: 'Studio public links are not available yet' });
+    }
+
+    const studio = await queryRow(
+      'SELECT id, name, public_slug as publicSlug FROM studios WHERE id = $1',
+      [studioId]
+    );
+
+    if (!studio) {
+      return res.status(404).json({ error: 'Studio not found' });
+    }
+
+    let slug = studio.publicSlug;
+    if (!slug) {
+      const baseSlug = slugifyStudioName(studio.name);
+      slug = await getUniqueStudioSlug(baseSlug, studioId);
+      await query('UPDATE studios SET public_slug = $1 WHERE id = $2', [slug, studioId]);
+    }
+
+    res.json({
+      studioId,
+      slug,
+      url: `${getPublicStudioBaseUrl(req)}/s/${slug}`,
+    });
+  } catch (error) {
+    console.error('Get studio public link error:', error);
+    res.status(500).json({ error: 'Failed to fetch studio public link' });
+  }
+});
+
+// Update studio direct customer link slug
+router.put('/:studioId/public-link', authRequired, async (req, res) => {
+  try {
+    const studioId = Number(req.params.studioId);
+    if (!canManageStudio(req, studioId)) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    const hasPublicSlug = await columnExists('studios', 'public_slug');
+    if (!hasPublicSlug) {
+      return res.status(500).json({ error: 'Studio public links are not available yet' });
+    }
+
+    const studio = await queryRow('SELECT id, name FROM studios WHERE id = $1', [studioId]);
+    if (!studio) {
+      return res.status(404).json({ error: 'Studio not found' });
+    }
+
+    const requestedSlug = String(req.body?.slug || '').trim();
+    const normalizedRequestedSlug = requestedSlug ? slugifyStudioName(requestedSlug) : slugifyStudioName(studio.name);
+
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(normalizedRequestedSlug)) {
+      return res.status(400).json({ error: 'Invalid slug format' });
+    }
+
+    const slug = await getUniqueStudioSlug(normalizedRequestedSlug, studioId);
+    await query('UPDATE studios SET public_slug = $1 WHERE id = $2', [slug, studioId]);
+
+    res.json({
+      studioId,
+      slug,
+      url: `${getPublicStudioBaseUrl(req)}/s/${slug}`,
+    });
+  } catch (error) {
+    console.error('Update studio public link error:', error);
+    res.status(500).json({ error: 'Failed to update studio public link' });
   }
 });
 

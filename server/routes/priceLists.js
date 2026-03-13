@@ -87,6 +87,8 @@ router.get('/', adminRequired, async (req, res) => {
 router.get('/:id', adminRequired, async (req, res) => {
   try {
     const studioId = getStudioIdFromRequest(req);
+    const isStudioPricingView = req.user?.role === 'studio_admin' || (req.user?.role === 'super_admin' && Number(req.user?.acting_studio_id) > 0);
+    const effectiveCostSelect = isStudioPricingView ? 'ps.price' : 'ps.cost';
 
     const priceList = await queryRow(`
       SELECT id, name, description, is_default as isDefault, created_at as createdDate
@@ -122,7 +124,7 @@ router.get('/:id', adminRequired, async (req, res) => {
             ps.size_name as sizeName,
             COALESCE(spsso.price, ps.price) as price,
             ps.price as basePrice,
-            ps.cost,
+            ${effectiveCostSelect} as cost,
             ${hasStudioSizeOverrideIsOffered ? 'COALESCE(spsso.is_offered, 1)' : 'CAST(1 AS BIT)'} as isOffered
           FROM product_sizes ps
           LEFT JOIN studio_price_list_size_overrides spsso
@@ -138,7 +140,7 @@ router.get('/:id', adminRequired, async (req, res) => {
             ps.size_name as sizeName,
             ps.price as price,
             ps.price as basePrice,
-            ps.cost,
+            ${effectiveCostSelect} as cost,
             CAST(1 AS BIT) as isOffered
           FROM product_sizes ps
           WHERE ps.price_list_id = $1

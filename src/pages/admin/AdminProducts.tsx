@@ -850,7 +850,7 @@ const AdminProducts: React.FC = () => {
                                 ) : (
                                   // Studio admin view: Your Cost (super admin price) → Your Price → Customer Price → Your Profit
                                   <>
-                                    <span>Your Cost: ${(size.basePrice ?? size.price).toFixed(2)}</span>
+                                    <span>Lab Cost: ${(size.basePrice ?? size.price).toFixed(2)}</span>
                                     <span>{' | Your Price: $'}{size.price.toFixed(2)}</span>
                                     {studioFees && studioFees.feeValue > 0 && (
                                       <span className="warning-text" style={{ fontWeight: 'bold' }}>
