@@ -17,6 +17,7 @@ const AdminOrders: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedStatus, setSelectedStatus] = useState('all');
+  const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState<'all' | 'batch'>('all');
   const [batchAddress, setBatchAddress] = useState({
     fullName: '',
@@ -118,11 +119,50 @@ const AdminOrders: React.FC = () => {
     }
   };
 
-  const filteredOrders = activeTab === 'batch'
+  const getItemEstimatedProfit = (item: Order['items'][number]) => {
+    const quantity = Number(item.quantity) || 0;
+    const soldUnitPrice = Number(item.price) || 0;
+    const baseUnitPrice = Number(item.basePrice) || 0;
+    return (soldUnitPrice - baseUnitPrice) * quantity;
+  };
+
+  const getOrderEstimatedProfit = (order: Order) => {
+    const grossProfit = (order.items || []).reduce((sum, item) => sum + getItemEstimatedProfit(item), 0);
+    const stripeFee = Number(order.stripeFeeAmount) || 0;
+    return grossProfit - stripeFee;
+  };
+
+  const matchesSearch = (order: Order) => {
+    const query = searchTerm.trim().toLowerCase();
+    if (!query) return true;
+
+    const shippingName = String(order.shippingAddress?.fullName || '').toLowerCase();
+    const shippingEmail = String(order.shippingAddress?.email || '').toLowerCase();
+    const orderIdText = String(order.id || '').toLowerCase();
+    const statusText = String(order.status || '').toLowerCase();
+
+    const itemMatch = (order.items || []).some((item) => {
+      const productText = String(item.productName || '').toLowerCase();
+      const sizeText = String(item.productSizeName || '').toLowerCase();
+      const photoText = String(item.photo?.fileName || '').toLowerCase();
+      return productText.includes(query) || sizeText.includes(query) || photoText.includes(query);
+    });
+
+    return (
+      orderIdText.includes(query) ||
+      statusText.includes(query) ||
+      shippingName.includes(query) ||
+      shippingEmail.includes(query) ||
+      itemMatch
+    );
+  };
+
+  const filteredOrders = (activeTab === 'batch'
     ? orders.filter(order => order.isBatch && !order.labSubmitted)
     : selectedStatus === 'all'
       ? orders
-      : orders.filter(order => order.status.toLowerCase() === selectedStatus);
+      : orders.filter(order => order.status.toLowerCase() === selectedStatus))
+    .filter(matchesSearch);
 
   useEffect(() => {
     if (!selectedOrderId || loading) return;
@@ -156,17 +196,35 @@ const AdminOrders: React.FC = () => {
         </div>
         
         {activeTab === 'all' && (
-          <select
-            value={selectedStatus}
-            onChange={(e) => setSelectedStatus(e.target.value)}
-            className="status-filter"
-          >
-            <option value="all">All Orders</option>
-            <option value="pending">Pending</option>
-            <option value="processing">Processing</option>
-            <option value="completed">Completed</option>
-            <option value="shipped">Shipped</option>
-          </select>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <select
+              value={selectedStatus}
+              onChange={(e) => setSelectedStatus(e.target.value)}
+              className="status-filter"
+            >
+              <option value="all">All Orders</option>
+              <option value="pending">Pending</option>
+              <option value="processing">Processing</option>
+              <option value="completed">Completed</option>
+              <option value="shipped">Shipped</option>
+            </select>
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search by order #, customer, product, or photo"
+              style={{ minWidth: '320px' }}
+            />
+          </div>
+        )}
+        {activeTab === 'batch' && (
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search batch orders by #, customer, product, or photo"
+            style={{ minWidth: '320px' }}
+          />
         )}
       </div>
 
@@ -356,6 +414,12 @@ const AdminOrders: React.FC = () => {
                     <option value="Shipped">Shipped</option>
                   </select>
                   <p className="order-total">${order.totalAmount.toFixed(2)}</p>
+                  <p style={{ margin: '4px 0 0 0', fontSize: '0.85em', color: 'var(--text-secondary)' }}>
+                    Stripe Fee: ${Number(order.stripeFeeAmount || 0).toFixed(2)}
+                  </p>
+                  <p style={{ margin: '6px 0 0 0', fontSize: '0.85em', color: '#86efac', fontWeight: 600 }}>
+                    Est. Profit: ${getOrderEstimatedProfit(order).toFixed(2)}
+                  </p>
                 </div>
               </div>
               <div className="order-shipping-info admin-summary-box" style={{ marginBottom: '10px', fontSize: '0.9em' }}>
@@ -386,7 +450,13 @@ const AdminOrders: React.FC = () => {
                     <img src={item.photo.thumbnailUrl} alt={item.photo.fileName} />
                     <div className="order-item-info">
                       <p>{item.photo.fileName}</p>
+                      <p className="order-item-product" style={{ fontSize: '0.9em', color: 'var(--text-secondary)', margin: '2px 0' }}>
+                        Product: {item.productName || 'Unknown Product'}{item.productSizeName ? ` (${item.productSizeName})` : ''}
+                      </p>
                       <p className="order-item-quantity">Qty: {item.quantity}</p>
+                      <p style={{ margin: '2px 0', fontSize: '0.85em', color: '#86efac' }}>
+                        Est. Item Profit: ${getItemEstimatedProfit(item).toFixed(2)}
+                      </p>
                       {item.cropData && <span className="badge">Cropped</span>}
                     </div>
                     <p className="order-item-price">${item.price.toFixed(2)}</p>

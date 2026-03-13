@@ -142,7 +142,38 @@ const ensureSeedProductAndSize = async (priceListId) => {
     productId: Number(product.id),
     productSizeId: Number(size.id),
     unitPrice: Number(latest?.price || seedPrice),
+    productName: 'Seed Test Print',
+    sizeName: '8x10',
   };
+};
+
+const buildOrderProductCatalog = async (priceListId, fallbackChoice) => {
+  const rows = await queryRows(
+    `SELECT ps.product_id as productId,
+            ps.id as productSizeId,
+            ps.size_name as sizeName,
+            ps.price as unitPrice,
+            p.name as productName
+     FROM product_sizes ps
+     INNER JOIN products p ON p.id = ps.product_id
+     WHERE ps.price_list_id = $1
+       AND p.name <> $2
+     ORDER BY p.name ASC, ps.size_name ASC`,
+    [priceListId, 'Seed Test Print']
+  );
+
+  const catalog = rows
+    .map((row) => ({
+      productId: Number(row.productId),
+      productSizeId: Number(row.productSizeId),
+      sizeName: String(row.sizeName || '').trim(),
+      productName: String(row.productName || '').trim() || `Product #${row.productId}`,
+      unitPrice: Number(row.unitPrice) || 0,
+    }))
+    .filter((row) => row.productId > 0 && row.productSizeId > 0 && row.unitPrice > 0);
+
+  if (catalog.length > 0) return catalog;
+  return fallbackChoice ? [fallbackChoice] : [];
 };
 
 const enforceStudioMarkupForPriceList = async (priceListId) => {
@@ -485,9 +516,7 @@ const createPaidOrder = async ({
   customerEmail,
   customerName,
   photoIds,
-  productId,
-  productSizeId,
-  unitPrice,
+  productChoice,
   studioIndex,
   orderNumber,
   hasPhotoIdsColumn,
@@ -496,6 +525,14 @@ const createPaidOrder = async ({
   hasPaymentIntentIdColumn,
   hasStripeChargeIdColumn,
 }) => {
+  const productId = Number(productChoice?.productId) || 0;
+  const productSizeId = Number(productChoice?.productSizeId) || 0;
+  const unitPrice = Number(productChoice?.unitPrice) || 0;
+
+  if (!productId || !productSizeId || unitPrice <= 0) {
+    throw new Error('No valid product choice available for seeded order creation');
+  }
+
   const quantity = randomInt(1, 3);
   const subtotal = Number((unitPrice * quantity).toFixed(2));
   const shippingCost = 5.0;
@@ -599,6 +636,9 @@ const createPaidOrder = async ({
     stripeChargeId,
     stripeFeeAmount,
     amount: total,
+    productName: String(productChoice?.productName || `Product #${productId}`),
+    sizeName: String(productChoice?.sizeName || ''),
+    quantity,
   };
 };
 
@@ -612,8 +652,13 @@ const main = async () => {
   const stripe = await ensureStripeClient();
   const subscriptionPlans = await getSeedSubscriptionPlans();
   const priceListId = await ensureDefaultPriceList();
-  const { productId, productSizeId, unitPrice } = await ensureSeedProductAndSize(priceListId);
+  const fallbackProductChoice = await ensureSeedProductAndSize(priceListId);
+  const orderProductCatalog = await buildOrderProductCatalog(priceListId, fallbackProductChoice);
   const markupResult = await enforceStudioMarkupForPriceList(priceListId);
+
+  if (!orderProductCatalog.length) {
+    throw new Error('No seedable products were found for order creation');
+  }
 
   const hasPhotoIdsColumn = await columnExists('order_items', 'photo_ids');
   const hasProductSizeIdColumn = await columnExists('order_items', 'product_size_id');
@@ -655,15 +700,14 @@ const main = async () => {
 
     const purchases = [];
     for (let o = 1; o <= ORDERS_PER_STUDIO; o += 1) {
+      const productChoice = pick(orderProductCatalog);
       const purchase = await createPaidOrder({
         stripe,
         customerUserId: customerId,
         customerEmail,
         customerName,
         photoIds,
-        productId,
-        productSizeId,
-        unitPrice,
+        productChoice,
         studioIndex: i,
         orderNumber: o,
         hasPhotoIdsColumn,
@@ -710,7 +754,7 @@ const main = async () => {
       );
     }
     studio.purchases.forEach((p) => {
-      console.log(`  • order #${p.orderId} | payment_intent=${p.paymentIntentId} | $${p.amount.toFixed(2)}`);
+      console.log(`  • order #${p.orderId} | ${p.productName}${p.sizeName ? ` (${p.sizeName})` : ''} x${p.quantity} | payment_intent=${p.paymentIntentId} | $${p.amount.toFixed(2)}`);
     });
   }
 
