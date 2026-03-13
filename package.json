@@ -14,6 +14,7 @@
     "preview": "vite preview",
     "seed:photos": "node server/seedPhotos.js",
     "seed:products": "node server/seedProducts.js",
+    "seed:test-commerce": "node server/seedTestCommerce.js",
     "migrate:sqlite": "node server/migrateSqliteToMssql.js",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
