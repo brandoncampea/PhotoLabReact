@@ -166,6 +166,20 @@ const AdminPriceLists: React.FC = () => {
     }
   };
 
+  const closeImportDialog = () => {
+    setShowImportDialog(false);
+    setImportStep('upload');
+    setImportedData([]);
+    setImportFile(null);
+    setImportFileText('');
+    setImportName('');
+    setImportDesc('');
+    setImportError('');
+    setColumnSuggestions(null);
+    setColumnMapping(null);
+    setImportTargetPriceListId(null);
+  };
+
   const handleParseImport = async () => {
     if (!importFileText || !columnMapping) return;
 
@@ -344,15 +358,7 @@ const AdminPriceLists: React.FC = () => {
       }
 
       await loadData();
-      setShowImportDialog(false);
-      setImportStep('upload');
-      setImportedData([]);
-      setImportFile(null);
-      setImportName('');
-      setImportDesc('');
-      setColumnSuggestions(null);
-      setColumnMapping(null);
-      setImportTargetPriceListId(null);
+      closeImportDialog();
     } catch (error) {
       console.error('Failed to import price list items:', error);
       setImportError('Failed to import price list items');
@@ -618,8 +624,17 @@ const AdminPriceLists: React.FC = () => {
 
       {/* Import Dialog Modal */}
       {showImportDialog && (
-        <div className="modal-overlay">
-          <div className="modal-content admin-modal-content" style={{ maxWidth: '900px', maxHeight: '90vh', overflowY: 'auto', padding: '2rem' }}>
+        <div className="modal-overlay" onClick={closeImportDialog}>
+          <div className="modal-content admin-modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '900px', maxHeight: '90vh', overflowY: 'auto', padding: '2rem', position: 'relative' }}>
+            <button
+              type="button"
+              onClick={closeImportDialog}
+              className="btn-close"
+              aria-label="Close import dialog"
+              style={{ position: 'absolute', top: '0.75rem', right: '0.75rem' }}
+            >
+              ×
+            </button>
             <h2>Import Price List from CSV</h2>
             
             {importStep === 'upload' && (
@@ -646,11 +661,7 @@ const AdminPriceLists: React.FC = () => {
                 <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
                   <button
                     type="button"
-                    onClick={() => {
-                      setShowImportDialog(false);
-                      setImportFile(null);
-                      setImportError('');
-                    }}
+                    onClick={closeImportDialog}
                     className="btn btn-secondary"
                   >
                     Cancel
@@ -779,13 +790,7 @@ const AdminPriceLists: React.FC = () => {
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      setShowImportDialog(false);
-                      setImportStep('upload');
-                      setImportFile(null);
-                      setColumnSuggestions(null);
-                      setImportError('');
-                    }}
+                    onClick={closeImportDialog}
                     className="btn btn-secondary"
                   >
                     Cancel
@@ -889,12 +894,7 @@ const AdminPriceLists: React.FC = () => {
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      setShowImportDialog(false);
-                      setImportStep('upload');
-                      setImportedData([]);
-                      setImportFile(null);
-                    }}
+                    onClick={closeImportDialog}
                     className="btn btn-secondary"
                   >
                     Cancel
