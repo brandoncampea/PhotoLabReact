@@ -278,4 +278,21 @@ jobs:
             --name ${{ env.AZURE_WEBAPP_NAME }} \
             --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
             --query defaultHostName -o tsv)
-          curl -f "https://${APP_HOST}/api/health"
+
+          DEFAULT_HEALTH="https://${APP_HOST}/api/health"
+          CANONICAL_HEALTH="${{ env.CANONICAL_APP_URL }}/api/health"
+
+          check_health() {
+            local url="$1"
+            for attempt in $(seq 1 18); do
+              echo "Health check ${attempt}/18: ${url}"
+              if curl -fsS --max-time 10 "$url" > /dev/null; then
+                echo "Health check passed: ${url}"
+                return 0
+              fi
+              sleep 10
+            done
+            return 1
+          }
+
+          check_health "$DEFAULT_HEALTH" || check_health "$CANONICAL_HEALTH"
