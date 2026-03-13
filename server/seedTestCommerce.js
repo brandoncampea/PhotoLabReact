@@ -96,6 +96,16 @@ const ensureSeedProductAndSize = async (priceListId) => {
        RETURNING id`,
       ['Seed Test Print', 'Prints', 0, 'Auto-created seed product', 8.0, JSON.stringify({ isActive: true })]
     );
+  } else {
+    await query(
+      `UPDATE products
+       SET category = $2,
+           description = $3,
+           cost = $4,
+           options = $5
+       WHERE id = $1`,
+      [product.id, 'Prints', 'Auto-created seed product', 8.0, JSON.stringify({ isActive: true })]
+    );
   }
 
   let size = await queryRow(
@@ -109,6 +119,14 @@ const ensureSeedProductAndSize = async (priceListId) => {
        VALUES ($1, $2, $3, $4, $5)
        RETURNING id`,
       [priceListId, product.id, '8x10', 19.99, 8.0]
+    );
+  } else {
+    await query(
+      `UPDATE product_sizes
+       SET price = $2,
+           cost = $3
+       WHERE id = $1`,
+      [size.id, 19.99, 8.0]
     );
   }
 
