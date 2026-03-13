@@ -33,6 +33,33 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Preflight Stripe seed config
+        if: ${{ github.event.inputs.action == 'seed' }}
+        env:
+          STRIPE_TEST_SECRET_KEY: ${{ secrets.STRIPE_TEST_SECRET_KEY }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+        run: |
+          classify() {
+            case "$1" in
+              sk_test_*) echo test ;;
+              sk_live_*) echo live ;;
+              '') echo missing ;;
+              *example*|*** ) echo placeholder ;;
+              *) echo unknown ;;
+            esac
+          }
+
+          TEST_KIND=$(classify "$STRIPE_TEST_SECRET_KEY")
+          DEFAULT_KIND=$(classify "$STRIPE_SECRET_KEY")
+
+          echo "STRIPE_TEST_SECRET_KEY=${TEST_KIND}"
+          echo "STRIPE_SECRET_KEY=${DEFAULT_KIND}"
+
+          if [ "$TEST_KIND" != "test" ] && [ "$DEFAULT_KIND" != "test" ]; then
+            echo "Missing valid Stripe test key. Add GitHub secret STRIPE_TEST_SECRET_KEY with an sk_test_ value."
+            exit 1
+          fi
+
       - name: Run selected action
         env:
           MSSQL_CONNECTION_STRING: ${{ secrets.MSSQL_CONNECTION_STRING }}

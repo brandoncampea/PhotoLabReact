@@ -13,16 +13,28 @@ const nowIso = () => new Date().toISOString();
 const randomInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
+const describeKey = (value) => {
+  const key = String(value || '').trim();
+  if (!key) return 'missing';
+  if (key.startsWith('sk_test_')) return 'test';
+  if (key.startsWith('sk_live_')) return 'live';
+  if (key.includes('example') || key.includes('***')) return 'placeholder';
+  return 'unknown';
+};
+
 const ensureStripeClient = async () => {
   const config = await queryRow('SELECT TOP 1 secret_key as secretKey, is_active as isActive FROM stripe_config WHERE id = 1');
-  const key = String(process.env.STRIPE_TEST_SECRET_KEY || config?.secretKey || process.env.STRIPE_SECRET_KEY || '').trim();
+  const envTestKey = String(process.env.STRIPE_TEST_SECRET_KEY || '').trim();
+  const configKey = String(config?.secretKey || '').trim();
+  const envKey = String(process.env.STRIPE_SECRET_KEY || '').trim();
+  const key = String(envTestKey || configKey || envKey || '').trim();
 
   if (!key || key.includes('example') || key.includes('***')) {
-    throw new Error('Stripe test key is not configured. Set STRIPE_TEST_SECRET_KEY, stripe_config.secret_key, or STRIPE_SECRET_KEY to a valid sk_test_ key.');
+    throw new Error(`Stripe test key is not configured. Sources: STRIPE_TEST_SECRET_KEY=${describeKey(envTestKey)}, stripe_config.secret_key=${describeKey(configKey)}, STRIPE_SECRET_KEY=${describeKey(envKey)}.`);
   }
 
   if (!key.startsWith('sk_test_')) {
-    throw new Error('Refusing to run seed purchases with a non-test Stripe key. Use an sk_test_ key.');
+    throw new Error(`Refusing to run seed purchases with a non-test Stripe key. Sources: STRIPE_TEST_SECRET_KEY=${describeKey(envTestKey)}, stripe_config.secret_key=${describeKey(configKey)}, STRIPE_SECRET_KEY=${describeKey(envKey)}.`);
   }
 
   if (!config?.isActive) {
