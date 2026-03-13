@@ -99,11 +99,13 @@ npm install
 ```
 
 3. Configure environment variables:
-   - Copy `.env.example` to `.env.local`
-   - Update `VITE_API_URL` with your ASP.NET backend URL
+   - Copy `.env.local.example` to `.env.local`
+   - Set `MSSQL_CONNECTION_STRING` to the same Azure SQL value used in deployment secrets
+   - Set `STRIPE_SECRET_KEY` (test key) if you plan to run commerce seed scripts
+   - Update `VITE_API_URL` with your backend URL
 
 ```bash
-cp .env.example .env.local
+cp .env.local.example .env.local
 ```
 
 4. Start the development server:
