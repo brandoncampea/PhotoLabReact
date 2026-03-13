@@ -1,14 +1,17 @@
 import bcrypt from 'bcryptjs';
 import Stripe from 'stripe';
 import { queryRow, query, queryRows, columnExists, tableExists } from './mssql.js';
+import orderReceiptService from './services/orderReceiptService.js';
 
 const TEST_PASSWORD = 'Test1234!';
 const STUDIO_COUNT = 2;
 const ALBUMS_PER_STUDIO = 2;
 const PHOTOS_PER_ALBUM = 6;
 const ORDERS_PER_STUDIO = 3;
+const DEFAULT_RECEIPT_EMAIL = 'bcampea@gmail.com';
 
 const nowIso = () => new Date().toISOString();
+const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
 
 const randomInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
@@ -215,6 +218,142 @@ const ensureAlbumsAndPhotos = async (studioId, priceListId, studioIndex) => {
   return photoIds;
 };
 
+const safeJsonParse = (value, fallback = null) => {
+  if (!value) return fallback;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+};
+
+const sendSeedOrderReceipts = async (orderId, receiptEmail) => {
+  const toEmail = normalizeEmail(receiptEmail);
+  if (!toEmail) return { customerSent: false, studioSentCount: 0 };
+
+  if (!orderReceiptService.isConfigured()) {
+    console.warn(`⚠ SMTP is not configured; skipping seeded receipts for order ${orderId}`);
+    return { customerSent: false, studioSentCount: 0 };
+  }
+
+  const hasStripeFeeAmount = await columnExists('orders', 'stripe_fee_amount');
+  const hasProductSizeId = await columnExists('order_items', 'product_size_id');
+
+  const order = await queryRow(
+    `SELECT o.id,
+            o.total as totalAmount,
+            o.subtotal,
+            o.tax_amount as taxAmount,
+            o.shipping_cost as shippingCost,
+            ${hasStripeFeeAmount ? 'o.stripe_fee_amount' : '0'} as stripeFeeAmount,
+            o.shipping_address as shippingAddress,
+            u.email as customerEmail,
+            u.name as customerName
+     FROM orders o
+     INNER JOIN users u ON u.id = o.user_id
+     WHERE o.id = $1`,
+    [orderId]
+  );
+
+  if (!order) return { customerSent: false, studioSentCount: 0 };
+
+  const items = await queryRows(
+    `SELECT oi.id,
+            oi.photo_id as photoId,
+            oi.quantity,
+            oi.price as unitPrice,
+            ph.file_name as photoFileName,
+            p.name as productName,
+            a.studio_id as studioId,
+            s.name as studioName,
+            s.email as studioEmail,
+            COALESCE(${hasProductSizeId ? 'ps.price' : 'NULL'}, p.price, 0) as basePrice,
+            COALESCE(${hasProductSizeId ? 'ps.cost' : 'NULL'}, p.cost, 0) as cost
+     FROM order_items oi
+     INNER JOIN photos ph ON ph.id = oi.photo_id
+     INNER JOIN albums a ON a.id = ph.album_id
+     INNER JOIN studios s ON s.id = a.studio_id
+     LEFT JOIN products p ON p.id = oi.product_id
+     ${hasProductSizeId ? 'LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id' : ''}
+     WHERE oi.order_id = $1`,
+    [orderId]
+  );
+
+  const parsedShippingAddress = safeJsonParse(order.shippingAddress, {});
+  const customerSent = await orderReceiptService.sendCustomerReceipt({
+    to: toEmail,
+    customerName: parsedShippingAddress?.fullName || order.customerName,
+    order: {
+      ...order,
+      stripeFeeAmount: Number(order.stripeFeeAmount) || 0,
+    },
+    items,
+  });
+
+  const totalItemRevenue = items.reduce((sum, item) => sum + ((Number(item.unitPrice) || 0) * (Number(item.quantity) || 0)), 0);
+  const studioGroups = new Map();
+  for (const item of items) {
+    const studioId = Number(item.studioId) || 0;
+    if (!studioId) continue;
+    if (!studioGroups.has(studioId)) {
+      studioGroups.set(studioId, {
+        studioName: item.studioName,
+        items: [],
+      });
+    }
+    studioGroups.get(studioId).items.push(item);
+  }
+
+  let studioSentCount = 0;
+  for (const [, studioGroup] of studioGroups) {
+    const studioRevenue = studioGroup.items.reduce((sum, item) => sum + ((Number(item.unitPrice) || 0) * (Number(item.quantity) || 0)), 0);
+    const baseRevenue = studioGroup.items.reduce((sum, item) => sum + ((Number(item.basePrice) || 0) * (Number(item.quantity) || 0)), 0);
+    const productionCost = studioGroup.items.reduce((sum, item) => sum + ((Number(item.cost) || 0) * (Number(item.quantity) || 0)), 0);
+    const superAdminProfit = studioGroup.items.reduce(
+      (sum, item) => sum + (((Number(item.basePrice) || 0) - (Number(item.cost) || 0)) * (Number(item.quantity) || 0)),
+      0
+    );
+    const stripeFeeAmount = totalItemRevenue > 0
+      ? (Number(order.stripeFeeAmount) || 0) * (studioRevenue / totalItemRevenue)
+      : 0;
+    const orderUrl = String(process.env.APP_BASE_URL || '').trim()
+      ? `${String(process.env.APP_BASE_URL || '').trim().replace(/\/$/, '')}/admin/orders?orderId=${order.id}`
+      : null;
+
+    const studioSent = await orderReceiptService.sendStudioReceipt({
+      to: toEmail,
+      bcc: undefined,
+      studioName: studioGroup.studioName,
+      customerEmail: toEmail,
+      order: {
+        ...order,
+        orderUrl,
+        studioRevenue,
+        baseRevenue,
+        productionCost,
+        grossStudioMarkup: studioRevenue - baseRevenue,
+        stripeFeeAmount,
+        studioProfitNet: (studioRevenue - baseRevenue) - stripeFeeAmount,
+        superAdminProfit,
+      },
+      items: studioGroup.items,
+    });
+    if (studioSent) studioSentCount += 1;
+  }
+
+  if (customerSent || studioSentCount > 0) {
+    await query(
+      `UPDATE orders
+       SET customer_receipt_sent_at = CASE WHEN $1 = 1 THEN CURRENT_TIMESTAMP ELSE customer_receipt_sent_at END,
+           studio_receipt_sent_at = CASE WHEN $2 = 1 THEN CURRENT_TIMESTAMP ELSE studio_receipt_sent_at END
+       WHERE id = $3`,
+      [customerSent ? 1 : 0, studioSentCount > 0 ? 1 : 0, orderId]
+    );
+  }
+
+  return { customerSent, studioSentCount };
+};
+
 const createPaidOrder = async ({
   stripe,
   customerUserId,
@@ -307,6 +446,10 @@ const createPaidOrder = async ({
 
 const main = async () => {
   console.log('🌱 Seeding test commerce data...');
+  const receiptEmail = normalizeEmail(process.env.SEED_RECEIPT_EMAIL || DEFAULT_RECEIPT_EMAIL);
+  if (receiptEmail) {
+    console.log(`📧 Seed receipts destination: ${receiptEmail}`);
+  }
 
   const stripe = await ensureStripeClient();
   const subscriptionPlans = await getSeedSubscriptionPlans();
@@ -356,6 +499,15 @@ const main = async () => {
         hasPhotoIdsColumn,
         hasProductSizeIdColumn,
       });
+
+      if (receiptEmail) {
+        try {
+          await sendSeedOrderReceipts(purchase.orderId, receiptEmail);
+        } catch (error) {
+          console.error(`⚠ Failed to send seed receipts for order ${purchase.orderId}:`, error?.message || error);
+        }
+      }
+
       purchases.push(purchase);
     }
 
