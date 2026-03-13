@@ -42,6 +42,7 @@ const calcSubscriptionRevenue = (studio) => {
 
 const getStudioProfitGross = async (studioId) => {
   const hasProductSizeId = await columnExists('order_items', 'product_size_id');
+  const hasStripeFeeAmount = await columnExists('orders', 'stripe_fee_amount');
 
   const studioRow = await queryRow(
     `SELECT s.subscription_status, s.subscription_start, s.billing_cycle,
@@ -57,7 +58,7 @@ const getStudioProfitGross = async (studioId) => {
        COALESCE(SUM(oi.price * oi.quantity), 0) as studioRevenue,
        COALESCE(SUM(COALESCE(${hasProductSizeId ? 'ps.price' : 'NULL'}, p.price, 0) * oi.quantity), 0) as baseRevenue,
        COALESCE(SUM(
-         COALESCE(o.stripe_fee_amount, 0) *
+         COALESCE(${hasStripeFeeAmount ? 'o.stripe_fee_amount' : '0'}, 0) *
          CASE
            WHEN COALESCE(orderTotals.totalItemRevenue, 0) <= 0 THEN 0
            ELSE ((oi.price * oi.quantity) / orderTotals.totalItemRevenue)
@@ -501,6 +502,7 @@ router.get('/:studioId/profit', authRequired, async (req, res) => {
     }
 
     const hasProductSizeId = await columnExists('order_items', 'product_size_id');
+    const hasStripeFeeAmount = await columnExists('orders', 'stripe_fee_amount');
     const payoutThreshold = await getStudioProfitPayoutThreshold();
 
     const byOrder = await queryRows(
@@ -509,7 +511,7 @@ router.get('/:studioId/profit', authRequired, async (req, res) => {
          o.created_at as orderDate,
          COALESCE(SUM(oi.price * oi.quantity), 0) as studioRevenue,
          COALESCE(SUM(
-           COALESCE(o.stripe_fee_amount, 0) *
+           COALESCE(${hasStripeFeeAmount ? 'o.stripe_fee_amount' : '0'}, 0) *
            CASE
              WHEN COALESCE(orderTotals.totalItemRevenue, 0) <= 0 THEN 0
              ELSE ((oi.price * oi.quantity) / orderTotals.totalItemRevenue)
@@ -618,6 +620,7 @@ router.get('/profit/summary', authRequired, async (req, res) => {
     const payoutThreshold = await getStudioProfitPayoutThreshold();
 
     const hasProductSizeId = await columnExists('order_items', 'product_size_id');
+    const hasStripeFeeAmount = await columnExists('orders', 'stripe_fee_amount');
 
     const byStudioRows = await queryRows(
       `SELECT
@@ -641,7 +644,7 @@ router.get('/profit/summary', authRequired, async (req, res) => {
            COALESCE(SUM(oi.price * oi.quantity), 0) as studioRevenue,
            COALESCE(SUM(COALESCE(${hasProductSizeId ? 'ps.price' : 'NULL'}, p.price, 0) * oi.quantity), 0) as baseRevenue,
            COALESCE(SUM(
-             COALESCE(o.stripe_fee_amount, 0) *
+             COALESCE(${hasStripeFeeAmount ? 'o.stripe_fee_amount' : '0'}, 0) *
              CASE
                WHEN COALESCE(orderTotals.totalItemRevenue, 0) <= 0 THEN 0
                ELSE ((oi.price * oi.quantity) / orderTotals.totalItemRevenue)
