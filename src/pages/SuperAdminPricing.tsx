@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import '../AdminStyles.css';
 
@@ -12,10 +13,13 @@ interface SubscriptionPlan {
   max_storage_gb?: number;
   features: string[];
   is_active: boolean;
+  stripe_monthly_price_id?: string;
+  stripe_yearly_price_id?: string;
 }
 
 export default function SuperAdminPricing() {
   const { user } = useAuth();
+  const location = useLocation();
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [_loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -23,12 +27,34 @@ export default function SuperAdminPricing() {
   const [formData, setFormData] = useState<Partial<SubscriptionPlan>>({});
   const [featureInput, setFeatureInput] = useState('');
   const [creatingPlan, setCreatingPlan] = useState(false);
+  const [subscriptionPaymentConfig, setSubscriptionPaymentConfig] = useState({
+    publishableKey: '',
+    secretKey: '',
+    webhookSecret: '',
+    isLiveMode: false,
+    isActive: false,
+  });
+  const [savingSubscriptionConfig, setSavingSubscriptionConfig] = useState(false);
+  const [payoutThreshold, setPayoutThreshold] = useState(500);
+  const [savingPayoutThreshold, setSavingPayoutThreshold] = useState(false);
+  const [editingPlanPriceIds, setEditingPlanPriceIds] = useState<Record<string, { monthly: string; yearly: string }>>({});
+  const [savingPlanPriceIds, setSavingPlanPriceIds] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (user?.role === 'super_admin') {
       fetchPlans();
+      fetchSubscriptionPaymentConfig();
+      fetchPayoutThreshold();
     }
   }, [user]);
+
+  useEffect(() => {
+    if (location.hash === '#subscription-settings' || location.hash === '#subscription-payment-gateway') {
+      requestAnimationFrame(() => {
+        document.getElementById('subscription-settings')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    }
+  }, [location.hash]);
 
   const fetchPlans = async () => {
     setLoading(true);
@@ -37,6 +63,14 @@ export default function SuperAdminPricing() {
       if (response.ok) {
         const data = await response.json();
         setPlans(data);
+        const initialPriceIds: Record<string, { monthly: string; yearly: string }> = {};
+        (data as SubscriptionPlan[]).forEach((plan) => {
+          initialPriceIds[String(plan.id)] = {
+            monthly: plan.stripe_monthly_price_id || '',
+            yearly: plan.stripe_yearly_price_id || '',
+          };
+        });
+        setEditingPlanPriceIds(initialPriceIds);
         setError('');
       } else {
         setError('Failed to load plans');
@@ -45,6 +79,134 @@ export default function SuperAdminPricing() {
       setError(err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchSubscriptionPaymentConfig = async () => {
+    try {
+      const token = localStorage.getItem('authToken');
+      const response = await fetch('/api/studios/subscription-payment-config', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setSubscriptionPaymentConfig({
+          publishableKey: data.publishableKey || '',
+          secretKey: data.secretKey || '',
+          webhookSecret: data.webhookSecret || '',
+          isLiveMode: !!data.isLiveMode,
+          isActive: !!data.isActive,
+        });
+      }
+    } catch (err) {
+      console.error('Failed to fetch subscription payment config:', err);
+    }
+  };
+
+  const handleSaveSubscriptionPaymentConfig = async () => {
+    try {
+      setSavingSubscriptionConfig(true);
+      const token = localStorage.getItem('authToken');
+      const response = await fetch('/api/studios/subscription-payment-config', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(subscriptionPaymentConfig),
+      });
+
+      if (response.ok) {
+        alert('Subscription payment configuration saved successfully');
+      } else {
+        const data = await response.json();
+        setError(data.error || 'Failed to save subscription payment configuration');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to save subscription payment configuration');
+    } finally {
+      setSavingSubscriptionConfig(false);
+    }
+  };
+
+  const fetchPayoutThreshold = async () => {
+    try {
+      const token = localStorage.getItem('authToken');
+      const response = await fetch('/api/studios/profit-payout-config', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setPayoutThreshold(Number(data.payoutThreshold) || 500);
+      }
+    } catch (err) {
+      console.error('Failed to fetch payout threshold:', err);
+    }
+  };
+
+  const handleSavePayoutThreshold = async () => {
+    try {
+      setSavingPayoutThreshold(true);
+      const token = localStorage.getItem('authToken');
+      const response = await fetch('/api/studios/profit-payout-config', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ payoutThreshold }),
+      });
+
+      if (response.ok) {
+        alert('Profit payout threshold saved');
+      } else {
+        const data = await response.json();
+        setError(data.error || 'Failed to save payout threshold');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to save payout threshold');
+    } finally {
+      setSavingPayoutThreshold(false);
+    }
+  };
+
+  const handleSavePlanPriceIds = async (planId: string | number) => {
+    const key = String(planId);
+    const prices = editingPlanPriceIds[key];
+    if (!prices) return;
+
+    setSavingPlanPriceIds(prev => ({ ...prev, [key]: true }));
+    try {
+      const token = localStorage.getItem('authToken');
+      const response = await fetch(`/api/subscription-plans/${planId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          stripe_monthly_price_id: prices.monthly || null,
+          stripe_yearly_price_id: prices.yearly || null,
+        }),
+      });
+
+      if (response.ok) {
+        await fetchPlans();
+        alert('Stripe Price IDs saved');
+      } else {
+        const data = await response.json();
+        setError(data.error || 'Failed to save Stripe Price IDs');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to save Stripe Price IDs');
+    } finally {
+      setSavingPlanPriceIds(prev => ({ ...prev, [key]: false }));
     }
   };
 
@@ -192,6 +354,158 @@ export default function SuperAdminPricing() {
         <button onClick={handleStartCreate} className="btn btn-primary">
           + Add Subscription Level
         </button>
+      </div>
+
+      <div id="subscription-settings" className="admin-summary-box" style={{ marginBottom: '1rem' }}>
+        <h2 style={{ marginTop: 0 }}>Studio Subscription Payment Gateway</h2>
+        <p style={{ marginTop: '0.5rem', color: 'var(--text-secondary)' }}>
+          This Stripe configuration is used only for studio subscription billing (not customer checkout).
+        </p>
+
+        <div className="form-group">
+          <label>
+            <input
+              type="checkbox"
+              checked={subscriptionPaymentConfig.isActive}
+              onChange={(e) => setSubscriptionPaymentConfig(prev => ({ ...prev, isActive: e.target.checked }))}
+              style={{ marginRight: '0.5rem' }}
+            />
+            Enable subscription billing gateway
+          </label>
+        </div>
+
+        <div className="form-group">
+          <label>
+            <input
+              type="checkbox"
+              checked={subscriptionPaymentConfig.isLiveMode}
+              onChange={(e) => setSubscriptionPaymentConfig(prev => ({ ...prev, isLiveMode: e.target.checked }))}
+              style={{ marginRight: '0.5rem' }}
+            />
+            Live mode
+          </label>
+        </div>
+
+        <div className="form-group">
+          <label>Publishable Key</label>
+          <input
+            type="text"
+            value={subscriptionPaymentConfig.publishableKey}
+            onChange={(e) => setSubscriptionPaymentConfig(prev => ({ ...prev, publishableKey: e.target.value }))}
+            placeholder={subscriptionPaymentConfig.isLiveMode ? 'pk_live_...' : 'pk_test_...'}
+          />
+        </div>
+
+        <div className="form-group">
+          <label>Secret Key</label>
+          <input
+            type="password"
+            value={subscriptionPaymentConfig.secretKey}
+            onChange={(e) => setSubscriptionPaymentConfig(prev => ({ ...prev, secretKey: e.target.value }))}
+            placeholder={subscriptionPaymentConfig.isLiveMode ? 'sk_live_...' : 'sk_test_...'}
+          />
+        </div>
+
+        <div className="form-group">
+          <label>Webhook Secret</label>
+          <input
+            type="password"
+            value={subscriptionPaymentConfig.webhookSecret}
+            onChange={(e) => setSubscriptionPaymentConfig(prev => ({ ...prev, webhookSecret: e.target.value }))}
+            placeholder="whsec_..."
+          />
+        </div>
+
+        <button
+          onClick={handleSaveSubscriptionPaymentConfig}
+          className="btn btn-success"
+          disabled={savingSubscriptionConfig}
+        >
+          {savingSubscriptionConfig ? 'Saving...' : 'Save Subscription Gateway Config'}
+        </button>
+
+        <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--border-color)' }}>
+          <h3 style={{ marginTop: 0 }}>Studio Profit Payout Threshold</h3>
+          <p style={{ marginTop: 0, color: 'var(--text-secondary)' }}>
+            Studio payouts are marked eligible once studio profit reaches this amount.
+          </p>
+          <div className="form-group" style={{ maxWidth: '280px' }}>
+            <label>Payout Threshold ($)</label>
+            <input
+              type="number"
+              min={0}
+              step="0.01"
+              value={payoutThreshold}
+              onChange={(e) => setPayoutThreshold(Number(e.target.value) || 0)}
+            />
+          </div>
+          <button
+            onClick={handleSavePayoutThreshold}
+            className="btn btn-primary"
+            disabled={savingPayoutThreshold}
+          >
+            {savingPayoutThreshold ? 'Saving...' : 'Save Payout Threshold'}
+          </button>
+        </div>
+      </div>
+
+      <div className="admin-summary-box" style={{ marginBottom: '1rem' }}>
+        <h2 style={{ marginTop: 0 }}>Stripe Price IDs by Plan</h2>
+        <p style={{ marginTop: '0.25rem', color: 'var(--text-secondary)' }}>
+          Set the Stripe <strong>price_xxx</strong> IDs for each plan billing cycle.
+        </p>
+        {plans.length === 0 ? (
+          <p style={{ color: 'var(--text-secondary)' }}>No subscription plans found.</p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {plans.map((plan) => {
+              const key = String(plan.id);
+              return (
+                <div key={key} style={{ border: '1px solid var(--border-color)', borderRadius: '8px', padding: '0.75rem' }}>
+                  <div style={{ fontWeight: 600, marginBottom: '0.5rem' }}>
+                    {plan.name}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label>Monthly Price ID</label>
+                      <input
+                        type="text"
+                        placeholder="price_..."
+                        value={editingPlanPriceIds[key]?.monthly ?? ''}
+                        onChange={(e) => setEditingPlanPriceIds((prev) => ({
+                          ...prev,
+                          [key]: { ...(prev[key] || { monthly: '', yearly: '' }), monthly: e.target.value },
+                        }))}
+                        style={{ fontFamily: 'monospace' }}
+                      />
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label>Yearly Price ID</label>
+                      <input
+                        type="text"
+                        placeholder="price_..."
+                        value={editingPlanPriceIds[key]?.yearly ?? ''}
+                        onChange={(e) => setEditingPlanPriceIds((prev) => ({
+                          ...prev,
+                          [key]: { ...(prev[key] || { monthly: '', yearly: '' }), yearly: e.target.value },
+                        }))}
+                        style={{ fontFamily: 'monospace' }}
+                      />
+                    </div>
+                  </div>
+                  <button
+                    className="btn btn-primary btn-sm"
+                    style={{ marginTop: '0.75rem' }}
+                    onClick={() => handleSavePlanPriceIds(plan.id)}
+                    disabled={!!savingPlanPriceIds[key]}
+                  >
+                    {savingPlanPriceIds[key] ? 'Saving...' : `Save ${plan.name} Price IDs`}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {error && <div className="info-box-error" style={{ marginBottom: '1rem' }}>{error}</div>}
