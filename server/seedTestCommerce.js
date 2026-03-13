@@ -153,6 +153,7 @@ const buildOrderProductCatalog = async (priceListId, fallbackChoice) => {
             ps.id as productSizeId,
             ps.size_name as sizeName,
             ps.price as unitPrice,
+            ps.cost as cost,
             p.name as productName
      FROM product_sizes ps
      INNER JOIN products p ON p.id = ps.product_id
@@ -163,13 +164,21 @@ const buildOrderProductCatalog = async (priceListId, fallbackChoice) => {
   );
 
   const catalog = rows
-    .map((row) => ({
-      productId: Number(row.productId),
-      productSizeId: Number(row.productSizeId),
-      sizeName: String(row.sizeName || '').trim(),
-      productName: String(row.productName || '').trim() || `Product #${row.productId}`,
-      unitPrice: Number(row.unitPrice) || 0,
-    }))
+    .map((row) => {
+      const storedPrice = Number(row.unitPrice);
+      const derivedPrice = getStudioPriceFromCost(row.cost);
+      const unitPrice = Number.isFinite(storedPrice) && storedPrice > 0
+        ? storedPrice
+        : derivedPrice;
+
+      return {
+        productId: Number(row.productId),
+        productSizeId: Number(row.productSizeId),
+        sizeName: String(row.sizeName || '').trim(),
+        productName: String(row.productName || '').trim() || `Product #${row.productId}`,
+        unitPrice,
+      };
+    })
     .filter((row) => row.productId > 0 && row.productSizeId > 0 && row.unitPrice > 0);
 
   if (catalog.length > 0) return catalog;
@@ -652,9 +661,9 @@ const main = async () => {
   const stripe = await ensureStripeClient();
   const subscriptionPlans = await getSeedSubscriptionPlans();
   const priceListId = await ensureDefaultPriceList();
+  const markupResult = await enforceStudioMarkupForPriceList(priceListId);
   const fallbackProductChoice = await ensureSeedProductAndSize(priceListId);
   const orderProductCatalog = await buildOrderProductCatalog(priceListId, fallbackProductChoice);
-  const markupResult = await enforceStudioMarkupForPriceList(priceListId);
 
   if (!orderProductCatalog.length) {
     throw new Error('No seedable products were found for order creation');
