@@ -58,6 +58,7 @@ const AdminPriceLists: React.FC = () => {
   const [importError, setImportError] = useState('');
   const [importStep, setImportStep] = useState<'upload' | 'mapping' | 'preview'>('upload');
   const [importTargetPriceListId, setImportTargetPriceListId] = useState<number | null>(null);
+  const [combineImportVariants, setCombineImportVariants] = useState(true);
   const selectedLab = siteConfigService.getSelectedLab();
 
   useEffect(() => {
@@ -221,21 +222,82 @@ const AdminPriceLists: React.FC = () => {
       const existingProductNames = new Set(targetPriceList?.products?.map(p => p.name.toLowerCase()) || []);
 
       const getBaseName = (name: string) => {
-        const cleaned = name
+        const raw = String(name || '').trim();
+        if (!raw) return raw;
+
+        const normalized = raw.replace(/\s+/g, ' ').trim();
+        const withParenVariant = normalized.match(/^(.*?)\s*\(([^)]+)\)\s*$/i);
+        if (withParenVariant?.[1]) {
+          return withParenVariant[1].trim();
+        }
+
+        const trailingVariantPatterns = [
+          /^(.*?)\s+(\d+(?:\.\d+)?\s?(?:oz|ml|l|gb|tb|mm|cm|in|"|inch|inches))$/i,
+          /^(.*?)\s+((?:iphone|ipad|ipod)\s*[a-z0-9+\-\s]+)$/i,
+          /^(.*?)\s+((?:galaxy|pixel)\s*[a-z0-9+\-\s]+)$/i,
+          /^(.*?)\s+((?:small|medium|large|xl|xxl))$/i,
+        ];
+
+        for (const pattern of trailingVariantPatterns) {
+          const match = normalized.match(pattern);
+          if (match?.[1]) {
+            return match[1].trim();
+          }
+        }
+
+        const cleaned = normalized
           .replace(/\b\d+(?:\.\d+)?\s*[x×]\s*\d+(?:\.\d+)?\b/gi, '')
           .replace(/\s+/g, ' ')
           .trim();
-        return cleaned || name;
+        return cleaned || normalized;
+      };
+
+      const getVariantSizeName = (name: string) => {
+        const raw = String(name || '').trim();
+        if (!raw) return null;
+
+        const normalized = raw.replace(/\s+/g, ' ').trim();
+        const withParenVariant = normalized.match(/^(.*?)\s*\(([^)]+)\)\s*$/i);
+        if (withParenVariant?.[2]) {
+          return withParenVariant[2].trim();
+        }
+
+        const trailingVariantPatterns = [
+          /^(.*?)\s+(\d+(?:\.\d+)?\s?(?:oz|ml|l|gb|tb|mm|cm|in|"|inch|inches))$/i,
+          /^(.*?)\s+((?:iphone|ipad|ipod)\s*[a-z0-9+\-\s]+)$/i,
+          /^(.*?)\s+((?:galaxy|pixel)\s*[a-z0-9+\-\s]+)$/i,
+          /^(.*?)\s+((?:small|medium|large|xl|xxl))$/i,
+        ];
+
+        for (const pattern of trailingVariantPatterns) {
+          const match = normalized.match(pattern);
+          if (match?.[2]) {
+            return match[2].trim();
+          }
+        }
+
+        return null;
       };
 
       // Group imported rows by base product name and merge sizes
       const groupedByBase = new Map<string, Array<{ sizeName: string; width?: number; height?: number; price: number; cost?: number }>>();
       importedData.forEach((group) => {
-        const baseName = getBaseName(group.productName);
+        const baseName = combineImportVariants ? getBaseName(group.productName) : group.productName;
+        const variantSizeName = combineImportVariants ? getVariantSizeName(group.productName) : null;
         if (!groupedByBase.has(baseName)) {
           groupedByBase.set(baseName, []);
         }
-        groupedByBase.get(baseName)!.push(...group.items);
+
+        const mappedItems = group.items.map((item) => {
+          const currentSize = String(item.sizeName || '').trim();
+          const hasMeaningfulSize = currentSize && currentSize.toLowerCase() !== 'default';
+          return {
+            ...item,
+            sizeName: hasMeaningfulSize ? currentSize : (variantSizeName || currentSize || 'Default'),
+          };
+        });
+
+        groupedByBase.get(baseName)!.push(...mappedItems);
       });
 
       const skippedDuplicates: string[] = [];
@@ -776,6 +838,20 @@ const AdminPriceLists: React.FC = () => {
                       <option key={pl.id} value={pl.id}>{pl.name}</option>
                     ))}
                   </select>
+                </div>
+
+                <div className="form-group">
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={combineImportVariants}
+                      onChange={(e) => setCombineImportVariants(e.target.checked)}
+                    />
+                    Combine variant product names into one product (use suffix as size)
+                  </label>
+                  <div className="muted-text" style={{ fontSize: '0.8rem', marginTop: '0.35rem' }}>
+                    Example: “Photo Mug 11oz” + “Photo Mug 15oz” → product “Photo Mug” with sizes “11oz” and “15oz”.
+                  </div>
                 </div>
                 {importTargetPriceListId === null && (
                   <>
