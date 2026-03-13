@@ -1,5 +1,9 @@
 import Stripe from 'stripe';
-import { queryRows, query, queryRow, columnExists } from './mssql.js';
+import { queryRows, query, queryRow, columnExists, tableExists } from './mssql.js';
+
+const STUDIO_PRICE_MARKUP_MULTIPLIER = 6; // 500% above cost
+const toCurrency = (value) => Number((Number(value) || 0).toFixed(2));
+const getStudioPriceFromCost = (cost) => toCurrency((Number(cost) || 0) * STUDIO_PRICE_MARKUP_MULTIPLIER);
 
 const describeKey = (value) => {
   const key = String(value || '').trim();
@@ -34,6 +38,9 @@ const normalizeSeedPricing = async () => {
     return { updatedSizes: 0, note: 'Seed Test Print not found' };
   }
 
+  const seedCost = 8.0;
+  const seedPrice = getStudioPriceFromCost(seedCost);
+
   await query(
     `UPDATE products
      SET category = $2,
@@ -41,7 +48,7 @@ const normalizeSeedPricing = async () => {
          cost = $4,
          options = $5
      WHERE id = $1`,
-    [seedProduct.id, 'Prints', 'Auto-created seed product', 8.0, JSON.stringify({ isActive: true })]
+    [seedProduct.id, 'Prints', 'Auto-created seed product', seedCost, JSON.stringify({ isActive: true })]
   );
 
   const sizeRows = await queryRows(
@@ -55,11 +62,67 @@ const normalizeSeedPricing = async () => {
        SET price = $2,
            cost = $3
        WHERE id = $1`,
-      [row.id, 19.99, 8.0]
+      [row.id, seedPrice, seedCost]
     );
   }
 
-  return { updatedSizes: sizeRows.length, note: 'Seed 8x10 pricing normalized to price=19.99 cost=8.00' };
+  return {
+    updatedSizes: sizeRows.length,
+    note: `Seed 8x10 pricing normalized to price=${seedPrice.toFixed(2)} cost=${seedCost.toFixed(2)} (500% above cost)`,
+  };
+};
+
+const normalizeSeedStudioOverridePricing = async () => {
+  const hasOverridesTable = await tableExists('studio_price_list_size_overrides');
+  if (!hasOverridesTable) {
+    return { updated: 0, skipped: 0, note: 'studio_price_list_size_overrides table not found' };
+  }
+
+  const hasIsOffered = await columnExists('studio_price_list_size_overrides', 'is_offered');
+  const seedOverrideRows = await queryRows(
+    `SELECT spsso.id, ps.cost
+     FROM studio_price_list_size_overrides spsso
+     INNER JOIN studios s ON s.id = spsso.studio_id
+     INNER JOIN product_sizes ps ON ps.id = spsso.product_size_id
+     WHERE s.email LIKE 'seed-studio-%@example.com' OR s.name LIKE 'Seed Studio %'`,
+    []
+  );
+
+  let updated = 0;
+  let skipped = 0;
+
+  for (const row of seedOverrideRows) {
+    const cost = Number(row?.cost);
+    if (!Number.isFinite(cost) || cost <= 0) {
+      skipped += 1;
+      continue;
+    }
+
+    const overridePrice = getStudioPriceFromCost(cost);
+    if (hasIsOffered) {
+      await query(
+        `UPDATE studio_price_list_size_overrides
+         SET price = $2,
+             is_offered = 1
+         WHERE id = $1`,
+        [row.id, overridePrice]
+      );
+    } else {
+      await query(
+        `UPDATE studio_price_list_size_overrides
+         SET price = $2
+         WHERE id = $1`,
+        [row.id, overridePrice]
+      );
+    }
+    updated += 1;
+  }
+
+  return {
+    updated,
+    skipped,
+    note: `Seed studio override pricing normalized to 500% above cost (${updated} updated, ${skipped} skipped)`,
+  };
 };
 
 const backfillStripeFees = async () => {
@@ -131,6 +194,9 @@ const main = async () => {
 
   const pricing = await normalizeSeedPricing();
   console.log('• Pricing:', pricing);
+
+  const overridePricing = await normalizeSeedStudioOverridePricing();
+  console.log('• Override pricing:', overridePricing);
 
   const fees = await backfillStripeFees();
   console.log('• Stripe fees:', fees);

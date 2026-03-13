@@ -339,9 +339,50 @@ export default function SuperAdminDashboard() {
   };
 
   const getPlanPrice = (planId: string) => {
-    const plan = plans.find(p => p.id === planId);
+    const normalizedPlanId = String(planId || '').trim().toLowerCase();
+    const plan = plans.find((candidate) => {
+      const candidateId = String(candidate.id || '').trim().toLowerCase();
+      const candidateName = String(candidate.name || '').trim().toLowerCase();
+      return candidateId === normalizedPlanId || candidateName === normalizedPlanId;
+    });
     return plan ? `$${plan.monthlyPrice}/mo` : 'N/A';
   };
+
+  const getMonthlySubscriptionRevenue = (studio: Studio) => {
+    if (
+      !studio ||
+      studio.subscription_status !== 'active' ||
+      studio.is_free_subscription
+    ) {
+      return 0;
+    }
+
+    const normalizedPlanId = String(studio.subscription_plan || '').trim().toLowerCase();
+    const plan = plans.find((candidate) => {
+      const candidateId = String(candidate.id || '').trim().toLowerCase();
+      const candidateName = String(candidate.name || '').trim().toLowerCase();
+      return candidateId === normalizedPlanId || candidateName === normalizedPlanId;
+    });
+
+    if (!plan) {
+      return 0;
+    }
+
+    if (studio.billing_cycle === 'yearly') {
+      const yearlyPrice = Number(plan.yearlyPrice);
+      if (Number.isFinite(yearlyPrice) && yearlyPrice > 0) {
+        return yearlyPrice / 12;
+      }
+    }
+
+    const monthlyPrice = Number(plan.monthlyPrice);
+    return Number.isFinite(monthlyPrice) ? monthlyPrice : 0;
+  };
+
+  const monthlyRevenue = studios.reduce(
+    (sum, studio) => sum + getMonthlySubscriptionRevenue(studio),
+    0
+  );
 
   if (user?.role !== 'super_admin') {
     return <div style={{ padding: '20px' }}>Access denied. Super admin only.</div>;
@@ -374,7 +415,7 @@ export default function SuperAdminDashboard() {
         </div>
         <div className="stat-card">
           <h3>Monthly Revenue</h3>
-          <p className="stat-value">${studios.reduce((sum, s) => sum + parseFloat(s.subscription_plan || '0'), 0).toFixed(2)}</p>
+          <p className="stat-value">${monthlyRevenue.toFixed(2)}</p>
         </div>
         <div className="stat-card">
           <h3>Total Super Admin Profit</h3>

@@ -9,12 +9,15 @@ const ALBUMS_PER_STUDIO = 2;
 const PHOTOS_PER_ALBUM = 6;
 const ORDERS_PER_STUDIO = 3;
 const DEFAULT_RECEIPT_EMAIL = 'bcampea@gmail.com';
+const STUDIO_PRICE_MARKUP_MULTIPLIER = 6; // 500% above cost
 
 const nowIso = () => new Date().toISOString();
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
 
 const randomInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+const toCurrency = (value) => Number((Number(value) || 0).toFixed(2));
+const getStudioPriceFromCost = (cost) => toCurrency((Number(cost) || 0) * STUDIO_PRICE_MARKUP_MULTIPLIER);
 
 const describeKey = (value) => {
   const key = String(value || '').trim();
@@ -88,13 +91,16 @@ const ensureDefaultPriceList = async () => {
 };
 
 const ensureSeedProductAndSize = async (priceListId) => {
+  const seedCost = 8.0;
+  const seedPrice = getStudioPriceFromCost(seedCost);
+
   let product = await queryRow('SELECT TOP 1 id FROM products WHERE name = $1', ['Seed Test Print']);
   if (!product) {
     product = await queryRow(
       `INSERT INTO products (name, category, price, description, cost, options)
        VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING id`,
-      ['Seed Test Print', 'Prints', 0, 'Auto-created seed product', 8.0, JSON.stringify({ isActive: true })]
+      ['Seed Test Print', 'Prints', 0, 'Auto-created seed product', seedCost, JSON.stringify({ isActive: true })]
     );
   } else {
     await query(
@@ -104,7 +110,7 @@ const ensureSeedProductAndSize = async (priceListId) => {
            cost = $4,
            options = $5
        WHERE id = $1`,
-      [product.id, 'Prints', 'Auto-created seed product', 8.0, JSON.stringify({ isActive: true })]
+      [product.id, 'Prints', 'Auto-created seed product', seedCost, JSON.stringify({ isActive: true })]
     );
   }
 
@@ -118,7 +124,7 @@ const ensureSeedProductAndSize = async (priceListId) => {
       `INSERT INTO product_sizes (price_list_id, product_id, size_name, price, cost)
        VALUES ($1, $2, $3, $4, $5)
        RETURNING id`,
-      [priceListId, product.id, '8x10', 19.99, 8.0]
+      [priceListId, product.id, '8x10', seedPrice, seedCost]
     );
   } else {
     await query(
@@ -126,7 +132,7 @@ const ensureSeedProductAndSize = async (priceListId) => {
        SET price = $2,
            cost = $3
        WHERE id = $1`,
-      [size.id, 19.99, 8.0]
+      [size.id, seedPrice, seedCost]
     );
   }
 
@@ -135,8 +141,109 @@ const ensureSeedProductAndSize = async (priceListId) => {
   return {
     productId: Number(product.id),
     productSizeId: Number(size.id),
-    unitPrice: Number(latest?.price || 19.99),
+    unitPrice: Number(latest?.price || seedPrice),
   };
+};
+
+const enforceStudioMarkupForPriceList = async (priceListId) => {
+  const sizes = await queryRows(
+    `SELECT id, cost
+     FROM product_sizes
+     WHERE price_list_id = $1`,
+    [priceListId]
+  );
+
+  let updated = 0;
+  let skipped = 0;
+
+  for (const size of sizes) {
+    const cost = Number(size?.cost);
+    if (!Number.isFinite(cost) || cost <= 0) {
+      skipped += 1;
+      continue;
+    }
+
+    const price = getStudioPriceFromCost(cost);
+    await query('UPDATE product_sizes SET price = $2 WHERE id = $1', [size.id, price]);
+    updated += 1;
+  }
+
+  return { updated, skipped, total: sizes.length };
+};
+
+const enforceStudioOverrideMarkupForStudio = async ({ studioId, priceListId }) => {
+  const hasOverridesTable = await tableExists('studio_price_list_size_overrides');
+  if (!hasOverridesTable) {
+    return { inserted: 0, updated: 0, skipped: 0, total: 0, enabled: false };
+  }
+
+  const hasIsOffered = await columnExists('studio_price_list_size_overrides', 'is_offered');
+  const sizes = await queryRows(
+    `SELECT id, product_id as productId, cost
+     FROM product_sizes
+     WHERE price_list_id = $1`,
+    [priceListId]
+  );
+
+  let inserted = 0;
+  let updated = 0;
+  let skipped = 0;
+
+  for (const size of sizes) {
+    const cost = Number(size?.cost);
+    if (!Number.isFinite(cost) || cost <= 0) {
+      skipped += 1;
+      continue;
+    }
+
+    const overridePrice = getStudioPriceFromCost(cost);
+    const existing = await queryRow(
+      `SELECT id
+       FROM studio_price_list_size_overrides
+       WHERE studio_id = $1 AND price_list_id = $2 AND product_size_id = $3`,
+      [studioId, priceListId, size.id]
+    );
+
+    if (existing?.id) {
+      if (hasIsOffered) {
+        await query(
+          `UPDATE studio_price_list_size_overrides
+           SET price = $2,
+               is_offered = 1
+           WHERE id = $1`,
+          [existing.id, overridePrice]
+        );
+      } else {
+        await query(
+          `UPDATE studio_price_list_size_overrides
+           SET price = $2
+           WHERE id = $1`,
+          [existing.id, overridePrice]
+        );
+      }
+      updated += 1;
+      continue;
+    }
+
+    if (hasIsOffered) {
+      await query(
+        `INSERT INTO studio_price_list_size_overrides
+          (studio_id, price_list_id, product_id, product_size_id, price, is_offered)
+         VALUES ($1, $2, $3, $4, $5, 1)`,
+        [studioId, priceListId, size.productId, size.id, overridePrice]
+      );
+    } else {
+      await query(
+        `INSERT INTO studio_price_list_size_overrides
+          (studio_id, price_list_id, product_id, product_size_id, price)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [studioId, priceListId, size.productId, size.id, overridePrice]
+      );
+    }
+    inserted += 1;
+  }
+
+  return { inserted, updated, skipped, total: sizes.length, enabled: true };
 };
 
 const ensureStudio = async (index, subscriptionPlan) => {
@@ -506,6 +613,7 @@ const main = async () => {
   const subscriptionPlans = await getSeedSubscriptionPlans();
   const priceListId = await ensureDefaultPriceList();
   const { productId, productSizeId, unitPrice } = await ensureSeedProductAndSize(priceListId);
+  const markupResult = await enforceStudioMarkupForPriceList(priceListId);
 
   const hasPhotoIdsColumn = await columnExists('order_items', 'photo_ids');
   const hasProductSizeIdColumn = await columnExists('order_items', 'product_size_id');
@@ -514,6 +622,10 @@ const main = async () => {
   const hasStripeChargeIdColumn = await columnExists('orders', 'stripe_charge_id');
 
   const summary = [];
+
+  console.log(
+    `💲 Studio seed pricing enforced on price list ${priceListId}: ${markupResult.updated} updated, ${markupResult.skipped} skipped (target = 500% above cost)`
+  );
 
   for (let i = 1; i <= STUDIO_COUNT; i += 1) {
     const studioPlan = subscriptionPlans[(i - 1) % subscriptionPlans.length];
@@ -536,6 +648,10 @@ const main = async () => {
     });
 
     const photoIds = await ensureAlbumsAndPhotos(studio.id, priceListId, i);
+    const overrideMarkupResult = await enforceStudioOverrideMarkupForStudio({
+      studioId: studio.id,
+      priceListId,
+    });
 
     const purchases = [];
     for (let o = 1; o <= ORDERS_PER_STUDIO; o += 1) {
@@ -574,6 +690,7 @@ const main = async () => {
       studioAdminId,
       customerId,
       photoCount: photoIds.length,
+      overridePricing: overrideMarkupResult,
       purchases,
     });
   }
@@ -587,6 +704,11 @@ const main = async () => {
 
   for (const studio of summary) {
     console.log(`Studio ${studio.studioId} (${studio.subscriptionPlan}) => photos: ${studio.photoCount}, orders: ${studio.purchases.length}`);
+    if (studio.overridePricing?.enabled) {
+      console.log(
+        `  • override pricing: inserted=${studio.overridePricing.inserted}, updated=${studio.overridePricing.updated}, skipped=${studio.overridePricing.skipped}`
+      );
+    }
     studio.purchases.forEach((p) => {
       console.log(`  • order #${p.orderId} | payment_intent=${p.paymentIntentId} | $${p.amount.toFixed(2)}`);
     });

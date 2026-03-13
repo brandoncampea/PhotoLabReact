@@ -1361,13 +1361,11 @@ router.get('/:studioId/features', authRequired, async (req, res) => {
     }
 
     const studio = await queryRow(
-      'SELECT id, payment_vendors as paymentVendors, lab_vendors as labVendors FROM studios WHERE id = $1',
-      [parsedStudioId]
+      `SELECT TOP 1 id, payment_vendors as paymentVendors, lab_vendors as labVendors
+       FROM studios
+       WHERE payment_vendors IS NOT NULL OR lab_vendors IS NOT NULL
+       ORDER BY id ASC`
     );
-
-    if (!studio) {
-      return res.status(404).json({ error: 'Studio not found' });
-    }
 
     const defaultSettings = {
       paymentVendors: ['stripe'],
@@ -1399,7 +1397,7 @@ router.get('/:studioId/features', authRequired, async (req, res) => {
       // keep default
     }
 
-    res.json({ paymentVendors, labVendors });
+    res.json({ paymentVendors, labVendors, appliesToAllStudios: true });
   } catch (error) {
     console.error('Error fetching studio features:', error);
     res.status(500).json({ error: 'Failed to fetch studio feature settings' });
@@ -1409,8 +1407,6 @@ router.get('/:studioId/features', authRequired, async (req, res) => {
 // Update studio feature availability (super admin only)
 router.put('/:studioId/features', authRequired, async (req, res) => {
   try {
-    const { studioId } = req.params;
-    const parsedStudioId = parseInt(studioId, 10);
     const { paymentVendors, labVendors } = req.body || {};
 
     if (req.user.role !== 'super_admin') {
@@ -1430,15 +1426,15 @@ router.put('/:studioId/features', authRequired, async (req, res) => {
     await query(
       `UPDATE studios
        SET payment_vendors = $1,
-           lab_vendors = $2
-       WHERE id = $3`,
-      [JSON.stringify(safePaymentVendors), JSON.stringify(safeLabVendors), parsedStudioId]
+           lab_vendors = $2`,
+      [JSON.stringify(safePaymentVendors), JSON.stringify(safeLabVendors)]
     );
 
     res.json({
-      message: 'Studio feature settings updated',
+      message: 'Studio feature settings updated for all studios',
       paymentVendors: safePaymentVendors,
       labVendors: safeLabVendors,
+      appliesToAllStudios: true,
     });
   } catch (error) {
     console.error('Error updating studio features:', error);
