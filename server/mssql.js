@@ -60,7 +60,23 @@ console.log('- DB_NAME:', process.env.DB_NAME);
 console.log('- DB_USER:', process.env.DB_USER ? '***set***' : 'not set');
 console.log('- DB_PASSWORD:', process.env.DB_PASSWORD ? '***set***' : 'not set');
 
-const mssqlConfig = hasValidConnectionString
+const hasDbParts = !!(process.env.DB_HOST && process.env.DB_NAME && process.env.DB_USER && process.env.DB_PASSWORD);
+
+const mssqlConfig = hasDbParts
+  ? {
+      user: process.env.DB_USER || 'sa',
+      password: process.env.DB_PASSWORD || 'yourStrong(!)Password',
+      server: process.env.DB_HOST || 'localhost',
+      port: Number(process.env.DB_PORT || 1433),
+      database: process.env.DB_NAME || 'photolab',
+      options: {
+        encrypt: process.env.MSSQL_ENCRYPT !== 'false',
+        trustServerCertificate: process.env.MSSQL_TRUST_CERT === 'true',
+        connectionTimeout: 5000, // 5 second connection timeout
+        requestTimeout: 10000, // 10 second request timeout
+      },
+    }
+  : hasValidConnectionString
   ? parseConnectionString(rawConnectionString)
   : {
       user: process.env.DB_USER || 'sa',
