@@ -343,6 +343,12 @@ const AdminOrders: React.FC = () => {
                 <p>{order.shippingAddress?.addressLine1 || 'N/A'}</p>
                 {order.shippingAddress?.addressLine2 && <p>{order.shippingAddress.addressLine2}</p>}
                 <p>{order.shippingAddress?.city || ''}{order.shippingAddress?.city ? ',' : ''} {order.shippingAddress?.state || ''} {order.shippingAddress?.zipCode || ''}</p>
+                <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid var(--border-color)' }}>
+                  <strong>Internal accounting:</strong>
+                  <p>Stripe fee: ${Number(order.stripeFeeAmount || 0).toFixed(2)}</p>
+                  <p>Customer receipt: {order.customerReceiptSentAt ? 'Sent' : 'Pending / not configured'}</p>
+                  <p>Studio receipt: {order.studioReceiptSentAt ? 'Sent' : 'Pending / not configured'}</p>
+                </div>
                 {order.batchShippingAddress && (
                   <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid var(--border-color)' }}>
                     <strong>Batch Shipping Address Used:</strong>

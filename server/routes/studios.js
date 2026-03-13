@@ -57,11 +57,23 @@ const getStudioProfitGross = async (studioId) => {
        COALESCE(SUM(oi.price * oi.quantity), 0) as studioRevenue,
        COALESCE(SUM(COALESCE(${hasProductSizeId ? 'ps.price' : 'NULL'}, p.price, 0) * oi.quantity), 0) as baseRevenue,
        COALESCE(SUM(
+         COALESCE(o.stripe_fee_amount, 0) *
+         CASE
+           WHEN COALESCE(orderTotals.totalItemRevenue, 0) <= 0 THEN 0
+           ELSE ((oi.price * oi.quantity) / orderTotals.totalItemRevenue)
+         END
+       ), 0) as stripeFeeAmount,
+       COALESCE(SUM(
          (COALESCE(${hasProductSizeId ? 'ps.price' : 'NULL'}, p.price, 0)
           - COALESCE(${hasProductSizeId ? 'ps.cost' : 'NULL'}, p.cost, 0)) * oi.quantity
        ), 0) as orderMargin
      FROM orders o
      INNER JOIN order_items oi ON oi.order_id = o.id
+     LEFT JOIN (
+       SELECT order_id, COALESCE(SUM(price * quantity), 0) as totalItemRevenue
+       FROM order_items
+       GROUP BY order_id
+     ) orderTotals ON orderTotals.order_id = o.id
      INNER JOIN photos ph ON ph.id = oi.photo_id
      INNER JOIN albums a ON a.id = ph.album_id
      LEFT JOIN products p ON p.id = oi.product_id
@@ -73,15 +85,17 @@ const getStudioProfitGross = async (studioId) => {
 
   const studioRevenue = Number(revenueRow?.studioRevenue) || 0;
   const baseRevenue = Number(revenueRow?.baseRevenue) || 0;
+  const stripeFeeAmount = Number(revenueRow?.stripeFeeAmount) || 0;
   const orderMargin = Number(revenueRow?.orderMargin) || 0;
 
   const subscriptionRevenue = calcSubscriptionRevenue(studioRow);
   const superAdminProfit = subscriptionRevenue + orderMargin;
-  const studioProfitGross = studioRevenue - baseRevenue; // studio markup (selling - base)
+  const studioProfitGross = (studioRevenue - baseRevenue) - stripeFeeAmount;
 
   return {
     studioRevenue,
     superAdminProfit,
+    stripeFeeAmount,
     studioProfitGross,
   };
 };
@@ -491,6 +505,13 @@ router.get('/:studioId/profit', authRequired, async (req, res) => {
          o.id as orderId,
          o.created_at as orderDate,
          COALESCE(SUM(oi.price * oi.quantity), 0) as studioRevenue,
+         COALESCE(SUM(
+           COALESCE(o.stripe_fee_amount, 0) *
+           CASE
+             WHEN COALESCE(orderTotals.totalItemRevenue, 0) <= 0 THEN 0
+             ELSE ((oi.price * oi.quantity) / orderTotals.totalItemRevenue)
+           END
+         ), 0) as stripeFeeAmount,
          COALESCE(SUM(COALESCE(${hasProductSizeId ? 'ps.price' : 'NULL'}, p.price, 0) * oi.quantity), 0) as baseRevenue,
          COALESCE(SUM(
            (COALESCE(${hasProductSizeId ? 'ps.price' : 'NULL'}, p.price, 0)
@@ -499,6 +520,11 @@ router.get('/:studioId/profit', authRequired, async (req, res) => {
          COALESCE(SUM(oi.quantity), 0) as itemCount
        FROM orders o
        INNER JOIN order_items oi ON oi.order_id = o.id
+       LEFT JOIN (
+         SELECT order_id, COALESCE(SUM(price * quantity), 0) as totalItemRevenue
+         FROM order_items
+         GROUP BY order_id
+       ) orderTotals ON orderTotals.order_id = o.id
        INNER JOIN photos ph ON ph.id = oi.photo_id
        INNER JOIN albums a ON a.id = ph.album_id
        LEFT JOIN products p ON p.id = oi.product_id
@@ -514,13 +540,15 @@ router.get('/:studioId/profit', authRequired, async (req, res) => {
       const revenue = Number(row.studioRevenue) || 0;
       const baseRev = Number(row.baseRevenue) || 0;
       const orderMargin = Number(row.orderMargin) || 0;
+      const stripeFeeAmount = Number(row.stripeFeeAmount) || 0;
       return {
         orderId: Number(row.orderId) || 0,
         orderDate: row.orderDate,
         itemCount: Number(row.itemCount) || 0,
         studioRevenue: revenue,
-        superAdminProfit: orderMargin,     // per-order: base margin only
-        studioProfit: revenue - baseRev,   // studio markup for this order
+        superAdminProfit: orderMargin,
+        stripeFeeAmount,
+        studioProfit: (revenue - baseRev) - stripeFeeAmount,
       };
     });
 
@@ -528,6 +556,7 @@ router.get('/:studioId/profit', authRequired, async (req, res) => {
       (acc, row) => {
         acc.totalStudioRevenue += row.studioRevenue;
         acc.totalSuperAdminProfit += row.superAdminProfit;
+        acc.totalStripeFees += row.stripeFeeAmount;
         acc.totalStudioProfitGross += row.studioProfit;
         acc.totalItems += row.itemCount;
         return acc;
@@ -535,6 +564,7 @@ router.get('/:studioId/profit', authRequired, async (req, res) => {
       {
         totalStudioRevenue: 0,
         totalSuperAdminProfit: 0,
+        totalStripeFees: 0,
         totalStudioProfitGross: 0,
         totalItems: 0,
       }
@@ -590,6 +620,7 @@ router.get('/profit/summary', authRequired, async (req, res) => {
          sp.yearly_price,
          COALESCE(rev.studioRevenue, 0) as studioRevenue,
          COALESCE(rev.baseRevenue, 0) as baseRevenue,
+         COALESCE(rev.stripeFeeAmount, 0) as stripeFeeAmount,
          COALESCE(rev.orderMargin, 0) as orderMargin,
          COALESCE(rev.orderCount, 0) as orderCount
        FROM studios s
@@ -600,12 +631,24 @@ router.get('/profit/summary', authRequired, async (req, res) => {
            COALESCE(SUM(oi.price * oi.quantity), 0) as studioRevenue,
            COALESCE(SUM(COALESCE(${hasProductSizeId ? 'ps.price' : 'NULL'}, p.price, 0) * oi.quantity), 0) as baseRevenue,
            COALESCE(SUM(
+             COALESCE(o.stripe_fee_amount, 0) *
+             CASE
+               WHEN COALESCE(orderTotals.totalItemRevenue, 0) <= 0 THEN 0
+               ELSE ((oi.price * oi.quantity) / orderTotals.totalItemRevenue)
+             END
+           ), 0) as stripeFeeAmount,
+           COALESCE(SUM(
              (COALESCE(${hasProductSizeId ? 'ps.price' : 'NULL'}, p.price, 0)
               - COALESCE(${hasProductSizeId ? 'ps.cost' : 'NULL'}, p.cost, 0)) * oi.quantity
            ), 0) as orderMargin,
            COUNT(DISTINCT o.id) as orderCount
          FROM orders o
          INNER JOIN order_items oi ON oi.order_id = o.id
+         LEFT JOIN (
+           SELECT order_id, COALESCE(SUM(price * quantity), 0) as totalItemRevenue
+           FROM order_items
+           GROUP BY order_id
+         ) orderTotals ON orderTotals.order_id = o.id
          INNER JOIN photos ph ON ph.id = oi.photo_id
          INNER JOIN albums a ON a.id = ph.album_id
          LEFT JOIN products p ON p.id = oi.product_id
@@ -636,11 +679,12 @@ router.get('/profit/summary', authRequired, async (req, res) => {
     const byStudio = byStudioRows.map((row) => {
       const studioRevenue = Number(row.studioRevenue) || 0;
       const baseRevenue = Number(row.baseRevenue) || 0;
+      const stripeFeeAmount = Number(row.stripeFeeAmount) || 0;
       const orderMargin = Number(row.orderMargin) || 0;
 
       const subscriptionRevenue = calcSubscriptionRevenue(row);
       const superAdminProfit = subscriptionRevenue + orderMargin;
-      const studioProfitGross = studioRevenue - baseRevenue; // studio markup
+      const studioProfitGross = (studioRevenue - baseRevenue) - stripeFeeAmount;
       const payout = payoutMap.get(Number(row.studioId) || 0);
       const totalPayouts = payout?.totalPayouts || 0;
       const studioProfit = studioProfitGross - totalPayouts;
@@ -651,6 +695,7 @@ router.get('/profit/summary', authRequired, async (req, res) => {
         orderCount: Number(row.orderCount) || 0,
         studioRevenue,
         superAdminProfit,
+        stripeFeeAmount,
         studioProfitGross,
         totalPayouts,
         payoutCount: payout?.payoutCount || 0,
@@ -664,6 +709,7 @@ router.get('/profit/summary', authRequired, async (req, res) => {
       (acc, row) => {
         acc.totalStudioRevenue += row.studioRevenue;
         acc.totalSuperAdminProfit += row.superAdminProfit;
+        acc.totalStripeFees += row.stripeFeeAmount;
         acc.totalStudioProfitGross += row.studioProfitGross;
         acc.totalPayouts += row.totalPayouts;
         acc.totalStudioProfit += row.studioProfit;
@@ -677,6 +723,7 @@ router.get('/profit/summary', authRequired, async (req, res) => {
       {
         totalStudioRevenue: 0,
         totalSuperAdminProfit: 0,
+        totalStripeFees: 0,
         totalStudioProfitGross: 0,
         totalPayouts: 0,
         totalStudioProfit: 0,

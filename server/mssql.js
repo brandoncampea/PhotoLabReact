@@ -314,7 +314,12 @@ export async function initializeDatabase() {
           lab_submitted_at DATETIME2,
           subtotal FLOAT DEFAULT 0,
           tax_amount FLOAT DEFAULT 0,
-          tax_rate FLOAT DEFAULT 0
+          tax_rate FLOAT DEFAULT 0,
+          payment_intent_id NVARCHAR(255),
+          stripe_charge_id NVARCHAR(255),
+          stripe_fee_amount FLOAT DEFAULT 0,
+          customer_receipt_sent_at DATETIME2,
+          studio_receipt_sent_at DATETIME2
         )
       END
     `);
@@ -786,6 +791,41 @@ export async function initializeDatabase() {
       IF COL_LENGTH('orders', 'batch_lab_vendor') IS NULL
       BEGIN
         ALTER TABLE orders ADD batch_lab_vendor NVARCHAR(50) NULL
+      END
+    `);
+
+    await query(`
+      IF COL_LENGTH('orders', 'payment_intent_id') IS NULL
+      BEGIN
+        ALTER TABLE orders ADD payment_intent_id NVARCHAR(255) NULL
+      END
+    `);
+
+    await query(`
+      IF COL_LENGTH('orders', 'stripe_charge_id') IS NULL
+      BEGIN
+        ALTER TABLE orders ADD stripe_charge_id NVARCHAR(255) NULL
+      END
+    `);
+
+    await query(`
+      IF COL_LENGTH('orders', 'stripe_fee_amount') IS NULL
+      BEGIN
+        ALTER TABLE orders ADD stripe_fee_amount FLOAT NOT NULL CONSTRAINT df_orders_stripe_fee_amount DEFAULT 0
+      END
+    `);
+
+    await query(`
+      IF COL_LENGTH('orders', 'customer_receipt_sent_at') IS NULL
+      BEGIN
+        ALTER TABLE orders ADD customer_receipt_sent_at DATETIME2 NULL
+      END
+    `);
+
+    await query(`
+      IF COL_LENGTH('orders', 'studio_receipt_sent_at') IS NULL
+      BEGIN
+        ALTER TABLE orders ADD studio_receipt_sent_at DATETIME2 NULL
       END
     `);
 

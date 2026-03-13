@@ -59,6 +59,7 @@ interface StudioProfitOrder {
   itemCount: number;
   studioRevenue: number;
   superAdminProfit: number;
+  stripeFeeAmount: number;
   studioProfit: number;
 }
 
@@ -69,6 +70,7 @@ interface StudioProfitSummary {
   totalItems: number;
   totalStudioRevenue: number;
   totalSuperAdminProfit: number;
+  totalStripeFees: number;
   totalStudioProfitGross: number;
   totalStudioProfit: number;
   totalPayouts: number;
@@ -655,6 +657,12 @@ export default function StudioAdminDashboard() {
                   </div>
                 </div>
                 <div className="admin-summary-box">
+                  <div className="muted-text" style={{ fontSize: '12px' }}>Stripe Fees</div>
+                  <div style={{ fontSize: '22px', fontWeight: 'bold', color: '#fca5a5' }}>
+                    ${Number(profitSummary.totalStripeFees || 0).toFixed(2)}
+                  </div>
+                </div>
+                <div className="admin-summary-box">
                   <div className="muted-text" style={{ fontSize: '12px' }}>Orders</div>
                   <div style={{ fontSize: '22px', fontWeight: 'bold' }}>{profitSummary.totalOrders}</div>
                 </div>
@@ -718,13 +726,14 @@ export default function StudioAdminDashboard() {
                         <th>Items</th>
                         <th style={{ textAlign: 'right' }}>Revenue</th>
                         <th style={{ textAlign: 'right' }}>Super Admin Cost</th>
+                        <th style={{ textAlign: 'right' }}>Stripe Fee</th>
                         <th style={{ textAlign: 'right' }}>Studio Profit</th>
                       </tr>
                     </thead>
                     <tbody>
                       {profitSummary.orders.length === 0 ? (
                         <tr>
-                          <td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
+                          <td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
                             No order profit data yet.
                           </td>
                         </tr>
@@ -736,6 +745,7 @@ export default function StudioAdminDashboard() {
                             <td>{order.itemCount}</td>
                             <td style={{ textAlign: 'right' }}>${order.studioRevenue.toFixed(2)}</td>
                             <td style={{ textAlign: 'right' }}>${order.superAdminProfit.toFixed(2)}</td>
+                            <td style={{ textAlign: 'right', color: '#fca5a5' }}>${order.stripeFeeAmount.toFixed(2)}</td>
                             <td style={{ textAlign: 'right', fontWeight: 'bold', color: '#86efac' }}>
                               ${order.studioProfit.toFixed(2)}
                             </td>

@@ -96,6 +96,10 @@ export interface Order {
   taxAmount?: number; // Tax calculated based on shipping address
   taxRate?: number; // Tax rate percentage applied
   subtotal?: number; // Total before tax and shipping
+  stripeFeeAmount?: number;
+  paymentIntentId?: string;
+  customerReceiptSentAt?: string;
+  studioReceiptSentAt?: string;
 }
 
 export interface ShippingAddress {

@@ -311,7 +311,8 @@ const Cart: React.FC = () => {
           getShippingCost(), 
           appliedDiscount?.code,
           studioFees?.feeType,
-          studioFees?.feeValue
+          studioFees?.feeValue,
+          paymentIntent.id
         );
         
         // Send email receipt (in production, would call email service)
