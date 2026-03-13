@@ -14,6 +14,32 @@ const safeJsonParse = (value, fallback = null) => {
   }
 };
 
+const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
+
+const getSuperAdminReceiptBcc = async () => {
+  const envEmails = String(process.env.ADMIN_EMAILS || '')
+    .split(',')
+    .map(normalizeEmail)
+    .filter(Boolean);
+
+  let dbEmails = [];
+  try {
+    const rows = await queryRows(
+      `SELECT email
+       FROM users
+       WHERE role = 'super_admin'
+         AND is_active = 1
+         AND email IS NOT NULL`,
+      []
+    );
+    dbEmails = rows.map((row) => normalizeEmail(row.email)).filter(Boolean);
+  } catch (error) {
+    console.error('Failed to load super admin BCC recipients:', error?.message || error);
+  }
+
+  return Array.from(new Set([...envEmails, ...dbEmails]));
+};
+
 const getConfiguredStripeClient = async () => {
   const config = await queryRow('SELECT secret_key as secretKey, is_active as isActive FROM stripe_config WHERE id = 1');
   const secretKey = String(config?.secretKey || '').trim();
@@ -111,6 +137,7 @@ const sendOrderReceipts = async (orderId) => {
   );
 
   const parsedShippingAddress = safeJsonParse(order.shippingAddress, {});
+  const superAdminBcc = await getSuperAdminReceiptBcc();
   const customerSent = await orderReceiptService.sendCustomerReceipt({
     to: parsedShippingAddress?.email || order.customerEmail,
     customerName: parsedShippingAddress?.fullName || order.customerName,
@@ -137,6 +164,7 @@ const sendOrderReceipts = async (orderId) => {
   for (const [, studioGroup] of studioGroups) {
     const studioRevenue = studioGroup.items.reduce((sum, item) => sum + ((Number(item.unitPrice) || 0) * (Number(item.quantity) || 0)), 0);
     const baseRevenue = studioGroup.items.reduce((sum, item) => sum + ((Number(item.basePrice) || 0) * (Number(item.quantity) || 0)), 0);
+    const productionCost = studioGroup.items.reduce((sum, item) => sum + ((Number(item.cost) || 0) * (Number(item.quantity) || 0)), 0);
     const superAdminProfit = studioGroup.items.reduce(
       (sum, item) => sum + (((Number(item.basePrice) || 0) - (Number(item.cost) || 0)) * (Number(item.quantity) || 0)),
       0
@@ -144,13 +172,24 @@ const sendOrderReceipts = async (orderId) => {
     const stripeFeeAmount = totalItemRevenue > 0
       ? (Number(order.stripeFeeAmount) || 0) * (studioRevenue / totalItemRevenue)
       : 0;
+    const orderUrl = String(process.env.APP_BASE_URL || '').trim()
+      ? `${String(process.env.APP_BASE_URL || '').trim().replace(/\/$/, '')}/admin/orders?orderId=${order.id}`
+      : null;
+    const studioEmail = normalizeEmail(studioGroup.studioEmail);
+    const filteredBcc = superAdminBcc.filter((email) => email && email !== studioEmail);
 
     const sent = await orderReceiptService.sendStudioReceipt({
       to: studioGroup.studioEmail,
+      bcc: filteredBcc,
       studioName: studioGroup.studioName,
       customerEmail: parsedShippingAddress?.email || order.customerEmail,
       order: {
         ...order,
+        orderUrl,
+        studioRevenue,
+        baseRevenue,
+        productionCost,
+        grossStudioMarkup: studioRevenue - baseRevenue,
         stripeFeeAmount,
         studioProfitNet: (studioRevenue - baseRevenue) - stripeFeeAmount,
         superAdminProfit,

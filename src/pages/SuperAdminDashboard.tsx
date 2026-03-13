@@ -35,6 +35,8 @@ interface StudioProfitRow {
   studioName: string;
   orderCount: number;
   studioRevenue: number;
+  baseRevenue: number;
+  grossStudioMarkup: number;
   superAdminProfit: number;
   stripeFeeAmount: number;
   studioProfitGross: number;
@@ -58,6 +60,8 @@ interface ProfitSummary {
   payoutThreshold: number;
   totals: {
     totalStudioRevenue: number;
+    totalBaseRevenue: number;
+    totalGrossStudioMarkup: number;
     totalSuperAdminProfit: number;
     totalStripeFees: number;
     totalStudioProfitGross: number;
@@ -733,6 +737,20 @@ export default function SuperAdminDashboard() {
           </button>
         </div>
         <div className="stat-card">
+          <h3>Total Base Cost</h3>
+          <p className="stat-value">${Number(profitSummary?.totals?.totalBaseRevenue || 0).toFixed(2)}</p>
+          <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0 }}>
+            Base order cost across all studios
+          </p>
+        </div>
+        <div className="stat-card">
+          <h3>Total Markup</h3>
+          <p className="stat-value">${Number(profitSummary?.totals?.totalGrossStudioMarkup || 0).toFixed(2)}</p>
+          <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0 }}>
+            Revenue minus base order cost
+          </p>
+        </div>
+        <div className="stat-card">
           <h3>Total Stripe Fees</h3>
           <p className="stat-value" style={{ color: '#fca5a5' }}>
             ${Number(profitSummary?.totals?.totalStripeFees || 0).toFixed(2)}
@@ -752,12 +770,14 @@ export default function SuperAdminDashboard() {
                 <tr>
                   <th>Studio</th>
                   <th>Orders</th>
+                  <th style={{ textAlign: 'right' }}>Revenue</th>
+                  <th style={{ textAlign: 'right' }}>Base Cost</th>
+                  <th style={{ textAlign: 'right' }}>Markup</th>
+                  <th style={{ textAlign: 'right' }}>Stripe Fees</th>
                   {showSuperAdminProfitByStudio && <th style={{ textAlign: 'right' }}>Super Admin Profit</th>}
                   {showStudioProfitByStudio && <th style={{ textAlign: 'right' }}>Studio Profit</th>}
-                  <th style={{ textAlign: 'right' }}>Stripe Fees</th>
                   <th style={{ textAlign: 'right' }}>Paid Out</th>
                   <th style={{ textAlign: 'center' }}>Payout Status</th>
-                  <th style={{ textAlign: 'right' }}>Studio Revenue</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -766,6 +786,12 @@ export default function SuperAdminDashboard() {
                   <tr key={row.studioId}>
                     <td>{row.studioName}</td>
                     <td>{row.orderCount}</td>
+                    <td style={{ textAlign: 'right' }}>${row.studioRevenue.toFixed(2)}</td>
+                    <td style={{ textAlign: 'right' }}>${Number(row.baseRevenue || 0).toFixed(2)}</td>
+                    <td style={{ textAlign: 'right' }}>${Number(row.grossStudioMarkup || 0).toFixed(2)}</td>
+                    <td style={{ textAlign: 'right', color: '#fca5a5' }}>
+                      ${Number(row.stripeFeeAmount || 0).toFixed(2)}
+                    </td>
                     {showSuperAdminProfitByStudio && (
                       <td style={{ textAlign: 'right', color: '#fbbf24', fontWeight: 'bold' }}>
                         ${row.superAdminProfit.toFixed(2)}
@@ -776,9 +802,6 @@ export default function SuperAdminDashboard() {
                         ${row.studioProfit.toFixed(2)}
                       </td>
                     )}
-                    <td style={{ textAlign: 'right', color: '#fca5a5' }}>
-                      ${Number(row.stripeFeeAmount || 0).toFixed(2)}
-                    </td>
                     <td style={{ textAlign: 'right' }}>${(row.totalPayouts || 0).toFixed(2)}</td>
                     <td style={{ textAlign: 'center' }}>
                       {row.isPayoutEligible ? (
@@ -789,7 +812,6 @@ export default function SuperAdminDashboard() {
                         </span>
                       )}
                     </td>
-                    <td style={{ textAlign: 'right' }}>${row.studioRevenue.toFixed(2)}</td>
                     <td>
                       <div style={{ display: 'flex', gap: '0.5rem' }}>
                         <button className="btn btn-secondary btn-sm" onClick={() => fetchStudioPayoutHistory(row)}>

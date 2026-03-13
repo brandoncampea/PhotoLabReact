@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Order } from '../../types';
 import api from '../../services/api';
 
@@ -12,6 +13,7 @@ type BatchQueueSummary = {
 };
 
 const AdminOrders: React.FC = () => {
+  const location = useLocation();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedStatus, setSelectedStatus] = useState('all');
@@ -29,6 +31,12 @@ const AdminOrders: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [selectedLab, setSelectedLab] = useState('whcc');
   const [batchQueueSummary, setBatchQueueSummary] = useState<BatchQueueSummary | null>(null);
+
+  const selectedOrderId = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    const value = Number(params.get('orderId'));
+    return Number.isInteger(value) && value > 0 ? value : null;
+  }, [location.search]);
 
   useEffect(() => {
     loadOrders();
@@ -115,6 +123,14 @@ const AdminOrders: React.FC = () => {
     : selectedStatus === 'all'
       ? orders
       : orders.filter(order => order.status.toLowerCase() === selectedStatus);
+
+  useEffect(() => {
+    if (!selectedOrderId || loading) return;
+    const timer = window.setTimeout(() => {
+      document.getElementById(`admin-order-${selectedOrderId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 50);
+    return () => window.clearTimeout(timer);
+  }, [selectedOrderId, loading, filteredOrders.length]);
 
   if (loading) {
     return <div className="loading">Loading orders...</div>;
@@ -288,7 +304,12 @@ const AdminOrders: React.FC = () => {
       ) : (
         <div className="orders-list">
           {filteredOrders.map((order) => (
-            <div key={order.id} className="admin-order-card">
+            <div
+              key={order.id}
+              id={`admin-order-${order.id}`}
+              className="admin-order-card"
+              style={selectedOrderId === order.id ? { border: '2px solid #4169E1', boxShadow: '0 0 0 3px rgba(65, 105, 225, 0.15)' } : undefined}
+            >
               <div className="order-header">
                 <div>
                   <h3>
