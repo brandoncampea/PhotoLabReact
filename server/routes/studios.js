@@ -810,60 +810,10 @@ router.get('/profit/summary', authRequired, async (req, res) => {
 
     const payoutThreshold = await getStudioProfitPayoutThreshold();
 
-    const hasProductSizeId = await columnExists('order_items', 'product_size_id');
-    const hasStripeFeeAmount = await columnExists('orders', 'stripe_fee_amount');
-        const hasStudioBillingCycle = await columnExists('studios', 'billing_cycle');
-        const hasPlanMonthlyPrice = await columnExists('subscription_plans', 'monthly_price');
-        const hasPlanYearlyPrice = await columnExists('subscription_plans', 'yearly_price');
-
-    const byStudioRows = await queryRows(
-      `SELECT
-         s.id as studioId,
-         s.name as studioName,
-         s.subscription_status,
-         s.subscription_start,
-          ${hasStudioBillingCycle ? 's.billing_cycle' : "CAST('monthly' AS NVARCHAR(50))"} as billing_cycle,
-          ${hasPlanMonthlyPrice ? 'sp.monthly_price' : 'NULL'} as monthly_price,
-          ${hasPlanYearlyPrice ? 'sp.yearly_price' : 'NULL'} as yearly_price,
-         COALESCE(rev.studioRevenue, 0) as studioRevenue,
-         COALESCE(rev.baseRevenue, 0) as baseRevenue,
-         COALESCE(rev.stripeFeeAmount, 0) as stripeFeeAmount,
-         COALESCE(rev.orderMargin, 0) as orderMargin,
-         COALESCE(rev.orderCount, 0) as orderCount
-       FROM studios s
-       LEFT JOIN subscription_plans sp ON LOWER(sp.name) = LOWER(s.subscription_plan)
-       LEFT JOIN (
-         SELECT
-           a.studio_id as studioId,
-           COALESCE(SUM(oi.price * oi.quantity), 0) as studioRevenue,
-           COALESCE(SUM(COALESCE(${hasProductSizeId ? 'ps.price' : 'NULL'}, p.price, 0) * oi.quantity), 0) as baseRevenue,
-           COALESCE(SUM(
-             COALESCE(${hasStripeFeeAmount ? 'o.stripe_fee_amount' : '0'}, 0) *
-             CASE
-               WHEN COALESCE(orderTotals.totalItemRevenue, 0) <= 0 THEN 0
-               ELSE ((oi.price * oi.quantity) / orderTotals.totalItemRevenue)
-             END
-           ), 0) as stripeFeeAmount,
-           COALESCE(SUM(
-             (COALESCE(${hasProductSizeId ? 'ps.price' : 'NULL'}, p.price, 0)
-              - COALESCE(${hasProductSizeId ? 'ps.cost' : 'NULL'}, p.cost, 0)) * oi.quantity
-           ), 0) as orderMargin,
-           COUNT(DISTINCT o.id) as orderCount
-         FROM orders o
-         INNER JOIN order_items oi ON oi.order_id = o.id
-         LEFT JOIN (
-           SELECT order_id, COALESCE(SUM(price * quantity), 0) as totalItemRevenue
-           FROM order_items
-           GROUP BY order_id
-         ) orderTotals ON orderTotals.order_id = o.id
-         INNER JOIN photos ph ON ph.id = oi.photo_id
-         INNER JOIN albums a ON a.id = ph.album_id
-         LEFT JOIN products p ON p.id = oi.product_id
-         ${hasProductSizeId ? 'LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id' : ''}
-         WHERE (o.status IS NULL OR LOWER(o.status) <> 'cancelled')
-         GROUP BY a.studio_id
-       ) rev ON rev.studioId = s.id
-       ORDER BY s.name ASC`,
+    const studios = await queryRows(
+      `SELECT id as studioId, name as studioName
+       FROM studios
+       ORDER BY name ASC`,
       []
     );
 
@@ -877,43 +827,145 @@ router.get('/profit/summary', authRequired, async (req, res) => {
       : [];
 
     const payoutMap = new Map(
-      payoutRows.map((row) => [Number(row.studioId) || 0, {
-        totalPayouts: Number(row.totalPayouts) || 0,
-        payoutCount: Number(row.payoutCount) || 0,
-      }])
+      payoutRows.map((row) => [
+        Number(row.studioId) || 0,
+        {
+          totalPayouts: Number(row.totalPayouts) || 0,
+          payoutCount: Number(row.payoutCount) || 0,
+        },
+      ])
     );
 
-    const byStudio = byStudioRows.map((row) => {
-      const studioRevenue = Number(row.studioRevenue) || 0;
-      const baseRevenue = Number(row.baseRevenue) || 0;
-      const stripeFeeAmount = Number(row.stripeFeeAmount) || 0;
-      const orderMargin = Number(row.orderMargin) || 0;
-      const grossStudioMarkup = studioRevenue - baseRevenue;
+    const hasProductSizeId = await columnExists('order_items', 'product_size_id');
+    const hasStripeFeeAmount = await columnExists('orders', 'stripe_fee_amount');
+    const hasStudioBillingCycle = await columnExists('studios', 'billing_cycle');
+    const hasPlanMonthlyPrice = await columnExists('subscription_plans', 'monthly_price');
+    const hasPlanYearlyPrice = await columnExists('subscription_plans', 'yearly_price');
 
-      const subscriptionRevenue = calcSubscriptionRevenue(row);
-      const superAdminProfit = subscriptionRevenue + orderMargin;
-      const studioProfitGross = grossStudioMarkup - stripeFeeAmount;
-      const payout = payoutMap.get(Number(row.studioId) || 0);
-      const totalPayouts = payout?.totalPayouts || 0;
-      const studioProfit = studioProfitGross - totalPayouts;
-      const isPayoutEligible = studioProfit >= payoutThreshold;
-      return {
-        studioId: Number(row.studioId) || 0,
-        studioName: row.studioName || 'Unknown Studio',
-        orderCount: Number(row.orderCount) || 0,
-        studioRevenue,
-        baseRevenue,
-        grossStudioMarkup,
-        superAdminProfit,
-        stripeFeeAmount,
-        studioProfitGross,
-        totalPayouts,
-        payoutCount: payout?.payoutCount || 0,
-        studioProfit,
-        isPayoutEligible,
-        amountToNextPayout: Math.max(0, payoutThreshold - studioProfit),
-      };
-    });
+    const byStudio = await Promise.all(
+      studios.map(async (studio) => {
+        const studioId = Number(studio.studioId) || 0;
+
+        const studioRow = await queryRow(
+          `SELECT s.subscription_status, s.subscription_start,
+                  ${hasStudioBillingCycle ? 's.billing_cycle' : "CAST('monthly' AS NVARCHAR(50))"} as billing_cycle,
+                  ${hasPlanMonthlyPrice ? 'sp.monthly_price' : 'NULL'} as monthly_price,
+                  ${hasPlanYearlyPrice ? 'sp.yearly_price' : 'NULL'} as yearly_price
+           FROM studios s
+           LEFT JOIN subscription_plans sp ON LOWER(sp.name) = LOWER(s.subscription_plan)
+           WHERE s.id = $1`,
+          [studioId]
+        );
+
+        const byOrder = await queryRows(
+          `SELECT
+             o.id as orderId,
+             o.created_at as orderDate,
+             COALESCE(SUM(oi.price * oi.quantity), 0) as studioRevenue,
+             COALESCE(SUM(
+               COALESCE(${hasStripeFeeAmount ? 'o.stripe_fee_amount' : '0'}, 0) *
+               CASE
+                 WHEN COALESCE(orderTotals.totalItemRevenue, 0) <= 0 THEN 0
+                 ELSE ((oi.price * oi.quantity) / orderTotals.totalItemRevenue)
+               END
+             ), 0) as stripeFeeAmount,
+             COALESCE(SUM(COALESCE(${hasProductSizeId ? 'ps.price' : 'NULL'}, p.price, 0) * oi.quantity), 0) as baseRevenue,
+             COALESCE(SUM(
+               (COALESCE(${hasProductSizeId ? 'ps.price' : 'NULL'}, p.price, 0)
+                - COALESCE(${hasProductSizeId ? 'ps.cost' : 'NULL'}, p.cost, 0)) * oi.quantity
+             ), 0) as orderMargin,
+             COALESCE(SUM(oi.quantity), 0) as itemCount
+           FROM orders o
+           INNER JOIN order_items oi ON oi.order_id = o.id
+           LEFT JOIN (
+             SELECT order_id, COALESCE(SUM(price * quantity), 0) as totalItemRevenue
+             FROM order_items
+             GROUP BY order_id
+           ) orderTotals ON orderTotals.order_id = o.id
+           INNER JOIN photos ph ON ph.id = oi.photo_id
+           INNER JOIN albums a ON a.id = ph.album_id
+           LEFT JOIN products p ON p.id = oi.product_id
+           ${hasProductSizeId ? 'LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id' : ''}
+           WHERE a.studio_id = $1
+             AND (o.status IS NULL OR LOWER(o.status) <> 'cancelled')
+           GROUP BY o.id, o.created_at
+           ORDER BY o.created_at DESC`,
+          [studioId]
+        );
+
+        const orders = byOrder.map((row) => {
+          const revenue = Number(row.studioRevenue) || 0;
+          const baseRev = Number(row.baseRevenue) || 0;
+          const orderMargin = Number(row.orderMargin) || 0;
+          const stripeFeeAmount = Number(row.stripeFeeAmount) || 0;
+          const grossStudioMarkup = revenue - baseRev;
+          return {
+            orderId: Number(row.orderId) || 0,
+            orderDate: row.orderDate,
+            itemCount: Number(row.itemCount) || 0,
+            studioRevenue: revenue,
+            baseRevenue: baseRev,
+            grossStudioMarkup,
+            superAdminProfit: orderMargin,
+            stripeFeeAmount,
+            studioProfit: grossStudioMarkup - stripeFeeAmount,
+          };
+        });
+
+        const summary = orders.reduce(
+          (acc, row) => {
+            acc.totalStudioRevenue += row.studioRevenue;
+            acc.totalBaseRevenue += row.baseRevenue;
+            acc.totalGrossStudioMarkup += row.grossStudioMarkup;
+            acc.totalSuperAdminProfit += row.superAdminProfit;
+            acc.totalStripeFees += row.stripeFeeAmount;
+            acc.totalStudioProfitGross += row.studioProfit;
+            acc.totalItems += row.itemCount;
+            return acc;
+          },
+          {
+            totalStudioRevenue: 0,
+            totalBaseRevenue: 0,
+            totalGrossStudioMarkup: 0,
+            totalSuperAdminProfit: 0,
+            totalStripeFees: 0,
+            totalStudioProfitGross: 0,
+            totalItems: 0,
+          }
+        );
+
+        summary.totalSuperAdminProfit += calcSubscriptionRevenue(studioRow);
+
+        const payout = payoutMap.get(studioId);
+        const studioRevenue = Number(summary.totalStudioRevenue) || 0;
+        const baseRevenue = Number(summary.totalBaseRevenue) || 0;
+        const grossStudioMarkup = Number(summary.totalGrossStudioMarkup) || 0;
+        const superAdminProfit = Number(summary.totalSuperAdminProfit) || 0;
+        const stripeFeeAmount = Number(summary.totalStripeFees) || 0;
+        const studioProfitGross = Number(summary.totalStudioProfitGross) || 0;
+        const totalPayouts = Number(payout?.totalPayouts) || 0;
+        const payoutCount = Number(payout?.payoutCount) || 0;
+        const studioProfit = studioProfitGross - totalPayouts;
+        const isPayoutEligible = studioProfit >= payoutThreshold;
+
+        return {
+          studioId,
+          studioName: studio.studioName || 'Unknown Studio',
+          orderCount: orders.length,
+          studioRevenue,
+          baseRevenue,
+          grossStudioMarkup,
+          superAdminProfit,
+          stripeFeeAmount,
+          studioProfitGross,
+          totalPayouts,
+          payoutCount,
+          studioProfit,
+          isPayoutEligible,
+          amountToNextPayout: Math.max(0, payoutThreshold - studioProfit),
+        };
+      })
+    );
 
     const totals = byStudio.reduce(
       (acc, row) => {

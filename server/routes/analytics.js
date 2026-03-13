@@ -1,8 +1,22 @@
 import express from 'express';
-import { queryRow, queryRows, query } from '../mssql.js';
+import { queryRow, queryRows, query, tableExists } from '../mssql.js';
 import { adminRequired } from '../middleware/auth.js';
 import { SUBSCRIPTION_PLANS } from '../constants/subscriptions.js';
 const router = express.Router();
+
+const ensureAnalyticsTable = async () => {
+  const exists = await tableExists('analytics');
+  if (exists) return true;
+  await query(`
+    CREATE TABLE analytics (
+      id INT IDENTITY(1,1) PRIMARY KEY,
+      event_type NVARCHAR(100) NOT NULL,
+      event_data NVARCHAR(MAX) NULL,
+      created_at DATETIME2 DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  return true;
+};
 
 const albumCoverUrl = (albumId, coverPhotoId, coverImageUrl) => {
   if (coverPhotoId) {
@@ -47,6 +61,7 @@ const hasAdvancedAnalyticsAccess = async (req) => {
 router.post('/track', async (req, res) => {
   try {
     const { eventType, eventData } = req.body;
+    await ensureAnalyticsTable();
     await query(`
       INSERT INTO analytics (event_type, event_data)
       VALUES ($1, $2)
@@ -54,13 +69,24 @@ router.post('/track', async (req, res) => {
     
     res.status(201).json({ message: 'Event tracked' });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.warn('Analytics track skipped:', error?.message || error);
+    res.status(202).json({ message: 'Event accepted (tracking unavailable)' });
   }
 });
 
 // Get analytics summary
 router.get('/summary', async (req, res) => {
   try {
+    const exists = await tableExists('analytics');
+    if (!exists) {
+      return res.json({
+        totalVisits: 0,
+        albumViews: 0,
+        photoViews: 0,
+        totalPageViews: 0,
+      });
+    }
+
     const totalVisitsResult = await queryRow(`
       SELECT COUNT(DISTINCT JSON_VALUE(event_data, '$.sessionId')) AS count
       FROM analytics
@@ -82,7 +108,13 @@ router.get('/summary', async (req, res) => {
       totalPageViews,
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.warn('Analytics summary unavailable:', error?.message || error);
+    res.json({
+      totalVisits: 0,
+      albumViews: 0,
+      photoViews: 0,
+      totalPageViews: 0,
+    });
   }
 });
 
