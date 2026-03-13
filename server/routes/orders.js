@@ -2,6 +2,7 @@ import express from 'express';
 import { queryRow, queryRows, query } from '../mssql.js';
 import { authRequired, adminRequired } from '../middleware/auth.js';
 import { requireActiveSubscription } from '../middleware/subscription.js';
+import orderReceiptService from '../services/orderReceiptService.js';
 const router = express.Router();
 
 const safeJsonParse = (value, fallback = null) => {
@@ -13,6 +14,163 @@ const safeJsonParse = (value, fallback = null) => {
   }
 };
 
+const getConfiguredStripeClient = async () => {
+  const config = await queryRow('SELECT secret_key as secretKey, is_active as isActive FROM stripe_config WHERE id = 1');
+  const secretKey = String(config?.secretKey || '').trim();
+  if (!config?.isActive || !secretKey || secretKey.includes('example') || secretKey.includes('***')) {
+    return null;
+  }
+  const Stripe = (await import('stripe')).default;
+  return new Stripe(secretKey, { apiVersion: '2023-10-16' });
+};
+
+const fetchPaymentIntentAccounting = async (paymentIntentId) => {
+  if (!paymentIntentId || String(paymentIntentId).startsWith('pi_mock_')) {
+    return {
+      paymentIntentId: paymentIntentId || null,
+      chargeId: null,
+      stripeFeeAmount: 0,
+    };
+  }
+
+  try {
+    const stripe = await getConfiguredStripeClient();
+    if (!stripe) {
+      return { paymentIntentId, chargeId: null, stripeFeeAmount: 0 };
+    }
+
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId, {
+      expand: ['latest_charge.balance_transaction'],
+    });
+
+    const latestCharge = typeof paymentIntent.latest_charge === 'string'
+      ? { id: paymentIntent.latest_charge, balance_transaction: null }
+      : paymentIntent.latest_charge;
+
+    const stripeFeeAmount = Number(latestCharge?.balance_transaction?.fee || 0) / 100;
+
+    return {
+      paymentIntentId: paymentIntent.id,
+      chargeId: latestCharge?.id || null,
+      stripeFeeAmount,
+    };
+  } catch (error) {
+    console.error('Failed to retrieve Stripe fee accounting:', error?.message || error);
+    return {
+      paymentIntentId,
+      chargeId: null,
+      stripeFeeAmount: 0,
+    };
+  }
+};
+
+const sendOrderReceipts = async (orderId) => {
+  if (!orderReceiptService.isConfigured()) {
+    console.warn('SMTP is not configured; skipping order receipts for order', orderId);
+    return;
+  }
+
+  const order = await queryRow(
+    `SELECT o.id,
+            o.total as totalAmount,
+            o.subtotal,
+            o.tax_amount as taxAmount,
+            o.shipping_cost as shippingCost,
+            o.stripe_fee_amount as stripeFeeAmount,
+            o.shipping_address as shippingAddress,
+            u.email as customerEmail,
+            u.name as customerName
+     FROM orders o
+     INNER JOIN users u ON u.id = o.user_id
+     WHERE o.id = $1`,
+    [orderId]
+  );
+
+  if (!order) return;
+
+  const items = await queryRows(
+    `SELECT oi.id,
+            oi.photo_id as photoId,
+            oi.quantity,
+            oi.price as unitPrice,
+            ph.file_name as photoFileName,
+            p.name as productName,
+            a.studio_id as studioId,
+            s.name as studioName,
+            s.email as studioEmail,
+            COALESCE(ps.price, p.price, 0) as basePrice,
+            COALESCE(ps.cost, p.cost, 0) as cost
+     FROM order_items oi
+     INNER JOIN photos ph ON ph.id = oi.photo_id
+     INNER JOIN albums a ON a.id = ph.album_id
+     INNER JOIN studios s ON s.id = a.studio_id
+     LEFT JOIN products p ON p.id = oi.product_id
+     LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id
+     WHERE oi.order_id = $1`,
+    [orderId]
+  );
+
+  const parsedShippingAddress = safeJsonParse(order.shippingAddress, {});
+  const customerSent = await orderReceiptService.sendCustomerReceipt({
+    to: parsedShippingAddress?.email || order.customerEmail,
+    customerName: parsedShippingAddress?.fullName || order.customerName,
+    order,
+    items,
+  });
+
+  const totalItemRevenue = items.reduce((sum, item) => sum + ((Number(item.unitPrice) || 0) * (Number(item.quantity) || 0)), 0);
+  const studioGroups = new Map();
+  for (const item of items) {
+    const studioId = Number(item.studioId) || 0;
+    if (!studioId) continue;
+    if (!studioGroups.has(studioId)) {
+      studioGroups.set(studioId, {
+        studioName: item.studioName,
+        studioEmail: item.studioEmail,
+        items: [],
+      });
+    }
+    studioGroups.get(studioId).items.push(item);
+  }
+
+  let anyStudioSent = false;
+  for (const [, studioGroup] of studioGroups) {
+    const studioRevenue = studioGroup.items.reduce((sum, item) => sum + ((Number(item.unitPrice) || 0) * (Number(item.quantity) || 0)), 0);
+    const baseRevenue = studioGroup.items.reduce((sum, item) => sum + ((Number(item.basePrice) || 0) * (Number(item.quantity) || 0)), 0);
+    const superAdminProfit = studioGroup.items.reduce(
+      (sum, item) => sum + (((Number(item.basePrice) || 0) - (Number(item.cost) || 0)) * (Number(item.quantity) || 0)),
+      0
+    );
+    const stripeFeeAmount = totalItemRevenue > 0
+      ? (Number(order.stripeFeeAmount) || 0) * (studioRevenue / totalItemRevenue)
+      : 0;
+
+    const sent = await orderReceiptService.sendStudioReceipt({
+      to: studioGroup.studioEmail,
+      studioName: studioGroup.studioName,
+      customerEmail: parsedShippingAddress?.email || order.customerEmail,
+      order: {
+        ...order,
+        stripeFeeAmount,
+        studioProfitNet: (studioRevenue - baseRevenue) - stripeFeeAmount,
+        superAdminProfit,
+      },
+      items: studioGroup.items,
+    });
+    anyStudioSent = anyStudioSent || sent;
+  }
+
+  if (customerSent || anyStudioSent) {
+    await query(
+      `UPDATE orders
+       SET customer_receipt_sent_at = CASE WHEN $1 = 1 THEN CURRENT_TIMESTAMP ELSE customer_receipt_sent_at END,
+           studio_receipt_sent_at = CASE WHEN $2 = 1 THEN CURRENT_TIMESTAMP ELSE studio_receipt_sent_at END
+       WHERE id = $3`,
+      [customerSent ? 1 : 0, anyStudioSent ? 1 : 0, orderId]
+    );
+  }
+};
+
 // Protect all order routes
 router.use(authRequired);
 
@@ -21,8 +179,10 @@ router.get('/user/:userId', async (req, res) => {
   try {
     const userId = req.user.id;
     const orders = await queryRows(`
-      SELECT o.id, o.user_id as userId, o.total, o.shipping_address as shippingAddress,
-             o.created_at as createdAt
+            SELECT o.id, o.user_id as userId, o.total, o.shipping_address as shippingAddress,
+              o.created_at as createdAt,
+              o.stripe_fee_amount as stripeFeeAmount,
+              o.payment_intent_id as paymentIntentId
       FROM orders o
       WHERE o.user_id = $1
       ORDER BY o.created_at DESC
@@ -68,11 +228,14 @@ router.post('/', requireActiveSubscription, async (req, res) => {
       shippingOption, 
       shippingCost, 
       discountCode,
+      paymentIntentId,
       isBatch,
       labSubmitted,
       batchShippingAddress,
       batchLabVendor,
     } = req.body;
+
+    const paymentAccounting = await fetchPaymentIntentAccounting(paymentIntentId);
 
     const batchOrder = !!isBatch;
     let batchReadyDate = null;
@@ -103,9 +266,12 @@ router.post('/', requireActiveSubscription, async (req, res) => {
         batch_ready_date,
         batch_queue_status,
         batch_lab_vendor,
-        lab_submitted
+        lab_submitted,
+        payment_intent_id,
+        stripe_charge_id,
+        stripe_fee_amount
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
       RETURNING id
     `, [
       userId, 
@@ -123,6 +289,9 @@ router.post('/', requireActiveSubscription, async (req, res) => {
       batchOrder ? 'queued' : null,
       batchLabVendor || null,
       !!labSubmitted,
+      paymentAccounting.paymentIntentId,
+      paymentAccounting.chargeId,
+      paymentAccounting.stripeFeeAmount,
     ]);
 
     const orderId = orderResult.id;
@@ -251,6 +420,12 @@ router.post('/', requireActiveSubscription, async (req, res) => {
     }
 
     // Return the created order
+    try {
+      await sendOrderReceipts(orderId);
+    } catch (receiptError) {
+      console.error('Order receipt send failed (non-fatal):', receiptError);
+    }
+
     const createdOrder = await queryRow('SELECT * FROM orders WHERE id = $1', [orderId]);
     res.status(201).json({
       id: createdOrder.id,
@@ -259,6 +434,8 @@ router.post('/', requireActiveSubscription, async (req, res) => {
       subtotal: createdOrder.subtotal,
       taxAmount: createdOrder.tax_amount,
       taxRate: createdOrder.tax_rate,
+      stripeFeeAmount: Number(createdOrder.stripe_fee_amount) || 0,
+      paymentIntentId: createdOrder.payment_intent_id || null,
       status: createdOrder.status || 'Pending',
       orderDate: createdOrder.created_at,
       shippingAddress: createdOrder.shipping_address ? JSON.parse(createdOrder.shipping_address) : null,
@@ -302,6 +479,10 @@ router.get('/', async (req, res) => {
         o.batch_lab_vendor as batchLabVendor,
         o.lab_submitted as labSubmitted,
         o.lab_submitted_at as labSubmittedAt,
+        o.stripe_fee_amount as stripeFeeAmount,
+        o.payment_intent_id as paymentIntentId,
+        o.customer_receipt_sent_at as customerReceiptSentAt,
+        o.studio_receipt_sent_at as studioReceiptSentAt,
         o.created_at as orderDate
       FROM orders o
       WHERE o.user_id = $1
@@ -400,6 +581,10 @@ router.get('/admin/all-orders', adminRequired, async (req, res) => {
         o.batch_lab_vendor as batchLabVendor,
         o.lab_submitted as labSubmitted,
         o.lab_submitted_at as labSubmittedAt,
+        o.stripe_fee_amount as stripeFeeAmount,
+        o.payment_intent_id as paymentIntentId,
+        o.customer_receipt_sent_at as customerReceiptSentAt,
+        o.studio_receipt_sent_at as studioReceiptSentAt,
         o.created_at as orderDate
       FROM orders o
     `;

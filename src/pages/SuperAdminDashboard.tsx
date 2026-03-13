@@ -36,6 +36,7 @@ interface StudioProfitRow {
   orderCount: number;
   studioRevenue: number;
   superAdminProfit: number;
+  stripeFeeAmount: number;
   studioProfitGross: number;
   totalPayouts: number;
   payoutCount: number;
@@ -58,6 +59,7 @@ interface ProfitSummary {
   totals: {
     totalStudioRevenue: number;
     totalSuperAdminProfit: number;
+    totalStripeFees: number;
     totalStudioProfitGross: number;
     totalPayouts: number;
     totalStudioProfit: number;
@@ -730,6 +732,15 @@ export default function SuperAdminDashboard() {
             {showStudioProfitByStudio ? 'Hide by Studio' : 'Drill by Studio'}
           </button>
         </div>
+        <div className="stat-card">
+          <h3>Total Stripe Fees</h3>
+          <p className="stat-value" style={{ color: '#fca5a5' }}>
+            ${Number(profitSummary?.totals?.totalStripeFees || 0).toFixed(2)}
+          </p>
+          <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0 }}>
+            Internal only — not charged to customers
+          </p>
+        </div>
       </div>
 
       {(showSuperAdminProfitByStudio || showStudioProfitByStudio) && profitSummary && (
@@ -743,6 +754,7 @@ export default function SuperAdminDashboard() {
                   <th>Orders</th>
                   {showSuperAdminProfitByStudio && <th style={{ textAlign: 'right' }}>Super Admin Profit</th>}
                   {showStudioProfitByStudio && <th style={{ textAlign: 'right' }}>Studio Profit</th>}
+                  <th style={{ textAlign: 'right' }}>Stripe Fees</th>
                   <th style={{ textAlign: 'right' }}>Paid Out</th>
                   <th style={{ textAlign: 'center' }}>Payout Status</th>
                   <th style={{ textAlign: 'right' }}>Studio Revenue</th>
@@ -764,6 +776,9 @@ export default function SuperAdminDashboard() {
                         ${row.studioProfit.toFixed(2)}
                       </td>
                     )}
+                    <td style={{ textAlign: 'right', color: '#fca5a5' }}>
+                      ${Number(row.stripeFeeAmount || 0).toFixed(2)}
+                    </td>
                     <td style={{ textAlign: 'right' }}>${(row.totalPayouts || 0).toFixed(2)}</td>
                     <td style={{ textAlign: 'center' }}>
                       {row.isPayoutEligible ? (

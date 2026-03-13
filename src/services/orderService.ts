@@ -11,7 +11,8 @@ export const orderService = {
     shippingCost: number,
     discountCode?: string,
     studioFeeType?: string,
-    studioFeeValue?: number
+    studioFeeValue?: number,
+    paymentIntentId?: string
   ): Promise<Order> {
     // Calculate subtotal with studio fees applied to each item
     let itemsTotal = items.reduce((sum, item) => {
@@ -65,6 +66,7 @@ export const orderService = {
       shippingOption,
       shippingCost,
       discountCode,
+      paymentIntentId,
       isBatch: shippingOption === 'batch',
       labSubmitted: false
     });
