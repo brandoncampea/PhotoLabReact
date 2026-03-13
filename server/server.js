@@ -28,6 +28,8 @@ import studiosRoutes from './routes/studios.js';
 import webhookRoutes from './routes/webhooks.js';
 import subscriptionPlansRoutes from './routes/subscriptionPlans.js';
 import invoicesRoutes from './routes/invoices.js';
+import publicSearchRoutes from './routes/publicSearch.js';
+import smugmugRoutes from './routes/smugmug.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -70,6 +72,8 @@ app.use('/api/stripe', stripeRoutes);
 app.use('/api/studios', studiosRoutes);
 app.use('/api/subscription-plans', subscriptionPlansRoutes);
 app.use('/api/invoices', invoicesRoutes);
+app.use('/api/public-search', publicSearchRoutes);
+app.use('/api/smugmug', smugmugRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

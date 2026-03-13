@@ -12,11 +12,48 @@ interface LandingSubscriptionPlan {
   is_active?: boolean;
 }
 
+interface LandingStudioResult {
+  id: number;
+  name: string;
+  initials?: string;
+  publicSlug: string;
+  url: string;
+}
+
+interface LandingAlbumResult {
+  id: number;
+  name: string;
+  description?: string;
+  photoCount: number;
+  studioName: string;
+  studioSlug: string;
+  coverImageUrl?: string | null;
+  url: string;
+}
+
+interface LandingPhotoResult {
+  id: number;
+  fileName: string;
+  description?: string;
+  thumbnailUrl?: string;
+  albumId: number;
+  albumName: string;
+  studioName: string;
+  studioSlug: string;
+  url: string;
+}
+
 export default function LandingPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [plans, setPlans] = React.useState<LandingSubscriptionPlan[]>([]);
   const [plansLoading, setPlansLoading] = React.useState(true);
+  const [searchQuery, setSearchQuery] = React.useState('');
+  const [searchLoading, setSearchLoading] = React.useState(false);
+  const [searchError, setSearchError] = React.useState('');
+  const [studioResults, setStudioResults] = React.useState<LandingStudioResult[]>([]);
+  const [albumResults, setAlbumResults] = React.useState<LandingAlbumResult[]>([]);
+  const [photoResults, setPhotoResults] = React.useState<LandingPhotoResult[]>([]);
 
   React.useEffect(() => {
     let mounted = true;
@@ -59,6 +96,51 @@ export default function LandingPage() {
       }
     }
   }, [user, navigate]);
+
+  React.useEffect(() => {
+    const trimmed = searchQuery.trim();
+    if (trimmed.length < 2) {
+      setStudioResults([]);
+      setAlbumResults([]);
+      setPhotoResults([]);
+      setSearchError('');
+      setSearchLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        setSearchLoading(true);
+        setSearchError('');
+        const response = await fetch(`/api/public-search?q=${encodeURIComponent(trimmed)}`);
+        if (!response.ok) {
+          throw new Error('Search failed');
+        }
+
+        const data = await response.json();
+        if (cancelled) return;
+
+        setStudioResults(Array.isArray(data?.studios) ? data.studios : []);
+        setAlbumResults(Array.isArray(data?.albums) ? data.albums : []);
+        setPhotoResults(Array.isArray(data?.photos) ? data.photos : []);
+      } catch (error) {
+        if (!cancelled) {
+          setSearchError('Could not search right now');
+          setStudioResults([]);
+          setAlbumResults([]);
+          setPhotoResults([]);
+        }
+      } finally {
+        if (!cancelled) setSearchLoading(false);
+      }
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [searchQuery]);
 
   return (
     <div style={{
@@ -150,6 +232,87 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* Public Search Section */}
+      <section
+        style={{
+          maxWidth: '1200px',
+          margin: '0 auto',
+          padding: '0 2rem 2rem',
+        }}
+      >
+        <div
+          style={{
+            background: 'rgba(255, 255, 255, 0.04)',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            borderRadius: '12px',
+            padding: '1.25rem',
+          }}
+        >
+          <h3 style={{ margin: '0 0 0.75rem 0' }}>Find a studio, album, or photo</h3>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search by studio name, album name, or photo filename"
+            style={{
+              width: '100%',
+              padding: '0.9rem 1rem',
+              borderRadius: '8px',
+              border: '1px solid rgba(255, 255, 255, 0.2)',
+              background: 'rgba(15, 17, 21, 0.8)',
+              color: '#fff',
+              fontSize: '1rem',
+            }}
+          />
+          <div style={{ marginTop: '0.5rem', color: '#a0a0a0', fontSize: '0.9rem' }}>
+            Type at least 2 characters.
+          </div>
+
+          {searchLoading && <div style={{ marginTop: '1rem', color: '#a0a0a0' }}>Searching…</div>}
+          {searchError && <div style={{ marginTop: '1rem', color: '#fca5a5' }}>{searchError}</div>}
+
+          {!searchLoading && searchQuery.trim().length >= 2 && !searchError && (
+            <div style={{ marginTop: '1rem', display: 'grid', gap: '1rem' }}>
+              <SearchResultGroup
+                title="Studios"
+                emptyLabel="No studios found"
+                items={studioResults.map((studio) => ({
+                  key: `studio-${studio.id}`,
+                  title: studio.name,
+                  subtitle: `/s/${studio.publicSlug}`,
+                  badge: studio.initials || 'S',
+                  onClick: () => navigate(studio.url),
+                }))}
+              />
+
+              <SearchResultGroup
+                title="Albums"
+                emptyLabel="No albums found"
+                items={albumResults.map((album) => ({
+                  key: `album-${album.id}`,
+                  title: album.name,
+                  subtitle: `${album.studioName} • ${album.photoCount} photos`,
+                  imageUrl: album.coverImageUrl || undefined,
+                  onClick: () => navigate(album.url),
+                }))}
+              />
+
+              <SearchResultGroup
+                title="Photos"
+                emptyLabel="No photos found"
+                items={photoResults.map((photo) => ({
+                  key: `photo-${photo.id}`,
+                  title: photo.fileName,
+                  subtitle: `${photo.studioName} • ${photo.albumName}`,
+                  imageUrl: photo.thumbnailUrl,
+                  onClick: () => navigate(photo.url),
+                }))}
+              />
+            </div>
+          )}
+        </div>
+      </section>
+
       {/* Features Section */}
       <section style={{
         maxWidth: '1200px',
@@ -196,6 +359,11 @@ export default function LandingPage() {
             icon="📊"
             title="Business Analytics"
             description="Track sales, popular products, and client engagement with detailed reports"
+          />
+          <FeatureCard
+            icon="🖼️"
+            title="Photo Watermarking"
+            description="Protect your work with automatic watermarks on preview images until orders are fulfilled"
           />
         </div>
       </section>
@@ -333,6 +501,89 @@ function FeatureCard({ icon, title, description }: { icon: string; title: string
       <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>{icon}</div>
       <h3 style={{ fontSize: '1.5rem', fontWeight: '600', marginBottom: '0.5rem', color: '#fff' }}>{title}</h3>
       <p style={{ color: '#a0a0a0', lineHeight: '1.6' }}>{description}</p>
+    </div>
+  );
+}
+
+function SearchResultGroup({
+  title,
+  emptyLabel,
+  items,
+}: {
+  title: string;
+  emptyLabel: string;
+  items: Array<{ key: string; title: string; subtitle: string; onClick: () => void; imageUrl?: string; badge?: string }>;
+}) {
+  return (
+    <div
+      style={{
+        background: 'rgba(255, 255, 255, 0.03)',
+        border: '1px solid rgba(255, 255, 255, 0.08)',
+        borderRadius: '10px',
+        padding: '0.9rem',
+      }}
+    >
+      <h4 style={{ margin: '0 0 0.75rem 0', color: '#e5e7eb' }}>{title}</h4>
+      {items.length === 0 ? (
+        <div style={{ color: '#9ca3af', fontSize: '0.9rem' }}>{emptyLabel}</div>
+      ) : (
+        <div style={{ display: 'grid', gap: '0.5rem' }}>
+          {items.slice(0, 6).map((item) => (
+            <button
+              key={item.key}
+              onClick={item.onClick}
+              style={{
+                textAlign: 'left',
+                border: '1px solid rgba(255, 255, 255, 0.12)',
+                borderRadius: '8px',
+                background: 'rgba(15, 17, 21, 0.7)',
+                color: '#fff',
+                padding: '0.65rem 0.75rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.65rem',
+              }}
+            >
+              {item.imageUrl ? (
+                <img
+                  src={item.imageUrl}
+                  alt={item.title}
+                  style={{
+                    width: '42px',
+                    height: '42px',
+                    borderRadius: '8px',
+                    objectFit: 'cover',
+                    border: '1px solid rgba(255,255,255,0.15)',
+                    flexShrink: 0,
+                  }}
+                />
+              ) : item.badge ? (
+                <div
+                  style={{
+                    width: '42px',
+                    height: '42px',
+                    borderRadius: '999px',
+                    background: 'linear-gradient(135deg, #7c5cff 0%, #a78bfa 100%)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontWeight: 700,
+                    color: '#fff',
+                    flexShrink: 0,
+                  }}
+                >
+                  {item.badge}
+                </div>
+              ) : null}
+              <div>
+                <div style={{ fontWeight: 600 }}>{item.title}</div>
+                <div style={{ fontSize: '0.85rem', color: '#a0a0a0' }}>{item.subtitle}</div>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

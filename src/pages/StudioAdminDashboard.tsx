@@ -108,6 +108,8 @@ export default function StudioAdminDashboard() {
   const [showProfitOrders, setShowProfitOrders] = useState(false);
   const [payoutHistory, setPayoutHistory] = useState<StudioPayoutHistoryItem[]>([]);
   const [showPayoutHistory, setShowPayoutHistory] = useState(false);
+  const [publicStudioLink, setPublicStudioLink] = useState('');
+  const [shareLinkNotice, setShareLinkNotice] = useState('');
 
   useEffect(() => {
     if (effectiveStudioId) {
@@ -117,6 +119,7 @@ export default function StudioAdminDashboard() {
       fetchUsageStats();
       fetchProfitSummary();
       fetchPayoutHistory();
+      fetchPublicStudioLink();
     }
   }, [user, effectiveStudioId]);
 
@@ -236,6 +239,54 @@ export default function StudioAdminDashboard() {
       console.error('Failed to load payout history:', err);
       setPayoutHistory([]);
     }
+  };
+
+  const fetchPublicStudioLink = async () => {
+    if (!effectiveStudioId) return;
+    try {
+      const response = await fetch(`/api/studios/${effectiveStudioId}/public-link`, {
+        headers: getAuthHeaders(),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setPublicStudioLink(data.url || '');
+      } else {
+        setPublicStudioLink('');
+      }
+    } catch (err) {
+      console.error('Failed to load studio public link:', err);
+      setPublicStudioLink('');
+    }
+  };
+
+  const handleCopyPublicLink = async () => {
+    if (!publicStudioLink) return;
+    try {
+      await navigator.clipboard.writeText(publicStudioLink);
+      setShareLinkNotice('Customer link copied to clipboard');
+      setTimeout(() => setShareLinkNotice(''), 2500);
+    } catch {
+      setShareLinkNotice('Could not copy link');
+      setTimeout(() => setShareLinkNotice(''), 2500);
+    }
+  };
+
+  const handleSharePublicLink = async () => {
+    if (!publicStudioLink || !subscription?.studio?.name) return;
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: `${subscription.studio.name} Gallery`,
+          text: `View ${subscription.studio.name}'s photo galleries`,
+          url: publicStudioLink,
+        });
+        return;
+      } catch {
+        // fall through to clipboard
+      }
+    }
+    await handleCopyPublicLink();
   };
 
   const handleUpgrade = async () => {
@@ -433,6 +484,45 @@ export default function StudioAdminDashboard() {
         </div>
       )}
 
+      {publicStudioLink && (
+        <div
+          style={{
+            backgroundColor: 'var(--bg-tertiary)',
+            border: '1px solid var(--border-color)',
+            borderRadius: '8px',
+            padding: '16px',
+            marginBottom: '24px'
+          }}
+        >
+          <h3 style={{ margin: '0 0 10px 0' }}>Customer Direct Link</h3>
+          <p style={{ margin: '0 0 12px 0', color: 'var(--text-secondary)' }}>
+            Share this URL with customers so they can go straight to your studio galleries.
+          </p>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+            <input
+              type="text"
+              value={publicStudioLink}
+              readOnly
+              style={{
+                flex: 1,
+                minWidth: '280px',
+                backgroundColor: 'var(--bg-primary)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '6px',
+                padding: '10px',
+                color: 'var(--text-primary)'
+              }}
+            />
+            <button className="btn btn-primary" onClick={handleSharePublicLink}>Share Link</button>
+            <button className="btn btn-secondary" onClick={handleCopyPublicLink}>Copy Link</button>
+            <a className="btn btn-secondary" href={publicStudioLink} target="_blank" rel="noreferrer">Open</a>
+          </div>
+          {shareLinkNotice && (
+            <div style={{ marginTop: '10px', color: '#86efac', fontSize: '14px' }}>{shareLinkNotice}</div>
+          )}
+        </div>
+      )}
+
       {subscription && (
         <>
           {/* Current Subscription Card */}
@@ -444,7 +534,7 @@ export default function StudioAdminDashboard() {
             border: isExpiringSoon ? '2px solid rgba(251, 191, 36, 0.5)' : '1px solid var(--border-color)'
           }}>
             <h2>{subscription.studio.name}</h2>
-            
+
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', marginTop: '20px' }}>
               <div>
                 <h4>Current Plan</h4>

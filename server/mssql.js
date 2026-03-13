@@ -62,7 +62,9 @@ console.log('- DB_PASSWORD:', process.env.DB_PASSWORD ? '***set***' : 'not set')
 
 const hasDbParts = !!(process.env.DB_HOST && process.env.DB_NAME && process.env.DB_USER && process.env.DB_PASSWORD);
 
-const mssqlConfig = hasDbParts
+const mssqlConfig = hasValidConnectionString
+  ? parseConnectionString(rawConnectionString)
+  : hasDbParts
   ? {
       user: process.env.DB_USER || 'sa',
       password: process.env.DB_PASSWORD || 'yourStrong(!)Password',
@@ -76,8 +78,6 @@ const mssqlConfig = hasDbParts
         requestTimeout: 10000, // 10 second request timeout
       },
     }
-  : hasValidConnectionString
-  ? parseConnectionString(rawConnectionString)
   : {
       user: process.env.DB_USER || 'sa',
       password: process.env.DB_PASSWORD || 'yourStrong(!)Password',
@@ -94,6 +94,10 @@ const mssqlConfig = hasDbParts
 
 if (rawConnectionString && !hasValidConnectionString) {
   console.warn('MSSQL_CONNECTION_STRING is set but appears invalid. Falling back to DB_HOST/DB_PORT/DB_NAME/DB_USER.');
+}
+
+if (hasValidConnectionString && hasDbParts) {
+  console.log('Using MSSQL_CONNECTION_STRING (DB_* values are ignored because connection string takes precedence).');
 }
 
 console.log('Final mssqlConfig:', {
@@ -427,9 +431,9 @@ export async function initializeDatabase() {
         CREATE TABLE studio_price_list_size_overrides (
           id INT IDENTITY(1,1) PRIMARY KEY,
           studio_id INT NOT NULL FOREIGN KEY REFERENCES studios(id) ON DELETE CASCADE,
-          price_list_id INT NOT NULL FOREIGN KEY REFERENCES price_lists(id) ON DELETE CASCADE,
-          product_id INT NOT NULL FOREIGN KEY REFERENCES products(id) ON DELETE CASCADE,
-          product_size_id INT NOT NULL FOREIGN KEY REFERENCES product_sizes(id) ON DELETE CASCADE,
+          price_list_id INT NOT NULL FOREIGN KEY REFERENCES price_lists(id) ON DELETE NO ACTION,
+          product_id INT NOT NULL FOREIGN KEY REFERENCES products(id) ON DELETE NO ACTION,
+          product_size_id INT NOT NULL FOREIGN KEY REFERENCES product_sizes(id) ON DELETE NO ACTION,
           price FLOAT NOT NULL,
           created_at DATETIME2 DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME2 DEFAULT CURRENT_TIMESTAMP,
@@ -478,6 +482,19 @@ export async function initializeDatabase() {
           logo_url NVARCHAR(MAX),
           updated_at DATETIME2 DEFAULT CURRENT_TIMESTAMP,
           CONSTRAINT ck_profile_config_id CHECK (id = 1)
+        )
+      END
+    `);
+
+    await query(`
+      IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'studio_smugmug_config')
+      BEGIN
+        CREATE TABLE studio_smugmug_config (
+          id INT IDENTITY(1,1) PRIMARY KEY,
+          studio_id INT NOT NULL UNIQUE FOREIGN KEY REFERENCES studios(id) ON DELETE CASCADE,
+          nickname NVARCHAR(255) NULL,
+          api_key NVARCHAR(255) NULL,
+          updated_at DATETIME2 DEFAULT CURRENT_TIMESTAMP
         )
       END
     `);
@@ -861,9 +878,9 @@ export async function initializeDatabase() {
         CREATE TABLE studio_price_list_size_overrides (
           id INT IDENTITY(1,1) PRIMARY KEY,
           studio_id INT NOT NULL FOREIGN KEY REFERENCES studios(id) ON DELETE CASCADE,
-          price_list_id INT NOT NULL FOREIGN KEY REFERENCES price_lists(id) ON DELETE CASCADE,
-          product_id INT NOT NULL FOREIGN KEY REFERENCES products(id) ON DELETE CASCADE,
-          product_size_id INT NOT NULL FOREIGN KEY REFERENCES product_sizes(id) ON DELETE CASCADE,
+          price_list_id INT NOT NULL FOREIGN KEY REFERENCES price_lists(id) ON DELETE NO ACTION,
+          product_id INT NOT NULL FOREIGN KEY REFERENCES products(id) ON DELETE NO ACTION,
+          product_size_id INT NOT NULL FOREIGN KEY REFERENCES product_sizes(id) ON DELETE NO ACTION,
           price FLOAT NOT NULL,
           is_offered BIT NOT NULL DEFAULT 1,
           created_at DATETIME2 DEFAULT CURRENT_TIMESTAMP,
@@ -920,6 +937,26 @@ export async function initializeDatabase() {
       IF COL_LENGTH('studio_price_list_size_overrides', 'is_offered') IS NULL
       BEGIN
         ALTER TABLE studio_price_list_size_overrides ADD is_offered BIT NOT NULL DEFAULT 1
+      END
+    `);
+
+    await query(`
+      IF COL_LENGTH('studios', 'public_slug') IS NULL
+      BEGIN
+        ALTER TABLE studios ADD public_slug NVARCHAR(120) NULL
+      END
+    `);
+
+    await query(`
+      IF NOT EXISTS (
+        SELECT 1
+        FROM sys.indexes
+        WHERE name = 'ux_studios_public_slug' AND object_id = OBJECT_ID('studios')
+      )
+      BEGIN
+        CREATE UNIQUE INDEX ux_studios_public_slug
+        ON studios(public_slug)
+        WHERE public_slug IS NOT NULL
       END
     `);
 

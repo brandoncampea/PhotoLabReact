@@ -27,7 +27,9 @@ export const authRequired = async (req, res, next) => {
     if (admins.length === 0) {
       admins = ['admin@photolab.com'];
     }
-    if (admins.includes((payload.email || '').toLowerCase())) role = 'admin';
+    if (role === 'customer' && admins.includes((payload.email || '').toLowerCase())) {
+      role = 'admin';
+    }
 
     let acting_studio_id = null;
     const actingStudioIdRaw = req.headers['x-acting-studio-id'];

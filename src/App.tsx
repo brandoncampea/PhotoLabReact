@@ -39,8 +39,10 @@ const AdminLabs = lazy(() => import('./pages/admin/AdminLabs'));
 const AdminRoesConfig = lazy(() => import('./pages/admin/AdminRoesConfig'));
 const AdminWhccConfig = lazy(() => import('./pages/admin/AdminWhccConfig'));
 const AdminMpixConfig = lazy(() => import('./pages/admin/AdminMpixConfig'));
+const AdminSmugMug = lazy(() => import('./pages/admin/AdminSmugMug'));
 const StudioSignup = lazy(() => import('./pages/StudioSignup'));
 const StudioAdminDashboard = lazy(() => import('./pages/StudioAdminDashboard'));
+const StudioPublicPage = lazy(() => import('./pages/StudioPublicPage'));
 const SuperAdminDashboard = lazy(() => import('./pages/SuperAdminDashboard'));
 const SuperAdminPricing = lazy(() => import('./pages/SuperAdminPricing'));
 const CheckoutSuccess = lazy(() => import('./pages/CheckoutSuccess'));
@@ -92,6 +94,8 @@ function App() {
                     </ProtectedRoute>
                   }
                 />
+                <Route path="/s/:slug" element={<StudioPublicPage />} />
+                <Route path="/s/:slug/albums/:id" element={<AlbumDetails />} />
                 <Route
                   path="/search"
                   element={
@@ -160,6 +164,7 @@ function App() {
                         <Routes>
                           <Route path="dashboard" element={<AdminDashboard />} />
                           <Route path="studio-dashboard" element={<StudioAdminDashboard />} />
+                          <Route path="smugmug" element={<AdminSmugMug />} />
                           <Route path="analytics" element={<AdminAnalytics />} />
                           <Route path="albums" element={<AdminAlbums />} />
                           <Route path="photos" element={<AdminPhotos />} />

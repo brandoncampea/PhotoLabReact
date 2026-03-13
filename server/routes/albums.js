@@ -55,23 +55,37 @@ const addAlbumPreviewImages = async (albums) => {
 // Get all albums
 router.get('/', async (req, res) => {
   try {
+    const studioSlug = String(req.query.studioSlug || '').trim().toLowerCase();
+    const hasStudioSlugColumn = studioSlug ? await queryRow(
+      `SELECT TOP 1 1 as existsFlag
+       FROM sys.columns c
+       INNER JOIN sys.tables t ON t.object_id = c.object_id
+       WHERE t.name = 'studios' AND c.name = 'public_slug'`
+    ) : { existsFlag: 1 };
+
+    if (studioSlug && !hasStudioSlugColumn) {
+      return res.json([]);
+    }
+
     const albums = await queryRows(`
       SELECT 
-        id,
-        COALESCE(name, title) as name,
-        description,
-        cover_image_url as coverImageUrl,
-        cover_photo_id as coverPhotoId,
-        photo_count as photoCount,
-        category,
-        price_list_id as priceListId,
-        is_password_protected as isPasswordProtected,
-        password,
-        password_hint as passwordHint,
-        created_at as createdDate
-      FROM albums 
-      ORDER BY created_at DESC
-    `);
+        a.id,
+        COALESCE(a.name, a.title) as name,
+        a.description,
+        a.cover_image_url as coverImageUrl,
+        a.cover_photo_id as coverPhotoId,
+        a.photo_count as photoCount,
+        a.category,
+        a.price_list_id as priceListId,
+        a.is_password_protected as isPasswordProtected,
+        a.password,
+        a.password_hint as passwordHint,
+        a.created_at as createdDate
+      FROM albums a
+      LEFT JOIN studios s ON s.id = a.studio_id
+      WHERE ($1 = '' OR LOWER(COALESCE(s.public_slug, '')) = $1)
+      ORDER BY a.created_at DESC
+    `, [studioSlug]);
     const albumsWithPreviews = await addAlbumPreviewImages(albums);
     res.json(albumsWithPreviews.map(signAlbumForResponse));
   } catch (error) {

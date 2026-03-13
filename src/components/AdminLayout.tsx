@@ -43,6 +43,8 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     clearStudioView();
     localStorage.removeItem('adminToken');
     localStorage.removeItem('adminUser');
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('user');
     navigate('/admin/login');
   };
 
@@ -71,7 +73,9 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
   const studioAdminLinks = useMemo(
     () => [
-      { to: '/admin/dashboard', label: '📊 Dashboard' },
+      { to: '/admin/studio-dashboard', label: '🏢 Studio Dashboard' },
+      { to: '/admin/smugmug', label: '🗂️ SmugMug Import' },
+      { to: '/admin/dashboard', label: '📊 Operations Dashboard' },
       { to: '/admin/analytics', label: '📈 Analytics' },
       { to: '/admin/albums', label: '📁 Albums' },
       { to: '/admin/photos', label: '📷 Photos' },
