@@ -639,9 +639,22 @@ router.get('/admin/all-orders', adminRequired, async (req, res) => {
     const parsedOrders = [];
     for (const order of orders) {
       const items = await queryRows(
-        `SELECT id, photo_id as photoId, photo_ids as photoIds, product_id as productId,
-                quantity, price, crop_data as cropData
-         FROM order_items WHERE order_id = $1`,
+        `SELECT oi.id,
+                oi.photo_id as photoId,
+                oi.photo_ids as photoIds,
+                oi.product_id as productId,
+                oi.product_size_id as productSizeId,
+                oi.quantity,
+                oi.price,
+                oi.crop_data as cropData,
+                p.name as productName,
+          ps.size_name as productSizeName,
+          COALESCE(ps.price, p.price, 0) as basePrice,
+          COALESCE(ps.cost, p.cost, 0) as labCost
+         FROM order_items oi
+         LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id
+         LEFT JOIN products p ON p.id = COALESCE(oi.product_id, ps.product_id)
+         WHERE oi.order_id = $1`,
         [order.id]
       );
       const itemsWithPhotos = [];
@@ -654,6 +667,10 @@ router.get('/admin/all-orders', adminRequired, async (req, res) => {
         itemsWithPhotos.push({
           ...item,
           price: item.price || 0,
+          basePrice: Number(item.basePrice) || 0,
+          labCost: Number(item.labCost) || 0,
+          productName: item.productName || (item.productId ? `Product #${item.productId}` : 'Unknown Product'),
+          productSizeName: item.productSizeName || undefined,
           cropData: item.cropData ? JSON.parse(item.cropData) : null,
           photoIds: item.photoIds ? JSON.parse(item.photoIds) : item.photoId ? [item.photoId] : [],
           photo: photo ? {

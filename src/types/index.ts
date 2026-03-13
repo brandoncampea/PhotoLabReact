@@ -135,6 +135,10 @@ export interface OrderItem {
   cropData?: CropData;
   productId?: number;
   productSizeId?: number;
+  productName?: string;
+  productSizeName?: string;
+  basePrice?: number;
+  labCost?: number;
 }
 
 export interface LoginCredentials {

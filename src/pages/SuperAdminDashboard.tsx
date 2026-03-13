@@ -22,11 +22,12 @@ interface Studio {
 }
 
 interface Plan {
-  id: string;
+  id: string | number;
   name: string;
   monthlyPrice: number;
   yearlyPrice?: number;
   features: string[];
+  isActive?: boolean;
 }
 
 interface StudioProfitRow {
@@ -100,6 +101,25 @@ export default function SuperAdminDashboard() {
   const [selectedPayoutStudio, setSelectedPayoutStudio] = useState<StudioProfitRow | null>(null);
   const [studioPayoutHistory, setStudioPayoutHistory] = useState<StudioProfitPayout[]>([]);
 
+  const normalizePlanValue = (value: string | number | null | undefined) =>
+    String(value || '').trim().toLowerCase();
+
+  const findPlan = (value: string | number | null | undefined) => {
+    const normalized = normalizePlanValue(value);
+    if (!normalized) return undefined;
+    return plans.find((candidate) => {
+      const candidateId = normalizePlanValue(candidate.id);
+      const candidateName = normalizePlanValue(candidate.name);
+      return candidateId === normalized || candidateName === normalized;
+    });
+  };
+
+  const getPlanSelectionValue = (value: string | number | null | undefined) => {
+    const match = findPlan(value);
+    if (match?.name) return String(match.name);
+    return String(value || '');
+  };
+
   useEffect(() => {
     if (user?.role === 'super_admin') {
       fetchStudios();
@@ -135,10 +155,37 @@ export default function SuperAdminDashboard() {
 
   const fetchPlans = async () => {
     try {
-      const response = await fetch('/api/studios/plans/list');
+      const response = await fetch('/api/subscription-plans');
       if (response.ok) {
         const data = await response.json();
-        setPlans(Object.values(data));
+        const normalized = (Array.isArray(data) ? data : []).map((plan: any) => ({
+          id: plan.id,
+          name: String(plan.name || '').trim(),
+          monthlyPrice: Number(plan.monthly_price ?? plan.monthlyPrice ?? 0) || 0,
+          yearlyPrice: plan.yearly_price !== undefined && plan.yearly_price !== null
+            ? (Number(plan.yearly_price) || undefined)
+            : (plan.yearlyPrice !== undefined && plan.yearlyPrice !== null ? (Number(plan.yearlyPrice) || undefined) : undefined),
+          features: Array.isArray(plan.features) ? plan.features : [],
+          isActive: plan.is_active === undefined ? true : !!plan.is_active,
+        }));
+        setPlans(normalized.filter((plan: Plan) => plan.isActive !== false));
+        return;
+      }
+
+      const fallbackResponse = await fetch('/api/studios/plans/list');
+      if (fallbackResponse.ok) {
+        const fallbackData = await fallbackResponse.json();
+        const fallbackPlans = Object.values(fallbackData as Record<string, any>).map((plan: any) => ({
+          id: plan.id,
+          name: String(plan.name || '').trim(),
+          monthlyPrice: Number(plan.monthlyPrice ?? plan.monthly_price ?? 0) || 0,
+          yearlyPrice: plan.yearlyPrice !== undefined && plan.yearlyPrice !== null
+            ? (Number(plan.yearlyPrice) || undefined)
+            : (plan.yearly_price !== undefined && plan.yearly_price !== null ? (Number(plan.yearly_price) || undefined) : undefined),
+          features: Array.isArray(plan.features) ? plan.features : [],
+          isActive: true,
+        }));
+        setPlans(fallbackPlans);
       }
     } catch (err) {
       console.error('Failed to fetch plans:', err);
@@ -339,12 +386,7 @@ export default function SuperAdminDashboard() {
   };
 
   const getPlanPrice = (planId: string) => {
-    const normalizedPlanId = String(planId || '').trim().toLowerCase();
-    const plan = plans.find((candidate) => {
-      const candidateId = String(candidate.id || '').trim().toLowerCase();
-      const candidateName = String(candidate.name || '').trim().toLowerCase();
-      return candidateId === normalizedPlanId || candidateName === normalizedPlanId;
-    });
+    const plan = findPlan(planId);
     return plan ? `$${plan.monthlyPrice}/mo` : 'N/A';
   };
 
@@ -357,12 +399,7 @@ export default function SuperAdminDashboard() {
       return 0;
     }
 
-    const normalizedPlanId = String(studio.subscription_plan || '').trim().toLowerCase();
-    const plan = plans.find((candidate) => {
-      const candidateId = String(candidate.id || '').trim().toLowerCase();
-      const candidateName = String(candidate.name || '').trim().toLowerCase();
-      return candidateId === normalizedPlanId || candidateName === normalizedPlanId;
-    });
+    const plan = findPlan(studio.subscription_plan);
 
     if (!plan) {
       return 0;
@@ -620,7 +657,7 @@ export default function SuperAdminDashboard() {
                     onClick={() => {
                       setSelectedStudio(studio);
                       setNewSubscription({
-                        subscriptionPlan: studio.subscription_plan,
+                        subscriptionPlan: getPlanSelectionValue(studio.subscription_plan),
                         subscriptionStatus: studio.subscription_status,
                         billingCycle: studio.billing_cycle || 'monthly',
                         isFreeSubscription: studio.is_free_subscription || false
@@ -740,7 +777,7 @@ export default function SuperAdminDashboard() {
                 }}
               >
                 {plans.map(plan => (
-                  <option key={plan.id} value={plan.id}>
+                  <option key={String(plan.id)} value={plan.name}>
                     {plan.name} - ${plan.monthlyPrice}/mo
                   </option>
                 ))}

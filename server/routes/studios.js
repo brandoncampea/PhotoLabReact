@@ -39,6 +39,47 @@ const getUniqueStudioSlug = async (baseSlug, studioId) => {
 
 const isMissingColumnError = (error) => /Invalid column name/i.test(String(error?.message || ''));
 
+const resolveSubscriptionPlanValue = async (rawValue) => {
+  const normalized = String(rawValue || '').trim();
+  if (!normalized) return null;
+
+  const normalizedLower = normalized.toLowerCase();
+
+  if (SUBSCRIPTION_PLANS[normalizedLower]) {
+    return normalizedLower;
+  }
+
+  const matchedConstant = Object.entries(SUBSCRIPTION_PLANS).find(([, plan]) =>
+    String(plan?.name || '').trim().toLowerCase() === normalizedLower
+  );
+  if (matchedConstant) {
+    return matchedConstant[0];
+  }
+
+  const hasPlansTable = await tableExists('subscription_plans');
+  if (!hasPlansTable) {
+    return null;
+  }
+
+  const byName = await queryRow(
+    'SELECT TOP 1 name FROM subscription_plans WHERE LOWER(name) = LOWER($1)',
+    [normalized]
+  );
+  if (byName?.name) {
+    return String(byName.name);
+  }
+
+  const byId = await queryRow(
+    'SELECT TOP 1 name FROM subscription_plans WHERE CAST(id AS NVARCHAR(255)) = $1',
+    [normalized]
+  );
+  if (byId?.name) {
+    return String(byId.name);
+  }
+
+  return null;
+};
+
 const getStudioProfitPayoutThreshold = async () => {
   const hasTable = await tableExists('studio_profit_payout_config');
   if (!hasTable) return 500;
@@ -1214,12 +1255,16 @@ router.patch('/:studioId/subscription', authRequired, async (req, res) => {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
-    if (subscriptionPlan && !SUBSCRIPTION_PLANS[subscriptionPlan]) {
-      return res.status(400).json({ error: 'Invalid subscription plan' });
+    const updateData = {};
+
+    if (subscriptionPlan !== undefined) {
+      const resolvedPlan = await resolveSubscriptionPlanValue(subscriptionPlan);
+      if (!resolvedPlan) {
+        return res.status(400).json({ error: 'Invalid subscription plan' });
+      }
+      updateData.subscription_plan = resolvedPlan;
     }
 
-    const updateData = {};
-    if (subscriptionPlan) updateData.subscription_plan = subscriptionPlan;
     if (subscriptionStatus) updateData.subscription_status = subscriptionStatus;
     if (stripeCustomerId) updateData.stripe_customer_id = stripeCustomerId;
     if (stripeSubscriptionId) updateData.stripe_subscription_id = stripeSubscriptionId;
