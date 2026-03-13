@@ -173,6 +173,11 @@ export default function LandingPage() {
             description="Let clients order prints, packages, and digital downloads directly from their gallery"
           />
           <FeatureCard
+            icon="🚚"
+            title="Batch Shipping"
+            description="Queue multiple orders and submit them together to the lab to reduce fulfillment and shipping costs"
+          />
+          <FeatureCard
             icon="💰"
             title="Custom Pricing"
             description="Set your own prices with flexible pricing lists and package options"
