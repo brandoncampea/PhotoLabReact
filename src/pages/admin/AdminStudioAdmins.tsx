@@ -147,7 +147,7 @@ const AdminStudioAdmins: React.FC = () => {
     if (!selectedStudio) return;
     try {
       await studioFeatureService.saveStudioSettings(selectedStudio.id, featureSettings);
-      setSuccess(`Studio access settings saved for ${selectedStudio.name}`);
+      setSuccess('Studio access settings saved for all studios');
       setTimeout(() => setSuccess(''), 4000);
     } catch {
       setError('Failed to save studio access settings');
@@ -338,7 +338,7 @@ const AdminStudioAdmins: React.FC = () => {
           }}>
             <h3 style={{ marginTop: 0 }}>Studio Access Settings</h3>
             <p style={{ color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
-              Choose which lab configurations are available to this studio.
+              Choose which lab configurations are available to all studios.
             </p>
 
             <div style={{ marginTop: '1rem' }}>
@@ -377,7 +377,7 @@ const AdminStudioAdmins: React.FC = () => {
                 className="btn btn-success"
                 style={{ fontSize: '14px', fontWeight: '600' }}
               >
-                Save Studio Access Settings
+                Save For All Studios
               </button>
             </div>
           </div>

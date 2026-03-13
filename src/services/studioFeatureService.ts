@@ -9,8 +9,6 @@ export interface StudioFeatureSettings {
   labVendors: LabVendor[];
 }
 
-type StudioFeatureMap = Record<number, StudioFeatureSettings>;
-
 const STORAGE_KEY = 'photolab_studio_feature_settings';
 
 const defaultSettings: StudioFeatureSettings = {
@@ -18,19 +16,35 @@ const defaultSettings: StudioFeatureSettings = {
   labVendors: ['roes', 'whcc', 'mpix'],
 };
 
-const readMap = (): StudioFeatureMap => {
+const readSettings = (): StudioFeatureSettings | null => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as StudioFeatureMap;
-    return parsed && typeof parsed === 'object' ? parsed : {};
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<StudioFeatureSettings>;
+    if (!parsed || typeof parsed !== 'object') return null;
+    return {
+      paymentVendors:
+        Array.isArray(parsed.paymentVendors) && parsed.paymentVendors.length > 0
+          ? (parsed.paymentVendors as PaymentVendor[])
+          : [...defaultSettings.paymentVendors],
+      labVendors:
+        Array.isArray(parsed.labVendors) && parsed.labVendors.length > 0
+          ? (parsed.labVendors as LabVendor[])
+          : [...defaultSettings.labVendors],
+    };
   } catch {
-    return {};
+    return null;
   }
 };
 
-const writeMap = (map: StudioFeatureMap) => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
+const writeSettings = (settings: StudioFeatureSettings) => {
+  localStorage.setItem(
+    STORAGE_KEY,
+    JSON.stringify({
+      paymentVendors: [...settings.paymentVendors],
+      labVendors: [...settings.labVendors],
+    })
+  );
 };
 
 export const studioFeatureService = {
@@ -41,21 +55,12 @@ export const studioFeatureService = {
     };
   },
 
-  getCachedStudioSettings(studioId?: number): StudioFeatureSettings {
-    if (!studioId) return this.getDefaultSettings();
-    const map = readMap();
-    const current = map[studioId];
+  getCachedStudioSettings(): StudioFeatureSettings {
+    const current = readSettings();
     if (!current) return this.getDefaultSettings();
-
     return {
-      paymentVendors:
-        current.paymentVendors?.length > 0
-          ? [...current.paymentVendors]
-          : [...defaultSettings.paymentVendors],
-      labVendors:
-        current.labVendors?.length > 0
-          ? [...current.labVendors]
-          : [...defaultSettings.labVendors],
+      paymentVendors: [...current.paymentVendors],
+      labVendors: [...current.labVendors],
     };
   },
 
@@ -82,22 +87,15 @@ export const studioFeatureService = {
             : [...defaultSettings.labVendors],
       };
 
-      const map = readMap();
-      map[studioId] = merged;
-      writeMap(map);
+      writeSettings(merged);
       return merged;
     } catch {
-      return this.getCachedStudioSettings(studioId);
+      return this.getCachedStudioSettings();
     }
   },
 
   async saveStudioSettings(studioId: number, settings: StudioFeatureSettings) {
     await api.put(`/studios/${studioId}/features`, settings);
-    const map = readMap();
-    map[studioId] = {
-      paymentVendors: [...settings.paymentVendors],
-      labVendors: [...settings.labVendors],
-    };
-    writeMap(map);
+    writeSettings(settings);
   },
 };
