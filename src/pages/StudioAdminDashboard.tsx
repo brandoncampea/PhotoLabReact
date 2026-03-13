@@ -58,6 +58,8 @@ interface StudioProfitOrder {
   orderDate: string;
   itemCount: number;
   studioRevenue: number;
+  baseRevenue: number;
+  grossStudioMarkup: number;
   superAdminProfit: number;
   stripeFeeAmount: number;
   studioProfit: number;
@@ -69,6 +71,8 @@ interface StudioProfitSummary {
   totalOrders: number;
   totalItems: number;
   totalStudioRevenue: number;
+  totalBaseRevenue: number;
+  totalGrossStudioMarkup: number;
   totalSuperAdminProfit: number;
   totalStripeFees: number;
   totalStudioProfitGross: number;
@@ -651,7 +655,19 @@ export default function StudioAdminDashboard() {
                   </div>
                 </div>
                 <div className="admin-summary-box">
-                  <div className="muted-text" style={{ fontSize: '12px' }}>Super Admin Cost</div>
+                  <div className="muted-text" style={{ fontSize: '12px' }}>Base Order Cost</div>
+                  <div style={{ fontSize: '22px', fontWeight: 'bold' }}>
+                    ${Number(profitSummary.totalBaseRevenue || 0).toFixed(2)}
+                  </div>
+                </div>
+                <div className="admin-summary-box">
+                  <div className="muted-text" style={{ fontSize: '12px' }}>Gross Studio Markup</div>
+                  <div style={{ fontSize: '22px', fontWeight: 'bold' }}>
+                    ${Number(profitSummary.totalGrossStudioMarkup || 0).toFixed(2)}
+                  </div>
+                </div>
+                <div className="admin-summary-box">
+                  <div className="muted-text" style={{ fontSize: '12px' }}>Super Admin Profit</div>
                   <div style={{ fontSize: '22px', fontWeight: 'bold', color: '#fbbf24' }}>
                     ${profitSummary.totalSuperAdminProfit.toFixed(2)}
                   </div>
@@ -725,15 +741,17 @@ export default function StudioAdminDashboard() {
                         <th>Date</th>
                         <th>Items</th>
                         <th style={{ textAlign: 'right' }}>Revenue</th>
-                        <th style={{ textAlign: 'right' }}>Super Admin Cost</th>
+                        <th style={{ textAlign: 'right' }}>Base Cost</th>
+                        <th style={{ textAlign: 'right' }}>Markup</th>
                         <th style={{ textAlign: 'right' }}>Stripe Fee</th>
+                        <th style={{ textAlign: 'right' }}>Super Admin Profit</th>
                         <th style={{ textAlign: 'right' }}>Studio Profit</th>
                       </tr>
                     </thead>
                     <tbody>
                       {profitSummary.orders.length === 0 ? (
                         <tr>
-                          <td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
+                          <td colSpan={9} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
                             No order profit data yet.
                           </td>
                         </tr>
@@ -744,8 +762,10 @@ export default function StudioAdminDashboard() {
                             <td>{new Date(order.orderDate).toLocaleDateString()}</td>
                             <td>{order.itemCount}</td>
                             <td style={{ textAlign: 'right' }}>${order.studioRevenue.toFixed(2)}</td>
-                            <td style={{ textAlign: 'right' }}>${order.superAdminProfit.toFixed(2)}</td>
+                            <td style={{ textAlign: 'right' }}>${order.baseRevenue.toFixed(2)}</td>
+                            <td style={{ textAlign: 'right' }}>${order.grossStudioMarkup.toFixed(2)}</td>
                             <td style={{ textAlign: 'right', color: '#fca5a5' }}>${order.stripeFeeAmount.toFixed(2)}</td>
+                            <td style={{ textAlign: 'right', color: '#fbbf24' }}>${order.superAdminProfit.toFixed(2)}</td>
                             <td style={{ textAlign: 'right', fontWeight: 'bold', color: '#86efac' }}>
                               ${order.studioProfit.toFixed(2)}
                             </td>

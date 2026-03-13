@@ -109,6 +109,21 @@ const wrapHtml = (title, intro, content) => `
     ${appBaseUrl ? `<p style="margin-top:24px;"><a href="${esc(appBaseUrl)}">Open Photo Lab</a></p>` : ''}
   </div>`;
 
+const renderInternalAccounting = (order) => `
+  <div style="margin-top:20px;padding:16px;border:1px solid #eee;border-radius:8px;background:#fafafa;">
+    <h2 style="margin:0 0 12px 0;font-size:18px;">Internal accounting</h2>
+    <table style="width:100%;max-width:480px;border-collapse:collapse;">
+      <tr><td style="padding:4px 0;">Studio revenue</td><td style="padding:4px 0;text-align:right;">${currency(order.studioRevenue)}</td></tr>
+      <tr><td style="padding:4px 0;">Base order cost</td><td style="padding:4px 0;text-align:right;">${currency(order.baseRevenue)}</td></tr>
+      <tr><td style="padding:4px 0;">Production cost estimate</td><td style="padding:4px 0;text-align:right;">${currency(order.productionCost)}</td></tr>
+      <tr><td style="padding:4px 0;">Gross studio markup</td><td style="padding:4px 0;text-align:right;">${currency(order.grossStudioMarkup)}</td></tr>
+      <tr><td style="padding:4px 0;">Stripe fee</td><td style="padding:4px 0;text-align:right;">${currency(order.stripeFeeAmount)}</td></tr>
+      <tr><td style="padding:4px 0;font-weight:bold;">Estimated studio profit</td><td style="padding:4px 0;text-align:right;font-weight:bold;">${currency(order.studioProfitNet)}</td></tr>
+      <tr><td style="padding:4px 0;">Super admin profit</td><td style="padding:4px 0;text-align:right;">${currency(order.superAdminProfit)}</td></tr>
+    </table>
+    ${order.orderUrl ? `<p style="margin:12px 0 0 0;"><a href="${esc(order.orderUrl)}">View this order in Photo Lab</a></p>` : ''}
+  </div>`;
+
 export const orderReceiptService = {
   isConfigured,
 
@@ -133,23 +148,24 @@ export const orderReceiptService = {
     return true;
   },
 
-  async sendStudioReceipt({ to, studioName, order, items, customerEmail }) {
+  async sendStudioReceipt({ to, bcc, studioName, order, items, customerEmail }) {
     const transporter = await getTransporter();
     if (!transporter || !to) return false;
 
     const html = wrapHtml(
       `Studio receipt for Order #${order.id}`,
       `A new order was placed${customerEmail ? ` by ${esc(customerEmail)}` : ''}.`,
-      `${summaryBlock(order, { includeInternal: true, studioName })}${renderItemsTable(items, { includeCosts: true })}`
+      `${summaryBlock(order, { studioName })}${renderItemsTable(items, { includeCosts: true })}${renderInternalAccounting(order)}`
     );
 
     await transporter.sendMail({
       from: smtpFrom,
       to,
+      bcc: Array.isArray(bcc) && bcc.length > 0 ? bcc : undefined,
       replyTo: smtpReplyTo,
       subject: `Studio receipt — Order #${order.id}`,
       html,
-      text: `Order #${order.id}\nStudio: ${studioName || 'Unknown'}\nCustomer: ${customerEmail || 'Unknown'}\nTotal charged: ${currency(order.totalAmount)}\nStripe fee: ${currency(order.stripeFeeAmount)}\nStudio net profit: ${currency(order.studioProfitNet)}\nSuper admin profit: ${currency(order.superAdminProfit)}`,
+      text: `Order #${order.id}\nStudio: ${studioName || 'Unknown'}\nCustomer: ${customerEmail || 'Unknown'}\nTotal charged: ${currency(order.totalAmount)}\nStudio revenue: ${currency(order.studioRevenue)}\nBase order cost: ${currency(order.baseRevenue)}\nProduction cost estimate: ${currency(order.productionCost)}\nGross studio markup: ${currency(order.grossStudioMarkup)}\nStripe fee: ${currency(order.stripeFeeAmount)}\nEstimated studio profit: ${currency(order.studioProfitNet)}\nSuper admin profit: ${currency(order.superAdminProfit)}${order.orderUrl ? `\nOrder link: ${order.orderUrl}` : ''}`,
     });
     return true;
   },

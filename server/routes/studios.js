@@ -87,13 +87,16 @@ const getStudioProfitGross = async (studioId) => {
   const baseRevenue = Number(revenueRow?.baseRevenue) || 0;
   const stripeFeeAmount = Number(revenueRow?.stripeFeeAmount) || 0;
   const orderMargin = Number(revenueRow?.orderMargin) || 0;
+  const grossStudioMarkup = studioRevenue - baseRevenue;
 
   const subscriptionRevenue = calcSubscriptionRevenue(studioRow);
   const superAdminProfit = subscriptionRevenue + orderMargin;
-  const studioProfitGross = (studioRevenue - baseRevenue) - stripeFeeAmount;
+  const studioProfitGross = grossStudioMarkup - stripeFeeAmount;
 
   return {
     studioRevenue,
+    baseRevenue,
+    grossStudioMarkup,
     superAdminProfit,
     stripeFeeAmount,
     studioProfitGross,
@@ -541,20 +544,25 @@ router.get('/:studioId/profit', authRequired, async (req, res) => {
       const baseRev = Number(row.baseRevenue) || 0;
       const orderMargin = Number(row.orderMargin) || 0;
       const stripeFeeAmount = Number(row.stripeFeeAmount) || 0;
+      const grossStudioMarkup = revenue - baseRev;
       return {
         orderId: Number(row.orderId) || 0,
         orderDate: row.orderDate,
         itemCount: Number(row.itemCount) || 0,
         studioRevenue: revenue,
+        baseRevenue: baseRev,
+        grossStudioMarkup,
         superAdminProfit: orderMargin,
         stripeFeeAmount,
-        studioProfit: (revenue - baseRev) - stripeFeeAmount,
+        studioProfit: grossStudioMarkup - stripeFeeAmount,
       };
     });
 
     const summary = orders.reduce(
       (acc, row) => {
         acc.totalStudioRevenue += row.studioRevenue;
+        acc.totalBaseRevenue += row.baseRevenue;
+        acc.totalGrossStudioMarkup += row.grossStudioMarkup;
         acc.totalSuperAdminProfit += row.superAdminProfit;
         acc.totalStripeFees += row.stripeFeeAmount;
         acc.totalStudioProfitGross += row.studioProfit;
@@ -563,6 +571,8 @@ router.get('/:studioId/profit', authRequired, async (req, res) => {
       },
       {
         totalStudioRevenue: 0,
+        totalBaseRevenue: 0,
+        totalGrossStudioMarkup: 0,
         totalSuperAdminProfit: 0,
         totalStripeFees: 0,
         totalStudioProfitGross: 0,
@@ -681,10 +691,11 @@ router.get('/profit/summary', authRequired, async (req, res) => {
       const baseRevenue = Number(row.baseRevenue) || 0;
       const stripeFeeAmount = Number(row.stripeFeeAmount) || 0;
       const orderMargin = Number(row.orderMargin) || 0;
+      const grossStudioMarkup = studioRevenue - baseRevenue;
 
       const subscriptionRevenue = calcSubscriptionRevenue(row);
       const superAdminProfit = subscriptionRevenue + orderMargin;
-      const studioProfitGross = (studioRevenue - baseRevenue) - stripeFeeAmount;
+      const studioProfitGross = grossStudioMarkup - stripeFeeAmount;
       const payout = payoutMap.get(Number(row.studioId) || 0);
       const totalPayouts = payout?.totalPayouts || 0;
       const studioProfit = studioProfitGross - totalPayouts;
@@ -694,6 +705,8 @@ router.get('/profit/summary', authRequired, async (req, res) => {
         studioName: row.studioName || 'Unknown Studio',
         orderCount: Number(row.orderCount) || 0,
         studioRevenue,
+        baseRevenue,
+        grossStudioMarkup,
         superAdminProfit,
         stripeFeeAmount,
         studioProfitGross,
@@ -708,6 +721,8 @@ router.get('/profit/summary', authRequired, async (req, res) => {
     const totals = byStudio.reduce(
       (acc, row) => {
         acc.totalStudioRevenue += row.studioRevenue;
+        acc.totalBaseRevenue += row.baseRevenue;
+        acc.totalGrossStudioMarkup += row.grossStudioMarkup;
         acc.totalSuperAdminProfit += row.superAdminProfit;
         acc.totalStripeFees += row.stripeFeeAmount;
         acc.totalStudioProfitGross += row.studioProfitGross;
@@ -722,6 +737,8 @@ router.get('/profit/summary', authRequired, async (req, res) => {
       },
       {
         totalStudioRevenue: 0,
+        totalBaseRevenue: 0,
+        totalGrossStudioMarkup: 0,
         totalSuperAdminProfit: 0,
         totalStripeFees: 0,
         totalStudioProfitGross: 0,
