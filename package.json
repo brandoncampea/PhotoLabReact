@@ -15,6 +15,7 @@
     "seed:photos": "node server/seedPhotos.js",
     "seed:products": "node server/seedProducts.js",
     "seed:test-commerce": "node server/seedTestCommerce.js",
+    "normalize:test-commerce": "node server/normalizeTestCommerce.js",
     "clear:test-commerce": "node server/clearTestCommerce.js --apply",
     "clear:test-commerce:dry-run": "node server/clearTestCommerce.js",
     "migrate:sqlite": "node server/migrateSqliteToMssql.js",

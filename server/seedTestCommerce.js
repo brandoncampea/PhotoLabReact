@@ -385,6 +385,9 @@ const createPaidOrder = async ({
   orderNumber,
   hasPhotoIdsColumn,
   hasProductSizeIdColumn,
+  hasStripeFeeAmountColumn,
+  hasPaymentIntentIdColumn,
+  hasStripeChargeIdColumn,
 }) => {
   const quantity = randomInt(1, 3);
   const subtotal = Number((unitPrice * quantity).toFixed(2));
@@ -405,11 +408,18 @@ const createPaidOrder = async ({
     },
     receipt_email: customerEmail,
     description: `Seed order S${studioIndex}-O${orderNumber}`,
+    expand: ['latest_charge.balance_transaction'],
   });
 
   if (intent.status !== 'succeeded') {
     throw new Error(`PaymentIntent ${intent.id} did not succeed (status=${intent.status})`);
   }
+
+  const latestCharge = typeof intent.latest_charge === 'string'
+    ? { id: intent.latest_charge, balance_transaction: null }
+    : intent.latest_charge;
+  const stripeChargeId = latestCharge?.id || null;
+  const stripeFeeAmount = Number(latestCharge?.balance_transaction?.fee || 0) / 100;
 
   const shippingAddress = {
     fullName: customerName,
@@ -421,11 +431,32 @@ const createPaidOrder = async ({
     email: customerEmail,
   };
 
+  const orderColumns = [
+    'user_id', 'total', 'subtotal', 'tax_amount', 'tax_rate', 'status', 'shipping_address', 'shipping_option', 'shipping_cost', 'created_at',
+  ];
+  const orderValues = [
+    customerUserId, total, subtotal, 0, 0, 'paid', JSON.stringify(shippingAddress), 'direct', shippingCost, nowIso(),
+  ];
+
+  if (hasPaymentIntentIdColumn) {
+    orderColumns.push('payment_intent_id');
+    orderValues.push(intent.id);
+  }
+  if (hasStripeChargeIdColumn) {
+    orderColumns.push('stripe_charge_id');
+    orderValues.push(stripeChargeId);
+  }
+  if (hasStripeFeeAmountColumn) {
+    orderColumns.push('stripe_fee_amount');
+    orderValues.push(stripeFeeAmount);
+  }
+
+  const orderPlaceholders = orderValues.map((_, idx) => `$${idx + 1}`).join(', ');
   const order = await queryRow(
-    `INSERT INTO orders (user_id, total, subtotal, tax_amount, tax_rate, status, shipping_address, shipping_option, shipping_cost, created_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP)
+    `INSERT INTO orders (${orderColumns.join(', ')})
+     VALUES (${orderPlaceholders})
      RETURNING id`,
-    [customerUserId, total, subtotal, 0, 0, 'paid', JSON.stringify(shippingAddress), 'direct', shippingCost]
+    orderValues
   );
 
   const selectedPhotoId = pick(photoIds);
@@ -458,6 +489,8 @@ const createPaidOrder = async ({
   return {
     orderId: Number(order.id),
     paymentIntentId: intent.id,
+    stripeChargeId,
+    stripeFeeAmount,
     amount: total,
   };
 };
@@ -476,6 +509,9 @@ const main = async () => {
 
   const hasPhotoIdsColumn = await columnExists('order_items', 'photo_ids');
   const hasProductSizeIdColumn = await columnExists('order_items', 'product_size_id');
+  const hasStripeFeeAmountColumn = await columnExists('orders', 'stripe_fee_amount');
+  const hasPaymentIntentIdColumn = await columnExists('orders', 'payment_intent_id');
+  const hasStripeChargeIdColumn = await columnExists('orders', 'stripe_charge_id');
 
   const summary = [];
 
@@ -516,6 +552,9 @@ const main = async () => {
         orderNumber: o,
         hasPhotoIdsColumn,
         hasProductSizeIdColumn,
+        hasStripeFeeAmountColumn,
+        hasPaymentIntentIdColumn,
+        hasStripeChargeIdColumn,
       });
 
       if (receiptEmail) {
