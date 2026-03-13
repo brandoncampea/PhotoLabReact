@@ -160,27 +160,30 @@ class WhccService {
     }
 
     try {
-      const response = await api.get(
-        `${this.getApiUrl()}/api/AccessToken`,
-        {
-          params: {
-            grant_type: 'consumer_credentials',
-            consumer_key: config.consumerKey,
-            consumer_secret: config.consumerSecret,
-          },
-        }
-      );
+      // Route through backend proxy to avoid CORS — WHCC doesn't allow
+      // direct browser requests from cross-origin pages.
+      const response = await api.get('/whcc/token', {
+        params: {
+          consumerKey: config.consumerKey,
+          consumerSecret: config.consumerSecret,
+          isSandbox: config.isSandbox,
+        },
+      });
 
-      const token = response.data as WhccAccessToken;
+      const { token: tokenStr } = response.data as { token: string };
 
-      // Parse expiration date and cache
-      const expiresAt = new Date(token.ExpirationDate).getTime();
+      // Cache locally so subsequent calls skip the extra round-trip
+      const expiresAt = Date.now() + 55 * 60 * 1000; // ~55 min (token lifetime 1h)
       this.tokenCache.set(cacheKey, {
-        ...token,
+        ClientId: '',
+        ConsumerKey: config.consumerKey,
+        EffectiveDate: '',
+        ExpirationDate: new Date(expiresAt).toISOString(),
+        Token: tokenStr,
         expiresAt,
       });
 
-      return token.Token;
+      return tokenStr;
     } catch (error) {
       console.error('Failed to get WHCC access token:', error);
       throw new Error('WHCC authentication failed. Check credentials.');
@@ -293,20 +296,14 @@ class WhccService {
    * Import order to WHCC (step 1)
    */
   async importOrder(orderRequest: WhccOrderRequest): Promise<WhccOrderResponse> {
+    const config = this.getConfig();
     try {
-      const token = await this.getAccessToken();
-
-      const response = await api.post(
-        `${this.getApiUrl()}/api/OrderImport`,
-        orderRequest,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
-
+      const response = await api.post('/whcc/order/import', {
+        ...orderRequest,
+        consumerKey: config?.consumerKey,
+        consumerSecret: config?.consumerSecret,
+        isSandbox: config?.isSandbox,
+      });
       return response.data as WhccOrderResponse;
     } catch (error) {
       console.error('Failed to import order to WHCC:', error);
@@ -318,21 +315,13 @@ class WhccService {
    * Submit order to WHCC (step 2)
    */
   async submitOrder(confirmationId: string): Promise<any> {
+    const config = this.getConfig();
     try {
-      const token = await this.getAccessToken();
-
-      const response = await api.post(
-        `${this.getApiUrl()}/api/OrderImport/Submit/${confirmationId}`,
-        {},
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-            'Content-Length': '0',
-          },
-        }
-      );
-
+      const response = await api.post(`/whcc/order/submit/${confirmationId}`, {
+        consumerKey: config?.consumerKey,
+        consumerSecret: config?.consumerSecret,
+        isSandbox: config?.isSandbox,
+      });
       return response.data;
     } catch (error) {
       console.error('Failed to submit order to WHCC:', error);
@@ -386,21 +375,15 @@ class WhccService {
    * For production, you may need to manually fetch and cache the catalog
    */
   async getProductCatalog(): Promise<any> {
+    const config = this.getConfig();
     try {
-      const token = await this.getAccessToken();
-
-      // Note: WHCC's product catalog endpoint may vary
-      // This endpoint structure is based on their API documentation
-      // You may need to adjust based on actual WHCC API response
-      const response = await api.get(
-        `${this.getApiUrl()}/api/ProductCatalog`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
+      const response = await api.get('/whcc/products', {
+        params: {
+          consumerKey: config?.consumerKey,
+          consumerSecret: config?.consumerSecret,
+          isSandbox: config?.isSandbox,
+        },
+      });
       return response.data;
     } catch (error) {
       console.error('Failed to fetch WHCC product catalog:', error);
