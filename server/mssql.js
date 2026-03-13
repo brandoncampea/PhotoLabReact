@@ -12,6 +12,46 @@ dotenv.config({ path: resolve(__dirname, '..', '.env.local') });
 const rawConnectionString = (process.env.MSSQL_CONNECTION_STRING || '').trim();
 const hasValidConnectionString = /(?:^|;)\s*(server|data source)\s*=\s*/i.test(rawConnectionString);
 
+const parseConnectionString = (connectionString) => {
+  const pairs = String(connectionString)
+    .split(';')
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => {
+      const idx = part.indexOf('=');
+      if (idx === -1) return [part.trim().toLowerCase(), ''];
+      return [part.slice(0, idx).trim().toLowerCase(), part.slice(idx + 1).trim()];
+    });
+
+  const map = new Map(pairs);
+  const serverRaw = map.get('server') || map.get('data source') || '';
+  const serverWithoutProtocol = serverRaw.replace(/^tcp:/i, '').trim();
+  const [serverHost, serverPortRaw] = serverWithoutProtocol.split(',');
+  const port = Number(serverPortRaw || map.get('port') || 1433);
+
+  const database = map.get('initial catalog') || map.get('database') || '';
+  const user = map.get('user id') || map.get('uid') || map.get('user') || '';
+  const password = map.get('password') || map.get('pwd') || '';
+  const encrypt = map.has('encrypt') ? String(map.get('encrypt')).toLowerCase() !== 'false' : process.env.MSSQL_ENCRYPT !== 'false';
+  const trustServerCertificate = map.has('trustservercertificate')
+    ? String(map.get('trustservercertificate')).toLowerCase() === 'true'
+    : process.env.MSSQL_TRUST_CERT === 'true';
+
+  return {
+    user,
+    password,
+    server: serverHost,
+    port,
+    database,
+    options: {
+      encrypt,
+      trustServerCertificate,
+      connectionTimeout: 5000,
+      requestTimeout: 10000,
+    },
+  };
+};
+
 console.log('MSSQL Config Debug:');
 console.log('- MSSQL_CONNECTION_STRING present:', !!rawConnectionString);
 console.log('- MSSQL_CONNECTION_STRING valid:', hasValidConnectionString);
@@ -21,15 +61,7 @@ console.log('- DB_USER:', process.env.DB_USER ? '***set***' : 'not set');
 console.log('- DB_PASSWORD:', process.env.DB_PASSWORD ? '***set***' : 'not set');
 
 const mssqlConfig = hasValidConnectionString
-  ? {
-      connectionString: rawConnectionString,
-      options: {
-        encrypt: process.env.MSSQL_ENCRYPT !== 'false',
-        trustServerCertificate: process.env.MSSQL_TRUST_CERT === 'true',
-        connectionTimeout: 5000, // 5 second connection timeout
-        requestTimeout: 10000, // 10 second request timeout
-      },
-    }
+  ? parseConnectionString(rawConnectionString)
   : {
       user: process.env.DB_USER || 'sa',
       password: process.env.DB_PASSWORD || 'yourStrong(!)Password',
