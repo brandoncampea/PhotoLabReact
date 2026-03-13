@@ -57,7 +57,7 @@ const ensureStripeClient = async () => {
   const envTestKey = String(process.env.STRIPE_TEST_SECRET_KEY || '').trim();
   const configKey = String(config?.secretKey || '').trim();
   const envKey = String(process.env.STRIPE_SECRET_KEY || '').trim();
-  const key = String(envTestKey || configKey || envKey || '').trim();
+  const key = String(envTestKey || envKey || configKey || '').trim();
 
   if (!key || key.includes('example') || key.includes('***')) {
     throw new Error(`Stripe test key is not configured. Sources: STRIPE_TEST_SECRET_KEY=${describeKey(envTestKey)}, stripe_config.secret_key=${describeKey(configKey)}, STRIPE_SECRET_KEY=${describeKey(envKey)}.`);
@@ -88,6 +88,16 @@ const ensureDefaultPriceList = async () => {
     ['Default Price List', 'Auto-created by seedTestCommerce', 1]
   );
   return Number(inserted.id);
+};
+
+const getAllPriceListIds = async (fallbackPriceListId) => {
+  const rows = await queryRows('SELECT id FROM price_lists ORDER BY id ASC', []);
+  const ids = rows
+    .map((row) => Number(row?.id))
+    .filter((id) => Number.isInteger(id) && id > 0);
+
+  if (ids.length > 0) return ids;
+  return Number.isInteger(Number(fallbackPriceListId)) ? [Number(fallbackPriceListId)] : [];
 };
 
 const ensureSeedProductAndSize = async (priceListId) => {
@@ -148,12 +158,12 @@ const ensureSeedProductAndSize = async (priceListId) => {
 };
 
 const buildOrderProductCatalog = async (priceListId, fallbackChoice) => {
-  const rows = await queryRows(
+  let rows = await queryRows(
     `SELECT ps.product_id as productId,
             ps.id as productSizeId,
             ps.size_name as sizeName,
             ps.price as unitPrice,
-            ps.cost as cost,
+            COALESCE(ps.cost, p.cost, 0) as cost,
             p.name as productName
      FROM product_sizes ps
      INNER JOIN products p ON p.id = ps.product_id
@@ -162,6 +172,22 @@ const buildOrderProductCatalog = async (priceListId, fallbackChoice) => {
      ORDER BY p.name ASC, ps.size_name ASC`,
     [priceListId, 'Seed Test Print']
   );
+
+  if (!rows.length) {
+    rows = await queryRows(
+      `SELECT ps.product_id as productId,
+              ps.id as productSizeId,
+              ps.size_name as sizeName,
+              ps.price as unitPrice,
+              COALESCE(ps.cost, p.cost, 0) as cost,
+              p.name as productName
+       FROM product_sizes ps
+       INNER JOIN products p ON p.id = ps.product_id
+       WHERE p.name <> $1
+       ORDER BY p.name ASC, ps.size_name ASC`,
+      ['Seed Test Print']
+    );
+  }
 
   const catalog = rows
     .map((row) => {
@@ -187,9 +213,11 @@ const buildOrderProductCatalog = async (priceListId, fallbackChoice) => {
 
 const enforceStudioMarkupForPriceList = async (priceListId) => {
   const sizes = await queryRows(
-    `SELECT id, cost
-     FROM product_sizes
-     WHERE price_list_id = $1`,
+    `SELECT ps.id,
+            COALESCE(ps.cost, p.cost, 0) as cost
+     FROM product_sizes ps
+     LEFT JOIN products p ON p.id = ps.product_id
+     WHERE ps.price_list_id = $1`,
     [priceListId]
   );
 
@@ -204,7 +232,7 @@ const enforceStudioMarkupForPriceList = async (priceListId) => {
     }
 
     const price = getStudioPriceFromCost(cost);
-    await query('UPDATE product_sizes SET price = $2 WHERE id = $1', [size.id, price]);
+    await query('UPDATE product_sizes SET cost = $2, price = $3 WHERE id = $1', [size.id, cost, price]);
     updated += 1;
   }
 
@@ -219,9 +247,12 @@ const enforceStudioOverrideMarkupForStudio = async ({ studioId, priceListId }) =
 
   const hasIsOffered = await columnExists('studio_price_list_size_overrides', 'is_offered');
   const sizes = await queryRows(
-    `SELECT id, product_id as productId, cost
-     FROM product_sizes
-     WHERE price_list_id = $1`,
+    `SELECT ps.id,
+            ps.product_id as productId,
+            COALESCE(ps.cost, p.cost, 0) as cost
+     FROM product_sizes ps
+     LEFT JOIN products p ON p.id = ps.product_id
+     WHERE ps.price_list_id = $1`,
     [priceListId]
   );
 
@@ -284,6 +315,90 @@ const enforceStudioOverrideMarkupForStudio = async ({ studioId, priceListId }) =
   }
 
   return { inserted, updated, skipped, total: sizes.length, enabled: true };
+};
+
+const repairSeedOrderItemProductReferences = async ({ fallbackProductChoice, defaultPriceListId }) => {
+  // 1) If size exists but product is missing, derive product from size.
+  const bySizeResult = await query(
+    `UPDATE oi
+     SET oi.product_id = ps.product_id
+     FROM order_items oi
+     INNER JOIN product_sizes ps ON ps.id = oi.product_size_id
+     INNER JOIN orders o ON o.id = oi.order_id
+     INNER JOIN photos ph ON ph.id = oi.photo_id
+     INNER JOIN albums a ON a.id = ph.album_id
+     INNER JOIN studios s ON s.id = a.studio_id
+     WHERE (s.email LIKE 'seed-studio-%@example.com' OR s.name LIKE 'Seed Studio %')
+       AND oi.product_size_id IS NOT NULL
+       AND oi.product_id IS NULL`,
+    []
+  );
+
+  // 2) If product exists but size is missing, pick closest size by item price in album price list.
+  const byProductResult = await query(
+    `UPDATE oi
+     SET oi.product_size_id = pick.product_size_id
+     FROM order_items oi
+     INNER JOIN orders o ON o.id = oi.order_id
+     INNER JOIN photos ph ON ph.id = oi.photo_id
+     INNER JOIN albums a ON a.id = ph.album_id
+     INNER JOIN studios s ON s.id = a.studio_id
+     CROSS APPLY (
+       SELECT TOP 1 ps.id as product_size_id
+       FROM product_sizes ps
+       WHERE ps.product_id = oi.product_id
+         AND (a.price_list_id IS NULL OR ps.price_list_id = a.price_list_id)
+       ORDER BY ABS(COALESCE(ps.price, 0) - COALESCE(oi.price, 0)), ps.id
+     ) pick
+     WHERE (s.email LIKE 'seed-studio-%@example.com' OR s.name LIKE 'Seed Studio %')
+       AND oi.product_id IS NOT NULL
+       AND oi.product_size_id IS NULL`,
+    []
+  );
+
+  // 3) If both are missing, infer from album/default price list by closest size price.
+  const byPriceResult = await query(
+    `UPDATE oi
+     SET oi.product_size_id = pick.product_size_id,
+         oi.product_id = pick.product_id
+     FROM order_items oi
+     INNER JOIN orders o ON o.id = oi.order_id
+     INNER JOIN photos ph ON ph.id = oi.photo_id
+     INNER JOIN albums a ON a.id = ph.album_id
+     INNER JOIN studios s ON s.id = a.studio_id
+     CROSS APPLY (
+       SELECT TOP 1 ps.id as product_size_id, ps.product_id
+       FROM product_sizes ps
+       WHERE ps.price_list_id = COALESCE(a.price_list_id, $1)
+       ORDER BY ABS(COALESCE(ps.price, 0) - COALESCE(oi.price, 0)), ps.id
+     ) pick
+     WHERE (s.email LIKE 'seed-studio-%@example.com' OR s.name LIKE 'Seed Studio %')
+       AND oi.product_id IS NULL
+       AND oi.product_size_id IS NULL`,
+    [defaultPriceListId]
+  );
+
+  // 4) Final fallback to explicit seed product/size to avoid Unknown Product display.
+  const fallbackResult = await query(
+    `UPDATE oi
+     SET oi.product_id = $1,
+         oi.product_size_id = $2
+     FROM order_items oi
+     INNER JOIN orders o ON o.id = oi.order_id
+     INNER JOIN photos ph ON ph.id = oi.photo_id
+     INNER JOIN albums a ON a.id = ph.album_id
+     INNER JOIN studios s ON s.id = a.studio_id
+     WHERE (s.email LIKE 'seed-studio-%@example.com' OR s.name LIKE 'Seed Studio %')
+       AND (oi.product_id IS NULL OR oi.product_size_id IS NULL)`,
+    [fallbackProductChoice.productId, fallbackProductChoice.productSizeId]
+  );
+
+  return {
+    updatedFromSize: Number(bySizeResult?.rowCount) || 0,
+    updatedFromProduct: Number(byProductResult?.rowCount) || 0,
+    updatedFromPrice: Number(byPriceResult?.rowCount) || 0,
+    updatedFallback: Number(fallbackResult?.rowCount) || 0,
+  };
 };
 
 const ensureStudio = async (index, subscriptionPlan) => {
@@ -661,8 +776,25 @@ const main = async () => {
   const stripe = await ensureStripeClient();
   const subscriptionPlans = await getSeedSubscriptionPlans();
   const priceListId = await ensureDefaultPriceList();
-  const markupResult = await enforceStudioMarkupForPriceList(priceListId);
+  const allPriceListIds = await getAllPriceListIds(priceListId);
+  const markupResults = [];
+  for (const listId of allPriceListIds) {
+    const result = await enforceStudioMarkupForPriceList(listId);
+    markupResults.push({ priceListId: listId, ...result });
+  }
+  const markupResult = markupResults.reduce(
+    (acc, item) => ({
+      updated: acc.updated + item.updated,
+      skipped: acc.skipped + item.skipped,
+      total: acc.total + item.total,
+    }),
+    { updated: 0, skipped: 0, total: 0 }
+  );
   const fallbackProductChoice = await ensureSeedProductAndSize(priceListId);
+  const repairResult = await repairSeedOrderItemProductReferences({
+    fallbackProductChoice,
+    defaultPriceListId: priceListId,
+  });
   const orderProductCatalog = await buildOrderProductCatalog(priceListId, fallbackProductChoice);
 
   if (!orderProductCatalog.length) {
@@ -678,7 +810,10 @@ const main = async () => {
   const summary = [];
 
   console.log(
-    `💲 Studio seed pricing enforced on price list ${priceListId}: ${markupResult.updated} updated, ${markupResult.skipped} skipped (target = 500% above cost)`
+    `💲 Studio seed pricing enforced on ${allPriceListIds.length} price list(s): ${markupResult.updated} updated, ${markupResult.skipped} skipped (target = 500% above cost)`
+  );
+  console.log(
+    `🧩 Seed order item repair: fromSize=${repairResult.updatedFromSize}, fromProduct=${repairResult.updatedFromProduct}, fromPrice=${repairResult.updatedFromPrice}, fallback=${repairResult.updatedFallback}`
   );
 
   for (let i = 1; i <= STUDIO_COUNT; i += 1) {

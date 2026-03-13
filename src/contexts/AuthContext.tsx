@@ -18,6 +18,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (credentials: LoginCredentials) => {
     const response = await authService.login(credentials);
+    if (response.user?.role !== 'super_admin') {
+      localStorage.removeItem('viewAsStudioId');
+    }
     setUser(response.user);
     return response.user;
   };

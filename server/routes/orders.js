@@ -657,35 +657,41 @@ router.get('/admin/all-orders', adminRequired, async (req, res) => {
          WHERE oi.order_id = $1`,
         [order.id]
       );
-      const itemsWithPhotos = [];
-      for (const item of items) {
-        const photo = await queryRow(
-          `SELECT id, file_name as fileName, thumbnail_url as thumbnailUrl, full_image_url as fullImageUrl
-           FROM photos WHERE id = $1`,
-          [item.photoId]
-        );
-        itemsWithPhotos.push({
-          ...item,
-          price: item.price || 0,
-          basePrice: Number(item.basePrice) || 0,
-          labCost: Number(item.labCost) || 0,
-          productName: item.productName || (item.productId ? `Product #${item.productId}` : 'Unknown Product'),
-          productSizeName: item.productSizeName || undefined,
-          cropData: item.cropData ? JSON.parse(item.cropData) : null,
-          photoIds: item.photoIds ? JSON.parse(item.photoIds) : item.photoId ? [item.photoId] : [],
-          photo: photo ? {
-            id: photo.id,
-            fileName: photo.filename ?? photo.fileName,
-            thumbnailUrl: `/api/photos/${photo.id}/asset?variant=thumbnail`,
-            url: `/api/photos/${photo.id}/asset?variant=full`,
-          } : {
-            id: item.photoId,
-            fileName: `Photo #${item.photoId}`,
-            thumbnailUrl: `https://picsum.photos/seed/photo${item.photoId}/300/300`,
-            url: `https://picsum.photos/seed/photo${item.photoId}/1200/900`,
-          },
-        });
-      }
+          const itemsWithPhotos = [];
+          let excludedCount = 0;
+          for (const item of items) {
+            // Exclude if productName is null or 'Unknown Product'
+            if (!item.productName || item.productName === 'Unknown Product') {
+              excludedCount += 1;
+              continue;
+            }
+            const photo = await queryRow(
+              `SELECT id, file_name as fileName, thumbnail_url as thumbnailUrl, full_image_url as fullImageUrl
+               FROM photos WHERE id = $1`,
+              [item.photoId]
+            );
+            itemsWithPhotos.push({
+              ...item,
+              price: item.price || 0,
+              basePrice: Number(item.basePrice) || 0,
+              labCost: Number(item.labCost) || 0,
+              productName: item.productName || (item.productId ? `Product #${item.productId}` : 'Unknown Product'),
+              productSizeName: item.productSizeName || undefined,
+              cropData: item.cropData ? JSON.parse(item.cropData) : null,
+              photoIds: item.photoIds ? JSON.parse(item.photoIds) : item.photoId ? [item.photoId] : [],
+              photo: photo ? {
+                id: photo.id,
+                fileName: photo.filename ?? photo.fileName,
+                thumbnailUrl: `/api/photos/${photo.id}/asset?variant=thumbnail`,
+                url: `/api/photos/${photo.id}/asset?variant=full`,
+              } : {
+                id: item.photoId,
+                fileName: `Photo #${item.photoId}`,
+                thumbnailUrl: `https://picsum.photos/seed/photo${item.photoId}/300/300`,
+                url: `https://picsum.photos/seed/photo${item.photoId}/1200/900`,
+              },
+            });
+          }
       parsedOrders.push({
         ...order,
         status: order.status || 'Pending',
@@ -698,6 +704,7 @@ router.get('/admin/all-orders', adminRequired, async (req, res) => {
         batchLabVendor: order.batchLabVendor,
         labSubmittedAt: order.labSubmittedAt,
         items: itemsWithPhotos,
+        excludedItemsNote: excludedCount > 0 ? `${excludedCount} product(s) with amount were excluded from profit calculations because they are not linked to a valid product.` : undefined,
       });
     }
     res.json(parsedOrders);

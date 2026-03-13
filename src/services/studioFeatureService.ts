@@ -65,10 +65,15 @@ export const studioFeatureService = {
   },
 
   getEffectiveStudioId(user: User | null): number | undefined {
+    if (user?.role === 'studio_admin' && Number.isInteger(Number(user.studioId)) && Number(user.studioId) > 0) {
+      return Number(user.studioId);
+    }
+
     const viewAsStudioId = Number(localStorage.getItem('viewAsStudioId'));
     if (Number.isInteger(viewAsStudioId) && viewAsStudioId > 0) {
       return viewAsStudioId;
     }
+
     return user?.studioId;
   },
 

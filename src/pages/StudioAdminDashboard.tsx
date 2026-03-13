@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { studioFeatureService } from '../services/studioFeatureService';
 import '../AdminStyles.css';
 
 interface SubscriptionInfo {
@@ -94,7 +95,7 @@ interface StudioPayoutHistoryItem {
 
 export default function StudioAdminDashboard() {
   const { user } = useAuth();
-  const effectiveStudioId = Number(localStorage.getItem('viewAsStudioId')) || user?.studioId;
+  const effectiveStudioId = studioFeatureService.getEffectiveStudioId(user);
   const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null);
   const [availablePlans, setAvailablePlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(false);
@@ -129,7 +130,7 @@ export default function StudioAdminDashboard() {
       'Authorization': `Bearer ${token}`,
     };
     const actingStudioId = localStorage.getItem('viewAsStudioId');
-    if (actingStudioId) {
+    if (user?.role === 'super_admin' && actingStudioId) {
       headers['x-acting-studio-id'] = actingStudioId;
     }
     return headers;
