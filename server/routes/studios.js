@@ -43,10 +43,15 @@ const calcSubscriptionRevenue = (studio) => {
 const getStudioProfitGross = async (studioId) => {
   const hasProductSizeId = await columnExists('order_items', 'product_size_id');
   const hasStripeFeeAmount = await columnExists('orders', 'stripe_fee_amount');
+  const hasStudioBillingCycle = await columnExists('studios', 'billing_cycle');
+  const hasPlanMonthlyPrice = await columnExists('subscription_plans', 'monthly_price');
+  const hasPlanYearlyPrice = await columnExists('subscription_plans', 'yearly_price');
 
   const studioRow = await queryRow(
-    `SELECT s.subscription_status, s.subscription_start, s.billing_cycle,
-            sp.monthly_price, sp.yearly_price
+    `SELECT s.subscription_status, s.subscription_start,
+            ${hasStudioBillingCycle ? 's.billing_cycle' : "CAST('monthly' AS NVARCHAR(50))"} as billing_cycle,
+            ${hasPlanMonthlyPrice ? 'sp.monthly_price' : 'NULL'} as monthly_price,
+            ${hasPlanYearlyPrice ? 'sp.yearly_price' : 'NULL'} as yearly_price
      FROM studios s
      LEFT JOIN subscription_plans sp ON LOWER(sp.name) = LOWER(s.subscription_plan)
      WHERE s.id = $1`,
@@ -489,9 +494,15 @@ router.get('/:studioId/profit', authRequired, async (req, res) => {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
+    const hasStudioBillingCycle = await columnExists('studios', 'billing_cycle');
+    const hasPlanMonthlyPrice = await columnExists('subscription_plans', 'monthly_price');
+    const hasPlanYearlyPrice = await columnExists('subscription_plans', 'yearly_price');
+
     const studio = await queryRow(
-      `SELECT s.id, s.name, s.subscription_status, s.subscription_start, s.billing_cycle,
-              sp.monthly_price, sp.yearly_price
+      `SELECT s.id, s.name, s.subscription_status, s.subscription_start,
+              ${hasStudioBillingCycle ? 's.billing_cycle' : "CAST('monthly' AS NVARCHAR(50))"} as billing_cycle,
+              ${hasPlanMonthlyPrice ? 'sp.monthly_price' : 'NULL'} as monthly_price,
+              ${hasPlanYearlyPrice ? 'sp.yearly_price' : 'NULL'} as yearly_price
        FROM studios s
        LEFT JOIN subscription_plans sp ON LOWER(sp.name) = LOWER(s.subscription_plan)
        WHERE s.id = $1`,
@@ -621,6 +632,9 @@ router.get('/profit/summary', authRequired, async (req, res) => {
 
     const hasProductSizeId = await columnExists('order_items', 'product_size_id');
     const hasStripeFeeAmount = await columnExists('orders', 'stripe_fee_amount');
+        const hasStudioBillingCycle = await columnExists('studios', 'billing_cycle');
+        const hasPlanMonthlyPrice = await columnExists('subscription_plans', 'monthly_price');
+        const hasPlanYearlyPrice = await columnExists('subscription_plans', 'yearly_price');
 
     const byStudioRows = await queryRows(
       `SELECT
@@ -628,9 +642,9 @@ router.get('/profit/summary', authRequired, async (req, res) => {
          s.name as studioName,
          s.subscription_status,
          s.subscription_start,
-         s.billing_cycle,
-         sp.monthly_price,
-         sp.yearly_price,
+          ${hasStudioBillingCycle ? 's.billing_cycle' : "CAST('monthly' AS NVARCHAR(50))"} as billing_cycle,
+          ${hasPlanMonthlyPrice ? 'sp.monthly_price' : 'NULL'} as monthly_price,
+          ${hasPlanYearlyPrice ? 'sp.yearly_price' : 'NULL'} as yearly_price,
          COALESCE(rev.studioRevenue, 0) as studioRevenue,
          COALESCE(rev.baseRevenue, 0) as baseRevenue,
          COALESCE(rev.stripeFeeAmount, 0) as stripeFeeAmount,
