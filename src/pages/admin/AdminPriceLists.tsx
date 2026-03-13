@@ -906,14 +906,16 @@ const AdminPriceLists: React.FC = () => {
                 <tr>
                   <th>Product</th>
                   <th>Size</th>
-                  <th style={{ textAlign: 'right' }}>Price</th>
+                  <th style={{ textAlign: 'right' }}>Lab Cost</th>
+                  <th style={{ textAlign: 'right' }}>Price (Base)</th>
+                  <th style={{ textAlign: 'right' }}>Profit</th>
                   <th style={{ textAlign: 'center' }}>Action</th>
                 </tr>
               </thead>
               <tbody>
                 {(Array.isArray(selectedPriceList.products) && selectedPriceList.products.length === 0) ? (
                   <tr>
-                    <td colSpan={4} className="muted-text" style={{ padding: '1rem', textAlign: 'center' }}>
+                    <td colSpan={6} className="muted-text" style={{ padding: '1rem', textAlign: 'center' }}>
                       No products yet. Click “Add Product” to create one.
                     </td>
                   </tr>
@@ -936,7 +938,21 @@ const AdminPriceLists: React.FC = () => {
                           </td>
                           <td>{size.name || ''}</td>
                           <td style={{ textAlign: 'right' }}>
-                            {typeof size.price === 'number' ? `$${size.price.toFixed(2)}` : ''}
+                            {typeof size.cost === 'number' ? `$${size.cost.toFixed(2)}` : '$0.00'}
+                          </td>
+                          <td style={{ textAlign: 'right' }}>
+                            {typeof (size.basePrice ?? size.price) === 'number' ? `$${Number(size.basePrice ?? size.price).toFixed(2)}` : ''}
+                          </td>
+                          <td
+                            style={{
+                              textAlign: 'right',
+                              color: Number((size.basePrice ?? size.price) || 0) - Number(size.cost || 0) >= 0 ? '#10b981' : '#ef4444',
+                              fontWeight: 600,
+                            }}
+                          >
+                            ${(
+                              Number(size.basePrice ?? size.price) - Number(size.cost || 0)
+                            ).toFixed(2)}
                           </td>
                           <td style={{ textAlign: 'center' }}>
                             <div style={{ display: 'inline-flex', gap: '0.5rem' }}>
@@ -965,7 +981,7 @@ const AdminPriceLists: React.FC = () => {
                             <strong>{product.name || 'Unnamed Product'}</strong>
                             <div className="muted-text" style={{ fontSize: '0.8rem' }}>{product.isDigital ? 'Digital' : 'Physical'}</div>
                           </td>
-                          <td colSpan={2}>
+                          <td colSpan={4}>
                             <span className="muted-text">No sizes</span>
                           </td>
                           <td style={{ textAlign: 'center' }}>
