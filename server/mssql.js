@@ -102,8 +102,18 @@ console.log('Final mssqlConfig:', {
   connectionString: mssqlConfig.connectionString ? '***set***' : undefined
 });
 
-const pool = new sql.ConnectionPool(mssqlConfig);
-const poolPromise = pool.connect();
+let poolPromise = null;
+
+const getPoolPromise = () => {
+  if (!poolPromise) {
+    const pool = new sql.ConnectionPool(mssqlConfig);
+    poolPromise = pool.connect().catch((error) => {
+      poolPromise = null;
+      throw error;
+    });
+  }
+  return poolPromise;
+};
 
 function transformSql(text) {
   let sqlText = text;
@@ -131,7 +141,7 @@ function normalizeResult(result) {
 export async function query(text, params = []) {
   const start = Date.now();
   try {
-    const poolInstance = await poolPromise;
+    const poolInstance = await getPoolPromise();
     const request = poolInstance.request();
     params.forEach((param, index) => {
       request.input(`p${index + 1}`, param);
@@ -181,7 +191,7 @@ export async function columnExists(tableName, columnName) {
 
 // Helper function to run a transaction
 export async function transaction(callback) {
-  const poolInstance = await poolPromise;
+  const poolInstance = await getPoolPromise();
   const tx = new sql.Transaction(poolInstance);
   await tx.begin();
   const client = {
@@ -982,8 +992,10 @@ export async function initializeDatabase() {
 
 process.on('exit', async () => {
   try {
-    const poolInstance = await poolPromise;
-    await poolInstance.close();
+    if (poolPromise) {
+      const poolInstance = await poolPromise;
+      await poolInstance.close();
+    }
   } catch {
     // ignore shutdown errors
   }
