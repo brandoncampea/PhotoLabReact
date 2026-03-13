@@ -14,6 +14,41 @@ function getBaseUrl(isSandbox) {
   return isSandbox ? WHCC_SANDBOX_URL : WHCC_PROD_URL;
 }
 
+function getDefaultProductCatalog() {
+  return {
+    source: 'fallback',
+    products: [
+      {
+        productUID: 2,
+        name: '4x6 Print',
+        description: 'Glossy 4x6 Photograph',
+        width: 4,
+        height: 6,
+        basePrice: 0.49,
+        category: 'prints',
+      },
+      {
+        productUID: 3,
+        name: '5x7 Print',
+        description: 'Glossy 5x7 Photograph',
+        width: 5,
+        height: 7,
+        basePrice: 0.65,
+        category: 'prints',
+      },
+      {
+        productUID: 4,
+        name: '8x10 Print',
+        description: 'Glossy 8x10 Photograph',
+        width: 8,
+        height: 10,
+        basePrice: 2.99,
+        category: 'prints',
+      },
+    ],
+  };
+}
+
 /**
  * Resolve WHCC credentials.
  * Priority: server env vars → request body → request query params
@@ -93,7 +128,10 @@ router.get('/whcc/token', adminRequired, async (req, res) => {
 router.get('/whcc/products', adminRequired, async (req, res) => {
   const { consumerKey, consumerSecret, isSandbox } = getCredentials(req);
   if (!consumerKey || !consumerSecret) {
-    return res.status(400).json({ error: 'WHCC credentials not configured' });
+    return res.status(200).json({
+      ...getDefaultProductCatalog(),
+      warning: 'WHCC credentials not configured',
+    });
   }
   try {
     const token = await fetchToken(consumerKey, consumerSecret, isSandbox);
@@ -107,9 +145,11 @@ router.get('/whcc/products', adminRequired, async (req, res) => {
       err?.response?.status,
       err?.response?.data || err.message
     );
-    res
-      .status(502)
-      .json({ error: 'Failed to fetch WHCC product catalog', details: err?.response?.data || err.message });
+    res.status(200).json({
+      ...getDefaultProductCatalog(),
+      warning: 'Failed to fetch WHCC product catalog from upstream; using fallback catalog.',
+      details: err?.response?.data || err.message,
+    });
   }
 });
 
