@@ -17,13 +17,42 @@ router.post('/:id/items', superAdminRequired, async (req, res) => {
       return res.status(400).json({ error: 'No items provided' });
     }
 
+    const normalizeName = (value) => String(value || '').trim().toLowerCase();
+    const existingRows = await query(
+      `SELECT p.name
+       FROM products p
+       INNER JOIN price_list_products plp ON plp.product_id = p.id
+       WHERE plp.price_list_id = $1`,
+      [priceListId]
+    );
+    const existingProductNames = new Set(
+      (existingRows.rows || []).map((row) => normalizeName(row.name)).filter(Boolean)
+    );
+
+    const seenIncomingProductNames = new Set();
+    const skippedProducts = [];
+    let insertedProducts = 0;
+    let insertedSizes = 0;
+
     for (const item of items) {
       try {
         // Skip products with missing or empty name
         if (!item.productName || typeof item.productName !== 'string' || item.productName.trim() === '') {
           console.warn('[PriceListItems] Skipping product with empty name:', item);
-          return;
+          continue;
         }
+
+        const normalizedProductName = normalizeName(item.productName);
+        if (!normalizedProductName) {
+          continue;
+        }
+
+        // Skip duplicates in target price list and duplicates within this import payload
+        if (existingProductNames.has(normalizedProductName) || seenIncomingProductNames.has(normalizedProductName)) {
+          skippedProducts.push(item.productName);
+          continue;
+        }
+        seenIncomingProductNames.add(normalizedProductName);
 
         // Find first valid price in sizes array
         let price = 0;
@@ -51,9 +80,11 @@ router.post('/:id/items', superAdminRequired, async (req, res) => {
         const exists = await queryRow('SELECT 1 FROM price_list_products WHERE price_list_id = $1 AND product_id = $2', [priceListId, product.id]);
         if (!exists) {
           await query('INSERT INTO price_list_products (price_list_id, product_id) VALUES ($1, $2)', [priceListId, product.id]);
+          insertedProducts += 1;
         }
 
         // Insert sizes for this product
+        const seenIncomingSizeNames = new Set();
         for (const size of (item.sizes || [])) {
           try {
             // Always use size.name if present, fallback to size.sizeName, always trim
@@ -63,8 +94,14 @@ router.post('/:id/items', superAdminRequired, async (req, res) => {
             console.log('[PriceListItems] Checking size:', { size, rawName, rawSizeName, sizeName });
             if (!sizeName) {
               console.warn('[PriceListItems] Skipping size with empty name:', { size, rawName, rawSizeName });
-              return;
+              continue;
             }
+
+            const normalizedSizeName = normalizeName(sizeName);
+            if (!normalizedSizeName || seenIncomingSizeNames.has(normalizedSizeName)) {
+              continue;
+            }
+            seenIncomingSizeNames.add(normalizedSizeName);
             // Default NULL or missing price/cost to 0
             const safePrice = (typeof size.price === 'number' && !isNaN(size.price)) ? size.price : 0;
             const safeCost = (typeof size.cost === 'number' && !isNaN(size.cost)) ? size.cost : 0;
@@ -72,6 +109,7 @@ router.post('/:id/items', superAdminRequired, async (req, res) => {
             const sizeExists = await queryRow('SELECT 1 FROM product_sizes WHERE product_id = $1 AND price_list_id = $2 AND size_name = $3', [product.id, priceListId, sizeName]);
             if (!sizeExists) {
               await query('INSERT INTO product_sizes (product_id, price_list_id, size_name, price, cost) VALUES ($1, $2, $3, $4, $5)', [product.id, priceListId, sizeName, safePrice, safeCost]);
+              insertedSizes += 1;
               console.log('[PriceListItems] Inserted size:', { productId: product.id, priceListId, sizeName, safePrice, safeCost });
             }
           } catch (sizeError) {
@@ -85,7 +123,12 @@ router.post('/:id/items', superAdminRequired, async (req, res) => {
       }
     }
 
-    res.json({ message: 'Items added to price list' });
+    res.json({
+      message: 'Items added to price list',
+      insertedProducts,
+      insertedSizes,
+      skippedProducts,
+    });
   } catch (error) {
     console.error('[PriceListItems] Unexpected error:', error, req.body);
     res.status(500).json({ error: error.message });
