@@ -27,10 +27,17 @@ const getStudioProfitPayoutsTotal = async (studioId) => {
 };
 
 const getStudioProfitGross = async (studioId) => {
-  const hasInvoiceItems = await tableExists('studio_invoice_items');
+  const studioRow = await queryRow(
+    'SELECT fee_type, fee_value FROM studios WHERE id = $1',
+    [studioId]
+  );
+  const feeType = studioRow?.fee_type || 'percentage';
+  const feeValue = Number(studioRow?.fee_value) || 0;
 
   const revenueRow = await queryRow(
-    `SELECT COALESCE(SUM(oi.price * oi.quantity), 0) as studioRevenue
+    `SELECT
+       COALESCE(SUM(oi.price * oi.quantity), 0) as studioRevenue,
+       COUNT(DISTINCT o.id) as orderCount
      FROM orders o
      INNER JOIN order_items oi ON oi.order_id = o.id
      INNER JOIN photos ph ON ph.id = oi.photo_id
@@ -40,32 +47,16 @@ const getStudioProfitGross = async (studioId) => {
     [studioId]
   );
 
+  const studioRevenue = Number(revenueRow?.studioRevenue) || 0;
+  const orderCount = Number(revenueRow?.orderCount) || 0;
+
   let superAdminProfit = 0;
-  if (hasInvoiceItems) {
-    const costRow = await queryRow(
-      `SELECT COALESCE(SUM(total_cost), 0) as superAdminProfit
-       FROM studio_invoice_items
-       WHERE studio_id = $1`,
-      [studioId]
-    );
-    superAdminProfit = Number(costRow?.superAdminProfit) || 0;
-  } else {
-    const costRow = await queryRow(
-      `SELECT COALESCE(SUM(COALESCE(ps.price, p.price, 0) * oi.quantity), 0) as superAdminProfit
-       FROM orders o
-       INNER JOIN order_items oi ON oi.order_id = o.id
-       INNER JOIN photos ph ON ph.id = oi.photo_id
-       INNER JOIN albums a ON a.id = ph.album_id
-       LEFT JOIN products p ON p.id = oi.product_id
-       LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id
-       WHERE a.studio_id = $1
-         AND (o.status IS NULL OR LOWER(o.status) <> 'cancelled')`,
-      [studioId]
-    );
-    superAdminProfit = Number(costRow?.superAdminProfit) || 0;
+  if (feeType === 'percentage') {
+    superAdminProfit = studioRevenue * (feeValue / 100);
+  } else if (feeType === 'flat') {
+    superAdminProfit = feeValue * orderCount;
   }
 
-  const studioRevenue = Number(revenueRow?.studioRevenue) || 0;
   return {
     studioRevenue,
     superAdminProfit,
@@ -458,61 +449,43 @@ router.get('/:studioId/profit', authRequired, async (req, res) => {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
-    const studio = await queryRow('SELECT id, name FROM studios WHERE id = $1', [studioId]);
+    const studio = await queryRow(
+      'SELECT id, name, fee_type, fee_value FROM studios WHERE id = $1',
+      [studioId]
+    );
     if (!studio) {
       return res.status(404).json({ error: 'Studio not found' });
     }
 
-    const hasInvoiceItems = await tableExists('studio_invoice_items');
+    const feeType = studio.fee_type || 'percentage';
+    const feeValue = Number(studio.fee_value) || 0;
     const payoutThreshold = await getStudioProfitPayoutThreshold();
 
-    const byOrder = hasInvoiceItems
-      ? await queryRows(
-          `SELECT
-             o.id as orderId,
-             o.created_at as orderDate,
-             COALESCE(SUM(oi.price * oi.quantity), 0) as studioRevenue,
-             COALESCE(MAX(invAgg.superAdminProfit), 0) as superAdminProfit,
-             COALESCE(SUM(oi.quantity), 0) as itemCount
-           FROM orders o
-           INNER JOIN order_items oi ON oi.order_id = o.id
-           INNER JOIN photos ph ON ph.id = oi.photo_id
-           INNER JOIN albums a ON a.id = ph.album_id
-           LEFT JOIN (
-             SELECT order_id as orderId, studio_id as studioId, COALESCE(SUM(total_cost), 0) as superAdminProfit
-             FROM studio_invoice_items
-             WHERE studio_id = $1
-             GROUP BY order_id, studio_id
-           ) invAgg ON invAgg.orderId = o.id AND invAgg.studioId = $1
-           WHERE a.studio_id = $1
-             AND (o.status IS NULL OR LOWER(o.status) <> 'cancelled')
-           GROUP BY o.id, o.created_at
-           ORDER BY o.created_at DESC`,
-          [studioId]
-        )
-      : await queryRows(
-          `SELECT
-             o.id as orderId,
-             o.created_at as orderDate,
-             COALESCE(SUM(oi.price * oi.quantity), 0) as studioRevenue,
-             COALESCE(SUM(COALESCE(ps.price, p.price, 0) * oi.quantity), 0) as superAdminProfit,
-             COALESCE(SUM(oi.quantity), 0) as itemCount
-           FROM orders o
-           INNER JOIN order_items oi ON oi.order_id = o.id
-           INNER JOIN photos ph ON ph.id = oi.photo_id
-           INNER JOIN albums a ON a.id = ph.album_id
-           LEFT JOIN products p ON p.id = oi.product_id
-           LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id
-           WHERE a.studio_id = $1
-             AND (o.status IS NULL OR LOWER(o.status) <> 'cancelled')
-           GROUP BY o.id, o.created_at
-           ORDER BY o.created_at DESC`,
-          [studioId]
-        );
+    const byOrder = await queryRows(
+      `SELECT
+         o.id as orderId,
+         o.created_at as orderDate,
+         COALESCE(SUM(oi.price * oi.quantity), 0) as studioRevenue,
+         COALESCE(SUM(oi.quantity), 0) as itemCount
+       FROM orders o
+       INNER JOIN order_items oi ON oi.order_id = o.id
+       INNER JOIN photos ph ON ph.id = oi.photo_id
+       INNER JOIN albums a ON a.id = ph.album_id
+       WHERE a.studio_id = $1
+         AND (o.status IS NULL OR LOWER(o.status) <> 'cancelled')
+       GROUP BY o.id, o.created_at
+       ORDER BY o.created_at DESC`,
+      [studioId]
+    );
 
     const orders = byOrder.map((row) => {
       const revenue = Number(row.studioRevenue) || 0;
-      const superAdminProfit = Number(row.superAdminProfit) || 0;
+      let superAdminProfit = 0;
+      if (feeType === 'percentage') {
+        superAdminProfit = revenue * (feeValue / 100);
+      } else if (feeType === 'flat') {
+        superAdminProfit = feeValue;
+      }
       return {
         orderId: Number(row.orderId) || 0,
         orderDate: row.orderDate,
@@ -570,59 +543,33 @@ router.get('/profit/summary', authRequired, async (req, res) => {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
-    const hasInvoiceItems = await tableExists('studio_invoice_items');
-    const hasOrderItemProductSizeId = await columnExists('order_items', 'product_size_id');
     const payoutThreshold = await getStudioProfitPayoutThreshold();
 
-    const byStudioRows = hasInvoiceItems
-      ? await queryRows(
-          `SELECT
-             s.id as studioId,
-             s.name as studioName,
-             COALESCE(rev.studioRevenue, 0) as studioRevenue,
-             COALESCE(cost.superAdminProfit, 0) as superAdminProfit,
-             COALESCE(rev.orderCount, 0) as orderCount
-           FROM studios s
-           LEFT JOIN (
-             SELECT
-               a.studio_id as studioId,
-               COALESCE(SUM(oi.price * oi.quantity), 0) as studioRevenue,
-               COUNT(DISTINCT o.id) as orderCount
-             FROM orders o
-             INNER JOIN order_items oi ON oi.order_id = o.id
-             INNER JOIN photos ph ON ph.id = oi.photo_id
-             INNER JOIN albums a ON a.id = ph.album_id
-             WHERE (o.status IS NULL OR LOWER(o.status) <> 'cancelled')
-             GROUP BY a.studio_id
-           ) rev ON rev.studioId = s.id
-           LEFT JOIN (
-             SELECT
-               studio_id as studioId,
-               COALESCE(SUM(total_cost), 0) as superAdminProfit
-             FROM studio_invoice_items
-             GROUP BY studio_id
-           ) cost ON cost.studioId = s.id
-           ORDER BY s.name ASC`,
-          []
-        )
-      : await queryRows(
-          `SELECT
-             s.id as studioId,
-             s.name as studioName,
-             COALESCE(SUM(oi.price * oi.quantity), 0) as studioRevenue,
-             COALESCE(SUM(COALESCE(${hasOrderItemProductSizeId ? 'ps.price' : 'NULL'}, p.price, 0) * oi.quantity), 0) as superAdminProfit,
-             COUNT(DISTINCT o.id) as orderCount
-           FROM studios s
-           LEFT JOIN albums a ON a.studio_id = s.id
-           LEFT JOIN photos ph ON ph.album_id = a.id
-           LEFT JOIN order_items oi ON oi.photo_id = ph.id
-           LEFT JOIN orders o ON o.id = oi.order_id AND (o.status IS NULL OR LOWER(o.status) <> 'cancelled')
-           LEFT JOIN products p ON p.id = oi.product_id
-           ${hasOrderItemProductSizeId ? 'LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id' : ''}
-           GROUP BY s.id, s.name
-           ORDER BY s.name ASC`,
-          []
-        );
+    // Single query: revenue + order count + studio fee config per studio
+    const byStudioRows = await queryRows(
+      `SELECT
+         s.id as studioId,
+         s.name as studioName,
+         s.fee_type as feeType,
+         s.fee_value as feeValue,
+         COALESCE(rev.studioRevenue, 0) as studioRevenue,
+         COALESCE(rev.orderCount, 0) as orderCount
+       FROM studios s
+       LEFT JOIN (
+         SELECT
+           a.studio_id as studioId,
+           COALESCE(SUM(oi.price * oi.quantity), 0) as studioRevenue,
+           COUNT(DISTINCT o.id) as orderCount
+         FROM orders o
+         INNER JOIN order_items oi ON oi.order_id = o.id
+         INNER JOIN photos ph ON ph.id = oi.photo_id
+         INNER JOIN albums a ON a.id = ph.album_id
+         WHERE (o.status IS NULL OR LOWER(o.status) <> 'cancelled')
+         GROUP BY a.studio_id
+       ) rev ON rev.studioId = s.id
+       ORDER BY s.name ASC`,
+      []
+    );
 
     const payoutRows = await tableExists('studio_profit_payouts')
       ? await queryRows(
@@ -642,7 +589,17 @@ router.get('/profit/summary', authRequired, async (req, res) => {
 
     const byStudio = byStudioRows.map((row) => {
       const studioRevenue = Number(row.studioRevenue) || 0;
-      const superAdminProfit = Number(row.superAdminProfit) || 0;
+      const orderCount = Number(row.orderCount) || 0;
+      const feeType = row.feeType || 'percentage';
+      const feeValue = Number(row.feeValue) || 0;
+
+      let superAdminProfit = 0;
+      if (feeType === 'percentage') {
+        superAdminProfit = studioRevenue * (feeValue / 100);
+      } else if (feeType === 'flat') {
+        superAdminProfit = feeValue * orderCount;
+      }
+
       const studioProfitGross = studioRevenue - superAdminProfit;
       const payout = payoutMap.get(Number(row.studioId) || 0);
       const totalPayouts = payout?.totalPayouts || 0;
