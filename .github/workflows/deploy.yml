@@ -2,16 +2,6 @@ name: Deploy to Azure (Easy Find)
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - 'server/**'
-      - 'src/**'
-      - 'public/**'
-      - 'index.html'
-      - 'package.json'
-      - 'package-lock.json'
-      - '.github/workflows/deploy.yml'
 
 env:
   NODE_VERSION: '20.x'
