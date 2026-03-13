@@ -3,9 +3,51 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import '../App.css';
 
+interface LandingSubscriptionPlan {
+  id: string | number;
+  name: string;
+  monthly_price: number;
+  yearly_price?: number;
+  features: string[];
+  is_active?: boolean;
+}
+
 export default function LandingPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const [plans, setPlans] = React.useState<LandingSubscriptionPlan[]>([]);
+  const [plansLoading, setPlansLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    let mounted = true;
+
+    const loadPlans = async () => {
+      try {
+        const response = await fetch('/api/subscription-plans');
+        if (!response.ok) {
+          throw new Error('Failed to load plans');
+        }
+
+        const data = await response.json();
+        if (!mounted) return;
+
+        const activePlans = (Array.isArray(data) ? data : [])
+          .filter((plan) => plan && (plan.is_active === undefined || plan.is_active === true))
+          .sort((a, b) => (Number(a.monthly_price) || 0) - (Number(b.monthly_price) || 0));
+
+        setPlans(activePlans);
+      } catch (error) {
+        console.error('Failed to load landing subscription plans:', error);
+      } finally {
+        if (mounted) setPlansLoading(false);
+      }
+    };
+
+    loadPlans();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   // Redirect authenticated users
   React.useEffect(() => {
@@ -182,40 +224,23 @@ export default function LandingPage() {
           maxWidth: '1000px',
           margin: '0 auto'
         }}>
-          <PricingCard
-            name="Basic"
-            price="$29"
-            features={[
-              'Up to 50 albums',
-              '2 team members',
-              'Online ordering',
-              'Stripe payments',
-              'Email support'
-            ]}
-          />
-          <PricingCard
-            name="Professional"
-            price="$79"
-            features={[
-              'Unlimited albums',
-              '5 team members',
-              'Lab integration',
-              'Custom pricing',
-              'Priority support'
-            ]}
-            highlighted
-          />
-          <PricingCard
-            name="Enterprise"
-            price="$149"
-            features={[
-              'Unlimited everything',
-              'Unlimited users',
-              'White-label branding',
-              'Custom domain',
-              'Dedicated support'
-            ]}
-          />
+          {plansLoading ? (
+            <div style={{ gridColumn: '1 / -1', color: '#a0a0a0' }}>Loading plans…</div>
+          ) : plans.length > 0 ? (
+            plans.map((plan, index) => (
+              <PricingCard
+                key={String(plan.id)}
+                name={plan.name}
+                price={`$${Number(plan.monthly_price || 0).toFixed(0)}`}
+                features={Array.isArray(plan.features) ? plan.features : []}
+                highlighted={index === 1 || /professional/i.test(String(plan.name || ''))}
+              />
+            ))
+          ) : (
+            <div style={{ gridColumn: '1 / -1', color: '#a0a0a0' }}>
+              Subscription plans are being configured. Please check back shortly.
+            </div>
+          )}
         </div>
         <button
           onClick={() => navigate('/studio-signup')}
