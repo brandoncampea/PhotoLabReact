@@ -273,18 +273,103 @@ export default function SuperAdminDashboard() {
   const fetchProfitSummary = async () => {
     try {
       const token = localStorage.getItem('authToken');
-      const response = await fetch('/api/studios/profit/summary', {
+      const studiosResponse = await fetch('/api/studios', {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        setProfitSummary(data);
-      } else {
+      if (!studiosResponse.ok) {
         setProfitSummary(null);
+        return;
       }
+
+      const studiosData: Studio[] = await studiosResponse.json();
+
+      const perStudio = await Promise.all(
+        studiosData.map(async (studio) => {
+          const response = await fetch(`/api/studios/${studio.id}/profit`, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+            },
+          });
+
+          if (!response.ok) {
+            return {
+              studioId: studio.id,
+              studioName: studio.name,
+              orderCount: 0,
+              studioRevenue: 0,
+              baseRevenue: 0,
+              grossStudioMarkup: 0,
+              superAdminProfit: 0,
+              stripeFeeAmount: 0,
+              studioProfitGross: 0,
+              totalPayouts: 0,
+              payoutCount: 0,
+              studioProfit: 0,
+              isPayoutEligible: false,
+              amountToNextPayout: 0,
+            } as StudioProfitRow;
+          }
+
+          const data = await response.json();
+          return {
+            studioId: Number(data.studioId) || studio.id,
+            studioName: data.studioName || studio.name,
+            orderCount: Number(data.totalOrders) || 0,
+            studioRevenue: Number(data.totalStudioRevenue) || 0,
+            baseRevenue: Number(data.totalBaseRevenue) || 0,
+            grossStudioMarkup: Number(data.totalGrossStudioMarkup) || 0,
+            superAdminProfit: Number(data.totalSuperAdminProfit) || 0,
+            stripeFeeAmount: Number(data.totalStripeFees) || 0,
+            studioProfitGross: Number(data.totalStudioProfitGross) || 0,
+            totalPayouts: Number(data.totalPayouts) || 0,
+            payoutCount: Number(data.payoutCount) || 0,
+            studioProfit: Number(data.totalStudioProfit) || 0,
+            isPayoutEligible: !!data.isPayoutEligible,
+            amountToNextPayout: Number(data.amountToNextPayout) || 0,
+          } as StudioProfitRow;
+        })
+      );
+
+      const totals = perStudio.reduce(
+        (acc, row) => {
+          acc.totalStudioRevenue += row.studioRevenue;
+          acc.totalBaseRevenue += row.baseRevenue;
+          acc.totalGrossStudioMarkup += row.grossStudioMarkup;
+          acc.totalSuperAdminProfit += row.superAdminProfit;
+          acc.totalStripeFees += row.stripeFeeAmount;
+          acc.totalStudioProfitGross += row.studioProfitGross;
+          acc.totalPayouts += row.totalPayouts;
+          acc.totalStudioProfit += row.studioProfit;
+          acc.totalOrders += row.orderCount;
+          if (row.isPayoutEligible) {
+            acc.eligibleStudioCount += 1;
+            acc.totalEligibleStudioPayout += row.studioProfit;
+          }
+          return acc;
+        },
+        {
+          totalStudioRevenue: 0,
+          totalBaseRevenue: 0,
+          totalGrossStudioMarkup: 0,
+          totalSuperAdminProfit: 0,
+          totalStripeFees: 0,
+          totalStudioProfitGross: 0,
+          totalPayouts: 0,
+          totalStudioProfit: 0,
+          totalOrders: 0,
+          eligibleStudioCount: 0,
+          totalEligibleStudioPayout: 0,
+        }
+      );
+
+      setProfitSummary({
+        payoutThreshold,
+        totals,
+        byStudio: perStudio,
+      });
     } catch (err) {
       console.error('Failed to fetch profit summary:', err);
       setProfitSummary(null);
@@ -471,12 +556,12 @@ export default function SuperAdminDashboard() {
           </button>
         </div>
         <div className="stat-card">
-          <h3>Total Studio Profit</h3>
+          <h3>Total Studio Profit (Pre-Payout)</h3>
           <p className="stat-value" style={{ color: '#86efac' }}>
-            ${Number(profitSummary?.totals?.totalStudioProfit || 0).toFixed(2)}
+            ${Number(profitSummary?.totals?.totalStudioProfitGross || 0).toFixed(2)}
           </p>
           <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0 }}>
-            Eligible studios: {Number(profitSummary?.totals?.eligibleStudioCount || 0)}
+            Available after payouts: ${Number(profitSummary?.totals?.totalStudioProfit || 0).toFixed(2)}
           </p>
           <button
             className="btn btn-secondary btn-sm"
@@ -525,8 +610,9 @@ export default function SuperAdminDashboard() {
                   <th style={{ textAlign: 'right' }}>Markup</th>
                   <th style={{ textAlign: 'right' }}>Stripe Fees</th>
                   {showSuperAdminProfitByStudio && <th style={{ textAlign: 'right' }}>Super Admin Profit</th>}
-                  {showStudioProfitByStudio && <th style={{ textAlign: 'right' }}>Studio Profit</th>}
+                  {showStudioProfitByStudio && <th style={{ textAlign: 'right' }}>Studio Profit (Pre-Payout)</th>}
                   <th style={{ textAlign: 'right' }}>Paid Out</th>
+                  {showStudioProfitByStudio && <th style={{ textAlign: 'right' }}>Available After Payouts</th>}
                   <th style={{ textAlign: 'center' }}>Payout Status</th>
                   <th>Actions</th>
                 </tr>
@@ -549,10 +635,15 @@ export default function SuperAdminDashboard() {
                     )}
                     {showStudioProfitByStudio && (
                       <td style={{ textAlign: 'right', color: '#86efac', fontWeight: 'bold' }}>
-                        ${row.studioProfit.toFixed(2)}
+                        ${row.studioProfitGross.toFixed(2)}
                       </td>
                     )}
                     <td style={{ textAlign: 'right' }}>${(row.totalPayouts || 0).toFixed(2)}</td>
+                    {showStudioProfitByStudio && (
+                      <td style={{ textAlign: 'right', fontWeight: 'bold' }}>
+                        ${row.studioProfit.toFixed(2)}
+                      </td>
+                    )}
                     <td style={{ textAlign: 'center' }}>
                       {row.isPayoutEligible ? (
                         <span className="status-badge status-active">Eligible</span>
@@ -596,9 +687,10 @@ export default function SuperAdminDashboard() {
               <th>Billing</th>
               <th>Status</th>
               <th>Fee</th>
-              <th style={{ textAlign: 'right' }}>Studio Profit</th>
+              <th style={{ textAlign: 'right' }}>Studio Profit (Pre-Payout)</th>
               <th style={{ textAlign: 'right' }}>Super Admin Profit</th>
               <th style={{ textAlign: 'right' }}>Paid Out</th>
+              <th style={{ textAlign: 'right' }}>Available After Payouts</th>
               <th>Payout Status</th>
               <th>Created</th>
               <th>Users</th>
@@ -633,13 +725,16 @@ export default function SuperAdminDashboard() {
                   </span>
                 </td>
                 <td style={{ textAlign: 'right', color: '#86efac', fontWeight: 'bold' }}>
-                  ${Number(profitSummary?.byStudio?.find((row) => row.studioId === studio.id)?.studioProfit || 0).toFixed(2)}
+                  ${Number(profitSummary?.byStudio?.find((row) => row.studioId === studio.id)?.studioProfitGross || 0).toFixed(2)}
                 </td>
                 <td style={{ textAlign: 'right', color: '#fbbf24', fontWeight: 'bold' }}>
                   ${Number(profitSummary?.byStudio?.find((row) => row.studioId === studio.id)?.superAdminProfit || 0).toFixed(2)}
                 </td>
                 <td style={{ textAlign: 'right' }}>
                   ${Number(profitSummary?.byStudio?.find((row) => row.studioId === studio.id)?.totalPayouts || 0).toFixed(2)}
+                </td>
+                <td style={{ textAlign: 'right', fontWeight: 'bold' }}>
+                  ${Number(profitSummary?.byStudio?.find((row) => row.studioId === studio.id)?.studioProfit || 0).toFixed(2)}
                 </td>
                 <td>
                   {(() => {

@@ -1,11 +1,40 @@
 import express from 'express';
-import { queryRow, query } from '../mssql.js';
+import { queryRow, query, tableExists } from '../mssql.js';
 import { authRequired } from '../middleware/auth.js';
 const router = express.Router();
+
+const defaultProfile = {
+  id: 1,
+  ownerName: 'Photo Lab',
+  businessName: 'PhotoLab Studio',
+  email: 'admin@photolab.com',
+  receiveOrderNotifications: true,
+  logoUrl: '',
+};
+
+const ensureProfileConfigTable = async () => {
+  const exists = await tableExists('profile_config');
+  if (exists) return true;
+
+  await query(`
+    CREATE TABLE profile_config (
+      id INT PRIMARY KEY,
+      owner_name NVARCHAR(255) NULL,
+      business_name NVARCHAR(255) NULL,
+      email NVARCHAR(255) NULL,
+      receive_order_notifications BIT DEFAULT 1,
+      logo_url NVARCHAR(MAX) NULL,
+      updated_at DATETIME2 DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  return true;
+};
 
 // Get profile config
 router.get('/', async (req, res) => {
   try {
+    await ensureProfileConfigTable();
+
     let profile = await queryRow(`
       SELECT id, owner_name as ownerName, business_name as businessName, 
              email, receive_order_notifications as receiveOrderNotifications, 
@@ -33,9 +62,10 @@ router.get('/', async (req, res) => {
       `);
     }
 
-    res.json(profile);
+    res.json(profile || defaultProfile);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.warn('Profile config unavailable, returning defaults:', error?.message || error);
+    res.json(defaultProfile);
   }
 });
 
@@ -43,6 +73,8 @@ router.get('/', async (req, res) => {
 // Require auth to update profile config
 router.put('/', authRequired, async (req, res) => {
   try {
+    await ensureProfileConfigTable();
+
     const { ownerName, businessName, email, receiveOrderNotifications, logoUrl } = req.body;
 
     await query(`
@@ -72,7 +104,14 @@ router.put('/', authRequired, async (req, res) => {
       WHERE id = 1
     `);
 
-    res.json(profile);
+    res.json(profile || {
+      ...defaultProfile,
+      ownerName,
+      businessName,
+      email,
+      receiveOrderNotifications: !!receiveOrderNotifications,
+      logoUrl: logoUrl || '',
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

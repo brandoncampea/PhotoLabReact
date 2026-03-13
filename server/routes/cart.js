@@ -1,6 +1,6 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
-import { queryRow, query } from '../mssql.js';
+import { queryRow, query, tableExists } from '../mssql.js';
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
@@ -21,6 +21,11 @@ const getOptionalUser = (req) => {
 // Get user cart (optional auth)
 router.get('/', async (req, res) => {
   try {
+    const hasCartTable = await tableExists('user_cart');
+    if (!hasCartTable) {
+      return res.json([]);
+    }
+
     const user = getOptionalUser(req);
     const userId = user?.id;
     
@@ -53,6 +58,11 @@ router.get('/', async (req, res) => {
 // Save user cart (optional auth)
 router.post('/', async (req, res) => {
   try {
+    const hasCartTable = await tableExists('user_cart');
+    if (!hasCartTable) {
+      return res.json({ success: true, message: 'Cart saved (table unavailable, local only)' });
+    }
+
     const user = getOptionalUser(req);
     const userId = user?.id;
     const items = Array.isArray(req.body.items) ? req.body.items : [];
@@ -94,6 +104,11 @@ router.post('/', async (req, res) => {
 // Clear user cart (optional auth)
 router.delete('/', async (req, res) => {
   try {
+    const hasCartTable = await tableExists('user_cart');
+    if (!hasCartTable) {
+      return res.json({ success: true, message: 'Cart cleared (table unavailable, local only)' });
+    }
+
     const user = getOptionalUser(req);
     const userId = user?.id;
     
