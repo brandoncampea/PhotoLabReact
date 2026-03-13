@@ -1,0 +1,63 @@
+name: Test Commerce Data
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Action to run"
+        required: true
+        type: choice
+        default: seed
+        options:
+          - seed
+          - clear
+          - clear-dry-run
+
+env:
+  NODE_VERSION: '20.x'
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run selected action
+        env:
+          MSSQL_CONNECTION_STRING: ${{ secrets.MSSQL_CONNECTION_STRING }}
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_PORT: ${{ secrets.DB_PORT }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          MSSQL_ENCRYPT: ${{ secrets.MSSQL_ENCRYPT }}
+          MSSQL_TRUST_CERT: ${{ secrets.MSSQL_TRUST_CERT }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        run: |
+          case "${{ github.event.inputs.action }}" in
+            seed)
+              npm run seed:test-commerce
+              ;;
+            clear)
+              npm run clear:test-commerce
+              ;;
+            clear-dry-run)
+              npm run clear:test-commerce:dry-run
+              ;;
+            *)
+              echo "Unsupported action"
+              exit 1
+              ;;
+          esac
