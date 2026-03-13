@@ -18,6 +18,7 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
   AZURE_WEBAPP_NAME: CampeaPhotoLab
   AZURE_RESOURCE_GROUP: PhotoLab
+  CANONICAL_APP_URL: 'https://labs.campeaphotography.com'
 
 jobs:
   build-and-deploy:
@@ -98,7 +99,10 @@ jobs:
             --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
             --query defaultHostName -o tsv)
 
-          APP_URL="https://${APP_HOST}"
+          APP_URL="${{ env.CANONICAL_APP_URL }}"
+          if [ -z "$APP_URL" ]; then
+            APP_URL="https://${APP_HOST}"
+          fi
           SETTINGS=(
             "SCM_DO_BUILD_DURING_DEPLOYMENT=false"
             "ENABLE_ORYX_BUILD=false"
