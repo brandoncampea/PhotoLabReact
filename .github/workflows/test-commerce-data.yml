@@ -43,6 +43,7 @@ jobs:
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
           MSSQL_ENCRYPT: ${{ secrets.MSSQL_ENCRYPT }}
           MSSQL_TRUST_CERT: ${{ secrets.MSSQL_TRUST_CERT }}
+          STRIPE_TEST_SECRET_KEY: ${{ secrets.STRIPE_TEST_SECRET_KEY }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
         run: |

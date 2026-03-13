@@ -15,10 +15,10 @@ const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
 const ensureStripeClient = async () => {
   const config = await queryRow('SELECT TOP 1 secret_key as secretKey, is_active as isActive FROM stripe_config WHERE id = 1');
-  const key = String(config?.secretKey || process.env.STRIPE_SECRET_KEY || '').trim();
+  const key = String(process.env.STRIPE_TEST_SECRET_KEY || config?.secretKey || process.env.STRIPE_SECRET_KEY || '').trim();
 
   if (!key || key.includes('example') || key.includes('***')) {
-    throw new Error('Stripe test key is not configured. Set stripe_config.secret_key or STRIPE_SECRET_KEY to a valid sk_test_ key.');
+    throw new Error('Stripe test key is not configured. Set STRIPE_TEST_SECRET_KEY, stripe_config.secret_key, or STRIPE_SECRET_KEY to a valid sk_test_ key.');
   }
 
   if (!key.startsWith('sk_test_')) {
