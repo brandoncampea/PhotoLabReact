@@ -26,41 +26,63 @@ const getStudioProfitPayoutsTotal = async (studioId) => {
   return Number(row?.totalPayouts) || 0;
 };
 
+// Compute subscription revenue for a studio: months_active × monthly_rate
+const calcSubscriptionRevenue = (studio) => {
+  if (!studio || studio.subscription_status !== 'active' || !studio.subscription_start) return 0;
+  const monthsActive = Math.max(
+    0,
+    Math.floor((Date.now() - new Date(studio.subscription_start).getTime()) / (1000 * 60 * 60 * 24 * 30.44))
+  );
+  const monthlyRate =
+    studio.billing_cycle === 'yearly'
+      ? (Number(studio.yearly_price) || 0) / 12
+      : (Number(studio.monthly_price) || 0);
+  return monthlyRate * monthsActive;
+};
+
 const getStudioProfitGross = async (studioId) => {
+  const hasProductSizeId = await columnExists('order_items', 'product_size_id');
+
   const studioRow = await queryRow(
-    'SELECT fee_type, fee_value FROM studios WHERE id = $1',
+    `SELECT s.subscription_status, s.subscription_start, s.billing_cycle,
+            sp.monthly_price, sp.yearly_price
+     FROM studios s
+     LEFT JOIN subscription_plans sp ON LOWER(sp.name) = LOWER(s.subscription_plan)
+     WHERE s.id = $1`,
     [studioId]
   );
-  const feeType = studioRow?.fee_type || 'percentage';
-  const feeValue = Number(studioRow?.fee_value) || 0;
 
   const revenueRow = await queryRow(
     `SELECT
        COALESCE(SUM(oi.price * oi.quantity), 0) as studioRevenue,
-       COUNT(DISTINCT o.id) as orderCount
+       COALESCE(SUM(COALESCE(${hasProductSizeId ? 'ps.price' : 'NULL'}, p.price, 0) * oi.quantity), 0) as baseRevenue,
+       COALESCE(SUM(
+         (COALESCE(${hasProductSizeId ? 'ps.price' : 'NULL'}, p.price, 0)
+          - COALESCE(${hasProductSizeId ? 'ps.cost' : 'NULL'}, p.cost, 0)) * oi.quantity
+       ), 0) as orderMargin
      FROM orders o
      INNER JOIN order_items oi ON oi.order_id = o.id
      INNER JOIN photos ph ON ph.id = oi.photo_id
      INNER JOIN albums a ON a.id = ph.album_id
+     LEFT JOIN products p ON p.id = oi.product_id
+     ${hasProductSizeId ? 'LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id' : ''}
      WHERE a.studio_id = $1
        AND (o.status IS NULL OR LOWER(o.status) <> 'cancelled')`,
     [studioId]
   );
 
   const studioRevenue = Number(revenueRow?.studioRevenue) || 0;
-  const orderCount = Number(revenueRow?.orderCount) || 0;
+  const baseRevenue = Number(revenueRow?.baseRevenue) || 0;
+  const orderMargin = Number(revenueRow?.orderMargin) || 0;
 
-  let superAdminProfit = 0;
-  if (feeType === 'percentage') {
-    superAdminProfit = studioRevenue * (feeValue / 100);
-  } else if (feeType === 'flat') {
-    superAdminProfit = feeValue * orderCount;
-  }
+  const subscriptionRevenue = calcSubscriptionRevenue(studioRow);
+  const superAdminProfit = subscriptionRevenue + orderMargin;
+  const studioProfitGross = studioRevenue - baseRevenue; // studio markup (selling - base)
 
   return {
     studioRevenue,
     superAdminProfit,
-    studioProfitGross: studioRevenue - superAdminProfit,
+    studioProfitGross,
   };
 };
 
@@ -450,15 +472,18 @@ router.get('/:studioId/profit', authRequired, async (req, res) => {
     }
 
     const studio = await queryRow(
-      'SELECT id, name, fee_type, fee_value FROM studios WHERE id = $1',
+      `SELECT s.id, s.name, s.subscription_status, s.subscription_start, s.billing_cycle,
+              sp.monthly_price, sp.yearly_price
+       FROM studios s
+       LEFT JOIN subscription_plans sp ON LOWER(sp.name) = LOWER(s.subscription_plan)
+       WHERE s.id = $1`,
       [studioId]
     );
     if (!studio) {
       return res.status(404).json({ error: 'Studio not found' });
     }
 
-    const feeType = studio.fee_type || 'percentage';
-    const feeValue = Number(studio.fee_value) || 0;
+    const hasProductSizeId = await columnExists('order_items', 'product_size_id');
     const payoutThreshold = await getStudioProfitPayoutThreshold();
 
     const byOrder = await queryRows(
@@ -466,11 +491,18 @@ router.get('/:studioId/profit', authRequired, async (req, res) => {
          o.id as orderId,
          o.created_at as orderDate,
          COALESCE(SUM(oi.price * oi.quantity), 0) as studioRevenue,
+         COALESCE(SUM(COALESCE(${hasProductSizeId ? 'ps.price' : 'NULL'}, p.price, 0) * oi.quantity), 0) as baseRevenue,
+         COALESCE(SUM(
+           (COALESCE(${hasProductSizeId ? 'ps.price' : 'NULL'}, p.price, 0)
+            - COALESCE(${hasProductSizeId ? 'ps.cost' : 'NULL'}, p.cost, 0)) * oi.quantity
+         ), 0) as orderMargin,
          COALESCE(SUM(oi.quantity), 0) as itemCount
        FROM orders o
        INNER JOIN order_items oi ON oi.order_id = o.id
        INNER JOIN photos ph ON ph.id = oi.photo_id
        INNER JOIN albums a ON a.id = ph.album_id
+       LEFT JOIN products p ON p.id = oi.product_id
+       ${hasProductSizeId ? 'LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id' : ''}
        WHERE a.studio_id = $1
          AND (o.status IS NULL OR LOWER(o.status) <> 'cancelled')
        GROUP BY o.id, o.created_at
@@ -480,19 +512,15 @@ router.get('/:studioId/profit', authRequired, async (req, res) => {
 
     const orders = byOrder.map((row) => {
       const revenue = Number(row.studioRevenue) || 0;
-      let superAdminProfit = 0;
-      if (feeType === 'percentage') {
-        superAdminProfit = revenue * (feeValue / 100);
-      } else if (feeType === 'flat') {
-        superAdminProfit = feeValue;
-      }
+      const baseRev = Number(row.baseRevenue) || 0;
+      const orderMargin = Number(row.orderMargin) || 0;
       return {
         orderId: Number(row.orderId) || 0,
         orderDate: row.orderDate,
         itemCount: Number(row.itemCount) || 0,
         studioRevenue: revenue,
-        superAdminProfit,
-        studioProfit: revenue - superAdminProfit,
+        superAdminProfit: orderMargin,     // per-order: base margin only
+        studioProfit: revenue - baseRev,   // studio markup for this order
       };
     });
 
@@ -511,6 +539,10 @@ router.get('/:studioId/profit', authRequired, async (req, res) => {
         totalItems: 0,
       }
     );
+
+    // Add subscription revenue on top of accumulated order margin
+    const subscriptionRevenue = calcSubscriptionRevenue(studio);
+    summary.totalSuperAdminProfit += subscriptionRevenue;
 
     const totalPayouts = await getStudioProfitPayoutsTotal(studioId);
     const totalStudioProfit = summary.totalStudioProfitGross - totalPayouts;
@@ -545,25 +577,39 @@ router.get('/profit/summary', authRequired, async (req, res) => {
 
     const payoutThreshold = await getStudioProfitPayoutThreshold();
 
-    // Single query: revenue + order count + studio fee config per studio
+    const hasProductSizeId = await columnExists('order_items', 'product_size_id');
+
     const byStudioRows = await queryRows(
       `SELECT
          s.id as studioId,
          s.name as studioName,
-         s.fee_type as feeType,
-         s.fee_value as feeValue,
+         s.subscription_status,
+         s.subscription_start,
+         s.billing_cycle,
+         sp.monthly_price,
+         sp.yearly_price,
          COALESCE(rev.studioRevenue, 0) as studioRevenue,
+         COALESCE(rev.baseRevenue, 0) as baseRevenue,
+         COALESCE(rev.orderMargin, 0) as orderMargin,
          COALESCE(rev.orderCount, 0) as orderCount
        FROM studios s
+       LEFT JOIN subscription_plans sp ON LOWER(sp.name) = LOWER(s.subscription_plan)
        LEFT JOIN (
          SELECT
            a.studio_id as studioId,
            COALESCE(SUM(oi.price * oi.quantity), 0) as studioRevenue,
+           COALESCE(SUM(COALESCE(${hasProductSizeId ? 'ps.price' : 'NULL'}, p.price, 0) * oi.quantity), 0) as baseRevenue,
+           COALESCE(SUM(
+             (COALESCE(${hasProductSizeId ? 'ps.price' : 'NULL'}, p.price, 0)
+              - COALESCE(${hasProductSizeId ? 'ps.cost' : 'NULL'}, p.cost, 0)) * oi.quantity
+           ), 0) as orderMargin,
            COUNT(DISTINCT o.id) as orderCount
          FROM orders o
          INNER JOIN order_items oi ON oi.order_id = o.id
          INNER JOIN photos ph ON ph.id = oi.photo_id
          INNER JOIN albums a ON a.id = ph.album_id
+         LEFT JOIN products p ON p.id = oi.product_id
+         ${hasProductSizeId ? 'LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id' : ''}
          WHERE (o.status IS NULL OR LOWER(o.status) <> 'cancelled')
          GROUP BY a.studio_id
        ) rev ON rev.studioId = s.id
@@ -589,18 +635,12 @@ router.get('/profit/summary', authRequired, async (req, res) => {
 
     const byStudio = byStudioRows.map((row) => {
       const studioRevenue = Number(row.studioRevenue) || 0;
-      const orderCount = Number(row.orderCount) || 0;
-      const feeType = row.feeType || 'percentage';
-      const feeValue = Number(row.feeValue) || 0;
+      const baseRevenue = Number(row.baseRevenue) || 0;
+      const orderMargin = Number(row.orderMargin) || 0;
 
-      let superAdminProfit = 0;
-      if (feeType === 'percentage') {
-        superAdminProfit = studioRevenue * (feeValue / 100);
-      } else if (feeType === 'flat') {
-        superAdminProfit = feeValue * orderCount;
-      }
-
-      const studioProfitGross = studioRevenue - superAdminProfit;
+      const subscriptionRevenue = calcSubscriptionRevenue(row);
+      const superAdminProfit = subscriptionRevenue + orderMargin;
+      const studioProfitGross = studioRevenue - baseRevenue; // studio markup
       const payout = payoutMap.get(Number(row.studioId) || 0);
       const totalPayouts = payout?.totalPayouts || 0;
       const studioProfit = studioProfitGross - totalPayouts;
