@@ -85,6 +85,12 @@ interface StudioSubscriptionAccess {
   hasAdvancedAnalytics: boolean;
 }
 
+interface StudioProfitSummaryLite {
+  totalOrders: number;
+  totalStudioRevenue: number;
+  totalStudioProfit: number;
+}
+
 
 const AdminDashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -103,6 +109,7 @@ const AdminDashboard: React.FC = () => {
     planName: null,
     hasAdvancedAnalytics: true,
   });
+  const [studioProfitSummary, setStudioProfitSummary] = useState<StudioProfitSummaryLite | null>(null);
 
   useEffect(() => {
     loadStats();
@@ -135,6 +142,30 @@ const AdminDashboard: React.FC = () => {
     };
 
     loadSubscriptionAccess();
+  }, [user]);
+
+  useEffect(() => {
+    const loadStudioProfitSummary = async () => {
+      const effectiveStudioId = studioFeatureService.getEffectiveStudioId(user);
+      if (!effectiveStudioId || user?.role !== 'studio_admin') {
+        setStudioProfitSummary(null);
+        return;
+      }
+
+      try {
+        const response = await api.get(`/studios/${effectiveStudioId}/profit`);
+        setStudioProfitSummary({
+          totalOrders: Number(response.data?.totalOrders) || 0,
+          totalStudioRevenue: Number(response.data?.totalStudioRevenue) || 0,
+          totalStudioProfit: Number(response.data?.totalStudioProfit) || 0,
+        });
+      } catch (error) {
+        console.error('Failed to load studio profit summary for operations dashboard:', error);
+        setStudioProfitSummary(null);
+      }
+    };
+
+    loadStudioProfitSummary();
   }, [user]);
 
   const loadStats = async () => {
@@ -230,16 +261,34 @@ const AdminDashboard: React.FC = () => {
     return <div className="loading">Loading dashboard...</div>;
   }
 
-  const orderCompletionRate = stats?.totalOrders 
-    ? ((stats.totalOrders - stats.pendingOrders) / stats.totalOrders * 100).toFixed(1) 
+  const displayTotalRevenue = user?.role === 'studio_admin' && studioProfitSummary
+    ? studioProfitSummary.totalStudioRevenue
+    : (stats?.totalRevenue || 0);
+
+  const displayTotalOrders = user?.role === 'studio_admin' && studioProfitSummary
+    ? studioProfitSummary.totalOrders
+    : (stats?.totalOrders || 0);
+
+  const orderCompletionRate = displayTotalOrders
+    ? ((displayTotalOrders - (stats?.pendingOrders || 0)) / displayTotalOrders * 100).toFixed(1)
     : '0';
 
-  const averageOrderValue = stats?.totalOrders 
-    ? (stats.totalRevenue / stats.totalOrders).toFixed(2) 
+  const averageOrderValue = displayTotalOrders
+    ? (displayTotalRevenue / displayTotalOrders).toFixed(2)
     : '0.00';
 
   // Calculate total profit and cost
   const calculateProfit = () => {
+    if (user?.role === 'studio_admin' && studioProfitSummary) {
+      const revenue = displayTotalRevenue;
+      const profit = Number(studioProfitSummary.totalStudioProfit) || 0;
+      return {
+        profit,
+        cost: Math.max(0, revenue - profit),
+        margin: revenue > 0 ? ((profit / revenue) * 100).toFixed(1) : 0,
+      };
+    }
+
     let totalCost = 0;
     orders.forEach(order => {
       order.items?.forEach(item => {
@@ -310,7 +359,7 @@ const AdminDashboard: React.FC = () => {
         >
           <span className="dashboard-card-icon">💰</span>
           <div className="dashboard-card-label">Total Revenue</div>
-          <div className="dashboard-card-value">${stats?.totalRevenue.toFixed(2) || '0.00'}</div>
+          <div className="dashboard-card-value">${displayTotalRevenue.toFixed(2)}</div>
           <div className="dashboard-card-sub">Avg: ${averageOrderValue} per order</div>
           <span className="dashboard-card-link">{subscriptionAccess.hasAdvancedAnalytics ? 'View revenue details →' : 'Advanced analytics upgrade required →'}</span>
         </div>
@@ -324,7 +373,7 @@ const AdminDashboard: React.FC = () => {
         >
           <span className="dashboard-card-icon">📦</span>
           <div className="dashboard-card-label">Total Orders</div>
-          <div className="dashboard-card-value">{stats?.totalOrders || 0}</div>
+          <div className="dashboard-card-value">{displayTotalOrders}</div>
           <div className="dashboard-card-sub">{orderCompletionRate}% completion rate</div>
           <span className="dashboard-card-link">Go to orders →</span>
         </div>
