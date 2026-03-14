@@ -75,6 +75,16 @@ interface ProfitSummary {
 }
 
 export default function SuperAdminDashboard() {
+    // Application version from package.json
+    const [appVersion, setAppVersion] = useState<string>('');
+
+    useEffect(() => {
+      // Fetch version from public/package.json or inject via env
+      fetch('/package.json')
+        .then((res) => res.json())
+        .then((data) => setAppVersion(data.version || ''))
+        .catch(() => setAppVersion(''));
+    }, []);
   const { user } = useAuth();
   const navigate = useNavigate();
   const [studios, setStudios] = useState<Studio[]>([]);
@@ -512,6 +522,9 @@ export default function SuperAdminDashboard() {
 
   return (
     <div className="admin-container">
+      <div style={{ marginBottom: '16px', fontSize: '13px', color: 'var(--text-secondary)' }}>
+        <strong>App Version:</strong> {appVersion || 'unknown'}
+      </div>
       <h1>Super Admin Dashboard</h1>
 
       {error && <div style={{ color: 'var(--error-color)', marginBottom: '20px' }}>{error}</div>}

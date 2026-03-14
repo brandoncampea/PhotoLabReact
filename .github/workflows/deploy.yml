@@ -33,6 +33,14 @@ jobs:
           VITE_API_URL: /api
           VITE_USE_MOCK_API: false
 
+        - name: Verify build artifacts
+          run: |
+            if [ ! -d dist ] || [ ! -d server ]; then
+              echo "Missing build artifacts: dist or server folder not found."
+              exit 1
+            fi
+            echo "Build artifacts verified."
+
       - name: Prepare deployment bundle
         run: |
           rm -rf deploy
@@ -261,6 +269,13 @@ jobs:
           echo "Latest deployment summary:"
           curl -sS -u "$USERNAME:$PASSWORD" "https://${KUDU_HOST}/api/deployments/latest" | cat
 
+        - name: Upload deployment logs
+          if: failure()
+          uses: actions/upload-artifact@v4
+          with:
+            name: deployment-logs
+            path: appservice-deploy.zip
+
       - name: Verify health endpoint
         run: |
           sleep 20
@@ -285,8 +300,9 @@ jobs:
             return 1
           }
 
-          if check_health "$DEFAULT_HEALTH" || check_health "$CANONICAL_HEALTH"; then
-            echo "Health check succeeded."
-          else
-            echo "Warning: Health endpoint did not become ready in time; continuing without failing workflow."
-          fi
+            if check_health "$DEFAULT_HEALTH" || check_health "$CANONICAL_HEALTH"; then
+              echo "Health check succeeded."
+            else
+              echo "Error: Health endpoint did not become ready in time. Failing workflow."
+              exit 1
+            fi
