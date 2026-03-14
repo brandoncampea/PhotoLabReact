@@ -54,38 +54,55 @@ export default function StudioPublicPage() {
   }, [slug]);
 
   if (loading) {
-    return <div className="loading">Loading studio...</div>;
+    return (
+      <div className="gallery-loading dark-bg">
+        <div className="loader" />
+        <span>Loading studio...</span>
+      </div>
+    );
   }
 
   if (error || !studio) {
-    return <div className="error-message">{error || 'Studio not found'}</div>;
+    return (
+      <div className="gallery-error dark-bg">
+        <span>{error || 'Studio not found'}</span>
+      </div>
+    );
   }
 
   return (
-    <div className="page-container">
-      <div className="page-title">
-        <h1>{studio.name}</h1>
-        <p>Welcome! Browse available albums and open any gallery.</p>
-      </div>
+    <div className="gallery-page dark-bg">
+      <header className="gallery-header">
+        <h1 className="gallery-title">{studio.name}</h1>
+        <p className="gallery-subtitle">Welcome! Browse available albums and open any gallery.</p>
+      </header>
 
-      <div className="albums-grid">
+      <section className="gallery-albums">
         {albums.length === 0 ? (
-          <p className="empty-state">No albums available yet.</p>
+          <div className="gallery-empty">
+            <span>No albums available yet.</span>
+          </div>
         ) : (
-          albums.map((album) => (
-            <Link to={`/s/${studio.publicSlug}/albums/${album.id}`} key={album.id} className="album-card">
-              <div className="album-info" style={{ width: '100%' }}>
-                <h3>{album.name}</h3>
-                <p>{album.description || 'No description'}</p>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.75rem' }}>
-                  <span className="photo-count">{album.photoCount || 0} photos</span>
-                  <span className="album-date">{new Date(album.createdDate).toLocaleDateString()}</span>
+          <div className="gallery-grid">
+            {albums.map((album) => (
+              <Link
+                to={`/s/${studio.publicSlug}/albums/${album.id}`}
+                key={album.id}
+                className="gallery-card dark-card"
+              >
+                <div className="gallery-card-info">
+                  <h3 className="gallery-card-title">{album.name}</h3>
+                  <p className="gallery-card-desc">{album.description || 'No description'}</p>
+                  <div className="gallery-card-meta">
+                    <span className="gallery-card-count">{album.photoCount || 0} photos</span>
+                    <span className="gallery-card-date">{new Date(album.createdDate).toLocaleDateString()}</span>
+                  </div>
                 </div>
-              </div>
-            </Link>
-          ))
+              </Link>
+            ))}
+          </div>
         )}
-      </div>
+      </section>
     </div>
   );
 }

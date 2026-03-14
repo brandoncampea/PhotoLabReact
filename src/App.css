@@ -1,3 +1,200 @@
+/* Pixieset-inspired dark mode theme for all components */
+.dark-card {
+  background: #232526;
+  color: #f3f3f3;
+  border-radius: 18px;
+  box-shadow: 0 2px 16px rgba(0,0,0,0.18);
+}
+.dark-btn {
+  background: #282a2d;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+  font-weight: 600;
+  transition: background 0.2s, color 0.2s, transform 0.2s;
+  cursor: pointer;
+}
+.dark-btn:hover {
+  background: #232526;
+  color: #ff6b35;
+  transform: scale(1.04);
+}
+.navbar.dark-bg {
+  background: #181a1b;
+  color: #f3f3f3;
+  box-shadow: 0 2px 16px rgba(0,0,0,0.18);
+}
+.nav-brand.dark-card {
+  background: #232526;
+  color: #fff;
+  border-radius: 12px;
+  padding: 0.5rem 1rem;
+  font-size: 1.2rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+.nav-links {
+  display: flex;
+  gap: 1rem;
+}
+.nav-links a, .nav-links button {
+  color: #f3f3f3;
+  font-weight: 500;
+  background: none;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  transition: background 0.2s, color 0.2s;
+}
+.nav-links a:hover, .nav-links button:hover {
+  background: #232526;
+  color: #ff6b35;
+}
+.admin-layout.dark-bg {
+  background: #181a1b;
+  color: #f3f3f3;
+}
+.admin-panel.dark-card {
+  background: #232526;
+  color: #f3f3f3;
+  border-radius: 18px;
+  box-shadow: 0 2px 16px rgba(0,0,0,0.18);
+}
+.admin-nav-link.dark-btn {
+  background: #282a2d;
+  color: #fff;
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+  font-weight: 600;
+  transition: background 0.2s, color 0.2s, transform 0.2s;
+  cursor: pointer;
+}
+.admin-nav-link.dark-btn.active {
+  background: #ff6b35;
+  color: #fff;
+}
+.admin-nav-link.dark-btn:hover {
+  background: #232526;
+  color: #ff6b35;
+  transform: scale(1.04);
+}
+.cart-item.dark-card {
+  background: #232526;
+  color: #f3f3f3;
+  border-radius: 12px;
+  box-shadow: 0 2px 16px rgba(0,0,0,0.18);
+}
+.photo-card.dark-card {
+  background: #232526;
+  color: #f3f3f3;
+  border-radius: 12px;
+  box-shadow: 0 2px 16px rgba(0,0,0,0.18);
+}
+/* Pixieset-inspired dark mode gallery styles */
+.dark-bg {
+  background: #181a1b;
+  color: #f3f3f3;
+  min-height: 100vh;
+}
+.gallery-header {
+  padding: 2rem 0 1rem 0;
+  text-align: center;
+}
+.gallery-title {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 0.5rem;
+}
+.gallery-subtitle {
+  color: #bdbdbd;
+  font-size: 1.1rem;
+}
+.gallery-albums {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+}
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 2rem;
+}
+.gallery-card {
+  background: #232526;
+  border-radius: 18px;
+  box-shadow: 0 2px 16px rgba(0,0,0,0.18);
+  padding: 2rem 1.5rem;
+  transition: box-shadow 0.2s, transform 0.2s;
+  text-decoration: none;
+  color: #f3f3f3;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+.gallery-card:hover {
+  box-shadow: 0 4px 32px rgba(0,0,0,0.28);
+  transform: translateY(-4px) scale(1.03);
+  background: #282a2d;
+}
+.gallery-card-title {
+  font-size: 1.4rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+.gallery-card-desc {
+  color: #bdbdbd;
+  font-size: 1rem;
+  margin-bottom: 1rem;
+}
+.gallery-card-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.95rem;
+  color: #a0a0a0;
+}
+.gallery-card-count {
+  font-weight: 500;
+}
+.gallery-card-date {
+  font-style: italic;
+}
+.gallery-empty {
+  text-align: center;
+  color: #bdbdbd;
+  font-size: 1.2rem;
+  margin-top: 2rem;
+}
+.gallery-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  color: #bdbdbd;
+}
+.gallery-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  color: #ff6b6b;
+  font-size: 1.3rem;
+}
+.loader {
+  border: 4px solid #232526;
+  border-top: 4px solid #fff;
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  animation: spin 1s linear infinite;
+  margin-bottom: 1rem;
+}
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
 /* Navbar Styles */
 .navbar {
   background-color: rgba(22, 26, 34, 0.86);

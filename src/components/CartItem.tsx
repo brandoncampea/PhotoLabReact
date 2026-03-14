@@ -38,8 +38,8 @@ const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop }) => {
   };
 
   return (
-    <div className="cart-item">
-      <div className="cart-item-image" style={{ width: '100px', height: '100px', overflow: 'hidden', flexShrink: 0, position: 'relative' }}>
+    <div className="cart-item dark-card">
+      <div className="cart-item-image" style={{ width: '100px', height: '100px', overflow: 'hidden', flexShrink: 0, position: 'relative', background: '#232526' }}>
         {item.photos && item.photos.length > 1 ? (
           // Multi-photo grid display
           <div style={{
