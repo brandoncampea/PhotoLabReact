@@ -150,6 +150,38 @@ export default function LandingPage() {
       paddingTop: '4rem'
     }}>
       {/* Hero Section */}
+            {/* Info for Customers and Studios */}
+            <section style={{
+              maxWidth: '1200px',
+              margin: '0 auto',
+              padding: '2rem',
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))',
+              gap: '2rem',
+              marginBottom: '2rem',
+            }}>
+              <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '12px', padding: '2rem', boxShadow: '0 2px 16px rgba(124,92,255,0.08)' }}>
+                <h2 style={{ color: '#7c5cff', fontWeight: 700, fontSize: '2rem', marginBottom: '1rem' }}>For Customers</h2>
+                <ul style={{ color: '#fff', fontSize: '1.1rem', lineHeight: '1.7', paddingLeft: '1.2rem' }}>
+                  <li>Browse and view your photo galleries online</li>
+                  <li>Order prints, packages, and digital downloads</li>
+                  <li>Secure checkout and fast fulfillment</li>
+                  <li>Access albums from any device, anytime</li>
+                  <li>Receive order updates and shipping notifications</li>
+                </ul>
+              </div>
+              <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '12px', padding: '2rem', boxShadow: '0 2px 16px rgba(124,92,255,0.08)' }}>
+                <h2 style={{ color: '#7c5cff', fontWeight: 700, fontSize: '2rem', marginBottom: '1rem' }}>For Studios</h2>
+                <ul style={{ color: '#fff', fontSize: '1.1rem', lineHeight: '1.7', paddingLeft: '1.2rem' }}>
+                  <li>Easy album creation and client management</li>
+                  <li>Custom pricing, packages, and discounts</li>
+                  <li>Integrated lab fulfillment (WHCC, Mpix, etc.)</li>
+                  <li>Batch shipping and order tracking</li>
+                  <li>Business analytics and reporting</li>
+                  <li>Secure payments with Stripe</li>
+                </ul>
+              </div>
+            </section>
       <section style={{
         maxWidth: '1200px',
         margin: '0 auto',

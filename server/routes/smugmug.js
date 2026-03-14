@@ -46,20 +46,26 @@ const createImportJob = ({ jobId, studioId, albums }) => {
     error: null,
   };
   smugMugImportJobs.set(normalizedJobId, job);
-  return job;
-};
-
-const touchImportJob = (job) => {
-  if (job) {
-    job.updatedAt = new Date().toISOString();
+  // Prefer largest available image
+  const candidates = [
+    image?.OriginalUrl,
+    image?.X5LargeUrl,
+    image?.X4LargeUrl,
+    image?.X3LargeUrl,
+    image?.X2LargeUrl,
+    image?.XLargeUrl,
+    image?.LargeUrl,
+    image?.MediumUrl,
+    image?.SmallUrl,
+    image?.ThumbnailUrl,
+    image?.Url,
+  ];
+  for (const url of candidates) {
+    if (typeof url === 'string' && /^https?:\/\//i.test(url)) {
+      return url;
+    }
   }
-};
-
-const getAlbumProgress = (job, albumKey) => {
-  if (!job) return null;
-  return job.albums.find((album) => album.albumKey === String(albumKey || '')) || null;
-};
-
+  return null;
 const pushPhotoProgress = (job, payload) => {
   if (!job) return;
   job.recentPhotos.unshift({
@@ -428,6 +434,22 @@ router.get('/import-progress/:jobId', authRequired, async (req, res) => {
 });
 
 router.post('/import', authRequired, async (req, res) => {
+      // Helper: Check if album is already imported
+      async function isAlbumImported(studioId, albumKey) {
+        const row = await queryRow(
+          `SELECT TOP 1 * FROM ImportedAlbums WHERE studioId = @studioId AND albumKey = @albumKey AND status = 'completed'`,
+          { studioId, albumKey }
+        );
+        return !!row;
+      }
+
+      // Helper: Mark album as imported
+      async function markAlbumImported(studioId, albumKey, jobId) {
+        await query(
+          `INSERT INTO ImportedAlbums (studioId, albumKey, importedAt, jobId, status) VALUES (@studioId, @albumKey, GETDATE(), @jobId, 'completed')`,
+          { studioId, albumKey, jobId }
+        );
+      }
   try {
     if (req.user.role !== 'studio_admin' && req.user.role !== 'super_admin') {
       return res.status(403).json({ error: 'Unauthorized' });
@@ -468,6 +490,17 @@ router.post('/import', authRequired, async (req, res) => {
     const imported = [];
 
     for (const selected of selectedAlbums) {
+            // Check if already imported
+            if (await isAlbumImported(studioId, albumKey)) {
+              pushPhotoProgress(importJob, {
+                albumKey,
+                status: 'skipped',
+                message: 'Album already imported',
+              });
+              continue;
+            }
+        // Mark as imported
+        await markAlbumImported(studioId, albumKey, importJob.jobId);
       const albumKey = String(selected?.albumKey || '').trim();
       const albumName = String(selected?.name || '').trim() || 'SmugMug Album';
       const albumDescription = String(selected?.description || '').trim() || null;
@@ -571,6 +604,18 @@ router.post('/import', authRequired, async (req, res) => {
           }
           const arrayBuffer = await response.arrayBuffer();
           imageBuffer = Buffer.from(arrayBuffer);
+
+          // Log imageBuffer size and image dimensions
+          let width = null, height = null;
+          try {
+            const sharp = await import('sharp');
+            const metadata = await sharp.default(imageBuffer).metadata();
+            width = metadata.width;
+            height = metadata.height;
+          } catch (metaErr) {
+            console.warn('Failed to get image dimensions:', metaErr);
+          }
+          console.log(`SmugMug import: fileName=${image.fileName}, bufferSize=${imageBuffer.length}, width=${width}, height=${height}`);
         } catch (error) {
           importJob.totals.photosProcessed += 1;
           importJob.totals.photosFailed += 1;
@@ -591,8 +636,8 @@ router.post('/import', authRequired, async (req, res) => {
         const uploadedImage = await uploadImportedImage(albumId, image, imageBuffer);
 
         await query(
-          `INSERT INTO photos (album_id, file_name, thumbnail_url, full_image_url, description, metadata, file_size_bytes)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          `INSERT INTO photos (album_id, file_name, thumbnail_url, full_image_url, description, metadata, file_size_bytes, width, height)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
           [
             albumId,
             image.fileName,
@@ -607,6 +652,8 @@ router.post('/import', authRequired, async (req, res) => {
               originalSourceUrl: image.sourceUrl,
             }),
             imageBuffer.length,
+            width,
+            height,
           ]
         );
 

@@ -93,8 +93,8 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const linksToRender = menuMode === 'super' ? superAdminLinks : studioAdminLinks;
 
   return (
-    <div className="admin-layout">
-      <aside className="admin-panel">
+    <div className="admin-layout dark-bg">
+      <aside className="admin-panel dark-card">
         <div className="admin-brand">
           <h2>📸 Photo Lab Admin</h2>
         </div>
@@ -145,26 +145,28 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             <Link
               key={link.to}
               to={link.to}
-              className={`admin-nav-link ${isActive(link.to) ? 'active' : ''}`}
+              className={`admin-nav-link dark-btn ${isActive(link.to) ? 'active' : ''}`}
             >
               {link.label}
             </Link>
           ))}
         </nav>
         <div className="admin-panel-footer">
-          <Link to="/" className="admin-nav-link">🏠 Customer Site</Link>
-          <button onClick={handleLogout} className="admin-nav-link logout-btn">
+          <Link to="/" className="admin-nav-link dark-btn">🏠 Customer Site</Link>
+          <button onClick={handleLogout} className="admin-nav-link logout-btn dark-btn">
             🚪 Logout
           </button>
         </div>
       </aside>
       <main className="admin-content">
         {viewAsStudioName && isSuperAdmin && (
-          <div className="info-box-blue" style={{ marginBottom: '1rem' }}>
+          <div className="info-box-blue dark-card" style={{ marginBottom: '1rem' }}>
             Viewing as studio: <strong>{viewAsStudioName}</strong>
           </div>
         )}
-        {children}
+        <div className="dark-bg" style={{ minHeight: '100vh' }}>
+          {children}
+        </div>
       </main>
     </div>
   );
