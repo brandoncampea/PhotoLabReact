@@ -203,20 +203,26 @@ const listAlbumImages = async (albumKey, apiKey) => {
 
   const out = [];
   for (const image of rows) {
-    let sourceUrl = pickBestImageUrl(image);
-
-    if (!sourceUrl && typeof image?.ArchivedUri === 'string' && image.ArchivedUri.startsWith('/api/v2/')) {
+    let sourceUrl = null;
+    // Always try to fetch OriginalUrl
+    if (typeof image?.ArchivedUri === 'string' && image.ArchivedUri.startsWith('/api/v2/')) {
       try {
         const imagePayload = await requestSmugMugJson(image.ArchivedUri, apiKey);
         const nested = imagePayload?.Response?.Image || imagePayload?.Response || {};
-        sourceUrl = pickBestImageUrl(nested);
+        if (nested.OriginalUrl) {
+          sourceUrl = nested.OriginalUrl;
+        } else {
+          sourceUrl = pickBestImageUrl(nested);
+        }
       } catch {
         // ignore per-image failures
       }
     }
-
+    // Fallback if no ArchivedUri or OriginalUrl
+    if (!sourceUrl) {
+      sourceUrl = image.OriginalUrl || pickBestImageUrl(image);
+    }
     if (!sourceUrl) continue;
-
     out.push({
       id: image?.ImageKey || image?.Key || crypto.randomUUID(),
       fileName: image?.FileName || image?.Name || `smugmug-${Date.now()}.jpg`,
@@ -224,7 +230,6 @@ const listAlbumImages = async (albumKey, apiKey) => {
       sourceUrl,
     });
   }
-
   return out;
 };
 

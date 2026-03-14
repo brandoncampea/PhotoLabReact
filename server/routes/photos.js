@@ -678,12 +678,8 @@ router.get('/:id/recommendations', async (req, res) => {
       };
     });
     
-    // Sort by score and return top recommendations
-    const sortedRecommendations = recommendations
-      .filter(r => r.recommendationScore > 0)
-      .sort((a, b) => b.recommendationScore - a.recommendationScore)
-      .slice(0, 10);
-    
+    // Sort by score, show all products
+    const sortedRecommendations = recommendations.sort((a, b) => b.recommendationScore - a.recommendationScore);
     res.json({
       photo: {
         id: photo.id,
