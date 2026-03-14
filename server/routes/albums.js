@@ -253,7 +253,15 @@ router.put('/:id', async (req, res) => {
 // Delete album
 router.delete('/:id', async (req, res) => {
   try {
-    await query('DELETE FROM albums WHERE id = $1', [req.params.id]);
+    const albumId = Number(req.params.id);
+    // Delete order_items referencing photos in this album
+    await query(`DELETE FROM order_items WHERE photo_id IN (SELECT id FROM photos WHERE album_id = $1)`, [albumId]);
+    // Delete photos in this album
+    await query(`DELETE FROM photos WHERE album_id = $1`, [albumId]);
+    // Delete SmugMug import records for this album
+    await query(`DELETE FROM studio_smugmug_imports WHERE local_album_id = $1`, [albumId]);
+    // Delete the album itself
+    await query('DELETE FROM albums WHERE id = $1', [albumId]);
     res.json({ message: 'Album deleted successfully' });
   } catch (error) {
     res.status(500).json({ error: error.message });
