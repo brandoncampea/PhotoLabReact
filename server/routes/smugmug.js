@@ -204,6 +204,7 @@ const listAlbumImages = async (albumKey, apiKey) => {
   const out = [];
   for (const image of rows) {
     let sourceUrl = null;
+    let urlType = 'fallback';
     // Always try to fetch OriginalUrl
     if (typeof image?.ArchivedUri === 'string' && image.ArchivedUri.startsWith('/api/v2/')) {
       try {
@@ -211,6 +212,7 @@ const listAlbumImages = async (albumKey, apiKey) => {
         const nested = imagePayload?.Response?.Image || imagePayload?.Response || {};
         if (nested.OriginalUrl) {
           sourceUrl = nested.OriginalUrl;
+          urlType = 'OriginalUrl';
         } else {
           sourceUrl = pickBestImageUrl(nested);
         }
@@ -220,9 +222,16 @@ const listAlbumImages = async (albumKey, apiKey) => {
     }
     // Fallback if no ArchivedUri or OriginalUrl
     if (!sourceUrl) {
-      sourceUrl = image.OriginalUrl || pickBestImageUrl(image);
+      if (image.OriginalUrl) {
+        sourceUrl = image.OriginalUrl;
+        urlType = 'OriginalUrl';
+      } else {
+        sourceUrl = pickBestImageUrl(image);
+      }
     }
     if (!sourceUrl) continue;
+    // Log which URL is used for import
+    console.log(`[SmugMug Import] Album ${albumKey} - Image ${image?.FileName || image?.Name}: Using ${urlType} (${sourceUrl})`);
     out.push({
       id: image?.ImageKey || image?.Key || crypto.randomUUID(),
       fileName: image?.FileName || image?.Name || `smugmug-${Date.now()}.jpg`,

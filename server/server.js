@@ -76,8 +76,15 @@ app.use('/api/public-search', publicSearchRoutes);
 app.use('/api/smugmug', smugmugRoutes);
 
 // Health check
+// Read version from package.json
+let appVersion = 'unknown';
+try {
+  const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../package.json'), 'utf8'));
+  appVersion = pkg.version || 'unknown';
+} catch {}
+
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', message: 'Photo Lab API is running' });
+  res.json({ status: 'ok', message: 'Photo Lab API is running', version: appVersion });
 });
 
 // API root handler
@@ -118,6 +125,7 @@ console.log('Starting server...');
 console.log('PORT:', PORT);
 console.log('NODE_ENV:', process.env.NODE_ENV);
 console.log('DB_HOST:', process.env.DB_HOST);
+console.log('APP VERSION:', appVersion);
 
 const startServer = () => {
   app.listen(PORT, '0.0.0.0', () => {
