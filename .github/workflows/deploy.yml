@@ -33,13 +33,13 @@ jobs:
           VITE_API_URL: /api
           VITE_USE_MOCK_API: false
 
-        - name: Verify build artifacts
-          run: |
-            if [ ! -d dist ] || [ ! -d server ]; then
-              echo "Missing build artifacts: dist or server folder not found."
-              exit 1
-            fi
-            echo "Build artifacts verified."
+      - name: Verify build artifacts
+        run: |
+          if [ ! -d dist ] || [ ! -d server ]; then
+            echo "Missing build artifacts: dist or server folder not found."
+            exit 1
+          fi
+          echo "Build artifacts verified."
 
       - name: Prepare deployment bundle
         run: |
