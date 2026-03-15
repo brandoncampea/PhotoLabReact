@@ -42,18 +42,6 @@ const Navbar: React.FC = () => {
 
           <div className="nav-links">
             {user ? (
-            <img 
-              src={logoUrl} 
-              alt="Site Logo" 
-              className="nav-logo"
-            />
-          ) : (
-            <>📸 Photo Lab</>
-          )}
-        </Link>
-
-        <div className="nav-links">
-          {user ? (
             <>
               <div className="nav-search">
                 <input
