@@ -13,7 +13,27 @@ interface CartContextType {
   clearCart: () => void;
   getTotalItems: () => number;
   getTotalPrice: () => number;
+  saveList: (name: string) => void;
+  loadList: (name: string) => void;
+  getSavedLists: () => string[];
 }
+// Save cart list to localStorage under a named key
+const saveListToLocal = (name: string, items: CartItem[]) => {
+  const lists = JSON.parse(localStorage.getItem('savedLists') || '{}');
+  lists[name] = items;
+  localStorage.setItem('savedLists', JSON.stringify(lists));
+};
+
+// Load cart list from localStorage by name
+const loadListFromLocal = (name: string): CartItem[] => {
+  const lists = JSON.parse(localStorage.getItem('savedLists') || '{}');
+  return lists[name] || [];
+};
+
+const getSavedListsFromLocal = (): string[] => {
+  const lists = JSON.parse(localStorage.getItem('savedLists') || '{}');
+  return Object.keys(lists);
+};
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
@@ -243,6 +263,21 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return items.reduce((total, item) => total + item.price * item.quantity, 0);
   };
 
+  // Save current cart as a named list
+  const saveList = (name: string) => {
+    saveListToLocal(name, items);
+  };
+
+  // Load a named list into the cart
+  const loadList = (name: string) => {
+    const loaded = loadListFromLocal(name);
+    setItems(loaded);
+  };
+
+  const getSavedLists = () => {
+    return getSavedListsFromLocal();
+  };
+
   return (
     <CartContext.Provider
       value={{
@@ -255,6 +290,9 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         clearCart,
         getTotalItems,
         getTotalPrice,
+        saveList,
+        loadList,
+        getSavedLists,
       }}
     >
       {children}
