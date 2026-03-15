@@ -109,6 +109,6 @@ const Navbar: React.FC = () => {
       </div>
     </header>
   );
-};
+}
 
 export default Navbar;
