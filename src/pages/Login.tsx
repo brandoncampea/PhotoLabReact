@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
+import '../App.css';
+import '../AdminStyles.css';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import TopNavbar from '../components/TopNavbar';
 
 const Login: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -49,42 +52,46 @@ const Login: React.FC = () => {
 
   return (
     <>
-      <div style={{position:'fixed',top:0,left:0,right:0,zIndex:9999,background:'#7c5cff',color:'#fff',padding:'8px',textAlign:'center',fontWeight:700,fontSize:'1.1rem',letterSpacing:'1px',boxShadow:'0 2px 8px #0008'}}>Login.tsx is rendering</div>
-      <div className="auth-container">
-        <div className="auth-card">
-          <h1>Sign In</h1>
-          <p className="auth-subtitle">Welcome back to Photo Lab</p>
-          {error && <div className="error-message">{error}</div>}
-          <form onSubmit={handleSubmit} className="auth-form">
-            <div className="form-group">
-              <label htmlFor="email">Email</label>
-              <input
-                type="email"
-                id="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                disabled={loading}
-              />
-            </div>
-            <div className="form-group">
-              <label htmlFor="password">Password</label>
-              <input
-                type="password"
-                id="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                disabled={loading}
-              />
-            </div>
-            <button type="submit" className="btn btn-primary" disabled={loading}>
-              {loading ? 'Signing in...' : 'Sign In'}
-            </button>
-          </form>
-          <p className="auth-footer">
-            Don't have an account? <Link to="/register">Register</Link>
-          </p>
+      <TopNavbar />
+      <div className="main-content dark-bg" style={{ minHeight: 'calc(100vh - 80px)' }}>
+        <div className="auth-container dark-bg">
+          <div className="auth-card dark-card">
+            <h1 className="auth-title">Sign In</h1>
+            <p className="auth-subtitle">Welcome back to Photo Lab</p>
+            {error && <div className="error-message">{error}</div>}
+            <form onSubmit={handleSubmit} className="auth-form">
+              <div className="form-group">
+                <label htmlFor="email">Email</label>
+                <input
+                  type="email"
+                  id="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  disabled={loading}
+                  className="input-dark"
+                />
+              </div>
+              <div className="form-group">
+                <label htmlFor="password">Password</label>
+                <input
+                  type="password"
+                  id="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  disabled={loading}
+                  className="input-dark"
+                />
+              </div>
+              <button type="submit" className="btn btn-primary dark-btn" disabled={loading}>
+                {loading ? 'Signing in...' : 'Sign In'}
+              </button>
+            </form>
+            <p className="auth-footer">
+              Don't have an account? <Link to="/register">Register</Link>
+            </p>
+          </div>
         </div>
       </div>
     </>

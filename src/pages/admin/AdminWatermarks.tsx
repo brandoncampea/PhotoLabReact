@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Watermark } from '../../types';
 import { watermarkService } from '../../services/watermarkService';
+import AdminLayout from '../../components/AdminLayout';
 
 const AdminWatermarks: React.FC = () => {
   const [watermarks, setWatermarks] = useState<Watermark[]>([]);
@@ -119,7 +120,7 @@ const AdminWatermarks: React.FC = () => {
   }
 
   return (
-    <div className="admin-page">
+    <AdminLayout>
       <div className="page-header">
         <h1>Manage Watermarks</h1>
         <button onClick={handleCreate} className="btn btn-primary">
@@ -263,7 +264,7 @@ const AdminWatermarks: React.FC = () => {
           </div>
         </div>
       )}
-    </div>
+    </AdminLayout>
   );
 };
 

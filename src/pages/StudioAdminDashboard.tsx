@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { studioFeatureService } from '../services/studioFeatureService';
-import '../AdminStyles.css';
+import AdminLayout from '../components/AdminLayout';
 
 interface SubscriptionInfo {
   studio: {
@@ -412,7 +412,7 @@ export default function StudioAdminDashboard() {
   };
 
   return (
-    <div className="admin-container">
+    <AdminLayout>
       <h1>Studio Dashboard</h1>
 
       {error && <div style={{ color: 'var(--error-color)', marginBottom: '20px' }}>{error}</div>}
@@ -1019,6 +1019,6 @@ export default function StudioAdminDashboard() {
           </div>
         </div>
       )}
-    </div>
+    </AdminLayout>
   );
 }

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import '../AdminStyles.css';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -93,37 +94,33 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const linksToRender = menuMode === 'super' ? superAdminLinks : studioAdminLinks;
 
   return (
-    <div className="admin-layout dark-bg">
-      <aside className="admin-panel dark-card">
-        <div className="admin-brand">
-          <h2>📸 Photo Lab Admin</h2>
-        </div>
-
-        {canSwitchMenu && (
-          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', padding: '0 0.5rem' }}>
-            <button
-              onClick={() => {
-                clearStudioView();
-                setMenuMode('super');
-              }}
-              className={menuMode === 'super' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'}
-              style={{ flex: 1 }}
-            >
-              Super
-            </button>
-            <button
-              onClick={() => setMenuMode('studio')}
-              className={menuMode === 'studio' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'}
-              style={{ flex: 1 }}
-            >
-              Studio
-            </button>
-          </div>
-        )}
-
-        {viewAsStudioName && isSuperAdmin && (
-          <div style={{ padding: '0 0.75rem 0.75rem 0.75rem' }}>
-            <div className="admin-summary-box" style={{ fontSize: '0.8rem' }}>
+    <div className="admin-layout">
+      <aside className="sidebar">
+        <div className="sidebar-header">PhotoLab</div>
+        <div className="sidebar-links">
+          {canSwitchMenu && (
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+              <button
+                onClick={() => {
+                  clearStudioView();
+                  setMenuMode('super');
+                }}
+                className={menuMode === 'super' ? 'button' : 'button'}
+                style={{ background: menuMode === 'super' ? 'var(--accent)' : 'var(--bg-panel)' }}
+              >
+                Super
+              </button>
+              <button
+                onClick={() => setMenuMode('studio')}
+                className={menuMode === 'studio' ? 'button' : 'button'}
+                style={{ background: menuMode === 'studio' ? 'var(--accent)' : 'var(--bg-panel)' }}
+              >
+                Studio
+              </button>
+            </div>
+          )}
+          {viewAsStudioName && isSuperAdmin && (
+            <div style={{ color: 'var(--accent)', marginBottom: '16px' }}>
               Viewing as studio: <strong>{viewAsStudioName}</strong>
               <button
                 onClick={() => {
@@ -131,42 +128,37 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                   setMenuMode('super');
                   navigate('/super-admin');
                 }}
-                className="btn btn-secondary btn-sm"
-                style={{ marginTop: '0.5rem', width: '100%' }}
+                className="button"
+                style={{ marginTop: '8px', width: '100%' }}
               >
                 Exit Studio View
               </button>
             </div>
-          </div>
-        )}
-
-        <nav className="admin-nav">
+          )}
           {linksToRender.map((link) => (
             <Link
               key={link.to}
               to={link.to}
-              className={`admin-nav-link dark-btn ${isActive(link.to) ? 'active' : ''}`}
+              className={`sidebar-link${isActive(link.to) ? ' active' : ''}`}
             >
               {link.label}
             </Link>
           ))}
-        </nav>
-        <div className="admin-panel-footer">
-          <Link to="/" className="admin-nav-link dark-btn">🏠 Customer Site</Link>
-          <button onClick={handleLogout} className="admin-nav-link logout-btn dark-btn">
-            🚪 Logout
-          </button>
+          <div style={{ marginTop: '32px', borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
+            <Link to="/" className="sidebar-link">🏠 Customer Site</Link>
+            <button onClick={handleLogout} className="sidebar-link" style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none', color: 'var(--text-secondary)', marginTop: '8px' }}>
+              🚪 Logout
+            </button>
+          </div>
         </div>
       </aside>
       <main className="admin-content">
         {viewAsStudioName && isSuperAdmin && (
-          <div className="info-box-blue dark-card" style={{ marginBottom: '1rem' }}>
+          <div className="card" style={{ marginBottom: '1rem', background: 'var(--bg-panel)' }}>
             Viewing as studio: <strong>{viewAsStudioName}</strong>
           </div>
         )}
-        <div className="dark-bg" style={{ minHeight: '100vh' }}>
-          {children}
-        </div>
+        {children}
       </main>
     </div>
   );

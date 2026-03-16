@@ -3,6 +3,7 @@ import { mpixService } from '../../services/mpixService';
 import { siteConfigService } from '../../services/siteConfigService';
 import { useAuth } from '../../contexts/AuthContext';
 import { studioFeatureService } from '../../services/studioFeatureService';
+import AdminLayout from '../../components/AdminLayout';
 
 interface RoesConfig {
   apiKey: string;
@@ -207,7 +208,7 @@ const AdminLabs: React.FC = () => {
   }
 
   return (
-    <div className="admin-page">
+    <AdminLayout>
       <div className="page-header">
         <div>
           <h1>Lab Configuration</h1>
@@ -555,7 +556,7 @@ const AdminLabs: React.FC = () => {
         </div>}
       </div>
 
-    </div>
+    </AdminLayout>
   );
 };
 

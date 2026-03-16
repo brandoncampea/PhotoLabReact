@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import '../../AdminStyles.css';
+import AdminLayout from '../../components/AdminLayout';
 
 interface SmugMugAlbumOption {
   albumKey: string;
@@ -53,7 +54,7 @@ interface SmugMugImportProgress {
   error?: string | null;
 }
 
-export default function AdminSmugMug() {
+const AdminSmugMug: React.FC = () => {
   const { user } = useAuth();
   const effectiveStudioId = Number(localStorage.getItem('viewAsStudioId')) || user?.studioId;
 
@@ -304,7 +305,7 @@ export default function AdminSmugMug() {
   }
 
   return (
-    <div className="admin-container">
+    <AdminLayout>
       <h1>SmugMug Import</h1>
       <p style={{ color: 'var(--text-secondary)', marginBottom: '16px' }}>
         Connect your SmugMug account, load albums, then choose exactly which albums to import.
@@ -538,6 +539,8 @@ export default function AdminSmugMug() {
           </>
         )}
       </div>
-    </div>
+    </AdminLayout>
   );
-}
+};
+
+export default AdminSmugMug;

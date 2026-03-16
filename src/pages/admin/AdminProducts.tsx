@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { PriceList, PriceListProduct, PriceListProductSize, Package } from '../../types';
 import api from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
+import AdminLayout from '../../components/AdminLayout';
 
 const AdminProducts: React.FC = () => {
   const { user } = useAuth();
@@ -597,7 +598,7 @@ const AdminProducts: React.FC = () => {
   }
 
   return (
-    <div className="admin-page">
+    <AdminLayout>
       <div className="page-header">
         <h1>Products</h1>
         {canManagePriceListProducts && (
@@ -1290,7 +1291,7 @@ const AdminProducts: React.FC = () => {
           </div>
         </div>
       )}
-    </div>
+    </AdminLayout>
   );
 };
 

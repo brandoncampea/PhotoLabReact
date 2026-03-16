@@ -24,50 +24,25 @@ const Navbar: React.FC = () => {
 
   return (
     <header className="navbar dark-bg" role="navigation">
-      <div className="nav-container dark-bg">
-        <Link to={user ? "/albums" : "/"} className="nav-brand dark-card">
-          <span className="brand-title">0 Photo Lab</span>
+      <div className="nav-container">
+        <Link to="/" className="nav-brand dark-card">
+          PhotoLab
         </Link>
-        <div className="nav-links">
+        <nav className="nav-links">
           {user ? (
             <>
-              <div className="nav-search">
-                <input
-                  type="text"
-                  placeholder="Quick search..."
-                  value={quickSearch}
-                  onChange={(e) => setQuickSearch(e.target.value)}
-                  onKeyDown={handleQuickSearch}
-                  className="nav-search-input"
-                />
-              </div>
-              <Link to="/albums" className="nav-link">
-                Albums
-              </Link>
-              <Link to="/search" className="nav-link">
-                🔍 Search
-              </Link>
-              <Link to="/orders" className="nav-link">
-                Orders
-              </Link>
-              <Link to="/cart" className="nav-link cart-link">
-                🛒 Cart
-                {getTotalItems() > 0 && (
-                  <span className="cart-badge">{getTotalItems()}</span>
-                )}
-              </Link>
               {user.role === 'admin' && (
-                <Link to="/admin/dashboard" className="nav-link nav-admin">
+                <Link to="/admin/dashboard" className="admin-nav-link dark-btn">
                   ⚙️ Admin
                 </Link>
               )}
               {user.role === 'studio_admin' && (
-                <Link to="/admin/studio-dashboard" className="nav-link nav-studio">
+                <Link to="/admin/studio-dashboard" className="admin-nav-link dark-btn">
                   📊 Studio Dashboard
                 </Link>
               )}
               {user.role === 'super_admin' && (
-                <Link to="/super-admin" className="nav-link nav-super">
+                <Link to="/super-admin" className="admin-nav-link dark-btn">
                   👑 Super Admin
                 </Link>
               )}
@@ -93,7 +68,7 @@ const Navbar: React.FC = () => {
               </Link>
             </>
           )}
-        </div>
+        </nav>
       </div>
     </header>
   );

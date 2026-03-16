@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Customer } from '../../types';
 import { customerAdminService } from '../../services/customerAdminService';
+import AdminLayout from '../../components/AdminLayout';
 
 const AdminCustomers: React.FC = () => {
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -35,7 +36,7 @@ const AdminCustomers: React.FC = () => {
   }
 
   return (
-    <div className="admin-page">
+    <AdminLayout>
       <div className="page-header">
         <h1>Manage Customers</h1>
       </div>
@@ -79,7 +80,7 @@ const AdminCustomers: React.FC = () => {
           </tbody>
         </table>
       </div>
-    </div>
+    </AdminLayout>
   );
 };
 

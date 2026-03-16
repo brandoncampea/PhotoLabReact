@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
+import '../App.css';
+import '../AdminStyles.css';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import TopNavbar from '../components/TopNavbar';
 
 const Register: React.FC = () => {
   const [formData, setFormData] = useState({
@@ -69,91 +72,96 @@ const Register: React.FC = () => {
   };
 
   return (
-    <div className="auth-container">
-      <div className="auth-card">
-        <h1>Create Account</h1>
-        <p className="auth-subtitle">Join Photo Lab today</p>
-        
-        {error && <div className="error-message">{error}</div>}
-        
-        <form onSubmit={handleSubmit} className="auth-form">
-          <div className="form-row">
-            <div className="form-group">
-              <label htmlFor="firstName">First Name</label>
-              <input
-                type="text"
-                id="firstName"
-                name="firstName"
-                value={formData.firstName}
-                onChange={handleChange}
-                required
-                disabled={loading}
-              />
-            </div>
+    <>
+      <TopNavbar />
+      <div className="main-content dark-bg" style={{ minHeight: 'calc(100vh - 80px)' }}>
+        <div className="auth-container">
+          <div className="auth-card">
+            <h1>Create Account</h1>
+            <p className="auth-subtitle">Join Photo Lab today</p>
             
-            <div className="form-group">
-              <label htmlFor="lastName">Last Name</label>
-              <input
-                type="text"
-                id="lastName"
-                name="lastName"
-                value={formData.lastName}
-                onChange={handleChange}
-                required
-                disabled={loading}
-              />
-            </div>
+            {error && <div className="error-message">{error}</div>}
+            
+            <form onSubmit={handleSubmit} className="auth-form">
+              <div className="form-row">
+                <div className="form-group">
+                  <label htmlFor="firstName">First Name</label>
+                  <input
+                    type="text"
+                    id="firstName"
+                    name="firstName"
+                    value={formData.firstName}
+                    onChange={handleChange}
+                    required
+                    disabled={loading}
+                  />
+                </div>
+                
+                <div className="form-group">
+                  <label htmlFor="lastName">Last Name</label>
+                  <input
+                    type="text"
+                    id="lastName"
+                    name="lastName"
+                    value={formData.lastName}
+                    onChange={handleChange}
+                    required
+                    disabled={loading}
+                  />
+                </div>
+              </div>
+              
+              <div className="form-group">
+                <label htmlFor="email">Email</label>
+                <input
+                  type="email"
+                  id="email"
+                  name="email"
+                  value={formData.email}
+                  onChange={handleChange}
+                  required
+                  disabled={loading}
+                />
+              </div>
+              
+              <div className="form-group">
+                <label htmlFor="password">Password</label>
+                <input
+                  type="password"
+                  id="password"
+                  name="password"
+                  value={formData.password}
+                  onChange={handleChange}
+                  required
+                  disabled={loading}
+                />
+              </div>
+              
+              <div className="form-group">
+                <label htmlFor="confirmPassword">Confirm Password</label>
+                <input
+                  type="password"
+                  id="confirmPassword"
+                  name="confirmPassword"
+                  value={formData.confirmPassword}
+                  onChange={handleChange}
+                  required
+                  disabled={loading}
+                />
+              </div>
+              
+              <button type="submit" className="btn btn-primary" disabled={loading}>
+                {loading ? 'Creating account...' : 'Register'}
+              </button>
+            </form>
+            
+            <p className="auth-footer">
+              Already have an account? <Link to="/login">Login</Link>
+            </p>
           </div>
-          
-          <div className="form-group">
-            <label htmlFor="email">Email</label>
-            <input
-              type="email"
-              id="email"
-              name="email"
-              value={formData.email}
-              onChange={handleChange}
-              required
-              disabled={loading}
-            />
-          </div>
-          
-          <div className="form-group">
-            <label htmlFor="password">Password</label>
-            <input
-              type="password"
-              id="password"
-              name="password"
-              value={formData.password}
-              onChange={handleChange}
-              required
-              disabled={loading}
-            />
-          </div>
-          
-          <div className="form-group">
-            <label htmlFor="confirmPassword">Confirm Password</label>
-            <input
-              type="password"
-              id="confirmPassword"
-              name="confirmPassword"
-              value={formData.confirmPassword}
-              onChange={handleChange}
-              required
-              disabled={loading}
-            />
-          </div>
-          
-          <button type="submit" className="btn btn-primary" disabled={loading}>
-            {loading ? 'Creating account...' : 'Register'}
-          </button>
-        </form>
-        
-        <p className="auth-footer">
-          Already have an account? <Link to="/login">Login</Link>
-        </p>
+        </div>
       </div>
-    </div>
+    </>
   );
 };
 

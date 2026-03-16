@@ -7,6 +7,7 @@ import { siteConfigService } from '../../services/siteConfigService';
 import AdminWhccImport from '../../components/AdminWhccImport';
 import AdminMpixImport from '../../components/AdminMpixImport';
 import { useAuth } from '../../contexts/AuthContext';
+import AdminLayout from '../../components/AdminLayout';
 
 const AdminPriceLists: React.FC = () => {
   const { user } = useAuth();
@@ -561,7 +562,7 @@ const AdminPriceLists: React.FC = () => {
   };
 
   return (
-    <div className="admin-page">
+    <AdminLayout>
       <div className="page-header">
         <h1>Price Lists</h1>
         <div style={{ display: 'flex', gap: '1rem' }}>
@@ -571,12 +572,12 @@ const AdminPriceLists: React.FC = () => {
           <button onClick={() => setShowImportDialog(true)} className="btn btn-secondary">
             📥 Import from CSV
           </button>
-          {selectedLab === 'whcc' && siteConfigService.isSiteEnabled('whcc') && (
+          {siteConfigService.isSiteEnabled('whcc') && (
             <button onClick={() => setShowWhccImport(true)} className="btn btn-secondary" title="Import products from WHCC">
               📦 Import from WHCC
             </button>
           )}
-          {selectedLab === 'mpix' && siteConfigService.isSiteEnabled('mpix') && (
+          {siteConfigService.isSiteEnabled('mpix') && (
             <button onClick={() => setShowMpixImport(true)} className="btn btn-secondary" title="Import products from Mpix">
               📸 Import from Mpix
             </button>
@@ -1122,7 +1123,6 @@ const AdminPriceLists: React.FC = () => {
                           <td>
                             {pkg.items.map((item, idx) => {
                               const product = selectedPriceList.products.find(p => p.id === item.productId);
-                              const size = product?.sizes.find(s => s.id === item.productSizeId);
                               return (
                                 <div key={idx} style={{ fontSize: '0.85rem', marginBottom: '0.25rem' }}>
                                   {item.quantity}x {product?.name || 'Unknown'} ({size?.name || 'Size'})
@@ -1400,7 +1400,7 @@ const AdminPriceLists: React.FC = () => {
           }}
         />
       )}
-    </div>
+    </AdminLayout>
   );
 };
 

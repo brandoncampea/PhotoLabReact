@@ -3,6 +3,7 @@ import { Album, PriceList } from '../../types';
 import { albumService } from '../../services/albumService';
 import { categoryService } from '../../services/categoryService';
 import { albumAdminService } from '../../services/albumAdminService';
+import AdminLayout from '../../components/AdminLayout';
 
 const AdminAlbums: React.FC = () => {
   const [albums, setAlbums] = useState<Album[]>([]);
@@ -158,7 +159,7 @@ const AdminAlbums: React.FC = () => {
   }
 
   return (
-    <div className="admin-page">
+    <AdminLayout>
       <div className="page-header">
         <h1>Manage Albums</h1>
         <button onClick={handleCreate} className="btn btn-primary">
@@ -363,7 +364,7 @@ const AdminAlbums: React.FC = () => {
           </div>
         </div>
       )}
-    </div>
+    </AdminLayout>
   );
 };
 

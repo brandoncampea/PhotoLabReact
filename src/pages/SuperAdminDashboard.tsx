@@ -1,9 +1,8 @@
-  // Debug: log environment variables
-  // import.meta.env removed
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import '../AdminStyles.css';
+import AdminLayout from '../components/AdminLayout';
 
 interface Studio {
   id: number;
@@ -77,8 +76,8 @@ interface ProfitSummary {
 }
 
 export default function SuperAdminDashboard() {
-    // Application version from environment variable
-    const appVersion = process.env.VITE_APP_VERSION || 'unknown';
+  // Application version from environment variable
+  const appVersion = process.env.VITE_APP_VERSION || 'unknown';
   const { user } = useAuth();
   const navigate = useNavigate();
   const [studios, setStudios] = useState<Studio[]>([]);
@@ -129,56 +128,56 @@ export default function SuperAdminDashboard() {
       fetchStudios();
       fetchPlans();
       fetchPayoutThreshold();
-      fetchProfitSummary();
-    }
-  }, [user]);
-
-  const fetchStudios = async () => {
-    setLoading(true);
-    try {
-      const token = localStorage.getItem('authToken');
-      const response = await fetch('/api/studios', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setStudios(data);
-        setError('');
-      } else {
-        setError('Failed to load studios');
-      }
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchPlans = async () => {
-    try {
-      const response = await fetch('/api/subscription-plans');
-      if (response.ok) {
-        const data = await response.json();
-        const normalized = (Array.isArray(data) ? data : []).map((plan: any) => ({
-          id: plan.id,
-          name: String(plan.name || '').trim(),
-          monthlyPrice: Number(plan.monthly_price ?? plan.monthlyPrice ?? 0) || 0,
-          yearlyPrice: plan.yearly_price !== undefined && plan.yearly_price !== null
-            ? (Number(plan.yearly_price) || undefined)
-            : (plan.yearlyPrice !== undefined && plan.yearlyPrice !== null ? (Number(plan.yearlyPrice) || undefined) : undefined),
-          features: Array.isArray(plan.features) ? plan.features : [],
-          isActive: plan.is_active === undefined ? true : !!plan.is_active,
-        }));
-        setPlans(normalized.filter((plan: Plan) => plan.isActive !== false));
-        return;
-      }
-
-      const fallbackResponse = await fetch('/api/studios/plans/list');
-      if (fallbackResponse.ok) {
-        const fallbackData = await fallbackResponse.json();
+      return (
+        <div className="admin-panel dark-bg">
+          {/* ...existing code... */}
+          {selectedPayoutStudio && (
+            <div className="admin-summary-box dark-card" style={{ marginBottom: '24px' }}>
+              <div className="admin-summary-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3 className="admin-summary-title" style={{ marginTop: 0, marginBottom: '0.75rem' }}>
+                  Payout History — {selectedPayoutStudio.studioName}
+                </h3>
+                <button className="btn btn-secondary btn-sm dark-btn" onClick={() => setSelectedPayoutStudio(null)}>
+                  Close
+                </button>
+              </div>
+              <div style={{ overflowX: 'auto' }}>
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Date</th>
+                      <th style={{ textAlign: 'right' }}>Amount</th>
+                      <th>Created By</th>
+                      <th>Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {studioPayoutHistory.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
+                          No payout history for this studio.
+                        </td>
+                      </tr>
+                    ) : (
+                      studioPayoutHistory.map((payout) => (
+                        <tr key={payout.id}>
+                          <td>#{payout.id}</td>
+                          <td>{new Date(payout.createdAt).toLocaleString()}</td>
+                          <td style={{ textAlign: 'right', fontWeight: 'bold' }}>${Number(payout.amount || 0).toFixed(2)}</td>
+                          <td>{payout.createdByName || '—'}</td>
+                          <td>{payout.notes || '—'}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+          {/* ...existing code... */}
+        </div>
+      );
         const fallbackPlans = Object.values(fallbackData as Record<string, any>).map((plan: any) => ({
           id: plan.id,
           name: String(plan.name || '').trim(),
@@ -515,7 +514,7 @@ export default function SuperAdminDashboard() {
   }
 
   return (
-    <div className="admin-container">
+    <AdminLayout>
       <div style={{ marginBottom: '16px', fontSize: '13px', color: 'var(--text-secondary)' }}>
         <strong>App Version:</strong> {appVersion || 'unknown'}
         <div style={{ marginTop: '8px', fontSize: '12px', color: '#888' }}>
@@ -1054,7 +1053,7 @@ export default function SuperAdminDashboard() {
           </div>
         </div>
       )}
-    </div>
+    </AdminLayout>
   );
 }
 

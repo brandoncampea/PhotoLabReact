@@ -1,4 +1,6 @@
 import React from 'react';
+import '../App.css';
+import '../AdminStyles.css';
 
 const SearchPage: React.FC = () => {
   return (

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import '../AdminStyles.css';
+import AdminLayout from '../components/AdminLayout';
 
 interface SubscriptionPlan {
   id: string | number;
@@ -348,7 +349,7 @@ export default function SuperAdminPricing() {
   }
 
   return (
-    <div className="admin-page">
+    <AdminLayout>
       <div className="page-header">
         <h1>Subscription Plan Pricing</h1>
         <button onClick={handleStartCreate} className="btn btn-primary">
@@ -768,6 +769,6 @@ export default function SuperAdminPricing() {
           </div>
         ))}
       </div>
-    </div>
+    </AdminLayout>
   );
 }

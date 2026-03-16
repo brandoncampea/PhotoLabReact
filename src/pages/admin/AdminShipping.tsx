@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ShippingConfig } from '../../types';
 import { shippingService } from '../../services/shippingService';
+import AdminLayout from '../../components/AdminLayout';
 
 const AdminShipping: React.FC = () => {
   const [config, setConfig] = useState<ShippingConfig | null>(null);
@@ -54,12 +55,12 @@ const AdminShipping: React.FC = () => {
   const deadlinePassed = daysUntilDeadline < 0;
 
   return (
-    <div className="admin-page">
+    <AdminLayout>
       <div className="page-header">
         <h1>Shipping Settings</h1>
       </div>
 
-      <div className="admin-form" style={{ maxWidth: '800px' }}>
+      <div className="admin-form">
         <div className="info-box-blue" style={{ marginBottom: '2rem' }}>
           <h3 style={{ marginTop: 0 }}>📦 Batch Shipping</h3>
           <p style={{ marginBottom: '0.5rem' }}>
@@ -141,7 +142,7 @@ const AdminShipping: React.FC = () => {
           </ul>
         </div>
       </div>
-    </div>
+    </AdminLayout>
   );
 };
 

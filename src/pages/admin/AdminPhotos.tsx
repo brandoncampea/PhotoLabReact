@@ -4,6 +4,7 @@ import { Photo, Album, PhotoMetadata } from '../../types';
 import { photoService } from '../../services/photoService';
 import { albumService } from '../../services/albumService';
 import { albumAdminService } from '../../services/albumAdminService';
+import AdminLayout from '../../components/AdminLayout';
 
 
 
@@ -257,7 +258,7 @@ const AdminPhotos: React.FC = () => {
   }
 
   return (
-    <div className="admin-page">
+    <AdminLayout>
       <div className="page-header">
         <h1>Manage Photos</h1>
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
@@ -512,7 +513,7 @@ const AdminPhotos: React.FC = () => {
           </div>
         </div>
       )}
-    </div>
+    </AdminLayout>
   );
 };
 

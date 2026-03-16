@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { DiscountCode, Product } from '../../types';
 import { discountCodeService } from '../../services/discountCodeService';
 import { productService } from '../../services/productService';
+import AdminLayout from '../../components/AdminLayout';
 
 const AdminDiscountCodes: React.FC = () => {
   const [discountCodes, setDiscountCodes] = useState<DiscountCode[]>([]);
@@ -128,7 +129,7 @@ const AdminDiscountCodes: React.FC = () => {
   }
 
   return (
-    <div className="admin-page">
+    <AdminLayout>
       <div className="page-header">
         <h1>Manage Discount Codes</h1>
         <button onClick={handleCreate} className="btn btn-primary">
@@ -153,7 +154,7 @@ const AdminDiscountCodes: React.FC = () => {
           <tbody>
             {discountCodes.map((code) => (
               <tr key={code.id} style={{ opacity: !code.isActive || isExpired(code.expirationDate) ? 0.6 : 1 }}>
-                <td><strong style={{ fontFamily: 'monospace' }}>{code.code}</strong></td>
+                <td><strong>{code.code}</strong></td>
                 <td>{code.description}</td>
                 <td>
                   {code.discountType === 'percentage' ? (
@@ -373,7 +374,7 @@ const AdminDiscountCodes: React.FC = () => {
           </div>
         </div>
       )}
-    </div>
+    </AdminLayout>
   );
 };
 

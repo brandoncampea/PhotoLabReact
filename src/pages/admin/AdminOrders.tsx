@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Order } from '../../types';
 import api from '../../services/api';
+import AdminLayout from '../../components/AdminLayout';
 
 type BatchQueueSummary = {
   totalQueued: number;
@@ -177,7 +178,7 @@ const AdminOrders: React.FC = () => {
   }
 
   return (
-    <div className="admin-page">
+    <AdminLayout>
       <div className="page-header">
         <h1>Manage Orders</h1>
         <div className="tab-buttons" style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
@@ -467,7 +468,7 @@ const AdminOrders: React.FC = () => {
           ))}
         </div>
       )}
-    </div>
+    </AdminLayout>
   );
 };
 

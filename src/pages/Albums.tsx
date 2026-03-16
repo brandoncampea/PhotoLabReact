@@ -1,8 +1,11 @@
 import React, { useEffect, useState } from 'react';
+import '../App.css';
+import '../AdminStyles.css';
 import { Link } from 'react-router-dom';
 import { Album } from '../types';
 import { albumService } from '../services/albumService';
 import AlbumCoverCarousel from '../components/AlbumCoverCarousel';
+import TopNavbar from '../components/TopNavbar';
 
 const Albums: React.FC = () => {
   const [albums, setAlbums] = useState<Album[]>([]);
@@ -80,94 +83,97 @@ const Albums: React.FC = () => {
   }
 
   return (
-    <div className="page-container">
-      {shareNotification && (
-        <div style={{
-          position: 'fixed',
-          top: '80px',
-          right: '20px',
-          backgroundColor: '#4169E1',
-          color: 'white',
-          padding: '1rem 1.5rem',
-          borderRadius: '8px',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-          zIndex: 1000,
-          animation: 'slideIn 0.3s ease-out'
-        }}>
-          ✓ {shareNotification}
-        </div>
-      )}
-      <div className="page-title">
-        <h1>Photo Albums</h1>
-        <p>Browse and select photos from our collection</p>
-      </div>
-      
-      {categories.length > 0 && (
-        <div className="filter-bar" style={{ marginBottom: '2rem' }}>
-          <label htmlFor="category-filter" style={{ marginRight: '0.5rem', fontWeight: 500 }}>Filter by Category:</label>
-          <select
-            id="category-filter"
-            value={selectedCategory}
-            onChange={(e) => setSelectedCategory(e.target.value)}
-            className="sort-select"
-          >
-            <option value="all">All Categories</option>
-            {categories.map((cat) => (
-              <option key={cat} value={cat}>{cat}</option>
-            ))}
-          </select>
-        </div>
-      )}
-      
-      <div className="albums-grid">
-        {filteredAlbums.length === 0 ? (
-          <p className="empty-state">{selectedCategory === 'all' ? 'No albums available' : `No albums in "${selectedCategory}" category`}</p>
-        ) : (
-          filteredAlbums.map((album) => (
-            <Link to={`/albums/${album.id}`} key={album.id} className="album-card">
-              <div className="album-cover">
-                <AlbumCoverCarousel
-                  albumId={album.id}
-                  albumName={album.name}
-                  coverImageUrl={album.coverImageUrl}
-                  previewImageUrls={album.previewImageUrls}
-                />
-                <div className="album-overlay">
-                  <span className="photo-count">{album.photoCount} photos</span>
-                </div>
-              </div>
-              <div className="album-info">
-                <h3>{album.name}</h3>
-                <p>{album.description}</p>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem' }}>
-                  <span className="album-date">
-                    {new Date(album.createdDate).toLocaleDateString()}
-                  </span>
-                  <button
-                    onClick={(e) => handleShare(e, album)}
-                    className="btn-icon"
-                    style={{
-                      padding: '0.25rem 0.5rem',
-                      fontSize: '0.9rem',
-                      backgroundColor: 'transparent',
-                      border: '1px solid #ddd',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s'
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f0f0f0'}
-                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                    title="Share album"
-                  >
-                    🔗 Share
-                  </button>
-                </div>
-              </div>
-            </Link>
-          ))
+    <>
+      <TopNavbar />
+      <div className="main-content dark-bg" style={{ minHeight: 'calc(100vh - 80px)' }}>
+        {shareNotification && (
+          <div style={{
+            position: 'fixed',
+            top: '80px',
+            right: '20px',
+            backgroundColor: '#4169E1',
+            color: 'white',
+            padding: '1rem 1.5rem',
+            borderRadius: '8px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+            zIndex: 1000,
+            animation: 'slideIn 0.3s ease-out'
+          }}>
+            ✓ {shareNotification}
+          </div>
         )}
+        <div className="page-title">
+          <h1>Photo Albums</h1>
+          <p>Browse and select photos from our collection</p>
+        </div>
+        
+        {categories.length > 0 && (
+          <div className="filter-bar" style={{ marginBottom: '2rem' }}>
+            <label htmlFor="category-filter" style={{ marginRight: '0.5rem', fontWeight: 500 }}>Filter by Category:</label>
+            <select
+              id="category-filter"
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              className="sort-select"
+            >
+              <option value="all">All Categories</option>
+              {categories.map((cat) => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
+            </select>
+          </div>
+        )}
+        
+        <div className="albums-grid">
+          {filteredAlbums.length === 0 ? (
+            <p className="empty-state">{selectedCategory === 'all' ? 'No albums available' : `No albums in "${selectedCategory}" category`}</p>
+          ) : (
+            filteredAlbums.map((album) => (
+              <Link to={`/albums/${album.id}`} key={album.id} className="album-card">
+                <div className="album-cover">
+                  <AlbumCoverCarousel
+                    albumId={album.id}
+                    albumName={album.name}
+                    coverImageUrl={album.coverImageUrl}
+                    previewImageUrls={album.previewImageUrls}
+                  />
+                  <div className="album-overlay">
+                    <span className="photo-count">{album.photoCount} photos</span>
+                  </div>
+                </div>
+                <div className="album-info">
+                  <h3>{album.name}</h3>
+                  <p>{album.description}</p>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem' }}>
+                    <span className="album-date">
+                      {new Date(album.createdDate).toLocaleDateString()}
+                    </span>
+                    <button
+                      onClick={(e) => handleShare(e, album)}
+                      className="btn-icon"
+                      style={{
+                        padding: '0.25rem 0.5rem',
+                        fontSize: '0.9rem',
+                        backgroundColor: 'transparent',
+                        border: '1px solid #ddd',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f0f0f0'}
+                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                      title="Share album"
+                    >
+                      🔗 Share
+                    </button>
+                  </div>
+                </div>
+              </Link>
+            ))
+          )}
+        </div>
       </div>
-    </div>
+    </>
   );
 };
 

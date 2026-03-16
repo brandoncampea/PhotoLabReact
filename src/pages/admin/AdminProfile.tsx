@@ -3,6 +3,7 @@ import { ProfileConfig } from '../../types';
 import { profileService } from '../../services/profileService';
 import { useAuth } from '../../contexts/AuthContext';
 import { SUBSCRIPTION_PLANS } from '../../services/subscriptionService';
+import AdminLayout from '../../components/AdminLayout';
 
 const AdminProfile: React.FC = () => {
   const { user } = useAuth();
@@ -159,7 +160,7 @@ const AdminProfile: React.FC = () => {
   }
 
   return (
-    <div className="admin-page">
+    <AdminLayout>
       <div className="page-header">
         <h1>👤 Profile Settings</h1>
         <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
@@ -553,7 +554,7 @@ const AdminProfile: React.FC = () => {
           </div>
         </div>
       )}
-    </div>
+    </AdminLayout>
   );
 };
 

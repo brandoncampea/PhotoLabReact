@@ -1,3 +1,83 @@
+      /* Login Page Styles */
+      .auth-title {
+        color: #fff;
+        font-size: 2rem;
+        font-weight: 700;
+        margin-bottom: 1.2rem;
+        text-align: center;
+      }
+
+      .input-dark {
+        background: #232526;
+        color: #f3f3f3;
+        border: 1px solid #444;
+        border-radius: 8px;
+        padding: 0.5rem 1rem;
+        font-size: 1rem;
+        margin-top: 0.5rem;
+        margin-bottom: 1rem;
+        transition: border-color 0.2s, background 0.2s;
+      }
+      .input-dark:focus {
+        border-color: #7c5cff;
+        background: #282a2d;
+      }
+
+      .dark-btn {
+        background: #282a2d;
+        color: #fff;
+        border-radius: 8px;
+        padding: 0.5rem 1rem;
+        font-weight: 600;
+        transition: background 0.2s, color 0.2s, transform 0.2s;
+        cursor: pointer;
+      }
+      .dark-btn:hover {
+        background: #232526;
+        color: #ff6b35;
+        transform: scale(1.04);
+      }
+      /* Landing Page Styles */
+      .landing-title {
+        color: #fff;
+        font-size: 2.2rem;
+        font-weight: 700;
+        margin-bottom: 2.5rem;
+        text-align: center;
+        letter-spacing: 0.02em;
+      }
+
+      .features-row {
+        display: flex;
+        gap: 2rem;
+        flex-wrap: wrap;
+        justify-content: center;
+        margin-bottom: 2rem;
+      }
+
+      .feature-card {
+        background: #232526;
+        color: #f3f3f3;
+        border-radius: 18px;
+        box-shadow: 0 2px 16px rgba(0,0,0,0.18);
+        padding: 2rem 1.5rem;
+        min-width: 220px;
+        max-width: 320px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        margin-bottom: 1rem;
+        transition: transform 0.2s, box-shadow 0.2s;
+      }
+      .feature-card:hover {
+        transform: scale(1.04);
+        box-shadow: 0 4px 24px rgba(0,0,0,0.22);
+      }
+
+      .feature-icon {
+        font-size: 2.5rem;
+        margin-bottom: 1rem;
+      }
       height: 60px !important;
       height: 100% !important;
       display: flex !important;
