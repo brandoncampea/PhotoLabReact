@@ -1,56 +1,26 @@
 // ...existing code...
-import { Suspense, lazy, useEffect } from 'react';
-
-const SearchPage = lazy(() => import('./pages/SearchPage'));
-import DebugRouteBanner from './components/DebugRouteBanner';
-import { BrowserRouter, Routes, Route, Navigate, useLocation, useLocation as useLoc } from 'react-router-dom';
+import { Suspense, lazy } from 'react';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { CartProvider } from './contexts/CartContext';
 import Navbar from './components/Navbar';
-import ProtectedRoute from './components/ProtectedRoute';
-import AdminProtectedRoute from './components/AdminProtectedRoute';
-import SuperAdminProtectedRoute from './components/SuperAdminProtectedRoute';
-import AdminLayout from './components/AdminLayout';
-import { analyticsService } from './services/analyticsService';
 import './App.css';
 import './AdminStyles.css';
 
-const AdminPayments = lazy(() => import('./pages/admin/AdminPayments'));
-
-const AdminSmugMug = lazy(() => import('./pages/admin/AdminSmugMug'));
-const AdminProducts = lazy(() => import('./pages/admin/AdminProducts'));
-const AdminWatermarks = lazy(() => import('./pages/admin/AdminWatermarks'));
-const StudioAdminDashboard = lazy(() => import('./pages/admin/StudioAdminDashboard'));
+const SearchPage = lazy(() => import('./pages/SearchPage'));
 const SuperAdminPricing = lazy(() => import('./pages/admin/SuperAdminPricing'));
 const SuperAdminDashboard = lazy(() => import('./pages/admin/SuperAdminDashboard'));
 const StudioPublicPage = lazy(() => import('./pages/StudioPublicPage'));
 const StudioSignup = lazy(() => import('./pages/StudioSignup'));
-const CheckoutSuccess = lazy(() => import('./pages/CheckoutSuccess'));
 const LandingPage = lazy(() => import('./pages/LandingPage'));
 const Login = lazy(() => import('./pages/Login'));
 const Register = lazy(() => import('./pages/Register'));
 const Albums = lazy(() => import('./pages/Albums'));
 const AlbumDetails = lazy(() => import('./pages/AlbumDetails'));
-const Search = lazy(() => import('./pages/Search'));
 const Cart = lazy(() => import('./pages/Cart'));
 const Orders = lazy(() => import('./pages/Orders'));
-const AdminLogin = lazy(() => import('./pages/admin/AdminLogin'));
 const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard'));
-const AdminAnalytics = lazy(() => import('./pages/admin/AdminAnalytics'));
-const AdminAlbums = lazy(() => import('./pages/admin/AdminAlbums'));
-const AdminPhotos = lazy(() => import('./pages/admin/AdminPhotos'));
-const AdminPriceLists = lazy(() => import('./pages/admin/AdminPriceLists'));
-const AdminUsers = lazy(() => import('./pages/admin/AdminUsers'));
-const AdminStudioAdmins = lazy(() => import('./pages/admin/AdminStudioAdmins'));
-const AdminProfile = lazy(() => import('./pages/admin/AdminProfile'));
-const AdminDiscountCodes = lazy(() => import('./pages/admin/AdminDiscountCodes'));
-const AdminLabs = lazy(() => import('./pages/admin/AdminLabs'));
-const AdminRoesConfig = lazy(() => import('./pages/admin/AdminRoesConfig'));
-const AdminWhccConfig = lazy(() => import('./pages/admin/AdminWhccConfig'));
-const AdminMpixConfig = lazy(() => import('./pages/admin/AdminMpixConfig'));
-const AdminOrders = lazy(() => import('./pages/admin/AdminOrders'));
-const AdminCustomers = lazy(() => import('./pages/admin/AdminCustomers'));
-const AdminShipping = lazy(() => import('./pages/admin/AdminShipping'));
+const AdminSmugMug = lazy(() => import('./pages/admin/AdminSmugMug'));
 
 function App() {
     return (

@@ -42,8 +42,7 @@ const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop }) => {
       <div className="cart-item-image cart-img-abs">
         {item.photos && item.photos.length > 1 ? (
           // Multi-photo grid display
-          <div style={{
-            className={`cart-multi-photo-grid grid-cols-${item.photos.length}`}
+          <div className={`cart-multi-photo-grid grid-cols-${item.photos.length}`}>
             {item.photos.slice(0, 4).map((photoItem, idx) => (
               <div key={idx} style={{ position: 'relative', overflow: 'hidden' }}>
                 <WatermarkedImage 
