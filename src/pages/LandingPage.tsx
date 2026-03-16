@@ -92,27 +92,24 @@ export default function LandingPage() {
     ]);
   }, []);
   return (
-    <>
-      <div style={{position:'fixed',top:0,left:0,right:0,zIndex:9999,background:'#7c5cff',color:'#fff',padding:'8px',textAlign:'center',fontWeight:700,fontSize:'1.1rem',letterSpacing:'1px',boxShadow:'0 2px 8px #0008'}}>LandingPage.tsx is rendering</div>
-      <div className="main-content">
-        <h1 style={{ color: '#fff', marginBottom: '2rem' }}>Landing Page</h1>
-        <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', justifyContent: 'center' }}>
-          <FeatureCard icon="📷" title="Photo Galleries" description="Browse and order your photos online." />
-          <FeatureCard icon="🛒" title="Easy Ordering" description="Simple, secure checkout for prints and downloads." />
-        </div>
-        <h2 style={{ marginTop: '2.5rem', color: '#fff' }}>Plans</h2>
-        <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', justifyContent: 'center' }}>
-          {plans.map((plan, idx) => (
-            <PricingCard
-              key={plan.id}
-              name={plan.name}
-              price={`$${plan.monthly_price}`}
-              features={plan.features}
-              highlighted={idx === 1}
-            />
-          ))}
-        </div>
+    <div className="main-content">
+      <h1 style={{ color: '#fff', marginBottom: '2rem' }}>Landing Page</h1>
+      <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+        <FeatureCard icon="📷" title="Photo Galleries" description="Browse and order your photos online." />
+        <FeatureCard icon="🛒" title="Easy Ordering" description="Simple, secure checkout for prints and downloads." />
       </div>
-    </>
+      <h2 style={{ marginTop: '2.5rem', color: '#fff' }}>Plans</h2>
+      <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+        {plans.map((plan, idx) => (
+          <PricingCard
+            key={plan.id}
+            name={plan.name}
+            price={`$${plan.monthly_price}`}
+            features={plan.features}
+            highlighted={idx === 1}
+          />
+        ))}
+      </div>
+    </div>
   );
 }

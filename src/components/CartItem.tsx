@@ -39,52 +39,23 @@ const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop }) => {
 
   return (
     <div className="cart-item dark-card">
-      <div className="cart-item-image" style={{ width: '100px', height: '100px', overflow: 'hidden', flexShrink: 0, position: 'relative', background: '#232526' }}>
+      <div className="cart-item-image cart-img-abs">
         {item.photos && item.photos.length > 1 ? (
           // Multi-photo grid display
           <div style={{
-            display: 'grid',
-            gridTemplateColumns: item.photos.length === 2 ? '1fr 1fr' : item.photos.length === 3 ? '1fr 1fr 1fr' : '1fr 1fr',
-            gridTemplateRows: item.photos.length > 2 ? '1fr 1fr' : '1fr',
-            gap: '2px',
-            width: '100%',
-            height: '100%',
-            backgroundColor: '#f3f4f6'
-          }}>
+            className={`cart-multi-photo-grid grid-cols-${item.photos.length}`}
             {item.photos.slice(0, 4).map((photoItem, idx) => (
               <div key={idx} style={{ position: 'relative', overflow: 'hidden' }}>
                 <WatermarkedImage 
                   src={photoItem.photo.thumbnailUrl} 
                   alt={`Photo ${photoItem.position}`}
-                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  className="cart-photo-img"
                 />
-                <div style={{
-                  position: 'absolute',
-                  bottom: '2px',
-                  right: '2px',
-                  backgroundColor: 'rgba(0,0,0,0.7)',
-                  color: 'white',
-                  fontSize: '10px',
-                  padding: '1px 3px',
-                  borderRadius: '2px'
-                }}>
-                  #{photoItem.position}
-                </div>
+                <div className="cart-photo-pos-badge">#{photoItem.position}</div>
               </div>
             ))}
             {item.photos.length > 4 && (
-              <div style={{
-                position: 'absolute',
-                bottom: '4px',
-                right: '4px',
-                backgroundColor: 'rgba(0,0,0,0.8)',
-                color: 'white',
-                fontSize: '12px',
-                padding: '2px 6px',
-                borderRadius: '3px'
-              }}>
-                +{item.photos.length - 4}
-              </div>
+              <div className="cart-photo-more-badge">+{item.photos.length - 4}</div>
             )}
           </div>
         ) : item.photo ? (
@@ -93,13 +64,13 @@ const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop }) => {
             <WatermarkedImage 
               src={item.photo.thumbnailUrl} 
               alt={item.photo.fileName}
-              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              className="cart-photo-img"
             />
             {item.cropData && <div style={getCropStyle()!} />}
           </>
         ) : (
-          <div style={{ width: '100%', height: '100%', backgroundColor: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <span style={{ color: '#9ca3af' }}>Loading...</span>
+          <div className="cart-photo-loading">
+            <span className="cart-photo-loading-text">Loading...</span>
           </div>
         )}
       </div>
@@ -108,9 +79,7 @@ const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop }) => {
         {item.photos && item.photos.length > 1 ? (
           <>
             <h3>Multi-Photo Product</h3>
-            <p style={{ fontSize: '0.85rem', color: '#666' }}>
-              📸 {item.photos.length} photos included
-            </p>
+            <p className="cart-photo-count">📸 {item.photos.length} photos included</p>
           </>
         ) : item.photo ? (
           <>
@@ -121,21 +90,12 @@ const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop }) => {
           <h3>Photo {item.photoId}</h3>
         )}
         {item.cropData && (
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          <div className="cart-crop-row">
             <span className="badge">Custom Crop</span>
             {onEditCrop && (
               <button 
                 onClick={() => onEditCrop(item)}
-                className="btn-edit-crop"
-                style={{
-                  padding: '0.25rem 0.5rem',
-                  fontSize: '0.75rem',
-                  backgroundColor: '#3b82f6',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '0.25rem',
-                  cursor: 'pointer'
-                }}
+                className="btn-edit-crop btn-crop-action"
               >
                 Edit Crop
               </button>

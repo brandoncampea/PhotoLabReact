@@ -240,7 +240,7 @@ const AdminMpixImport: React.FC<{ onClose: () => void; onImportComplete: () => v
         <h2>Import Products from Mpix</h2>
 
         {error && (
-          <div className="info-box-error" style={{ marginBottom: '20px' }}>
+          <div className="info-box-error mb-20">
             ✗ {error}
           </div>
         )}
@@ -248,7 +248,7 @@ const AdminMpixImport: React.FC<{ onClose: () => void; onImportComplete: () => v
         {/* Step 1: Select Price List */}
         {step === 'select-list' && (
           <>
-            <p style={{ color: 'var(--text-secondary)', marginBottom: '20px' }}>
+            <p className="text-secondary mb-20">
               Select a price list where you want to add Mpix products.
             </p>
 
@@ -256,29 +256,18 @@ const AdminMpixImport: React.FC<{ onClose: () => void; onImportComplete: () => v
               <button
                 onClick={handleLoadPriceLists}
                 disabled={loading}
-                className="btn btn-primary"
-                style={{ marginBottom: '20px' }}
+                className="btn btn-primary mb-20"
               >
                 {loading ? 'Loading...' : 'Load Price Lists'}
               </button>
             ) : (
               <>
                 <div style={{ marginBottom: '20px' }}>
-                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500 }}>
-                    Select Price List
-                  </label>
+                  <label className="block-label mb-8 fw-500">Select Price List</label>
                   <select
                     value={selectedPriceListId || ''}
                     onChange={(e) => setSelectedPriceListId(Number(e.target.value))}
-                    style={{
-                      width: '100%',
-                      padding: '10px',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: '4px',
-                      boxSizing: 'border-box' as const,
-                      backgroundColor: 'var(--bg-primary)',
-                      color: 'var(--text-primary)',
-                    }}
+                    className="import-input-lg w-100"
                   >
                     <option value="">-- Select a price list --</option>
                     {priceLists.map((list) => (
@@ -304,14 +293,14 @@ const AdminMpixImport: React.FC<{ onClose: () => void; onImportComplete: () => v
         {/* Step 2: Select Products */}
         {step === 'select-products' && (
           <>
-            <p style={{ color: 'var(--text-secondary)', marginBottom: '20px' }}>
+            <p className="text-secondary mb-20">
               Select products from Mpix catalog to add to your price list.
             </p>
 
             {/* Global Controls */}
             <div className="admin-section-card" style={{ marginBottom: '20px' }}>
-              <div style={{ display: 'flex', gap: '15px', alignItems: 'center', flexWrap: 'wrap' }}>
-                <div style={{ display: 'flex', gap: '10px' }}>
+              <div className="flex-row gap-15 align-center flex-wrap">
+                <div className="flex-row gap-10">
                   <button
                     onClick={handleSelectAll}
                     className="btn btn-primary btn-sm"
@@ -327,24 +316,14 @@ const AdminMpixImport: React.FC<{ onClose: () => void; onImportComplete: () => v
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1 }}>
-                  <label style={{ fontSize: '13px', fontWeight: 500, whiteSpace: 'nowrap' }}>
-                    Global Markup %:
-                  </label>
+                  <label className="fs-13 fw-500 nowrap">Global Markup %:</label>
                   <input
                     type="number"
                     step="1"
                     min="0"
                     value={globalMarkup}
                     onChange={(e) => setGlobalMarkup(Math.max(0, parseInt(e.target.value) || 0))}
-                    style={{
-                      width: '80px',
-                      padding: '6px',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: '4px',
-                      fontSize: '13px',
-                      backgroundColor: 'var(--bg-primary)',
-                      color: 'var(--text-primary)',
-                    }}
+                    className="import-input w-80 fs-13"
                   />
                   <button
                     onClick={handleApplyGlobalMarkup}
@@ -356,7 +335,7 @@ const AdminMpixImport: React.FC<{ onClose: () => void; onImportComplete: () => v
                 </div>
 
                 <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                  Selected: <strong>{selectedProducts.size}</strong> / {mpixProducts.length}
+                  <span className="fs-12 text-secondary">Selected: <strong>{selectedProducts.size}</strong> / {mpixProducts.length}</span>
                 </div>
               </div>
             </div>
@@ -373,20 +352,20 @@ const AdminMpixImport: React.FC<{ onClose: () => void; onImportComplete: () => v
                     key={uniqueKey}
                     className={`import-product-card${isSelected ? ' selected' : ''}`}
                   >
-                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '15px' }}>
+                    <div className="flex-row align-start gap-15">
                       <input
                         type="checkbox"
                         checked={isSelected}
                         onChange={() => toggleProductSelection(product.productUID)}
-                        style={{ marginTop: '5px', width: '18px', height: '18px', cursor: 'pointer' }}
+                        className="checkbox-lg mt-5 w-18 h-18 pointer"
                       />
 
-                      <div style={{ flex: 1 }}>
-                        <h4 style={{ margin: '0 0 5px 0' }}>{product.name}</h4>
-                        <p style={{ margin: '0 0 5px 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                      <div className="flex-1">
+                        <h4 className="mb-5 mt-0">{product.name}</h4>
+                        <p className="mb-5 mt-0 fs-12 text-secondary">
                           {product.description}
                         </p>
-                        <p style={{ margin: '0 0 5px 0', fontSize: '12px' }}>
+                        <p className="mb-5 mt-0 fs-12">
                           UID: {product.productUID} | Mpix Cost: ${product.basePrice.toFixed(2)}
                           {product.width && product.height && ` | ${product.width}x${product.height}`}
                         </p>
@@ -436,7 +415,7 @@ const AdminMpixImport: React.FC<{ onClose: () => void; onImportComplete: () => v
                               </>
                             ) : (
                               <>
-                                <label style={{ display: 'block', marginBottom: '8px', fontSize: '12px' }}>
+                                <label className="block-label mb-8 fs-12">
                                   Custom Retail Price ($)
                                 </label>
                                 <input

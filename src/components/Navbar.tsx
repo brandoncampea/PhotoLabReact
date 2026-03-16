@@ -26,9 +26,7 @@ const Navbar: React.FC = () => {
     <header className="navbar dark-bg" role="navigation">
       <div className="nav-container dark-bg">
         <Link to={user ? "/albums" : "/"} className="nav-brand dark-card">
-          <span style={{ fontWeight: 700, color: '#fff', fontSize: '1.3rem' }}>
-            0 Photo Lab
-          </span>
+          <span className="brand-title">0 Photo Lab</span>
         </Link>
         <div className="nav-links">
           {user ? (
@@ -59,17 +57,17 @@ const Navbar: React.FC = () => {
                 )}
               </Link>
               {user.role === 'admin' && (
-                <Link to="/admin/dashboard" className="nav-link" style={{ color: '#ff6b35', fontWeight: '600' }}>
+                <Link to="/admin/dashboard" className="nav-link nav-admin">
                   ⚙️ Admin
                 </Link>
               )}
               {user.role === 'studio_admin' && (
-                <Link to="/admin/studio-dashboard" className="nav-link" style={{ color: '#7c3aed', fontWeight: '600' }}>
+                <Link to="/admin/studio-dashboard" className="nav-link nav-studio">
                   📊 Studio Dashboard
                 </Link>
               )}
               {user.role === 'super_admin' && (
-                <Link to="/super-admin" className="nav-link" style={{ color: '#d32f2f', fontWeight: '600' }}>
+                <Link to="/super-admin" className="nav-link nav-super">
                   👑 Super Admin
                 </Link>
               )}
@@ -87,7 +85,7 @@ const Navbar: React.FC = () => {
               <Link to="/" className="nav-link">
                 Home
               </Link>
-              <Link to="/studio-signup" className="nav-link" style={{ color: '#7c5cff', fontWeight: '600' }}>
+              <Link to="/studio-signup" className="nav-link nav-trial">
                 🚀 Start Free Trial
               </Link>
               <Link to="/login" className="nav-link">
