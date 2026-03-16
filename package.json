@@ -5,8 +5,8 @@
     "type": "module",
   "scripts": {
     "dev": "vite",
-    "server": "node server/server.js",
-    "start": "node server/server.js",
+    "server": "node server/server.mjs",
+    "start": "node server/server.mjs",
     "dev:all": "concurrently \"npm run dev\" \"npm run server\"",
     "build": "tsc && vite build",
     "build:appservice": "vite build",

@@ -128,9 +128,8 @@ router.get('/whcc/token', adminRequired, async (req, res) => {
 router.get('/whcc/products', adminRequired, async (req, res) => {
   const { consumerKey, consumerSecret, isSandbox } = getCredentials(req);
   if (!consumerKey || !consumerSecret) {
-    return res.status(200).json({
-      ...getDefaultProductCatalog(),
-      warning: 'WHCC credentials not configured',
+    return res.status(400).json({
+      error: 'WHCC credentials not configured',
     });
   }
   try {
@@ -145,9 +144,8 @@ router.get('/whcc/products', adminRequired, async (req, res) => {
       err?.response?.status,
       err?.response?.data || err.message
     );
-    res.status(200).json({
-      ...getDefaultProductCatalog(),
-      warning: 'Failed to fetch WHCC product catalog from upstream; using fallback catalog.',
+    res.status(502).json({
+      error: 'Failed to fetch WHCC product catalog from upstream.',
       details: err?.response?.data || err.message,
     });
   }

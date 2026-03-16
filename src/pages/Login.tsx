@@ -48,48 +48,46 @@ const Login: React.FC = () => {
   };
 
   return (
-    <div className="auth-container">
-      <div className="auth-card">
-        <h1>Sign In</h1>
-        <p className="auth-subtitle">Welcome back to Photo Lab</p>
-        
-        {error && <div className="error-message">{error}</div>}
-        
-        <form onSubmit={handleSubmit} className="auth-form">
-          <div className="form-group">
-            <label htmlFor="email">Email</label>
-            <input
-              type="email"
-              id="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              disabled={loading}
-            />
-          </div>
-          
-          <div className="form-group">
-            <label htmlFor="password">Password</label>
-            <input
-              type="password"
-              id="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              disabled={loading}
-            />
-          </div>
-          
-          <button type="submit" className="btn btn-primary" disabled={loading}>
-            {loading ? 'Signing in...' : 'Sign In'}
-          </button>
-        </form>
-        
-        <p className="auth-footer">
-          Don't have an account? <Link to="/register">Register</Link>
-        </p>
+    <>
+      <div style={{position:'fixed',top:0,left:0,right:0,zIndex:9999,background:'#7c5cff',color:'#fff',padding:'8px',textAlign:'center',fontWeight:700,fontSize:'1.1rem',letterSpacing:'1px',boxShadow:'0 2px 8px #0008'}}>Login.tsx is rendering</div>
+      <div className="auth-container">
+        <div className="auth-card">
+          <h1>Sign In</h1>
+          <p className="auth-subtitle">Welcome back to Photo Lab</p>
+          {error && <div className="error-message">{error}</div>}
+          <form onSubmit={handleSubmit} className="auth-form">
+            <div className="form-group">
+              <label htmlFor="email">Email</label>
+              <input
+                type="email"
+                id="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                disabled={loading}
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="password">Password</label>
+              <input
+                type="password"
+                id="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                disabled={loading}
+              />
+            </div>
+            <button type="submit" className="btn btn-primary" disabled={loading}>
+              {loading ? 'Signing in...' : 'Sign In'}
+            </button>
+          </form>
+          <p className="auth-footer">
+            Don't have an account? <Link to="/register">Register</Link>
+          </p>
+        </div>
       </div>
-    </div>
+    </>
   );
 };
 
