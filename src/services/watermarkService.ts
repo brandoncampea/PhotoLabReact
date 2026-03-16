@@ -2,7 +2,7 @@ import axios from 'axios';
 import api from './api';
 import { Watermark } from '../types';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const API_URL = process.env.VITE_API_URL || 'http://localhost:5000/api';
 
 export const watermarkService = {
   async getDefaultWatermark(): Promise<Watermark | null> {
@@ -44,7 +44,7 @@ export const watermarkService = {
       
       // Create a new axios instance for this request without transformRequest
       const instance = axios.create({
-        baseURL: import.meta.env.VITE_API_URL || '/api',
+        baseURL: process.env.VITE_API_URL || '/api',
         timeout: 30000,
       });
       
@@ -76,7 +76,7 @@ export const watermarkService = {
       
       // Create a new axios instance for this request without transformRequest
       const instance = axios.create({
-        baseURL: import.meta.env.VITE_API_URL || '/api',
+        baseURL: process.env.VITE_API_URL || '/api',
         timeout: 30000,
       });
       

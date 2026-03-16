@@ -108,7 +108,7 @@ const RoesWeb = () => {
     } catch (err) {
       console.warn('Failed to load ROES config from localStorage');
     }
-    return import.meta.env.VITE_ROES_API_KEY || DEFAULT_ROES_API_KEY;
+    return process.env.VITE_ROES_API_KEY || DEFAULT_ROES_API_KEY;
   }, []);
   const [status, setStatus] = useState('Loading ROES Web Components...');
   const [configId, setConfigId] = useState<string | null>(null);

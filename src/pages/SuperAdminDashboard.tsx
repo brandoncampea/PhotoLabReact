@@ -1,5 +1,5 @@
   // Debug: log environment variables
-  console.log('import.meta.env:', import.meta.env);
+  // import.meta.env removed
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -78,7 +78,7 @@ interface ProfitSummary {
 
 export default function SuperAdminDashboard() {
     // Application version from environment variable
-    const appVersion = import.meta.env.VITE_APP_VERSION || 'unknown';
+    const appVersion = process.env.VITE_APP_VERSION || 'unknown';
   const { user } = useAuth();
   const navigate = useNavigate();
   const [studios, setStudios] = useState<Studio[]>([]);
@@ -518,6 +518,10 @@ export default function SuperAdminDashboard() {
     <div className="admin-container">
       <div style={{ marginBottom: '16px', fontSize: '13px', color: 'var(--text-secondary)' }}>
         <strong>App Version:</strong> {appVersion || 'unknown'}
+        <div style={{ marginTop: '8px', fontSize: '12px', color: '#888' }}>
+          <strong>Env Debug:</strong>
+          <pre style={{ background: '#222', color: '#fff', padding: '8px', borderRadius: '4px', maxWidth: '400px', overflowX: 'auto' }}>{JSON.stringify(process.env, null, 2)}</pre>
+        </div>
       </div>
       <h1>Super Admin Dashboard</h1>
 
