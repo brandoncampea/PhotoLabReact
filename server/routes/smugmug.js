@@ -1,6 +1,6 @@
 import express from 'express';
 import crypto from 'crypto';
-import { queryRow, queryRows, query, columnExists } from '../mssql.js';
+import { queryRow, queryRows, query, columnExists } from '../mssql.mjs';
 import { authRequired } from '../middleware/auth.js';
 import { uploadImageBufferToAzure } from '../services/azureStorage.js';
 
@@ -735,7 +735,10 @@ router.post('/import', authRequired, async (req, res) => {
       });
     }
     res.status(500).json({ error: 'Failed to import SmugMug albums' });
+
   }
 });
-
+// ...existing code...
+// Add missing closing brace for the module
+}
 export default router;

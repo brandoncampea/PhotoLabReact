@@ -1,7 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import path from 'path';
-import { queryRow, queryRows, query } from '../mssql.js';
+import { queryRow, queryRows, query } from '../mssql.mjs';
 import csv from 'csv-parser';
 import sharp from 'sharp';
 import { uploadImageBufferToAzure, deleteBlobByUrl, downloadBlob } from '../services/azureStorage.js';

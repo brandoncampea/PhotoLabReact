@@ -1,4 +1,4 @@
-import { queryRow } from '../mssql.js';
+import { queryRow } from '../mssql.mjs';
 import jwt from 'jsonwebtoken';
 import { SUBSCRIPTION_PLANS } from '../constants/subscriptions.js';
 

@@ -1,5 +1,5 @@
 import express from 'express';
-import { queryRow, queryRows, query, columnExists, tableExists } from '../mssql.js';
+import { queryRow, queryRows, query, columnExists, tableExists } from '../mssql.mjs';
 import { authRequired } from '../middleware/auth.js';
 import { SUBSCRIPTION_PLANS } from '../constants/subscriptions.js';
 

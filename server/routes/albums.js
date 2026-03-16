@@ -1,5 +1,5 @@
 import express from 'express';
-import { queryRow, queryRows, query } from '../mssql.js';
+import { queryRow, queryRows, query } from '../mssql.mjs';
 import { requireActiveSubscription } from '../middleware/subscription.js';
 import { enforceAlbumQuotaForStudio } from '../middleware/subscription.js';
 const router = express.Router();

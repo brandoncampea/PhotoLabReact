@@ -1,5 +1,5 @@
 import express from 'express';
-import { queryRow, queryRows, query } from '../mssql.js';
+import { queryRow, queryRows, query } from '../mssql.mjs';
 import { adminRequired } from '../middleware/auth.js';
 import { requireActiveSubscription } from '../middleware/subscription.js';
 const router = express.Router();

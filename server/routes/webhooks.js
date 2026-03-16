@@ -1,5 +1,5 @@
 import express from 'express';
-import { queryRow, query } from '../mssql.js';
+import { queryRow, query } from '../mssql.mjs';
 import stripeService from '../services/stripeService.js';
 import { SUBSCRIPTION_STATUSES } from '../constants/subscriptions.js';
 

@@ -1,6 +1,6 @@
 import express from 'express';
 import crypto from 'crypto';
-import { queryRow, queryRows, query, transaction, tableExists, columnExists } from '../mssql.js';
+import { queryRow, queryRows, query, transaction, tableExists, columnExists } from '../mssql.mjs';
 import { SUBSCRIPTION_PLANS, SUBSCRIPTION_STATUSES } from '../constants/subscriptions.js';
 import { authRequired } from '../middleware/auth.js';
 import stripeService from '../services/stripeService.js';

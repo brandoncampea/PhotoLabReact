@@ -1,6 +1,6 @@
 // Add items (products with sizes) to a price list
 import express from 'express';
-import { queryRow, query } from '../mssql.js';
+import { queryRow, query } from '../mssql.mjs';
 import { superAdminRequired } from '../middleware/auth.js';
 const router = express.Router();
 

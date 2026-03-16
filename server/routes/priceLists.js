@@ -1,6 +1,6 @@
 import express from 'express';
 import multer from 'multer';
-import { queryRow, queryRows, query, tableExists, columnExists } from '../mssql.js';
+import { queryRow, queryRows, query, tableExists, columnExists } from '../mssql.mjs';
 import { adminRequired, superAdminRequired } from '../middleware/auth.js';
 import { uploadImageBufferToAzure, deleteBlobByUrl } from '../services/azureStorage.js';
 const router = express.Router();
