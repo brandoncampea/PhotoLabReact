@@ -723,11 +723,13 @@ const AdminDashboard: React.FC = () => {
 
                   <div className="dashboard-widget">
                     <h2><span>🖼️</span> {selectedAlbum ? `Photo Revenue — ${selectedAlbum.albumName}` : 'Photo Revenue by Album'}</h2>
-                    {!selectedAlbum ? (
+                    {!selectedAlbum && (
                       <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Select an album above to see photo-level stats.</p>
-                    ) : albumPhotos.length === 0 ? (
+                    )}
+                    {selectedAlbum && albumPhotos.length === 0 && (
                       <p style={{ color: 'var(--text-secondary)', margin: 0 }}>No photo sales recorded for this album yet.</p>
-                    ) : (
+                    )}
+                    {selectedAlbum && albumPhotos.length > 0 && (
                       <div style={{ overflowX: 'auto' }}>
                         <table className="data-table">
                           <thead>
@@ -763,10 +765,10 @@ const AdminDashboard: React.FC = () => {
                     )}
                   </div>
                 </div>
-              ) : null;
+              ) : null}
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </AdminLayout>
   );
