@@ -2,17 +2,17 @@ import React, { useState, useEffect, KeyboardEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useCart } from '../contexts/CartContext';
-import { profileService } from '../services/profileService';
+// import { profileService } from '../services/profileService';
 
 const Navbar: React.FC = () => {
   const { user, logout } = useAuth();
   const { getTotalItems } = useCart();
   const navigate = useNavigate();
   const [quickSearch, setQuickSearch] = useState('');
-  const [logoUrl, setLogoUrl] = useState('');
+  // const [logoUrl, setLogoUrl] = useState('');
 
   useEffect(() => {
-    loadLogo();
+    // If you need to load logo asynchronously, do it here
   }, []);
 
   const handleQuickSearch = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -22,26 +22,16 @@ const Navbar: React.FC = () => {
     }
   };
 
-  const loadLogo = async () => {
-    return (
-      <header className="navbar dark-bg" role="navigation">
-        <div className="nav-container dark-bg">
-          <Link to={user ? "/albums" : "/"} className="nav-brand dark-card">
-            {logoUrl ? (
-              <img 
-                src={logoUrl} 
-                alt="Site Logo" 
-                className="nav-logo"
-              />
-            ) : (
-              <span style={{ fontWeight: 700, color: '#fff', fontSize: '1.3rem' }}>
-                0 Photo Lab
-              </span>
-            )}
-          </Link>
-
-          <div className="nav-links">
-            {user ? (
+  return (
+    <header className="navbar dark-bg" role="navigation">
+      <div className="nav-container dark-bg">
+        <Link to={user ? "/albums" : "/"} className="nav-brand dark-card">
+          <span style={{ fontWeight: 700, color: '#fff', fontSize: '1.3rem' }}>
+            0 Photo Lab
+          </span>
+        </Link>
+        <div className="nav-links">
+          {user ? (
             <>
               <div className="nav-search">
                 <input
@@ -87,7 +77,7 @@ const Navbar: React.FC = () => {
                 <span className="user-name">
                   {user.firstName} {user.lastName}
                 </span>
-                <button onClick={handleLogout} className="btn-logout">
+                <button onClick={logout} className="btn-logout">
                   Logout
                 </button>
               </div>
@@ -109,6 +99,6 @@ const Navbar: React.FC = () => {
       </div>
     </header>
   );
-}
+};
 
 export default Navbar;

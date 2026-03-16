@@ -1,3 +1,5 @@
+  // Debug: log environment variables
+  console.log('import.meta.env:', import.meta.env);
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -75,16 +77,8 @@ interface ProfitSummary {
 }
 
 export default function SuperAdminDashboard() {
-    // Application version from package.json
-    const [appVersion, setAppVersion] = useState<string>('');
-
-    useEffect(() => {
-      // Fetch version from public/package.json or inject via env
-      fetch('/package.json')
-        .then((res) => res.json())
-        .then((data) => setAppVersion(data.version || ''))
-        .catch(() => setAppVersion(''));
-    }, []);
+    // Application version from environment variable
+    const appVersion = import.meta.env.VITE_APP_VERSION || 'unknown';
   const { user } = useAuth();
   const navigate = useNavigate();
   const [studios, setStudios] = useState<Studio[]>([]);
