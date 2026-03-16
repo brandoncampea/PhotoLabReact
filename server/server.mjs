@@ -3,7 +3,7 @@ import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { initializeDatabase } from './mssql.js';
+import { initializeDatabase } from './mssql.mjs';
 
 import authRoutes from './routes/auth.js';
 import albumRoutes from './routes/albums.js';

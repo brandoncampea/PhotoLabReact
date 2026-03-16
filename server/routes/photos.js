@@ -165,22 +165,15 @@ router.get('/:id/asset', async (req, res) => {
 });
 
 // Upload photos
-router.post('/upload', requireActiveSubscription, (req, res, next) => {
-  photoUpload.array('photos', 50)(req, res, (err) => {
-    if (err) {
-      if (err instanceof multer.MulterError) {
-        if (err.code === 'LIMIT_FILE_SIZE') {
-          return res.status(400).json({ error: 'Each file must be 10MB or smaller' });
-        }
-        return res.status(400).json({ error: 'Invalid upload payload. Please upload supported image files.' });
-      }
-      return res.status(400).json({ error: err.message || 'Upload failed' });
-    }
-    next();
-  });
-}, async (req, res) => {
+const upload = multer({ storage: multer.memoryStorage() });
+router.post('/upload', requireActiveSubscription, upload.fields([
+  { name: 'photos', maxCount: 50 },
+  { name: 'csv', maxCount: 1 }
+]), async (req, res) => {
   try {
-    if (!req.files || req.files.length === 0) {
+    const files = req.files?.photos || [];
+    const csvFile = req.files?.csv?.[0];
+    if (!files.length) {
       return res.status(400).json({ error: 'No photos provided' });
     }
 
@@ -205,6 +198,27 @@ router.post('/upload', requireActiveSubscription, (req, res, next) => {
       return res.status(400).json({ error: 'albumId is required' });
     }
 
+    // Parse CSV for player metadata
+    let playerMap = {};
+    if (csvFile) {
+      const csv = require('csv-parser');
+      const results = [];
+      const stream = require('stream');
+      await new Promise((resolve, reject) => {
+        const bufferStream = new stream.PassThrough();
+        bufferStream.end(csvFile.buffer);
+        bufferStream.pipe(csv())
+          .on('data', (data) => results.push(data))
+          .on('end', resolve)
+          .on('error', reject);
+      });
+      // Build player map by number or name
+      results.forEach(player => {
+        if (player.number) playerMap[player.number] = player;
+        if (player.name) playerMap[player.name] = player;
+      });
+    }
+
     if (req.studioId) {
       const album = await queryRow('SELECT id, studio_id as studioId FROM albums WHERE id = $1', [parsedAlbumId]);
       if (!album) {
@@ -214,16 +228,16 @@ router.post('/upload', requireActiveSubscription, (req, res, next) => {
         return res.status(403).json({ error: 'Cannot upload to an album outside your studio' });
       }
 
-      const additionalBytes = req.files.reduce((sum, file) => sum + Number(file.size || file.buffer?.length || 0), 0);
+      const additionalBytes = files.reduce((sum, file) => sum + Number(file.size || file.buffer?.length || 0), 0);
       await enforceStorageQuotaForStudio(req.studioId, additionalBytes);
     }
-    
+
     const photos = [];
-    for (let index = 0; index < req.files.length; index++) {
-      const file = req.files[index];
+    for (let index = 0; index < files.length; index++) {
+      const file = files[index];
       const blobName = makeBlobName(albumId, file.originalname);
       const photoUrl = await uploadImageBufferToAzure(file.buffer, blobName, file.mimetype);
-      
+
       // Extract image dimensions
       let width = null;
       let height = null;
@@ -234,10 +248,17 @@ router.post('/upload', requireActiveSubscription, (req, res, next) => {
       } catch (err) {
         console.error('Failed to extract image dimensions:', err);
       }
-      
+
+      // Match player metadata
+      let player = null;
+      if (playerMap) {
+        const baseName = file.originalname.replace(/\.[^.]+$/, '');
+        player = Object.values(playerMap).find(p => baseName.includes(p.number) || baseName.includes(p.name));
+      }
+
       const result = await queryRow(`
-        INSERT INTO photos (album_id, file_name, thumbnail_url, full_image_url, description, metadata, width, height, file_size_bytes)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        INSERT INTO photos (album_id, file_name, thumbnail_url, full_image_url, description, metadata, width, height, file_size_bytes, player_names, player_numbers)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         RETURNING id
       `, [
         parsedAlbumId,
@@ -249,8 +270,10 @@ router.post('/upload', requireActiveSubscription, (req, res, next) => {
         width,
         height,
         Number(file.size || file.buffer?.length || 0),
+        player?.name || null,
+        player?.number || null,
       ]);
-      
+
       photos.push({
         id: result.id,
         albumId: parsedAlbumId,
@@ -260,7 +283,9 @@ router.post('/upload', requireActiveSubscription, (req, res, next) => {
         description: parsedDescriptions[index] || '',
         metadata: parsedMetadata[index] || null,
         width: width,
-        height: height
+        height: height,
+        playerName: player?.name || null,
+        playerNumber: player?.number || null
       });
     }
 

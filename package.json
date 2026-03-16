@@ -2,7 +2,7 @@
   "name": "photolabreact",
   "private": true,
   "version": "1.0.1",
-  "type": "module",
+    "type": "module",
   "scripts": {
     "dev": "vite",
     "server": "node server/server.js",
@@ -31,6 +31,7 @@
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^2.0.0",
+    "@types/papaparse": "^5.5.2",
     "axios": "^1.6.2",
     "bcryptjs": "^3.0.3",
     "concurrently": "^9.2.1",
@@ -39,16 +40,19 @@
     "csv-parser": "^3.2.0",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
+    "face-api.js": "^0.22.2",
     "jsonwebtoken": "^9.0.3",
     "mssql": "^11.0.1",
     "multer": "^2.0.2",
     "nodemailer": "^8.0.2",
+    "papaparse": "^5.5.3",
     "react": "^18.2.0",
     "react-cropper": "^2.3.3",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.21.0",
     "sharp": "^0.34.5",
-    "stripe": "^20.3.1"
+    "stripe": "^20.3.1",
+    "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.0",
