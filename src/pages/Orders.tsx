@@ -4,7 +4,7 @@ import '../AdminStyles.css';
 import { useLocation } from 'react-router-dom';
 import { Order } from '../types';
 import { orderService } from '../services/orderService';
-import TopNavbar from '../components/TopNavbar';
+// import TopNavbar from '../components/TopNavbar';
 
 const Orders: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -34,7 +34,7 @@ const Orders: React.FC = () => {
 
   return (
     <>
-      <TopNavbar />
+      {/* <TopNavbar /> */}
       <div className="main-content dark-bg" style={{ minHeight: 'calc(100vh - 80px)' }}>
         <div className="page-header">
           <h1>Order History</h1>

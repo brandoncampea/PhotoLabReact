@@ -23,7 +23,7 @@ const SuperAdminPricing: React.FC = () => {
   useEffect(() => {
     const loadPriceLists = async () => {
       try {
-        const response = await api.get('/superadmin/pricelists');
+        const response = await api.get('/price-lists');
         setPriceLists(response.data || []);
         setError('');
       } catch (err) {

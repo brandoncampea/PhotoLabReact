@@ -127,26 +127,41 @@ router.get('/whcc/token', adminRequired, async (req, res) => {
 // ---------------------------------------------------------------------------
 router.get('/whcc/products', adminRequired, async (req, res) => {
   const { consumerKey, consumerSecret, isSandbox } = getCredentials(req);
+    const requestUrl = `${getBaseUrl(isSandbox)}/api/catalog`;
   if (!consumerKey || !consumerSecret) {
+    console.error('[WHCCProxy] Missing credentials:', { consumerKey, consumerSecret, isSandbox });
     return res.status(400).json({
       error: 'WHCC credentials not configured',
+      consumerKey,
+      consumerSecret,
+      isSandbox
     });
   }
   try {
     const token = await fetchToken(consumerKey, consumerSecret, isSandbox);
-    const response = await axios.get(`${getBaseUrl(isSandbox)}/api/ProductCatalog`, {
+    const response = await axios.get(requestUrl, {
       headers: { Authorization: `Bearer ${token}` },
     });
     res.json(response.data);
   } catch (err) {
-    console.error(
-      '[WHCCProxy] Products error:',
-      err?.response?.status,
-      err?.response?.data || err.message
-    );
+    console.error('[WHCCProxy] Products error:', {
+      requestUrl,
+      consumerKey,
+      consumerSecret,
+      isSandbox,
+      status: err?.response?.status,
+      headers: err?.response?.headers,
+      data: err?.response?.data,
+      message: err?.message,
+      stack: err?.stack
+    });
     res.status(502).json({
       error: 'Failed to fetch WHCC product catalog from upstream.',
       details: err?.response?.data || err.message,
+      requestUrl,
+      consumerKey,
+      consumerSecret,
+      isSandbox
     });
   }
 });

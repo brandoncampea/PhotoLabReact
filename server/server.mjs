@@ -1,3 +1,4 @@
+// ...existing code...
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
@@ -37,20 +38,25 @@ import smugmugRoutes from './routes/smugmug.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 const clientDistPath = path.resolve(__dirname, '../dist');
 const hasClientBuild = fs.existsSync(path.join(clientDistPath, 'index.html'));
 
-// Stripe webhooks MUST be registered before express.json() so the raw
+// CORS: allow frontend dev server (must be first middleware)
+app.use(cors({
+  origin: 'http://localhost:3004',
+  credentials: true
+}));
+
 // request body is available for signature verification.
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api/info', infoRoutes);
 
 // Middleware
-app.use(cors());
 app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb' }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Use routes

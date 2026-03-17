@@ -3,7 +3,7 @@ import '../App.css';
 import '../AdminStyles.css';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import TopNavbar from '../components/TopNavbar';
+// import TopNavbar from '../components/TopNavbar';
 
 const Register: React.FC = () => {
   const [formData, setFormData] = useState({
@@ -73,7 +73,7 @@ const Register: React.FC = () => {
 
   return (
     <>
-      <TopNavbar />
+      {/* <TopNavbar /> */}
       <div className="main-content dark-bg" style={{ minHeight: 'calc(100vh - 80px)' }}>
         <div className="auth-container">
           <div className="auth-card">

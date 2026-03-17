@@ -60,8 +60,9 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const superAdminLinks = useMemo(
     () => [
       { to: '/super-admin', label: '🛡️ Super Admin Dashboard' },
-      { to: '/super-admin-pricing#subscription-settings', label: '💳 Studio Subscription Payment Gateway' },
-      { to: '/super-admin-pricing', label: '💼 Subscription Pricing' },
+      { to: '/admin/stripe', label: '💳 Payment Methods' },
+      { to: '/admin/subscription-gateway', label: '💳 Studio Subscription Payment Gateway' },
+      { to: '/admin/subscription', label: '💼 Subscription Pricing' },
       { to: '/admin/configuration', label: '🖼️ Lab Configuration' },
       { to: '/admin/price-lists', label: '💰 Price Lists' },
       { to: '/admin/users', label: '👥 Users' },

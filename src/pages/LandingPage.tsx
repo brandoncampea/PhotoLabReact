@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import '../App.css';
 import '../AdminStyles.css';
-import TopNavbar from '../components/TopNavbar';
+// import TopNavbar from '../components/TopNavbar';
 
 export default function LandingPage() {
   const [backendInfo, setBackendInfo] = useState<{ version?: string; status?: string; features?: string[] }>({});
@@ -13,7 +13,8 @@ export default function LandingPage() {
       setLoading(true);
       setError('');
       try {
-        const res = await fetch('/api/info');
+        const apiUrl = import.meta.env.VITE_API_URL || '/api';
+        const res = await fetch(`${apiUrl}/info`);
         if (!res.ok) throw new Error('Failed to fetch backend info');
         const data = await res.json();
         setBackendInfo(data);
@@ -28,7 +29,6 @@ export default function LandingPage() {
 
   return (
     <>
-      <TopNavbar />
       <div className="main-content dark-bg" style={{ minHeight: 'calc(100vh - 80px)' }}>
         <h1 className="landing-title">Welcome to PhotoLab</h1>
         <div className="backend-status" style={{ marginBottom: '1.5rem', textAlign: 'center' }}>

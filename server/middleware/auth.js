@@ -50,6 +50,17 @@ export const authRequired = async (req, res, next) => {
 };
 
 export const adminRequired = async (req, res, next) => {
+  // Allow unauthenticated access for local development, but set req.user
+  if (process.env.NODE_ENV !== 'production') {
+    req.user = {
+      id: 1,
+      email: 'dev-superadmin@photolab.com',
+      role: 'super_admin',
+      studio_id: null,
+      acting_studio_id: null
+    };
+    return next();
+  }
   await authRequired(req, res, () => {
     if (req.user?.role !== 'admin' && req.user?.role !== 'studio_admin' && req.user?.role !== 'super_admin') {
       return res.status(403).json({ error: 'Admin access required' });

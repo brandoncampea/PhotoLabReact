@@ -5,7 +5,7 @@ import { Link } from 'react-router-dom';
 import { Album } from '../types';
 import { albumService } from '../services/albumService';
 import AlbumCoverCarousel from '../components/AlbumCoverCarousel';
-import TopNavbar from '../components/TopNavbar';
+// import TopNavbar from '../components/TopNavbar';
 
 const Albums: React.FC = () => {
   const [albums, setAlbums] = useState<Album[]>([]);
@@ -84,7 +84,7 @@ const Albums: React.FC = () => {
 
   return (
     <>
-      <TopNavbar />
+      {/* <TopNavbar /> */}
       <div className="main-content dark-bg" style={{ minHeight: 'calc(100vh - 80px)' }}>
         {shareNotification && (
           <div style={{

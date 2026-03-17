@@ -1,4 +1,4 @@
-// ...existing code...
+
 import { Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
@@ -6,6 +6,11 @@ import { CartProvider } from './contexts/CartContext';
 import Navbar from './components/Navbar';
 import './App.css';
 import './AdminStyles.css';
+
+const AdminSubscriptionGateway = lazy(() => import('./pages/admin/AdminSubscriptionGateway'));
+
+const AdminSubscription = lazy(() => import('./pages/admin/AdminSubscription'));
+const AdminStripe = lazy(() => import('./pages/admin/AdminStripe'));
 
 const SearchPage = lazy(() => import('./pages/SearchPage'));
 const SuperAdminPricing = lazy(() => import('./pages/admin/SuperAdminPricing'));
@@ -42,48 +47,47 @@ function App() {
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <AuthProvider>
           <CartProvider>
-            <div className="app">
-              <Navbar />
-              <main className="main-content">
-                <Suspense fallback={<div className="loader">Loading...</div>}>
-                  <Routes>
-                    <Route path="/" element={<LandingPage />} />
-                    <Route path="/studio-signup" element={<StudioSignup />} />
-                    <Route path="/login" element={<Login />} />
-                    <Route path="/register" element={<Register />} />
-                    <Route path="/albums" element={<Albums />} />
-                    <Route path="/albums/:albumId" element={<AlbumDetails />} />
-                    <Route path="/cart" element={<Cart />} />
-                    <Route path="/orders" element={<Orders />} />
-                    <Route path="/search" element={<SearchPage />} />
-                    <Route path="/studio/:studioSlug" element={<StudioPublicPage />} />
-                    <Route path="/super-admin" element={<SuperAdminDashboard />} />
-                    <Route path="/super-admin-pricing" element={<SuperAdminPricing />} />
-                    <Route path="/admin/studio-dashboard" element={<StudioAdminDashboard />} />
-                    <Route path="/admin/dashboard" element={<AdminDashboard />} />
-                    <Route path="/admin/analytics" element={<AdminAnalytics />} />
-                    <Route path="/admin/albums" element={<AdminAlbums />} />
-                    <Route path="/admin/photos" element={<AdminPhotos />} />
-                    <Route path="/admin/products" element={<AdminProducts />} />
-                    <Route path="/admin/orders" element={<AdminOrders />} />
-                    <Route path="/admin/customers" element={<AdminCustomers />} />
-                    <Route path="/admin/shipping" element={<AdminShipping />} />
-                    <Route path="/admin/discount-codes" element={<AdminDiscountCodes />} />
-                    <Route path="/admin/watermarks" element={<AdminWatermarks />} />
-                    <Route path="/admin/profile" element={<AdminProfile />} />
-                    <Route path="/admin/smugmug" element={<AdminSmugMug />} />
-                    <Route path="/admin/price-lists" element={<AdminPriceLists />} />
-                    <Route path="/admin/configuration" element={<AdminConfiguration />} />
-                    <Route path="/admin/users" element={<AdminUsers />} />
-                    <Route path="/admin/studio-admins" element={<AdminStudioAdmins />} />
-                  </Routes>
-                </Suspense>
-              </main>
-            </div>
+            <Suspense fallback={<div className="loader">Loading...</div>}>
+              <Routes>
+                <Route path="/" element={<><Navbar /><LandingPage /></>} />
+                <Route path="/studio-signup" element={<><Navbar /><StudioSignup /></>} />
+                <Route path="/login" element={<><Navbar /><Login /></>} />
+                <Route path="/register" element={<><Navbar /><Register /></>} />
+                <Route path="/albums" element={<><Navbar /><Albums /></>} />
+                <Route path="/albums/:albumId" element={<><Navbar /><AlbumDetails /></>} />
+                <Route path="/cart" element={<><Navbar /><Cart /></>} />
+                <Route path="/orders" element={<><Navbar /><Orders /></>} />
+                <Route path="/search" element={<><Navbar /><SearchPage /></>} />
+                <Route path="/studio/:studioSlug" element={<><Navbar /><StudioPublicPage /></>} />
+                {/* Admin and super admin routes do NOT render Navbar */}
+                <Route path="/super-admin" element={<SuperAdminDashboard />} />
+                <Route path="/super-admin-pricing" element={<SuperAdminPricing />} />
+                <Route path="/admin/studio-dashboard" element={<StudioAdminDashboard />} />
+                <Route path="/admin/dashboard" element={<AdminDashboard />} />
+                <Route path="/admin/analytics" element={<AdminAnalytics />} />
+                <Route path="/admin/albums" element={<AdminAlbums />} />
+                <Route path="/admin/photos" element={<AdminPhotos />} />
+                <Route path="/admin/products" element={<AdminProducts />} />
+                <Route path="/admin/orders" element={<AdminOrders />} />
+                <Route path="/admin/customers" element={<AdminCustomers />} />
+                <Route path="/admin/shipping" element={<AdminShipping />} />
+                <Route path="/admin/discount-codes" element={<AdminDiscountCodes />} />
+                <Route path="/admin/watermarks" element={<AdminWatermarks />} />
+                <Route path="/admin/profile" element={<AdminProfile />} />
+                <Route path="/admin/smugmug" element={<AdminSmugMug />} />
+                <Route path="/admin/price-lists" element={<AdminPriceLists />} />
+                <Route path="/admin/configuration" element={<AdminConfiguration />} />
+                <Route path="/admin/users" element={<AdminUsers />} />
+                <Route path="/admin/studio-admins" element={<AdminStudioAdmins />} />
+                <Route path="/admin/subscription" element={<AdminSubscription />} />
+                <Route path="/admin/subscription-gateway" element={<AdminSubscriptionGateway />} />
+                <Route path="/admin/stripe" element={<AdminStripe />} />
+              </Routes>
+            </Suspense>
           </CartProvider>
         </AuthProvider>
       </BrowserRouter>
     );
-}
+  }
 
-export default App;
+  export default App;

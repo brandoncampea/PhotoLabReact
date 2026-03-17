@@ -231,6 +231,36 @@ router.post('/', authRequired, async (req, res) => {
   }
 });
 
+// Get Stripe product mapping for all subscription plans
+router.get('/stripe-products', async (req, res) => {
+  try {
+    const hasPlansTable = await tableExists('subscription_plans');
+    let plans;
+    if (hasPlansTable) {
+      const selectClause = await getPlanSelectClause();
+      plans = await queryRows(`
+        SELECT ${selectClause}
+        FROM subscription_plans
+        ORDER BY monthly_price ASC
+      `);
+    } else {
+      plans = getFallbackPlansFromConstants();
+    }
+
+    // Map to only id, name, and Stripe price IDs
+    const mapped = plans.map(plan => ({
+      id: plan.id,
+      name: plan.name,
+      stripe_monthly_price_id: plan.stripe_monthly_price_id || plan.stripePriceId || null,
+      stripe_yearly_price_id: plan.stripe_yearly_price_id || null
+    }));
+    res.json(mapped);
+  } catch (error) {
+    console.error('Error fetching Stripe product mapping:', error);
+    res.status(500).json({ error: 'Failed to fetch Stripe product mapping' });
+  }
+});
+
 // Update subscription plan pricing (super admin only)
 router.patch('/:planId', authRequired, async (req, res) => {
   try {

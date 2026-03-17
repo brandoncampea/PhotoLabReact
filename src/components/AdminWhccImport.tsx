@@ -130,13 +130,18 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
     setError(null);
 
     try {
+      // Debug logging
+      console.log('[WHCC Import] Selected Price List ID:', selectedPriceListId);
+      console.log('[WHCC Import] Selected Products Map:', selectedProducts);
       const selectedWhccProducts = whccProducts.filter((p) =>
         selectedProducts.has(p.productUID)
       );
+      console.log('[WHCC Import] Filtered WHCC Products:', selectedWhccProducts);
 
       // Get existing price list to check for duplicates
       const priceList = await priceListAdminService.getById(selectedPriceListId);
       const existingProductNames = new Set(priceList?.products?.map(p => p.name.toLowerCase()) || []);
+      console.log('[WHCC Import] Existing product names:', existingProductNames);
 
       // Group similar products by base name to create a product with multiple sizes
       const groupedProducts = new Map<string, typeof selectedWhccProducts>();
@@ -157,6 +162,7 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
         }
         groupedProducts.get(baseName)!.push(product);
       });
+      console.log('[WHCC Import] Grouped products:', groupedProducts);
 
       const itemsToAdd: any[] = [];
       const skippedDuplicates: string[] = [];
@@ -208,6 +214,8 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
           whccProductUIDs: uniqueProducts.map(p => p.productUID),
         });
       });
+      console.log('[WHCC Import] Items to add:', itemsToAdd);
+      console.log('[WHCC Import] Skipped duplicates:', skippedDuplicates);
 
       if (itemsToAdd.length === 0) {
         setError('All selected products already exist in this price list');
@@ -216,7 +224,8 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
       }
 
       // Add to price list
-      await priceListAdminService.addItemsToPriceList(selectedPriceListId, itemsToAdd);
+      const addResult = await priceListAdminService.addItemsToPriceList(selectedPriceListId, itemsToAdd);
+      console.log('[WHCC Import] addItemsToPriceList result:', addResult);
 
       let confirmMsg = `✓ Successfully imported ${itemsToAdd.length} product group(s)`;
       if (skippedDuplicates.length > 0) {
@@ -226,6 +235,7 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
 
       onImportComplete();
     } catch (err) {
+      console.error('[WHCC Import] Import failed:', err);
       setError(`Import failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {
       setImporting(false);

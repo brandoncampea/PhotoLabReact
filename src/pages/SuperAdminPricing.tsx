@@ -1,5 +1,7 @@
+
 import { useState, useEffect } from 'react';
 import AdminLayout from '../components/AdminLayout';
+import api from '../services/api';
 
 type PricingItem = {
   id: string;
@@ -7,17 +9,14 @@ type PricingItem = {
   price: string;
 };
 
+
 const fetchPricing = async (): Promise<PricingItem[]> => {
-  // Replace with real API call
-  return [
-    { id: '1', productName: 'Photo Print', price: '10.00' },
-    { id: '2', productName: 'Canvas', price: '25.00' },
-  ];
+  const response = await api.get<PricingItem[]>('/price-lists');
+  return response.data;
 };
 
-const updatePricing = async (): Promise<void> => {
-  // Replace with real API call
-  return;
+const updatePricing = async (id: string, price: string): Promise<void> => {
+  await api.put(`/price-lists/${id}`, { price });
 };
 
 const SuperAdminPricing = () => {
@@ -33,8 +32,8 @@ const SuperAdminPricing = () => {
         setPricing(data);
         setLoading(false);
       })
-      .catch(() => {
-        setError('Failed to load pricing');
+      .catch((err) => {
+        setError(err.response?.data?.message || 'Failed to load pricing');
         setLoading(false);
       });
   }, []);
@@ -46,14 +45,15 @@ const SuperAdminPricing = () => {
 
   const handleSave = async (index: number) => {
     try {
-      await updatePricing();
+      const item = pricing[index];
+      await updatePricing(item.id, editValue);
       const updated = [...pricing];
       updated[index] = { ...updated[index], price: editValue };
       setPricing(updated);
       setEditIndex(-1);
       setEditValue('');
-    } catch {
-      setError('Failed to update pricing');
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Failed to update pricing');
     }
   };
 

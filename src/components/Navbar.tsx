@@ -15,56 +15,7 @@ const Navbar: React.FC = () => {
   }, []);
 
 
-  return (
-    <header className="navbar dark-bg" role="navigation">
-      <div className="nav-container">
-        <Link to="/" className="nav-brand dark-card">
-          PhotoLab
-        </Link>
-        <nav className="nav-links">
-          {user ? (
-            <>
-              {user.role === 'admin' && (
-                <Link to="/admin/dashboard" className="admin-nav-link dark-btn">
-                  ⚙️ Admin
-                </Link>
-              )}
-              {user.role === 'studio_admin' && (
-                <Link to="/admin/studio-dashboard" className="admin-nav-link dark-btn">
-                  📊 Studio Dashboard
-                </Link>
-              )}
-              {user.role === 'super_admin' && (
-                <Link to="/super-admin" className="admin-nav-link dark-btn">
-                  👑 Super Admin
-                </Link>
-              )}
-              <div className="user-actions">
-                <span className="user-name">
-                  {user.firstName} {user.lastName}
-                </span>
-                <button onClick={logout} className="btn-logout">
-                  Logout
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              <Link to="/" className="nav-link">
-                Home
-              </Link>
-              <Link to="/studio-signup" className="nav-link nav-trial">
-                🚀 Start Free Trial
-              </Link>
-              <Link to="/login" className="nav-link">
-                Login
-              </Link>
-            </>
-          )}
-        </nav>
-      </div>
-    </header>
-  );
+  return null;
 };
 
 export default Navbar;
