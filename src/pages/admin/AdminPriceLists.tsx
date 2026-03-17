@@ -60,7 +60,7 @@ const AdminPriceLists: React.FC = () => {
   const [importStep, setImportStep] = useState<'upload' | 'mapping' | 'preview'>('upload');
   const [importTargetPriceListId, setImportTargetPriceListId] = useState<number | null>(null);
   const [combineImportVariants, setCombineImportVariants] = useState(true);
-  const selectedLab = siteConfigService.getSelectedLab();
+  // ...existing code...
 
   useEffect(() => {
     loadData();
@@ -1125,7 +1125,7 @@ const AdminPriceLists: React.FC = () => {
                               const product = selectedPriceList.products.find(p => p.id === item.productId);
                               return (
                                 <div key={idx} style={{ fontSize: '0.85rem', marginBottom: '0.25rem' }}>
-                                  {item.quantity}x {product?.name || 'Unknown'} ({size?.name || 'Size'})
+                                   {item.quantity}x {product?.name || 'Unknown'}
                                 </div>
                               );
                             })}

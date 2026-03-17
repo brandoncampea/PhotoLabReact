@@ -66,33 +66,24 @@ class SiteConfigService {
    * Enable/disable a specific site
    */
   setSiteEnabled(site: 'whcc' | 'roes' | 'mpix', enabled: boolean): void {
-    if (enabled) {
-      // Only one active lab at a time
-      this.setConfig({
-        whccEnabled: site === 'whcc',
-        roesEnabled: site === 'roes',
-        mpixEnabled: site === 'mpix',
-        selectedLab: site,
-      });
-      return;
-    }
-
     const current = this.getConfig();
     const updated: SiteConfig = {
       ...current,
-      whccEnabled: site === 'whcc' ? false : current.whccEnabled,
-      roesEnabled: site === 'roes' ? false : current.roesEnabled,
-      mpixEnabled: site === 'mpix' ? false : current.mpixEnabled,
+      whccEnabled: site === 'whcc' ? enabled : current.whccEnabled,
+      roesEnabled: site === 'roes' ? enabled : current.roesEnabled,
+      mpixEnabled: site === 'mpix' ? enabled : current.mpixEnabled,
+      // selectedLab logic: keep as is or update if only one lab is enabled
       selectedLab: current.selectedLab,
     };
-
-    if (updated.selectedLab === site) {
-      if (updated.whccEnabled) updated.selectedLab = 'whcc';
-      else if (updated.mpixEnabled) updated.selectedLab = 'mpix';
-      else if (updated.roesEnabled) updated.selectedLab = 'roes';
-      else updated.selectedLab = null;
+    // Optionally update selectedLab if only one lab is enabled
+    const enabledLabs = [
+      updated.whccEnabled ? 'whcc' : null,
+      updated.mpixEnabled ? 'mpix' : null,
+      updated.roesEnabled ? 'roes' : null,
+    ].filter(Boolean);
+    if (enabledLabs.length === 1) {
+      updated.selectedLab = enabledLabs[0] as 'whcc' | 'roes' | 'mpix';
     }
-
     this.setConfig(updated);
   }
 

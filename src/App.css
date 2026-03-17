@@ -78,29 +78,38 @@
         font-size: 2.5rem;
         margin-bottom: 1rem;
       }
-      height: 60px !important;
-      height: 100% !important;
-      display: flex !important;
-      align-items: center !important;
-      height: 40px !important;
-      font-size: 1.2rem !important;
-      background: #7c5cff !important;
-      color: #fff !important;
-    position: fixed !important;
-    top: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
-    position: fixed !important;
-    top: 40px !important;
-    left: 0 !important;
-    right: 0 !important;
-  background: linear-gradient(90deg, #7c5cff 0%, #23272f 100%) !important;
-  color: #fff !important;
+      /* Variables should be defined in :root, not inside selectors */
+       :root {
+         --sidebar-width: 260px;
+         --primary-color: #7c5cff;
+         --bg-dark: #23272f;
+         --bg-light: #181a1b;
+         --text-light: #fff;
+         --text-dark: #f3f3f3;
+         --header-height: 60px;
+         --subheader-height: 40px;
+       }
+      height: var(--header-height);
+      display: flex;
+      align-items: center;
+      font-size: 1.2rem;
+      background: var(--primary-color);
+      color: var(--text-light);
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    position: fixed;
+    top: var(--subheader-height);
+    left: 0;
+    right: 0;
+  background: linear-gradient(90deg, var(--primary-color) 0%, var(--bg-dark) 100%);
+  color: var(--text-light);
   box-shadow: 0 2px 8px rgba(0,0,0,0.18);
-  background: #181a1b !important;
-  color: #f3f3f3 !important;
-  background: #23272f !important;
-  color: #f3f3f3 !important;
+  background: var(--bg-light);
+  color: var(--text-dark);
+  background: var(--bg-dark);
+  color: var(--text-dark);
 .debug-route-banner {
   position: fixed;
   top: 0;
@@ -116,8 +125,8 @@
   z-index: 1000;
   border-bottom: 2px solid #333;
 }
-  width: 100vw !important;
-  left: 0 !important;
+  width: 100vw;
+  left: 0;
   right: 0 !important;
   position: fixed !important;
   top: 0 !important;
@@ -175,9 +184,9 @@ body {
   align-items: center !important;
   box-sizing: border-box !important;
 }
-  width: 100vw !important;
-  left: 0 !important;
-  right: 0 !important;
+  width: 100vw;
+  left: 0;
+  right: 0;
   position: fixed !important;
   top: 40px !important;
 

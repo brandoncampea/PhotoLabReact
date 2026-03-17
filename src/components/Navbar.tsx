@@ -1,26 +1,19 @@
-import React, { useState, useEffect, KeyboardEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useCart } from '../contexts/CartContext';
 // import { profileService } from '../services/profileService';
 
 const Navbar: React.FC = () => {
   const { user, logout } = useAuth();
-  const { getTotalItems } = useCart();
-  const navigate = useNavigate();
-  const [quickSearch, setQuickSearch] = useState('');
+  const {} = useCart();
+  // ...existing code...
   // const [logoUrl, setLogoUrl] = useState('');
 
   useEffect(() => {
     // If you need to load logo asynchronously, do it here
   }, []);
 
-  const handleQuickSearch = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && quickSearch.trim()) {
-      navigate(`/search?q=${encodeURIComponent(quickSearch)}`);
-      setQuickSearch('');
-    }
-  };
 
   return (
     <header className="navbar dark-bg" role="navigation">

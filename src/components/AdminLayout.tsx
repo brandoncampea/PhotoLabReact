@@ -95,61 +95,61 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
   return (
     <div className="admin-layout">
-      <aside className="sidebar">
-        <div className="sidebar-header">PhotoLab</div>
-        <div className="sidebar-links">
-          {canSwitchMenu && (
-            <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
-              <button
-                onClick={() => {
-                  clearStudioView();
-                  setMenuMode('super');
-                }}
-                className={menuMode === 'super' ? 'button' : 'button'}
-                style={{ background: menuMode === 'super' ? 'var(--accent)' : 'var(--bg-panel)' }}
-              >
-                Super
-              </button>
-              <button
-                onClick={() => setMenuMode('studio')}
-                className={menuMode === 'studio' ? 'button' : 'button'}
-                style={{ background: menuMode === 'studio' ? 'var(--accent)' : 'var(--bg-panel)' }}
-              >
-                Studio
-              </button>
-            </div>
-          )}
-          {viewAsStudioName && isSuperAdmin && (
-            <div style={{ color: 'var(--accent)', marginBottom: '16px' }}>
-              Viewing as studio: <strong>{viewAsStudioName}</strong>
-              <button
-                onClick={() => {
-                  clearStudioView();
-                  setMenuMode('super');
-                  navigate('/super-admin');
-                }}
-                className="button"
-                style={{ marginTop: '8px', width: '100%' }}
-              >
-                Exit Studio View
-              </button>
-            </div>
-          )}
-          {linksToRender.map((link) => (
-            <Link
-              key={link.to}
-              to={link.to}
-              className={`sidebar-link${isActive(link.to) ? ' active' : ''}`}
+      <aside className="admin-panel">
+        <div className="admin-brand">PhotoLab</div>
+        {canSwitchMenu && (
+          <div className="admin-menu-toggle-row">
+            <button
+              onClick={() => {
+                clearStudioView();
+                setMenuMode('super');
+              }}
+              className={menuMode === 'super' ? 'button active' : 'button'}
             >
-              {link.label}
-            </Link>
-          ))}
-          <div style={{ marginTop: '32px', borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
-            <Link to="/" className="sidebar-link">🏠 Customer Site</Link>
-            <button onClick={handleLogout} className="sidebar-link" style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none', color: 'var(--text-secondary)', marginTop: '8px' }}>
-              🚪 Logout
+              Super
+            </button>
+            <button
+              onClick={() => setMenuMode('studio')}
+              className={menuMode === 'studio' ? 'button active' : 'button'}
+            >
+              Studio
             </button>
           </div>
+        )}
+        {viewAsStudioName && isSuperAdmin && (
+          <div className="studio-view-box">
+            Viewing as studio: <strong>{viewAsStudioName}</strong>
+            <button
+              onClick={() => {
+                clearStudioView();
+                setMenuMode('super');
+                navigate('/super-admin');
+              }}
+              className="button"
+              style={{ marginTop: '8px', width: '100%' }}
+            >
+              Exit Studio View
+            </button>
+          </div>
+        )}
+        <div className="admin-nav-group">
+          <div className="admin-nav-flex">
+            {linksToRender.map((link) => (
+              <Link
+                key={link.to}
+                to={link.to}
+                className={`admin-nav-link${isActive(link.to) ? ' active' : ''}`}
+              >
+                {link.label}
+              </Link>
+            ))}
+          </div>
+        </div>
+        <div className="admin-panel-footer">
+          <Link to="/" className="admin-nav-link">🏠 Customer Site</Link>
+          <button onClick={handleLogout} className="logout-btn">
+            🚪 Logout
+          </button>
         </div>
       </aside>
       <main className="admin-content">

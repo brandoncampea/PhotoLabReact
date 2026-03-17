@@ -6,6 +6,9 @@ import { fileURLToPath } from 'url';
 import { initializeDatabase } from './mssql.mjs';
 
 import authRoutes from './routes/auth.js';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const infoRoutes = require('./routes/info.cjs');
 import albumRoutes from './routes/albums.js';
 import photoRoutes from './routes/photos.js';
 import orderRoutes from './routes/orders.js';
@@ -42,6 +45,7 @@ const hasClientBuild = fs.existsSync(path.join(clientDistPath, 'index.html'));
 // Stripe webhooks MUST be registered before express.json() so the raw
 // request body is available for signature verification.
 app.use('/api/webhooks', webhookRoutes);
+app.use('/api/info', infoRoutes);
 
 // Middleware
 app.use(cors());

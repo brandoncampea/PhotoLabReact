@@ -165,9 +165,8 @@ const StudioAdminDashboard: React.FC = () => {
 
   const loadStats = async () => {
     try {
-      const [ordersResult, customersResult, albumsResult] = await Promise.allSettled([
+      const [ordersResult, albumsResult] = await Promise.allSettled([
         orderService.getAdminOrders(),
-        albumService.getAlbums(),
         albumService.getAlbums(),
       ]);
 
@@ -287,8 +286,8 @@ const StudioAdminDashboard: React.FC = () => {
   const loadRevenueBreakdown = async () => {
     try {
       setRevenueBreakdownLoading(true);
-      const effectiveStudioId = studioFeatureService.getEffectiveStudioId(user);
-      const data = await analyticsService.getRevenueBreakdown(effectiveStudioId);
+      // ...existing code...
+      const data = await analyticsService.getRevenueBreakdown();
       setRevenueBreakdown(data);
       setSelectedAlbumId(data.byAlbum?.[0]?.albumId || null);
       setRevenueBreakdownError('');
