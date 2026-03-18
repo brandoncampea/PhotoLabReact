@@ -16,153 +16,103 @@ interface RevenueBreakdownSummary {
   totalProfit: number;
   totalItems: number;
   totalOrders: number;
-}
+  return (
+    <AdminLayout>
+      <div className="admin-page">
+        <div className="dashboard-header">🏢 Studio Admin Dashboard</div>
+        <div className="dashboard-card" style={{ marginBottom: '1.2rem' }}>
+          <div className="dashboard-stats">
+            <div className="dashboard-stat">
+              <div className="dashboard-stat-title">Total Revenue</div>
+              <div className="dashboard-stat-value">${displayTotalRevenue.toFixed(2)}</div>
+              <div className="dashboard-stat-sub">Avg: ${averageOrderValue} per order</div>
+            </div>
+            <div className="dashboard-stat">
+              <div className="dashboard-stat-title">Total Orders</div>
+              <div className="dashboard-stat-value">{displayTotalOrders}</div>
+              <div className="dashboard-stat-sub">{orderCompletionRate}% completion rate</div>
+            </div>
+            <div className="dashboard-stat">
+              <div className="dashboard-stat-title">Total Customers</div>
+              <div className="dashboard-stat-value">{stats?.totalCustomers || 0}</div>
+              <div className="dashboard-stat-sub">Active user accounts</div>
+            </div>
+            <div className="dashboard-stat">
+              <div className="dashboard-stat-title">Pending Orders</div>
+              <div className="dashboard-stat-value">{stats?.pendingOrders || 0}</div>
+              <div className="dashboard-stat-sub">Requires attention</div>
+            </div>
+            <div className="dashboard-stat">
+              <div className="dashboard-stat-title">Total Profit</div>
+              <div className="dashboard-stat-value">${profitData.profit.toFixed(2)}</div>
+              <div className="dashboard-stat-sub">{profitData.margin}% margin</div>
+            </div>
+          </div>
+        </div>
 
-interface RevenueByCategory {
-  category: string;
-  revenue: number;
-  cost: number;
-  profit: number;
-  quantity: number;
-  orderCount: number;
-}
+        <div className="dashboard-section-header">📈 Traffic Overview</div>
+        <div className="dashboard-stats">
+          <div className="dashboard-stat">
+            <div className="dashboard-stat-title">Total Visitors</div>
+            <div className="dashboard-stat-value">{analytics?.totalVisitors || 0}</div>
+          </div>
+          <div className="dashboard-stat">
+            <div className="dashboard-stat-title">Page Views</div>
+            <div className="dashboard-stat-value">{analytics?.totalPageViews || 0}</div>
+          </div>
+          <div className="dashboard-stat">
+            <div className="dashboard-stat-title">Albums Viewed</div>
+            <div className="dashboard-stat-value">{analytics?.albumViews || 0}</div>
+          </div>
+          <div className="dashboard-stat">
+            <div className="dashboard-stat-title">Photos Viewed</div>
+            <div className="dashboard-stat-value">{analytics?.photoViews || 0}</div>
+          </div>
+        </div>
 
-interface RevenueByAlbum {
-  albumId: number;
-  albumName: string;
-  albumCategory: string;
-  photoCount: number;
-  revenue: number;
-  cost: number;
-  profit: number;
-  quantity: number;
-  orderCount: number;
-}
+        <div className="dashboard-section-header">📊 Order Status</div>
+        <div className="dashboard-stats">
+          <div className="dashboard-stat">
+            <div className="dashboard-stat-title">Completed</div>
+            <div className="dashboard-stat-value">{displayTotalOrders - (stats?.pendingOrders || 0)}</div>
+          </div>
+          <div className="dashboard-stat">
+            <div className="dashboard-stat-title">Pending</div>
+            <div className="dashboard-stat-value">{stats?.pendingOrders || 0}</div>
+          </div>
+          <div className="dashboard-stat">
+            <div className="dashboard-stat-title">Completion Rate</div>
+            <div className="dashboard-stat-value" style={{ color: '#27ae60', fontWeight: 700 }}>{orderCompletionRate}%</div>
+          </div>
+        </div>
 
-interface RevenueByPhoto {
-  albumId: number;
-  albumName: string;
-  photoId: number;
-  fileName: string;
-  thumbnailUrl?: string;
-  revenue: number;
-  cost: number;
-  profit: number;
-  quantity: number;
-  orderCount: number;
-}
+        <div className="dashboard-section-header">🔥 Most Popular Albums</div>
+        {stats?.topAlbums && stats.topAlbums.length > 0 ? (
+          <div className="dashboard-stats">
+            {stats.topAlbums.map(({ album, orderCount }) => (
+              <div className="dashboard-stat" key={album.id}>
+                <div className="dashboard-stat-title">{album.name}</div>
+                <div className="dashboard-stat-value">{orderCount} orders</div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="dashboard-empty-state">
+            No album orders yet. Sales will appear here once customers purchase.
+          </div>
+        )}
 
-interface RevenueBreakdown {
-  summary: RevenueBreakdownSummary;
-  byCategory: RevenueByCategory[];
-  byAlbum: RevenueByAlbum[];
-  byProduct: Array<{
-    productId: number;
-    productName: string;
-    category: string;
-    revenue: number;
-    cost: number;
-    profit: number;
-    quantity: number;
-    orderCount: number;
-  }>;
-  bySize: Array<{
-    productId: number;
-    productName: string;
-    productSizeId: number;
-    sizeName: string;
-    revenue: number;
-    cost: number;
-    profit: number;
-    quantity: number;
-    orderCount: number;
-  }>;
-  byPhoto: RevenueByPhoto[];
-}
-
-interface StudioSubscriptionAccess {
-  planId: string | null;
-  planName: string | null;
-  hasAdvancedAnalytics: boolean;
-}
-
-interface StudioProfitSummaryLite {
-  totalOrders: number;
-  totalStudioRevenue: number;
-  totalStudioProfit: number;
-}
-
-const StudioAdminDashboard: React.FC = () => {
-  const { user } = useAuth();
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [showRevenueModal, setShowRevenueModal] = useState(false);
-  const [revenueBreakdown, setRevenueBreakdown] = useState<RevenueBreakdown | null>(null);
-  const [revenueBreakdownLoading, setRevenueBreakdownLoading] = useState(false);
-  const [revenueBreakdownError, setRevenueBreakdownError] = useState('');
-  const [selectedAlbumId, setSelectedAlbumId] = useState<number | null>(null);
-  const [revenueFocus, setRevenueFocus] = useState<'revenue' | 'profit'>('revenue');
-  const [subscriptionAccess, setSubscriptionAccess] = useState<StudioSubscriptionAccess>({
-    planId: null,
-    planName: null,
-    hasAdvancedAnalytics: true,
-  });
-  const [studioProfitSummary, setStudioProfitSummary] = useState<StudioProfitSummaryLite | null>(null);
-  const [analytics, setAnalytics] = useState<{ totalVisitors: number; totalPageViews: number; albumViews: number; photoViews: number } | null>(null);
-
-  useEffect(() => {
-    loadStats();
-    const interval = setInterval(loadStats, 30000);
-    return () => clearInterval(interval);
-  }, [user]);
-
-  useEffect(() => {
-    const loadSubscriptionAccess = async () => {
-      const effectiveStudioId = studioFeatureService.getEffectiveStudioId(user);
-      if (!effectiveStudioId) {
-        setSubscriptionAccess({ planId: null, planName: null, hasAdvancedAnalytics: true });
-        return;
-      }
-
-      try {
-        const response = await api.get(`/studios/${effectiveStudioId}/subscription`);
-        const plan = response.data?.plan || null;
-        const hasAdvancedAnalytics = Array.isArray(plan?.features) && plan.features.includes('Advanced analytics');
-        setSubscriptionAccess({
-          planId: plan?.id || null,
-          planName: plan?.name || null,
-          hasAdvancedAnalytics,
-        });
-      } catch (error) {
-        setSubscriptionAccess({ planId: null, planName: null, hasAdvancedAnalytics: false });
-      }
-    };
-    loadSubscriptionAccess();
-  }, [user]);
-
-  useEffect(() => {
-    const loadStudioProfitSummary = async () => {
-      const effectiveStudioId = studioFeatureService.getEffectiveStudioId(user);
-      if (!effectiveStudioId || user?.role !== 'studio_admin') {
-        setStudioProfitSummary(null);
-        return;
-      }
-
-      try {
-        const response = await api.get(`/studios/${effectiveStudioId}/profit`);
-        setStudioProfitSummary({
-          totalOrders: Number(response.data?.totalOrders) || 0,
-          totalStudioRevenue: Number(response.data?.totalStudioRevenue) || 0,
-          totalStudioProfit: Number(response.data?.totalStudioProfit) || 0,
-        });
-      } catch (error) {
-        setStudioProfitSummary(null);
-      }
-    };
-    loadStudioProfitSummary();
-  }, [user]);
-
+        <div className="dashboard-section-header">⚡ Quick Actions</div>
+        <div className="dashboard-quick-actions">
+          <a href="/admin/orders" className="dashboard-quick-action-link">🛒 Manage Orders</a>
+          <a href="/admin/albums" className="dashboard-quick-action-link">📁 Manage Albums</a>
+          <a href="/admin/products" className="dashboard-quick-action-link">🛍️ Manage Products</a>
+          <a href="/admin/customers" className="dashboard-quick-action-link">👥 View Customers</a>
+          <a href="/admin/analytics" className="dashboard-quick-action-link">📈 View Analytics</a>
+          <a href="/admin/shipping" className="dashboard-quick-action-link">🚚 Shipping Settings</a>
+        </div>
+      </div>
+    </AdminLayout>
   const loadStats = async () => {
     try {
       const [ordersResult, albumsResult] = await Promise.allSettled([

@@ -234,16 +234,24 @@ router.post('/', authRequired, async (req, res) => {
 // Get Stripe product mapping for all subscription plans
 router.get('/stripe-products', async (req, res) => {
   try {
+    console.log('[stripe-products] Endpoint hit');
     const hasPlansTable = await tableExists('subscription_plans');
+    console.log('[stripe-products] hasPlansTable:', hasPlansTable);
     let plans;
     if (hasPlansTable) {
       const selectClause = await getPlanSelectClause();
-      plans = await queryRows(`
-        SELECT ${selectClause}
-        FROM subscription_plans
-        ORDER BY monthly_price ASC
-      `);
-      console.log('[stripe-products] subscription_plans table exists. Plans:', plans);
+      console.log('[stripe-products] selectClause:', selectClause);
+      try {
+        plans = await queryRows(`
+          SELECT ${selectClause}
+          FROM subscription_plans
+          ORDER BY monthly_price ASC
+        `);
+        console.log('[stripe-products] subscription_plans table exists. Plans:', plans);
+      } catch (queryError) {
+        console.error('[stripe-products] Query error:', queryError);
+        throw queryError;
+      }
     } else {
       plans = getFallbackPlansFromConstants();
       console.log('[stripe-products] subscription_plans table missing. Using fallback:', plans);
@@ -260,6 +268,9 @@ router.get('/stripe-products', async (req, res) => {
     res.json(mapped);
   } catch (error) {
     console.error('[stripe-products] Error fetching Stripe product mapping:', error);
+    if (error && error.stack) {
+      console.error('[stripe-products] Error stack:', error.stack);
+    }
     res.status(500).json({ error: 'Failed to fetch Stripe product mapping', details: error?.message || error });
   }
 });

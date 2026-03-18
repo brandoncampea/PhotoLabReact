@@ -7,6 +7,27 @@ import stripeService from '../services/stripeService.js';
 
 const router = express.Router();
 
+// Get album styles for a studio
+router.get('/:studioId/album-styles', authRequired, async (req, res) => {
+  const { studioId } = req.params;
+  if (req.user.role !== 'super_admin' && req.user.studio_id !== parseInt(studioId)) {
+    return res.status(403).json({ error: 'Unauthorized' });
+  }
+  const row = await queryRow('SELECT album_styles FROM studios WHERE id = $1', [studioId]);
+  res.json({ albumStyles: row?.album_styles ? JSON.parse(row.album_styles) : null });
+});
+
+// Update album styles for a studio
+router.put('/:studioId/album-styles', authRequired, async (req, res) => {
+  const { studioId } = req.params;
+  const { albumStyles } = req.body;
+  if (req.user.role !== 'super_admin' && req.user.studio_id !== parseInt(studioId)) {
+    return res.status(403).json({ error: 'Unauthorized' });
+  }
+  await query('UPDATE studios SET album_styles = $1 WHERE id = $2', [JSON.stringify(albumStyles), studioId]);
+  res.json({ success: true });
+});
+
 const slugifyStudioName = (value) =>
   String(value || '')
     .toLowerCase()

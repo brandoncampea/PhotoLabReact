@@ -16,6 +16,32 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     return stored === 'studio' ? 'studio' : 'super';
   });
   const [viewAsStudioName, setViewAsStudioName] = useState<string | null>(() => localStorage.getItem('viewAsStudioName'));
+  const [viewAsStudioId, setViewAsStudioId] = useState<number | null>(() => {
+    const id = localStorage.getItem('viewAsStudioId');
+    return id ? parseInt(id, 10) : null;
+  });
+  const [studios, setStudios] = useState<{ id: number; name: string }[]>([]);
+  useEffect(() => {
+    if (isSuperAdmin) {
+      const fetchStudios = async () => {
+        try {
+          // Try both adminToken and token for compatibility
+          const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
+          // Use correct backend port (3000)
+          const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:3000';
+          const response = await fetch(`${apiUrl}/api/studios`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (!response.ok) throw new Error('Failed to fetch studios');
+          const data = await response.json();
+          setStudios(data.map((studio: any) => ({ id: studio.id, name: studio.name })));
+        } catch (err) {
+          setStudios([]);
+        }
+      };
+      fetchStudios();
+    }
+  }, [isSuperAdmin]);
 
   useEffect(() => {
     if (isStudioAdmin) {
@@ -38,6 +64,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     localStorage.removeItem('viewAsStudioId');
     localStorage.removeItem('viewAsStudioName');
     setViewAsStudioName(null);
+    setViewAsStudioId(null);
   };
 
   const handleLogout = () => {
@@ -98,49 +125,36 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return (
     <div className="admin-layout">
       <aside className="admin-panel">
-        <div className="admin-brand">PhotoLab</div>
-        {canSwitchMenu && (
-          <div className="admin-menu-toggle-row">
-            <button
-              onClick={() => {
-                clearStudioView();
-                setMenuMode('super');
+        {isSuperAdmin && (
+          <div className="admin-studio-select-row">
+            <label htmlFor="studio-select" style={{ fontWeight: 600, fontSize: '1rem', marginBottom: '0.5rem' }}>Select Studio:</label>
+            <select
+              id="studio-select"
+              style={{ fontSize: '1rem', padding: '0.3rem 0.7rem', borderRadius: '6px', border: '1px solid #e0e0e0', marginBottom: '1rem' }}
+              value={viewAsStudioId || ''}
+              onChange={e => {
+                const studioId = parseInt(e.target.value, 10);
+                const studio = studios.find(s => s.id === studioId);
+                setViewAsStudioId(studioId);
+                setViewAsStudioName(studio ? studio.name : null);
+                localStorage.setItem('viewAsStudioId', String(studioId));
+                localStorage.setItem('viewAsStudioName', studio ? studio.name : '');
+                // Optionally trigger studio view logic here
               }}
-              className={menuMode === 'super' ? 'button active' : 'button'}
             >
-              Super
-            </button>
+              <option value="">-- Choose Studio --</option>
+              {studios.map(studio => (
+                <option key={studio.id} value={studio.id}>{studio.name}</option>
+              ))}
+            </select>
             <button
-              onClick={() => setMenuMode('studio')}
-              className={menuMode === 'studio' ? 'button active' : 'button'}
-            >
-              Studio
-            </button>
-            <button
-              className="button admin-menu-exit-btn"
+              style={{ fontSize: '0.95rem', padding: '0.3rem 0.7rem', borderRadius: '6px', border: '1px solid #e0e0e0', background: '#f7f7fa', marginLeft: '0.5rem' }}
               onClick={clearStudioView}
             >
               Exit Studio View
             </button>
           </div>
         )}
-        <div className="admin-nav-group">
-          <div className="admin-nav-flex">
-            {linksToRender.map((link) => (
-              <Link
-                key={link.to}
-                to={link.to}
-                className={`admin-nav-link${isActive(link.to) ? ' active' : ''}`}
-              >
-                {link.label}
-              </Link>
-            ))}
-          </div>
-        </div>
-        <div className="admin-panel-footer">
-          <Link to="/" className="admin-nav-link">🏠 Customer Site</Link>
-          <button onClick={handleLogout} className="logout-btn">🚪 Logout</button>
-        </div>
       </aside>
       <main className="admin-content">
         {viewAsStudioName && isSuperAdmin && (

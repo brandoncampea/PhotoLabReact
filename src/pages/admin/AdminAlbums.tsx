@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import api from '../../services/api';
 import { Album, PriceList } from '../../types';
 import { albumService } from '../../services/albumService';
 import { categoryService } from '../../services/categoryService';
@@ -22,13 +23,36 @@ const AdminAlbums: React.FC = () => {
     isPasswordProtected: false,
     password: '',
     passwordHint: '',
+    coverType: '',
+    paperType: '',
+    albumSize: '',
   });
+
+  const [albumStyles, setAlbumStyles] = useState<{coverTypes: string[], paperTypes: string[], albumSizes: string[]} | null>(null);
 
   useEffect(() => {
     loadAlbums();
     loadCategories();
     loadPriceLists();
+    loadAlbumStyles();
   }, []);
+
+  const loadAlbumStyles = async () => {
+    try {
+      // Replace studioId with actual studio id from context/auth
+      const studioId = localStorage.getItem('viewAsStudioId');
+      if (!studioId) return;
+      const res = await api.get(`/studios/${studioId}/album-styles`);
+      const styles = res.data.albumStyles || {};
+      setAlbumStyles({
+        coverTypes: styles.coverTypes || [],
+        paperTypes: styles.paperTypes || [],
+        albumSizes: styles.albumSizes || [],
+      });
+    } catch (err) {
+      setAlbumStyles(null);
+    }
+  };
 
   useEffect(() => {
     console.log('AdminAlbums: albums state changed to', albums.length, 'albums');
@@ -67,7 +91,18 @@ const AdminAlbums: React.FC = () => {
 
   const handleCreate = () => {
     setEditingAlbum(null);
-    setFormData({ name: '', description: '', category: '', priceListId: undefined, isPasswordProtected: false, password: '', passwordHint: '' });
+    setFormData({
+      name: '',
+      description: '',
+      category: '',
+      priceListId: undefined,
+      isPasswordProtected: false,
+      password: '',
+      passwordHint: '',
+      coverType: '',
+      paperType: '',
+      albumSize: '',
+    });
     setShowNewCategory(false);
     setNewCategory('');
     setShowModal(true);
@@ -83,6 +118,9 @@ const AdminAlbums: React.FC = () => {
       isPasswordProtected: !!album.isPasswordProtected,
       password: album.isPasswordProtected ? album.password || '' : '',
       passwordHint: album.isPasswordProtected ? album.passwordHint || '' : '',
+      coverType: album.coverType || '',
+      paperType: album.paperType || '',
+      albumSize: album.albumSize || '',
     });
     setShowNewCategory(false);
     setNewCategory('');
@@ -110,6 +148,9 @@ const AdminAlbums: React.FC = () => {
         ...formData,
         password: formData.isPasswordProtected ? formData.password : '',
         passwordHint: formData.isPasswordProtected ? formData.passwordHint : '',
+        coverType: formData.coverType,
+        paperType: formData.paperType,
+        albumSize: formData.albumSize,
       };
       if (editingAlbum) {
         await albumAdminService.updateAlbum(editingAlbum.id, payload);
@@ -317,6 +358,49 @@ const AdminAlbums: React.FC = () => {
                   Manage price lists →
                 </a>
               </div>
+              {albumStyles && (
+                <>
+                  <div className="form-group">
+                    <label>Cover Type</label>
+                    <select
+                      value={formData.coverType}
+                      onChange={e => setFormData({ ...formData, coverType: e.target.value })}
+                      required
+                    >
+                      <option value="">Select cover type</option>
+                      {albumStyles.coverTypes.map(type => (
+                        <option key={type} value={type}>{type}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label>Paper Type</label>
+                    <select
+                      value={formData.paperType}
+                      onChange={e => setFormData({ ...formData, paperType: e.target.value })}
+                      required
+                    >
+                      <option value="">Select paper type</option>
+                      {albumStyles.paperTypes.map(type => (
+                        <option key={type} value={type}>{type}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label>Album Size</label>
+                    <select
+                      value={formData.albumSize}
+                      onChange={e => setFormData({ ...formData, albumSize: e.target.value })}
+                      required
+                    >
+                      <option value="">Select album size</option>
+                      {albumStyles.albumSizes.map(type => (
+                        <option key={type} value={type}>{type}</option>
+                      ))}
+                    </select>
+                  </div>
+                </>
+              )}
               <div className="form-group">
                 <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <input
