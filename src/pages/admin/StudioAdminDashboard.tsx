@@ -4,169 +4,28 @@ import AdminLayout from '../../components/AdminLayout';
 import { useAuth } from '../../contexts/AuthContext';
 import { Order, DashboardStats } from '../../types';
 import { analyticsService } from '../../services/analyticsService';
-import { orderService } from '../../services/orderService';
-import { albumService } from '../../services/albumService';
-import api from '../../services/api';
-import { studioFeatureService } from '../../services/studioFeatureService';
+// ...existing code...
 import '../../PhotoLabStyles.css';
 
-interface RevenueBreakdownSummary {
-  totalRevenue: number;
-  totalCost: number;
-  totalProfit: number;
-  totalItems: number;
-  totalOrders: number;
-  return (
-    <AdminLayout>
-      <div className="admin-page">
-        <div className="dashboard-header">🏢 Studio Admin Dashboard</div>
-        <div className="dashboard-card" style={{ marginBottom: '1.2rem' }}>
-          <div className="dashboard-stats">
-            <div className="dashboard-stat">
-              <div className="dashboard-stat-title">Total Revenue</div>
-              <div className="dashboard-stat-value">${displayTotalRevenue.toFixed(2)}</div>
-              <div className="dashboard-stat-sub">Avg: ${averageOrderValue} per order</div>
-            </div>
-            <div className="dashboard-stat">
-              <div className="dashboard-stat-title">Total Orders</div>
-              <div className="dashboard-stat-value">{displayTotalOrders}</div>
-              <div className="dashboard-stat-sub">{orderCompletionRate}% completion rate</div>
-            </div>
-            <div className="dashboard-stat">
-              <div className="dashboard-stat-title">Total Customers</div>
-              <div className="dashboard-stat-value">{stats?.totalCustomers || 0}</div>
-              <div className="dashboard-stat-sub">Active user accounts</div>
-            </div>
-            <div className="dashboard-stat">
-              <div className="dashboard-stat-title">Pending Orders</div>
-              <div className="dashboard-stat-value">{stats?.pendingOrders || 0}</div>
-              <div className="dashboard-stat-sub">Requires attention</div>
-            </div>
-            <div className="dashboard-stat">
-              <div className="dashboard-stat-title">Total Profit</div>
-              <div className="dashboard-stat-value">${profitData.profit.toFixed(2)}</div>
-              <div className="dashboard-stat-sub">{profitData.margin}% margin</div>
-            </div>
-          </div>
-        </div>
+const StudioAdminDashboard: React.FC = () => {
+  const { user } = useAuth();
+  const [stats] = useState<DashboardStats | null>(null);
+  const [analytics, setAnalytics] = useState<any>(null);
+  const [orders] = useState<Order[]>([]);
+  const [loading] = useState<boolean>(true);
+  const [revenueBreakdown, setRevenueBreakdown] = useState<any>(null);
+  const [revenueBreakdownLoading, setRevenueBreakdownLoading] = useState<boolean>(false);
+  const [revenueBreakdownError, setRevenueBreakdownError] = useState<string>('');
+  const [selectedAlbumId, setSelectedAlbumId] = useState<number | null>(null);
+  const [showRevenueModal, setShowRevenueModal] = useState<boolean>(false);
+  const [revenueFocus, setRevenueFocus] = useState<'revenue' | 'profit'>('revenue');
+    const [studioProfitSummary] = useState<any>(null);
+    const [subscriptionAccess] = useState<any>({ planName: '', hasAdvancedAnalytics: false });
 
-        <div className="dashboard-section-header">📈 Traffic Overview</div>
-        <div className="dashboard-stats">
-          <div className="dashboard-stat">
-            <div className="dashboard-stat-title">Total Visitors</div>
-            <div className="dashboard-stat-value">{analytics?.totalVisitors || 0}</div>
-          </div>
-          <div className="dashboard-stat">
-            <div className="dashboard-stat-title">Page Views</div>
-            <div className="dashboard-stat-value">{analytics?.totalPageViews || 0}</div>
-          </div>
-          <div className="dashboard-stat">
-            <div className="dashboard-stat-title">Albums Viewed</div>
-            <div className="dashboard-stat-value">{analytics?.albumViews || 0}</div>
-          </div>
-          <div className="dashboard-stat">
-            <div className="dashboard-stat-title">Photos Viewed</div>
-            <div className="dashboard-stat-value">{analytics?.photoViews || 0}</div>
-          </div>
-        </div>
+  // ...existing code...
+  // Move variable declarations after calculateProfit
 
-        <div className="dashboard-section-header">📊 Order Status</div>
-        <div className="dashboard-stats">
-          <div className="dashboard-stat">
-            <div className="dashboard-stat-title">Completed</div>
-            <div className="dashboard-stat-value">{displayTotalOrders - (stats?.pendingOrders || 0)}</div>
-          </div>
-          <div className="dashboard-stat">
-            <div className="dashboard-stat-title">Pending</div>
-            <div className="dashboard-stat-value">{stats?.pendingOrders || 0}</div>
-          </div>
-          <div className="dashboard-stat">
-            <div className="dashboard-stat-title">Completion Rate</div>
-            <div className="dashboard-stat-value" style={{ color: '#27ae60', fontWeight: 700 }}>{orderCompletionRate}%</div>
-          </div>
-        </div>
-
-        <div className="dashboard-section-header">🔥 Most Popular Albums</div>
-        {stats?.topAlbums && stats.topAlbums.length > 0 ? (
-          <div className="dashboard-stats">
-            {stats.topAlbums.map(({ album, orderCount }) => (
-              <div className="dashboard-stat" key={album.id}>
-                <div className="dashboard-stat-title">{album.name}</div>
-                <div className="dashboard-stat-value">{orderCount} orders</div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="dashboard-empty-state">
-            No album orders yet. Sales will appear here once customers purchase.
-          </div>
-        )}
-
-        <div className="dashboard-section-header">⚡ Quick Actions</div>
-        <div className="dashboard-quick-actions">
-          <a href="/admin/orders" className="dashboard-quick-action-link">🛒 Manage Orders</a>
-          <a href="/admin/albums" className="dashboard-quick-action-link">📁 Manage Albums</a>
-          <a href="/admin/products" className="dashboard-quick-action-link">🛍️ Manage Products</a>
-          <a href="/admin/customers" className="dashboard-quick-action-link">👥 View Customers</a>
-          <a href="/admin/analytics" className="dashboard-quick-action-link">📈 View Analytics</a>
-          <a href="/admin/shipping" className="dashboard-quick-action-link">🚚 Shipping Settings</a>
-        </div>
-      </div>
-    </AdminLayout>
-  const loadStats = async () => {
-    try {
-      const [ordersResult, albumsResult] = await Promise.allSettled([
-        orderService.getAdminOrders(),
-        albumService.getAlbums(),
-      ]);
-
-      const ordersData = ordersResult.status === 'fulfilled' ? ordersResult.value : [];
-      const albums = albumsResult.status === 'fulfilled' ? albumsResult.value : [];
-
-      const totalRevenue = ordersData.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
-      const pendingOrders = ordersData.filter(order => (order.status || '').toLowerCase() === 'pending').length;
-      const totalOrders = ordersData.length;
-      const recentOrders = [...ordersData]
-        .sort((a, b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime())
-        .slice(0, 5);
-
-      const albumOrderCounts = new Map<number, { albumId: number; orderCount: number; albumName: string }>();
-      ordersData.forEach(order => {
-        order.items?.forEach(item => {
-          const albumId = item.photo?.albumId;
-          if (!albumId) return;
-          const albumName = albums.find(a => a.id === albumId)?.name || `Album #${albumId}`;
-          const existing = albumOrderCounts.get(albumId) || { albumId, orderCount: 0, albumName };
-          existing.orderCount += 1;
-          albumOrderCounts.set(albumId, existing);
-        });
-      });
-
-      const topAlbums = Array.from(albumOrderCounts.values())
-        .sort((a, b) => b.orderCount - a.orderCount)
-        .slice(0, 6)
-        .map(entry => {
-          const album = albums.find(a => a.id === entry.albumId);
-          if (!album) return null;
-          return { album, orderCount: entry.orderCount };
-        })
-        .filter((entry): entry is { album: typeof albums[number]; orderCount: number } => entry !== null);
-
-      setStats({
-        totalOrders,
-        totalRevenue,
-        totalCustomers: 0,
-        pendingOrders,
-        recentOrders,
-        topAlbums,
-      });
-      setOrders(ordersData);
-    } catch (error) {
-      setLoading(false);
-    } finally {
-      setLoading(false);
-    }
-  };
+  // ...existing code...
 
   useEffect(() => {
     const loadAnalytics = async () => {
@@ -189,22 +48,6 @@ interface RevenueBreakdownSummary {
   if (loading) {
     return <div className="loading">Loading dashboard...</div>;
   }
-
-  const displayTotalRevenue = user?.role === 'studio_admin' && studioProfitSummary
-    ? studioProfitSummary.totalStudioRevenue
-    : (stats?.totalRevenue || 0);
-
-  const displayTotalOrders = user?.role === 'studio_admin' && studioProfitSummary
-    ? studioProfitSummary.totalOrders
-    : (stats?.totalOrders || 0);
-
-  const orderCompletionRate = displayTotalOrders
-    ? ((displayTotalOrders - (stats?.pendingOrders || 0)) / displayTotalOrders * 100).toFixed(1)
-    : '0';
-
-  const averageOrderValue = displayTotalOrders
-    ? (displayTotalRevenue / displayTotalOrders).toFixed(2)
-    : '0.00';
 
   // Calculate total profit and cost
   const calculateProfit = () => {
@@ -231,7 +74,7 @@ interface RevenueBreakdownSummary {
     return { profit, cost: totalCost, margin: revenue > 0 ? ((profit / revenue) * 100).toFixed(1) : 0 };
   };
 
-  const profitData = calculateProfit();
+  // (Removed duplicate profitData declaration)
 
   const loadRevenueBreakdown = async () => {
     try {
@@ -265,8 +108,21 @@ interface RevenueBreakdownSummary {
   };
 
   const formatCurrency = (value: number) => `$${value.toFixed(2)}`;
-  const albumPhotos = revenueBreakdown?.byPhoto.filter((photo) => photo.albumId === selectedAlbumId) || [];
-  const selectedAlbum = revenueBreakdown?.byAlbum.find((album) => album.albumId === selectedAlbumId) || null;
+  const displayTotalRevenue = user?.role === 'studio_admin' && studioProfitSummary
+    ? studioProfitSummary.totalStudioRevenue
+    : (stats?.totalRevenue || 0);
+  const displayTotalOrders = user?.role === 'studio_admin' && studioProfitSummary
+    ? studioProfitSummary.totalOrders
+    : (stats?.totalOrders || 0);
+  const orderCompletionRate = displayTotalOrders
+    ? ((displayTotalOrders - (stats?.pendingOrders || 0)) / displayTotalOrders * 100).toFixed(1)
+    : '0';
+  const averageOrderValue = displayTotalOrders
+    ? (displayTotalRevenue / displayTotalOrders).toFixed(2)
+    : '0.00';
+  const profitData = calculateProfit();
+  const albumPhotos = revenueBreakdown?.byPhoto.filter((photo: any) => photo.albumId === selectedAlbumId) || [];
+  const selectedAlbum = revenueBreakdown?.byAlbum.find((album: any) => album.albumId === selectedAlbumId) || null;
 
   return (
     <AdminLayout>
@@ -517,7 +373,7 @@ interface RevenueBreakdownSummary {
                             </tr>
                           </thead>
                           <tbody>
-                            {revenueBreakdown.byCategory.map((row) => (
+                            {revenueBreakdown.byCategory.map((row: any) => (
                               <tr key={row.category}>
                                 <td>{row.category}</td>
                                 <td>{row.orderCount}</td>
@@ -553,7 +409,7 @@ interface RevenueBreakdownSummary {
                             </tr>
                           </thead>
                           <tbody>
-                            {revenueBreakdown.byAlbum.map((row) => (
+                            {revenueBreakdown.byCategory.map((row: any) => (
                               <tr key={row.albumId} style={{ backgroundColor: row.albumId === selectedAlbumId ? 'rgba(124, 92, 255, 0.12)' : 'transparent' }}>
                                 <td>{row.albumName}</td>
                                 <td>{row.albumCategory}</td>
@@ -594,7 +450,7 @@ interface RevenueBreakdownSummary {
                             </tr>
                           </thead>
                           <tbody>
-                            {revenueBreakdown.byProduct.map((row) => (
+                            {revenueBreakdown.byAlbum.map((row: any) => (
                               <tr key={row.productId || row.productName}>
                                 <td>{row.productName}</td>
                                 <td>{row.category}</td>
@@ -630,7 +486,7 @@ interface RevenueBreakdownSummary {
                             </tr>
                           </thead>
                           <tbody>
-                            {revenueBreakdown.bySize.map((row) => (
+                            {revenueBreakdown.byProduct.map((row: any) => (
                               <tr key={`${row.productId}-${row.productSizeId}-${row.sizeName}`}>
                                 <td>{row.productName}</td>
                                 <td>{row.sizeName}</td>
@@ -668,7 +524,7 @@ interface RevenueBreakdownSummary {
                             </tr>
                           </thead>
                           <tbody>
-                            {albumPhotos.map((row) => (
+                            {albumPhotos.map((row: any) => (
                               <tr key={row.photoId}>
                                 <td>
                                   {row.thumbnailUrl ? (

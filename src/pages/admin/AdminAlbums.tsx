@@ -118,9 +118,9 @@ const AdminAlbums: React.FC = () => {
       isPasswordProtected: !!album.isPasswordProtected,
       password: album.isPasswordProtected ? album.password || '' : '',
       passwordHint: album.isPasswordProtected ? album.passwordHint || '' : '',
-      coverType: album.coverType || '',
-      paperType: album.paperType || '',
-      albumSize: album.albumSize || '',
+      coverType: '',
+      paperType: '',
+      albumSize: '',
     });
     setShowNewCategory(false);
     setNewCategory('');
