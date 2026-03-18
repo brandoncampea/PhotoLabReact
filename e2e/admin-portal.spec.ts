@@ -14,20 +14,16 @@ const adminCredentials = {
 test.describe('Admin Portal - Routes and Navigation', () => {
   test.beforeEach(async ({ page }) => {
     // Login via the login page to set localStorage with token
-    await page.goto('http://localhost:3000/login', { waitUntil: 'domcontentloaded' });
+    await page.goto('http://localhost:3000/admin/login', { waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => null);
-    
-    // Fill login form
-    await page.fill('input[type="email"]', adminCredentials.email, { timeout: 5000 }).catch(() => null);
-    await page.fill('input[type="password"]', adminCredentials.password, { timeout: 5000 }).catch(() => null);
-    
+    // Fill login form using data-testid
+    await page.fill('[data-testid="admin-email-input"]', adminCredentials.email, { timeout: 5000 }).catch(() => null);
+    await page.fill('[data-testid="admin-password-input"]', adminCredentials.password, { timeout: 5000 }).catch(() => null);
     // Click login button
-    const loginBtn = page.locator('button:has-text("Sign In"), button:has-text("Login")').first();
+    const loginBtn = page.locator('[data-testid="admin-login-button"]').first();
     if (await loginBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
       await loginBtn.click({ timeout: 5000 }).catch(() => null);
-      // Wait for page navigation and network to settle
       await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => null);
-      // Extra buffer to ensure localStorage is set
       await page.waitForTimeout(500);
     }
   });
@@ -36,13 +32,10 @@ test.describe('Admin Portal - Routes and Navigation', () => {
   // DASHBOARD & OVERVIEW
   // ========================================================================
   test('admin dashboard loads successfully', async ({ page }) => {
-    // Navigate to dashboard
     await page.goto(ADMIN_URL + '/dashboard', { waitUntil: 'domcontentloaded' });
-    
-    // Check for dashboard elements - use first() to avoid strict mode
-    const headings = page.locator('h1, h2').first();
-    await expect(headings).toBeVisible({ timeout: 10000 }).catch(() => null);
-    
+    // Check for dashboard heading using h1 and data-testid
+    const heading = page.locator('h1[data-testid="admin-dashboard-heading"]');
+    await expect(heading).toBeVisible({ timeout: 10000 }).catch(() => null);
     // Should have some content loaded
     await expect(page.locator('main, [class*="content"], [class*="main"]').first()).toBeVisible({ timeout: 10000 }).catch(() => null);
   });
@@ -113,9 +106,9 @@ test.describe('Admin Portal - Routes and Navigation', () => {
   test('admin can view products page', async ({ page }) => {
     await page.goto(ADMIN_URL + '/products', { waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('networkidle', { timeout: 12000 }).catch(() => null);
-    
-    // Should have products interface
-    await expect(page.locator('h1, h2, main').first()).toBeVisible({ timeout: 5000 }).catch(() => null);
+    // Should have products heading and search input
+    await expect(page.locator('h1[data-testid="admin-products-heading"]')).toBeVisible({ timeout: 5000 }).catch(() => null);
+    await expect(page.locator('[data-testid="admin-products-search"]')).toBeVisible({ timeout: 5000 }).catch(() => null);
   });
 
   test('admin can access product management actions', async ({ page }) => {
@@ -187,13 +180,9 @@ test.describe('Admin Portal - Routes and Navigation', () => {
 
   test('admin can filter or search orders', async ({ page }) => {
     await page.goto(ADMIN_URL + '/orders');
-    
-    // Look for search/filter controls
-    const searchInput = page.locator('input[type="text"], input[placeholder*="search" i], input[placeholder*="filter" i]').first();
-    const filterBtn = page.locator('button:has-text("Filter"), button:has-text("Search")').first();
-    
-    const hasSearch = (await searchInput.isVisible()) || (await filterBtn.isVisible());
-    expect(hasSearch).toBeTruthy();
+    // Look for search input by data-testid
+    const searchInput = page.locator('[data-testid="admin-orders-search"]');
+    expect(await searchInput.isVisible()).toBeTruthy();
   });
 
   // ========================================================================
@@ -226,11 +215,10 @@ test.describe('Admin Portal - Routes and Navigation', () => {
   // ========================================================================
   test('admin can view shipping settings', async ({ page }) => {
     await page.goto(ADMIN_URL + '/shipping');
-    
     await expect(page).toHaveURL(/admin\/shipping/);
-    
-    // Should have shipping configuration
-    await expect(page.locator('h1, h2, main, input, select')).toBeTruthy();
+    // Should have shipping heading and input
+    await expect(page.locator('h1')).toHaveText(/Admin Shipping/i);
+    await expect(page.locator('[data-testid="admin-shipping-input"]')).toBeVisible();
   });
 
   test('admin can configure shipping options', async ({ page }) => {
@@ -422,19 +410,14 @@ test.describe('Admin Session Management', () => {
   test('admin can logout', async ({ page }) => {
     // Login first
     await page.goto(ADMIN_URL + '/login');
-    await page.fill('input[type="email"]', adminCredentials.email);
-    await page.fill('input[type="password"]', adminCredentials.password);
-    await page.click('button:has-text("Sign In"), button:has-text("Login")');
-    
+    await page.fill('[data-testid="admin-email-input"]', adminCredentials.email);
+    await page.fill('[data-testid="admin-password-input"]', adminCredentials.password);
+    await page.click('[data-testid="admin-login-button"]');
     await page.waitForURL(/admin\/(dashboard|overview)/, { timeout: 5000 }).catch(() => null);
-    
-    // Find and click logout
-    const logoutBtn = page.locator('button:has-text("Logout"), button:has-text("Sign Out"), a:has-text("Logout")').first();
-    
+    // Find and click logout (fallback to old selectors if needed)
+    const logoutBtn = page.locator('[data-testid="admin-logout-button"], button:has-text("Logout"), button:has-text("Sign Out"), a:has-text("Logout")').first();
     if (await logoutBtn.isVisible()) {
       await logoutBtn.click();
-      
-      // Should redirect away from admin
       await page.waitForURL(/login|/, { timeout: 5000 });
       expect(page.url()).not.toContain('/admin/dashboard');
     }

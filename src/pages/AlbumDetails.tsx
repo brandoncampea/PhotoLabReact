@@ -236,7 +236,6 @@ const AlbumDetails: React.FC = () => {
           </button>
         </div>
       </div>
-
       <div className="search-filter-bar">
         <div className="search-box">
           <input
@@ -278,7 +277,6 @@ const AlbumDetails: React.FC = () => {
           </button>
         )}
       </div>
-
       {showPackages && packages.length > 0 && (
         <div style={{
           padding: '1.5rem',
@@ -296,12 +294,11 @@ const AlbumDetails: React.FC = () => {
               const retailValue = packageService.calculateRetailValue(pkg);
               const savings = packageService.calculateSavings(pkg);
               const savingsPercent = packageService.getSavingsPercentage(pkg);
-              
               return (
                 <div
                   key={pkg.id}
+                  className="package-card"
                   style={{
-                    backgroundColor: 'white',
                     border: '2px solid #ff6b35',
                     borderRadius: '8px',
                     padding: '1rem',
@@ -319,7 +316,6 @@ const AlbumDetails: React.FC = () => {
                 >
                   <h4 style={{ margin: '0 0 0.5rem 0', color: '#ff6b35' }}>{pkg.name}</h4>
                   <p style={{ fontSize: '0.9rem', color: '#666', marginBottom: '0.75rem' }}>{pkg.description}</p>
-                  
                   <div style={{ borderTop: '1px solid #e0e0e0', paddingTop: '0.75rem', marginBottom: '0.75rem' }}>
                     <strong>Includes:</strong>
                     <ul style={{ margin: '0.5rem 0', paddingLeft: '1.5rem', fontSize: '0.9rem' }}>
@@ -330,7 +326,6 @@ const AlbumDetails: React.FC = () => {
                       ))}
                     </ul>
                   </div>
-                  
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
                     <div>
                       <div style={{ fontSize: '0.85rem', color: '#999', textDecoration: 'line-through' }}>
@@ -349,14 +344,11 @@ const AlbumDetails: React.FC = () => {
                       </div>
                     </div>
                   </div>
-                  
                   <button
                     onClick={() => {
                       setShowPackages(false);
-                      // Scroll to photos section
                       document.querySelector('.photos-grid')?.scrollIntoView({ behavior: 'smooth' });
                       alert(`Now select a photo to apply "${pkg.name}" package to.`);
-                      // Store package in state, modify photo click handler
                       const originalPhotoCards = document.querySelectorAll('.photo-card');
                       originalPhotoCards.forEach(card => {
                         card.addEventListener('click', (e) => {
@@ -381,8 +373,6 @@ const AlbumDetails: React.FC = () => {
           </div>
         </div>
       )}
-      
-      
       <div className="photos-grid">
         {filteredPhotos.length === 0 ? (
           <p className="empty-state">
@@ -401,7 +391,6 @@ const AlbumDetails: React.FC = () => {
           ))
         )}
       </div>
-
       {selectedPhoto && (
         <CropperModal
           photo={selectedPhoto}
@@ -409,7 +398,6 @@ const AlbumDetails: React.FC = () => {
           onClose={handleCloseCropper}
         />
       )}
-
       {selectedPhotoForPackage && selectedPackageForOrder && (
         <CropperModal
           photo={selectedPhotoForPackage}
@@ -420,6 +408,6 @@ const AlbumDetails: React.FC = () => {
       )}
     </div>
   );
-};
+}
 
 export default AlbumDetails;

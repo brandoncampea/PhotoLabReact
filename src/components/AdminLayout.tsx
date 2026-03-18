@@ -115,19 +115,10 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             >
               Studio
             </button>
-          </div>
-        )}
-        {viewAsStudioName && isSuperAdmin && (
-          <div className="studio-view-box">
-            Viewing as studio: <strong>{viewAsStudioName}</strong>
             <button
-              onClick={() => {
-                clearStudioView();
-                setMenuMode('super');
-                navigate('/super-admin');
-              }}
               className="button"
               style={{ marginTop: '8px', width: '100%' }}
+              onClick={clearStudioView}
             >
               Exit Studio View
             </button>
@@ -148,9 +139,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         </div>
         <div className="admin-panel-footer">
           <Link to="/" className="admin-nav-link">🏠 Customer Site</Link>
-          <button onClick={handleLogout} className="logout-btn">
-            🚪 Logout
-          </button>
+          <button onClick={handleLogout} className="logout-btn">🚪 Logout</button>
         </div>
       </aside>
       <main className="admin-content">
@@ -163,6 +152,5 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       </main>
     </div>
   );
-};
-
+}
 export default AdminLayout;

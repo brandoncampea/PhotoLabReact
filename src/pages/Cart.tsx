@@ -359,9 +359,13 @@ const Cart: React.FC = () => {
       <div className="page-container">
         <div className="page-header">
           <h1>Shopping Cart</h1>
+        <div className="main-content dark-bg" style={{ minHeight: '100vh' }}>
+          <div className="page-header">
+            <h1 className="gradient-text">Cart</h1>
+            <p style={{ color: '#bdbdbd', fontSize: '1.1rem' }}>Review your items and checkout securely</p>
+          </div>
+          {/* ...existing code... */}
         </div>
-        <div className="empty-cart">
-          <p>Your cart is empty</p>
           <button onClick={() => navigate('/albums')} className="btn btn-primary">
             Browse Albums
           </button>

@@ -16,18 +16,14 @@ test.describe('Customer - Search and Discovery', () => {
     // Login via the login page to set localStorage with token
     await page.goto(BASE_URL + '/login', { waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => null);
-    
-    // Fill login form
-    await page.fill('input[type="email"]', customerCredentials.email, { timeout: 5000 }).catch(() => null);
-    await page.fill('input[type="password"]', customerCredentials.password, { timeout: 5000 }).catch(() => null);
-    
+    // Fill login form using data-testid selectors
+    await page.fill('[data-testid="customer-email-input"]', customerCredentials.email, { timeout: 5000 }).catch(() => null);
+    await page.fill('[data-testid="customer-password-input"]', customerCredentials.password, { timeout: 5000 }).catch(() => null);
     // Click login button
-    const loginBtn = page.locator('button:has-text("Sign In"), button:has-text("Login")').first();
+    const loginBtn = page.locator('[data-testid="customer-login-button"]').first();
     if (await loginBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
       await loginBtn.click({ timeout: 5000 }).catch(() => null);
-      // Wait for page navigation and network to settle
       await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => null);
-      // Extra buffer to ensure localStorage is set
       await page.waitForTimeout(500);
     }
   });

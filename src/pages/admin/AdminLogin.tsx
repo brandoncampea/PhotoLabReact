@@ -47,6 +47,7 @@ const AdminLogin: React.FC = () => {
             <input
               type="email"
               id="email"
+              data-testid="admin-email-input"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
@@ -60,6 +61,7 @@ const AdminLogin: React.FC = () => {
             <input
               type="password"
               id="password"
+              data-testid="admin-password-input"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
@@ -68,6 +70,7 @@ const AdminLogin: React.FC = () => {
           </div>
           
           <button type="submit" className="btn btn-primary" disabled={loading}>
+            data-testid="admin-login-button"
             {loading ? 'Signing in...' : 'Admin Sign In'}
           </button>
         </form>

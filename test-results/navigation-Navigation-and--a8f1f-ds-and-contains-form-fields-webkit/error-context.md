@@ -1,0 +1,44 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e2]:
+  - navigation [ref=e3]:
+    - link "📸 Photo Lab" [ref=e5]:
+      - /url: /
+    - generic [ref=e6]:
+      - link "Albums" [ref=e7]:
+        - /url: /albums
+      - link "Orders" [ref=e8]:
+        - /url: /orders
+      - link "Cart" [ref=e9]:
+        - /url: /cart
+      - link "Login" [ref=e10]:
+        - /url: /login
+      - link "Register" [ref=e11]:
+        - /url: /register
+  - generic [ref=e14]:
+    - heading "Create Account" [level=1] [ref=e15]
+    - paragraph [ref=e16]: Join Photo Lab today
+    - generic [ref=e17]:
+      - generic [ref=e18]:
+        - generic [ref=e19]:
+          - text: First Name
+          - textbox "First Name" [ref=e20]
+        - generic [ref=e21]:
+          - text: Last Name
+          - textbox "Last Name" [ref=e22]
+      - generic [ref=e23]:
+        - text: Email
+        - textbox "Email" [ref=e24]
+      - generic [ref=e25]:
+        - text: Password
+        - textbox "Password" [ref=e26]
+      - generic [ref=e27]:
+        - text: Confirm Password
+        - textbox "Confirm Password" [ref=e28]
+      - button "Register" [ref=e29] [cursor=pointer]
+    - paragraph [ref=e30]:
+      - text: Already have an account?
+      - link "Login" [ref=e31]:
+        - /url: /login
+```

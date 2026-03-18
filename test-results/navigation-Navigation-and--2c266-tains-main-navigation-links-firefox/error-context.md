@@ -1,86 +1,71 @@
 # Page snapshot
 
 ```yaml
-- generic [ref=e3]:
-  - navigation [ref=e4]:
-    - generic [ref=e5]:
-      - link "📸 Photo Lab" [ref=e6] [cursor=pointer]:
-        - /url: /
-      - generic [ref=e7]:
-        - link "Home" [ref=e8] [cursor=pointer]:
-          - /url: /
-        - link "🚀 Start Free Trial" [ref=e9] [cursor=pointer]:
-          - /url: /studio-signup
-        - link "Login" [ref=e10] [cursor=pointer]:
-          - /url: /login
-  - main [ref=e11]:
-    - generic [ref=e12]:
-      - generic [ref=e13]:
-        - heading "Professional Photo Lab Platform" [level=1] [ref=e14]
-        - paragraph [ref=e15]: Empower your photography business with a complete client portal, online ordering, and professional lab integration
-        - generic [ref=e16]:
-          - button "🚀 Start Your Studio Free Trial" [ref=e17] [cursor=pointer]
-          - button "🔑 Studio Login" [ref=e18] [cursor=pointer]
+- generic [ref=e2]:
+  - navigation [ref=e3]:
+    - link "📸 Photo Lab" [ref=e5] [cursor=pointer]:
+      - /url: /
+    - generic [ref=e6]:
+      - link "Albums" [ref=e7] [cursor=pointer]:
+        - /url: /albums
+      - link "Orders" [ref=e8] [cursor=pointer]:
+        - /url: /orders
+      - link "Cart" [ref=e9] [cursor=pointer]:
+        - /url: /cart
+      - link "Login" [ref=e10] [cursor=pointer]:
+        - /url: /login
+      - link "Register" [ref=e11] [cursor=pointer]:
+        - /url: /register
+  - generic [ref=e12]:
+    - generic [ref=e13]:
+      - heading "Professional Photo Lab Platform" [level=1] [ref=e14]
+      - paragraph [ref=e15]: Empower your photography business with a complete client portal, online ordering, and professional lab integration
+      - generic [ref=e16]:
+        - textbox "Search photos by filename, camera, player, etc..." [ref=e18]
+        - button "Search" [ref=e19] [cursor=pointer]
       - generic [ref=e20]:
-        - generic [ref=e21]:
-          - generic [ref=e22]: 📸
-          - heading "Client Photo Galleries" [level=3] [ref=e23]
-          - paragraph [ref=e24]: Upload and organize client photos in beautiful, password-protected albums
-        - generic [ref=e25]:
-          - generic [ref=e26]: 🛒
-          - heading "Online Ordering" [level=3] [ref=e27]
-          - paragraph [ref=e28]: Let clients order prints, packages, and digital downloads directly from their gallery
-        - generic [ref=e29]:
-          - generic [ref=e30]: 💰
-          - heading "Custom Pricing" [level=3] [ref=e31]
-          - paragraph [ref=e32]: Set your own prices with flexible pricing lists and package options
-        - generic [ref=e33]:
-          - generic [ref=e34]: 🏢
-          - heading "Professional Labs" [level=3] [ref=e35]
-          - paragraph [ref=e36]: Integrated with WHCC, Mpix, and other major photo labs for seamless fulfillment
-        - generic [ref=e37]:
-          - generic [ref=e38]: 💳
-          - heading "Secure Payments" [level=3] [ref=e39]
-          - paragraph [ref=e40]: Built-in Stripe integration for safe and reliable payment processing
-        - generic [ref=e41]:
-          - generic [ref=e42]: 📊
-          - heading "Business Analytics" [level=3] [ref=e43]
-          - paragraph [ref=e44]: Track sales, popular products, and client engagement with detailed reports
+        - button "🚀 Start Your Studio Free Trial" [ref=e21] [cursor=pointer]
+        - button "🔑 Studio Login" [ref=e22] [cursor=pointer]
+    - generic [ref=e24]:
+      - generic [ref=e25]:
+        - generic [ref=e26]: 📸
+        - heading "Client Photo Galleries" [level=3] [ref=e27]
+        - paragraph [ref=e28]: Upload and organize client photos in beautiful, password-protected albums
+      - generic [ref=e29]:
+        - generic [ref=e30]: 🛒
+        - heading "Online Ordering" [level=3] [ref=e31]
+        - paragraph [ref=e32]: Let clients order prints, packages, and digital downloads directly from their gallery
+      - generic [ref=e33]:
+        - generic [ref=e34]: 💰
+        - heading "Custom Pricing" [level=3] [ref=e35]
+        - paragraph [ref=e36]: Set your own prices with flexible pricing lists and package options
+      - generic [ref=e37]:
+        - generic [ref=e38]: 🏢
+        - heading "Professional Labs" [level=3] [ref=e39]
+        - paragraph [ref=e40]: Integrated with WHCC, Mpix, and other major photo labs for seamless fulfillment
+      - generic [ref=e41]:
+        - generic [ref=e42]: 💳
+        - heading "Secure Payments" [level=3] [ref=e43]
+        - paragraph [ref=e44]: Built-in Stripe integration for safe and reliable payment processing
       - generic [ref=e45]:
-        - heading "Plans for Every Studio Size" [level=2] [ref=e46]
-        - paragraph [ref=e47]: Start with a free trial, no credit card required
-        - generic [ref=e48]:
-          - generic [ref=e49]:
-            - heading "Basic" [level=3] [ref=e50]
-            - generic [ref=e51]: $29/mo
-            - list [ref=e52]:
-              - listitem [ref=e53]: ✓ Up to 50 albums
-              - listitem [ref=e54]: ✓ 2 team members
-              - listitem [ref=e55]: ✓ Online ordering
-              - listitem [ref=e56]: ✓ Stripe payments
-              - listitem [ref=e57]: ✓ Email support
-          - generic [ref=e58]:
-            - generic [ref=e59]: Most Popular
-            - heading "Professional" [level=3] [ref=e60]
-            - generic [ref=e61]: $79/mo
-            - list [ref=e62]:
-              - listitem [ref=e63]: ✓ Unlimited albums
-              - listitem [ref=e64]: ✓ 5 team members
-              - listitem [ref=e65]: ✓ Lab integration
-              - listitem [ref=e66]: ✓ Custom pricing
-              - listitem [ref=e67]: ✓ Priority support
-          - generic [ref=e68]:
-            - heading "Enterprise" [level=3] [ref=e69]
-            - generic [ref=e70]: $149/mo
-            - list [ref=e71]:
-              - listitem [ref=e72]: ✓ Unlimited everything
-              - listitem [ref=e73]: ✓ Unlimited users
-              - listitem [ref=e74]: ✓ White-label branding
-              - listitem [ref=e75]: ✓ Custom domain
-              - listitem [ref=e76]: ✓ Dedicated support
-        - button "Get Started Free" [ref=e77] [cursor=pointer]
-      - generic [ref=e78]:
-        - heading "Ready to Transform Your Photography Business?" [level=2] [ref=e79]
-        - paragraph [ref=e80]: Join hundreds of photographers already using our platform
-        - button "Start Free Trial" [ref=e81] [cursor=pointer]
+        - generic [ref=e46]: 📊
+        - heading "Business Analytics" [level=3] [ref=e47]
+        - paragraph [ref=e48]: Track sales, popular products, and client engagement with detailed reports
+      - generic [ref=e49]:
+        - generic [ref=e50]: 📦
+        - heading "Batch Shipping" [level=3] [ref=e51]
+        - paragraph [ref=e52]: Easily ship multiple orders together for efficiency and cost savings.
+      - generic [ref=e53]:
+        - generic [ref=e54]: 🏷️
+        - heading "Player Recognition" [level=3] [ref=e55]
+        - paragraph [ref=e56]: Automatically identify and tag players in photos for fast search and personalized albums.
+    - generic [ref=e57]:
+      - heading "Plans for Every Studio Size" [level=2] [ref=e58]
+      - paragraph [ref=e59]: Start with a free trial, no credit card required
+      - generic [ref=e61]: Loading plans...
+      - button "Get Started Free" [ref=e62] [cursor=pointer]
+    - generic [ref=e63]:
+      - heading "Ready to Transform Your Photography Business?" [level=2] [ref=e64]
+      - paragraph [ref=e65]: Join hundreds of photographers already using our platform
+      - button "Start Free Trial" [ref=e66] [cursor=pointer]
 ```

@@ -35,10 +35,10 @@ const Orders: React.FC = () => {
   return (
     <>
       {/* <TopNavbar /> */}
-      <div className="main-content dark-bg" style={{ minHeight: 'calc(100vh - 80px)' }}>
+      <div className="main-content dark-bg" style={{ minHeight: '100vh' }}>
         <div className="page-header">
-          <h1>Order History</h1>
-          <p>View your past orders</p>
+          <h1 className="gradient-text">Order History</h1>
+          <p style={{ color: '#bdbdbd', fontSize: '1.1rem' }}>View your past orders</p>
         </div>
 
         {successMessage && (

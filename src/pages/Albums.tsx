@@ -85,26 +85,15 @@ const Albums: React.FC = () => {
   return (
     <>
       {/* <TopNavbar /> */}
-      <div className="main-content dark-bg" style={{ minHeight: 'calc(100vh - 80px)' }}>
+      <div className="main-content dark-bg" style={{ minHeight: '100vh' }}>
         {shareNotification && (
-          <div style={{
-            position: 'fixed',
-            top: '80px',
-            right: '20px',
-            backgroundColor: '#4169E1',
-            color: 'white',
-            padding: '1rem 1.5rem',
-            borderRadius: '8px',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-            zIndex: 1000,
-            animation: 'slideIn 0.3s ease-out'
-          }}>
+          <div className="success-message" style={{ position: 'fixed', top: '80px', right: '20px', zIndex: 1000 }}>
             ✓ {shareNotification}
           </div>
         )}
-        <div className="page-title">
-          <h1>Photo Albums</h1>
-          <p>Browse and select photos from our collection</p>
+        <div className="page-header">
+          <h1 className="gradient-text">Photo Albums</h1>
+          <p style={{ color: '#bdbdbd', fontSize: '1.1rem' }}>Browse and select photos from our collection</p>
         </div>
         
         {categories.length > 0 && (

@@ -30,8 +30,8 @@ export default defineConfig({
 
   webServer: [
     {
-      command: 'node server/server.js',
-      url: 'http://localhost:3001/api/health',
+      command: 'node server/server.mjs',
+      url: 'http://localhost:3000/api/health',
       reuseExistingServer: !process.env.CI,
     },
     {

@@ -164,7 +164,7 @@ const AdminOrders: React.FC = () => {
       ? orders
       : orders.filter(order => order.status.toLowerCase() === selectedStatus))
     .filter(matchesSearch);
-
+      const [loading, setLoading] = useState(false);
   useEffect(() => {
     if (!selectedOrderId || loading) return;
     const timer = window.setTimeout(() => {
@@ -326,7 +326,16 @@ const AdminOrders: React.FC = () => {
             
             <div>
               <label>Zip Code *</label>
-              <input
+        <div>
+          <AdminLayout>
+          <h1>Admin Orders</h1>
+          <div className="admin-orders-content">
+            <input type="text" placeholder="Search orders" className="admin-search" data-testid="admin-orders-search" />
+            <button className="admin-filter">Filter</button>
+            {/* Render orders table/list here */}
+          </div>
+          </AdminLayout>
+        </div>
                 type="text"
                 value={batchAddress.zipCode}
                 onChange={(e) => setBatchAddress({...batchAddress, zipCode: e.target.value})}

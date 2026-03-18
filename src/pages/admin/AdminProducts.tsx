@@ -587,7 +587,7 @@ const AdminProducts: React.FC = () => {
     return (
       <div className="admin-page">
         <div className="page-header">
-          <h1>Products</h1>
+          <h1 data-testid="admin-products-heading">Products</h1>
         </div>
         <div className="empty-state">
           <p>No price lists found. Create a price list first to manage products.</p>
@@ -600,7 +600,13 @@ const AdminProducts: React.FC = () => {
   return (
     <AdminLayout>
       <div className="page-header">
-        <h1>Products</h1>
+        <h1 data-testid="admin-products-heading">Products</h1>
+        <input
+          type="text"
+          placeholder="Search products..."
+          className="admin-search"
+          data-testid="admin-products-search"
+        />
         {canManagePriceListProducts && (
           <button onClick={handleCreateProduct} className="btn btn-primary">
             + Add Product

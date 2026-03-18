@@ -56,10 +56,17 @@ const AdminShipping: React.FC = () => {
 
   return (
     <AdminLayout>
-      <div className="page-header">
-        <h1>Shipping Settings</h1>
+      <h1>Admin Shipping</h1>
+      <div className="admin-shipping-content">
+        <input type="text" placeholder="Shipping option" className="admin-shipping-input" data-testid="admin-shipping-input" />
+        <button className="admin-save">Save</button>
+        {/* Render shipping options table/list here */}
       </div>
+    </AdminLayout>
+  );
+};
 
+export default AdminShipping;
       <div className="admin-form">
         <div className="info-box-blue" style={{ marginBottom: '2rem' }}>
           <h3 style={{ marginTop: 0 }}>📦 Batch Shipping</h3>

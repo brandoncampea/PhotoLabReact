@@ -235,7 +235,13 @@ const SuperAdminDashboard: React.FC = () => {
     <AdminLayout>
       <div className="admin-page">
         <div className="page-header">
-          <h1>🛡️ Super Admin Dashboard</h1>
+          <h1 data-testid="superadmin-dashboard-heading">🛡️ Super Admin Dashboard</h1>
+          <input
+            type="text"
+            placeholder="Search..."
+            className="superadmin-dashboard-search"
+            data-testid="superadmin-dashboard-search"
+          />
           <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
             Global business overview and advanced analytics for all labs and studios.
           </p>

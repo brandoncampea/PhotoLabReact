@@ -40,9 +40,9 @@ test.describe('Customer User Flow', () => {
   });
 
   test('should login as customer', async ({ page }) => {
-    await page.fill('input[type="email"]', testAccounts.customer.email);
-    await page.fill('input[type="password"]', testAccounts.customer.password);
-    await page.click('button:has-text("Sign In")');
+    await page.fill('[data-testid="customer-email-input"]', testAccounts.customer.email);
+    await page.fill('[data-testid="customer-password-input"]', testAccounts.customer.password);
+    await page.click('[data-testid="customer-login-button"]');
     
     await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => null);
     await page.waitForTimeout(500);
@@ -52,28 +52,24 @@ test.describe('Customer User Flow', () => {
   });
 
   test('customer can browse albums', async ({ page }) => {
-    await page.fill('input[type="email"]', testAccounts.customer.email);
-    await page.fill('input[type="password"]', testAccounts.customer.password);
-    await page.click('button:has-text("Sign In")');
-    
+    await page.fill('[data-testid="customer-email-input"]', testAccounts.customer.email);
+    await page.fill('[data-testid="customer-password-input"]', testAccounts.customer.password);
+    await page.click('[data-testid="customer-login-button"]');
     await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => null);
     await page.waitForTimeout(500);
-    
-    // Check albums are loaded
-    const albumElements = page.locator('[class*="album"], a[href*="/albums/"]');
-    expect(await albumElements.count()).toBeGreaterThanOrEqual(0);
+    // Check albums are loaded using data-testid
+    const albumElements = page.locator('[data-testid^="album-card-"]');
+    expect(await albumElements.count()).toBeGreaterThanOrEqual(1);
   });
 
   test('customer can view album details', async ({ page }) => {
-    await page.fill('input[type="email"]', testAccounts.customer.email);
-    await page.fill('input[type="password"]', testAccounts.customer.password);
-    await page.click('button:has-text("Sign In")');
-    
+    await page.fill('[data-testid="customer-email-input"]', testAccounts.customer.email);
+    await page.fill('[data-testid="customer-password-input"]', testAccounts.customer.password);
+    await page.click('[data-testid="customer-login-button"]');
     await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => null);
     await page.waitForTimeout(500);
-    
-    // Navigate to first album
-    const firstAlbumLink = page.locator('a[href*="/albums/"]').first();
+    // Navigate to first album using data-testid
+    const firstAlbumLink = page.locator('[data-testid^="album-card-"]').first();
     if (await firstAlbumLink.isVisible({ timeout: 3000 }).catch(() => false)) {
       await firstAlbumLink.click();
       await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => null);

@@ -1,0 +1,117 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - generic [ref=e5]: PhotoLab
+    - generic [ref=e7]:
+      - link "🏢 Studio Dashboard" [ref=e8] [cursor=pointer]:
+        - /url: /admin/studio-dashboard
+      - link "🗂️ SmugMug Import" [ref=e9] [cursor=pointer]:
+        - /url: /admin/smugmug
+      - link "📊 Operations Dashboard" [ref=e10] [cursor=pointer]:
+        - /url: /admin/dashboard
+      - link "📈 Analytics" [ref=e11] [cursor=pointer]:
+        - /url: /admin/analytics
+      - link "📁 Albums" [ref=e12] [cursor=pointer]:
+        - /url: /admin/albums
+      - link "📷 Photos" [ref=e13] [cursor=pointer]:
+        - /url: /admin/photos
+      - link "📦 Products" [ref=e14] [cursor=pointer]:
+        - /url: /admin/products
+      - link "🛒 Orders" [ref=e15] [cursor=pointer]:
+        - /url: /admin/orders
+      - link "👥 Customers" [ref=e16] [cursor=pointer]:
+        - /url: /admin/customers
+      - link "🚚 Shipping" [ref=e17] [cursor=pointer]:
+        - /url: /admin/shipping
+      - link "🎟️ Discount Codes" [ref=e18] [cursor=pointer]:
+        - /url: /admin/discount-codes
+      - link "💧 Watermarks" [ref=e19] [cursor=pointer]:
+        - /url: /admin/watermarks
+      - link "👤 Profile" [ref=e20] [cursor=pointer]:
+        - /url: /admin/profile
+    - generic [ref=e21]:
+      - link "🏠 Customer Site" [ref=e22] [cursor=pointer]:
+        - /url: /
+      - button "🚪 Logout" [ref=e23] [cursor=pointer]
+  - main [ref=e24]:
+    - generic [ref=e25]:
+      - generic [ref=e26]:
+        - heading "🛡️ Super Admin Dashboard" [level=1] [ref=e27]
+        - paragraph [ref=e28]: Global business overview and advanced analytics for all labs and studios.
+      - generic [ref=e29]:
+        - 'button "💰 Total Revenue $0.00 Avg: $0.00 per order View revenue details →" [ref=e30]':
+          - text: 💰
+          - generic [ref=e31]: Total Revenue
+          - generic [ref=e32]: $0.00
+          - generic [ref=e33]: "Avg: $0.00 per order"
+          - text: View revenue details →
+        - button "📦 Total Orders 0 0% completion rate Go to orders →" [ref=e34]:
+          - text: 📦
+          - generic [ref=e35]: Total Orders
+          - generic [ref=e36]: "0"
+          - generic [ref=e37]: 0% completion rate
+          - text: Go to orders →
+        - button "👥 Total Customers 0 Active user accounts View customers →" [ref=e38]:
+          - text: 👥
+          - generic [ref=e39]: Total Customers
+          - generic [ref=e40]: "0"
+          - generic [ref=e41]: Active user accounts
+          - text: View customers →
+        - button "⏳ Pending Orders 0 Requires attention Review pending →" [ref=e42]:
+          - text: ⏳
+          - generic [ref=e43]: Pending Orders
+          - generic [ref=e44]: "0"
+          - generic [ref=e45]: Requires attention
+          - text: Review pending →
+        - button "📈 Total Profit $0.00 0% margin See profit details →" [ref=e46]:
+          - text: 📈
+          - generic [ref=e47]: Total Profit
+          - generic [ref=e48]: $0.00
+          - generic [ref=e49]: 0% margin
+          - text: See profit details →
+      - generic [ref=e50]:
+        - generic [ref=e51]:
+          - heading "📈 Traffic Overview" [level=2] [ref=e52]
+          - generic [ref=e53]:
+            - generic [ref=e54]:
+              - generic [ref=e55]: Total Visitors
+              - generic [ref=e56]: "22"
+            - generic [ref=e57]:
+              - generic [ref=e58]: Page Views
+              - generic [ref=e59]: "657"
+            - generic [ref=e60]:
+              - generic [ref=e61]: Albums Viewed
+              - generic [ref=e62]: "8"
+            - generic [ref=e63]:
+              - generic [ref=e64]: Photos Viewed
+              - generic [ref=e65]: "9"
+        - generic [ref=e66]:
+          - heading "📊 Order Status" [level=2] [ref=e67]
+          - generic [ref=e68]:
+            - generic [ref=e70]: Completed0
+            - generic [ref=e72]: Pending0
+            - generic [ref=e73]:
+              - img [ref=e74]:
+                - generic [ref=e77]: 0%
+              - generic [ref=e78]: Completion Rate
+      - generic [ref=e79]:
+        - heading "🔥 Most Popular Albums" [level=2] [ref=e80]
+        - paragraph [ref=e81]: No album orders yet. Sales will appear here once customers purchase.
+      - generic [ref=e82]:
+        - heading "⚡ Quick Actions" [level=2] [ref=e83]
+        - generic [ref=e84]:
+          - link "📦 Manage Orders" [ref=e85] [cursor=pointer]:
+            - /url: /admin/orders
+          - link "📁 Manage Albums" [ref=e86] [cursor=pointer]:
+            - /url: /admin/albums
+          - link "🛍️ Manage Products" [ref=e87] [cursor=pointer]:
+            - /url: /admin/products
+          - link "👥 View Customers" [ref=e88] [cursor=pointer]:
+            - /url: /admin/customers
+          - link "📈 View Analytics" [ref=e89] [cursor=pointer]:
+            - /url: /admin/analytics
+          - link "🚚 Shipping Settings" [ref=e90] [cursor=pointer]:
+            - /url: /admin/shipping
+```

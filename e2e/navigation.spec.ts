@@ -24,12 +24,10 @@ test.describe('Navigation and UI', () => {
 
   test('login page loads and contains form fields', async ({ page }) => {
     await page.goto('/login');
-    
-    // Check form elements exist
-    await expect(page.locator('input[type="email"]')).toBeVisible();
-    await expect(page.locator('input[type="password"]').first()).toBeVisible();
-    await expect(page.locator('button:has-text("Login"), button:has-text("Sign In")').first()).toBeVisible();
-    
+    // Check form elements exist using data-testid
+    await expect(page.locator('[data-testid="customer-email-input"]')).toBeVisible();
+    await expect(page.locator('[data-testid="customer-password-input"]').first()).toBeVisible();
+    await expect(page.locator('[data-testid="customer-login-button"]').first()).toBeVisible();
     // Check register link exists
     const registerLink = page.locator('a:has-text("Register")');
     expect(await registerLink.count()).toBeGreaterThanOrEqual(1);
@@ -37,12 +35,10 @@ test.describe('Navigation and UI', () => {
 
   test('register page loads and contains form fields', async ({ page }) => {
     await page.goto('/register');
-    
-    // Check form elements exist
-    await expect(page.locator('input[type="email"]')).toBeVisible();
-    await expect(page.locator('input[type="password"]').first()).toBeVisible();
-    await expect(page.locator('button:has-text("Register")').first()).toBeVisible();
-    
+    // Check form elements exist using data-testid
+    await expect(page.locator('[data-testid="customer-email-input"]')).toBeVisible();
+    await expect(page.locator('[data-testid="customer-password-input"]').first()).toBeVisible();
+    await expect(page.locator('[data-testid="customer-register-button"]').first()).toBeVisible();
     // Check login link exists
     const loginLink = page.locator('a:has-text("Login")');
     expect(await loginLink.count()).toBeGreaterThanOrEqual(1);

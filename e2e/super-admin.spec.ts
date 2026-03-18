@@ -14,43 +14,32 @@ const superAdminCredentials = {
 test.describe('Super Admin Dashboard', () => {
   test.beforeEach(async ({ page }) => {
     // Login via the login page to set localStorage with token
-    await page.goto(BASE_URL + '/login', { waitUntil: 'domcontentloaded' });
+    await page.goto(BASE_URL + '/admin/login', { waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => null);
-    
-    // Fill login form
-    await page.fill('input[type="email"]', superAdminCredentials.email, { timeout: 5000 }).catch(() => null);
-    await page.fill('input[type="password"]', superAdminCredentials.password, { timeout: 5000 }).catch(() => null);
-    
+    // Fill login form using data-testid selectors
+    await page.fill('[data-testid="admin-email-input"]', superAdminCredentials.email, { timeout: 5000 }).catch(() => null);
+    await page.fill('[data-testid="admin-password-input"]', superAdminCredentials.password, { timeout: 5000 }).catch(() => null);
     // Click login button
-    const loginBtn = page.locator('button:has-text("Sign In"), button:has-text("Login")').first();
+    const loginBtn = page.locator('[data-testid="admin-login-button"]').first();
     if (await loginBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
       await loginBtn.click({ timeout: 5000 }).catch(() => null);
-      // Wait for page navigation and network to settle
       await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => null);
-      // Extra buffer to ensure localStorage is set
       await page.waitForTimeout(500);
     }
   });
 
   test('super admin can access main dashboard', async ({ page }) => {
     await page.goto(BASE_URL + '/admin/dashboard');
-    
-    // Should load dashboard
     await expect(page).toHaveURL(/admin\/(dashboard|overview)/);
-    
-    // Should have administrative content
-    await expect(page.locator('h1, h2, main')).toBeTruthy();
+    // Should have dashboard heading
+    await expect(page.locator('h1[data-testid="admin-dashboard-heading"]')).toBeVisible({ timeout: 5000 });
   });
 
   test('super admin dashboard shows platform-wide analytics', async ({ page }) => {
     await page.goto(BASE_URL + '/admin/analytics');
-    
-    // Should show analytics
     await expect(page).toHaveURL(/admin\/analytics/);
-    
-    // Should have charts or data displays
-    const analyticsContent = page.locator('[class*="chart"], [class*="graph"], [class*="metric"], [class*="stat"]');
-    await expect(analyticsContent.first()).toBeVisible({ timeout: 5000 }).catch(() => null);
+    // Should have analytics heading
+    await expect(page.locator('h1[data-testid="admin-analytics-heading"]')).toBeVisible({ timeout: 5000 });
   });
 
   test('super admin can access super admin pricing', async ({ page }) => {
