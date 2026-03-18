@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import '../App.css';
-import '../AdminStyles.css';
+import '../PhotoLabStyles.css';
 import { useLocation } from 'react-router-dom';
 import { Order } from '../types';
 import { orderService } from '../services/orderService';
@@ -35,17 +34,17 @@ const Orders: React.FC = () => {
   return (
     <>
       {/* <TopNavbar /> */}
-      <div className="main-content dark-bg" style={{ minHeight: '100vh' }}>
+      <div className="main-content dark-bg orders-full-height">
         <div className="page-header">
           <h1 className="gradient-text">Order History</h1>
-          <p style={{ color: '#bdbdbd', fontSize: '1.1rem' }}>View your past orders</p>
+          <p className="orders-description">View your past orders</p>
         </div>
 
         {successMessage && (
           <div className="success-message">{successMessage}</div>
         )}
 
-        {error && <div className="error-message">{error}</div>}
+        {error && <div className="orders-error-message">{error}</div>}
 
         {orders.length === 0 ? (
           <div className="empty-state">

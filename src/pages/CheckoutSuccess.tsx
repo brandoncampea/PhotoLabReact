@@ -23,46 +23,17 @@ export default function CheckoutSuccess() {
   }, [searchParams, navigate]);
 
   return (
-    <div style={{
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      minHeight: '100vh',
-      backgroundColor: '#f5f5f5'
-    }}>
-      <div style={{
-        backgroundColor: 'white',
-        padding: '40px',
-        borderRadius: '8px',
-        textAlign: 'center',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-        maxWidth: '400px'
-      }}>
-        <div style={{
-          fontSize: '48px',
-          marginBottom: '20px'
-        }}>
+    <div className="checkout-success-bg">
+      <div className="checkout-success-card">
+        <div className="checkout-success-icon">
           ✅
         </div>
         <h2>Payment Successful!</h2>
-        <p style={{ color: '#666', marginBottom: '20px' }}>
+        <p className="checkout-success-message">
           {message}
         </p>
-        <div style={{
-          width: '30px',
-          height: '30px',
-          border: '3px solid #007bff',
-          borderRadius: '50%',
-          borderTop: '3px solid transparent',
-          margin: '20px auto',
-          animation: 'spin 1s linear infinite'
-        }}></div>
-        <style>{`
-          @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-          }
-        `}</style>
+        <div className="checkout-success-spinner"></div>
+        {/* Spinner animation is now handled in PhotoLabStyles.css */}
       </div>
     </div>
   );

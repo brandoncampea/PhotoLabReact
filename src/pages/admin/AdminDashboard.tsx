@@ -1,7 +1,7 @@
 
 
 
-import React from 'react';
+
 import AdminLayout from '../../components/AdminLayout';
 
 const AdminDashboard = () => (
@@ -12,7 +12,5 @@ const AdminDashboard = () => (
     </div>
   </AdminLayout>
 );
-
-export default AdminDashboard;
 
 export default AdminDashboard;

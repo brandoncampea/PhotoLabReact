@@ -248,7 +248,7 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
         <h2>Import Products from WHCC</h2>
 
         {error && (
-          <div className="info-box-error" style={{ marginBottom: '20px' }}>
+          <div className="info-box-error info-box-error-margin">
             ✗ {error}
           </div>
         )}
@@ -256,37 +256,28 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
         {/* Step 1: Select Price List */}
         {step === 'select-list' && (
           <>
-            <p style={{ color: 'var(--text-secondary)', marginBottom: '20px' }}>
+            <p className="admin-whcc-desc">
               Select a price list where you want to add WHCC products.
             </p>
 
             {priceLists.length === 0 ? (
-              <button
-                onClick={handleLoadPriceLists}
-                disabled={loading}
-                className="btn btn-primary"
-                style={{ marginBottom: '20px' }}
-              >
+                <button
+                  onClick={handleLoadPriceLists}
+                  disabled={loading}
+                  className="btn btn-primary admin-whcc-btn-margin"
+                >
                 {loading ? 'Loading...' : 'Load Price Lists'}
               </button>
             ) : (
               <>
-                <div style={{ marginBottom: '20px' }}>
-                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500 }}>
+                <div className="admin-whcc-select-margin">
+                  <label className="admin-whcc-select-label">
                     Select Price List
                   </label>
                   <select
                     value={selectedPriceListId || ''}
                     onChange={(e) => setSelectedPriceListId(Number(e.target.value))}
-                    style={{
-                      width: '100%',
-                      padding: '10px',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: '4px',
-                      boxSizing: 'border-box' as const,
-                      backgroundColor: 'var(--bg-primary)',
-                      color: 'var(--text-primary)',
-                    }}
+                    className="admin-whcc-select"
                   >
                     <option value="">-- Select a price list --</option>
                     {priceLists.map((list) => (
@@ -312,14 +303,14 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
         {/* Step 2: Select Products */}
         {step === 'select-products' && (
           <>
-            <p style={{ color: 'var(--text-secondary)', marginBottom: '20px' }}>
+            <p className="admin-whcc-desc">
               Select products from WHCC catalog to add to your price list.
             </p>
 
             {/* Global Controls */}
-            <div className="admin-section-card" style={{ marginBottom: '20px' }}>
-              <div style={{ display: 'flex', gap: '15px', alignItems: 'center', flexWrap: 'wrap' }}>
-                <div style={{ display: 'flex', gap: '10px' }}>
+            <div className="admin-section-card admin-whcc-section-margin">
+              <div className="admin-whcc-controls-row">
+                <div className="admin-whcc-controls-btns">
                   <button
                     onClick={handleSelectAll}
                     className="btn btn-primary btn-sm"
@@ -334,8 +325,8 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
                   </button>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1 }}>
-                  <label style={{ fontSize: '13px', fontWeight: 500, whiteSpace: 'nowrap' }}>
+                <div className="admin-whcc-controls-markup">
+                  <label className="admin-whcc-markup-label">
                     Global Markup %:
                   </label>
                   <input
@@ -344,15 +335,7 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
                     min="0"
                     value={globalMarkup}
                     onChange={(e) => setGlobalMarkup(Math.max(0, parseInt(e.target.value) || 0))}
-                    style={{
-                      width: '80px',
-                      padding: '6px',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: '4px',
-                      fontSize: '13px',
-                      backgroundColor: 'var(--bg-primary)',
-                      color: 'var(--text-primary)',
-                    }}
+                    className="admin-whcc-markup-input"
                   />
                   <button
                     onClick={handleApplyGlobalMarkup}

@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import '../App.css';
-import '../AdminStyles.css';
+import '../PhotoLabStyles.css';
 import { Link } from 'react-router-dom';
 import { Album } from '../types';
 import { albumService } from '../services/albumService';
@@ -79,26 +78,26 @@ const Albums: React.FC = () => {
   }
 
   if (error) {
-    return <div className="error-message">{error}</div>;
+    return <div className="albums-error-message">{error}</div>;
   }
 
   return (
     <>
       {/* <TopNavbar /> */}
-      <div className="main-content dark-bg" style={{ minHeight: '100vh' }}>
+      <div className="main-content dark-bg albums-full-height">
         {shareNotification && (
-          <div className="success-message" style={{ position: 'fixed', top: '80px', right: '20px', zIndex: 1000 }}>
+          <div className="success-message fixed-notification">
             ✓ {shareNotification}
           </div>
         )}
         <div className="page-header">
           <h1 className="gradient-text">Photo Albums</h1>
-          <p style={{ color: '#bdbdbd', fontSize: '1.1rem' }}>Browse and select photos from our collection</p>
+          <p className="albums-description">Browse and select photos from our collection</p>
         </div>
         
         {categories.length > 0 && (
-          <div className="filter-bar" style={{ marginBottom: '2rem' }}>
-            <label htmlFor="category-filter" style={{ marginRight: '0.5rem', fontWeight: 500 }}>Filter by Category:</label>
+          <div className="filter-bar filter-bar-margin">
+            <label htmlFor="category-filter" className="filter-label">Filter by Category:</label>
             <select
               id="category-filter"
               value={selectedCategory}
@@ -133,22 +132,14 @@ const Albums: React.FC = () => {
                 <div className="album-info">
                   <h3>{album.name}</h3>
                   <p>{album.description}</p>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem' }}>
+                  <div className="album-info-row">
                     <span className="album-date">
                       {new Date(album.createdDate).toLocaleDateString()}
                     </span>
                     <button
                       onClick={(e) => handleShare(e, album)}
                       className="btn-icon"
-                      style={{
-                        padding: '0.25rem 0.5rem',
-                        fontSize: '0.9rem',
-                        backgroundColor: 'transparent',
-                        border: '1px solid #ddd',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s'
-                      }}
+                      // ...existing code...
                       onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f0f0f0'}
                       onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                       title="Share album"

@@ -60,36 +60,19 @@ export function CheckoutWithRoesExample() {
     <div>
       <h2>Checkout</h2>
       {roesEnabled && (
-        <div style={{ 
-          backgroundColor: '#e7f3ff', 
-          padding: '10px', 
-          marginBottom: '20px', 
-          borderRadius: '4px' 
-        }}>
+        <div className="roes-enabled-notification">
           ✓ ROES is enabled — orders will be submitted to ROES backend
         </div>
       )}
 
       {error && (
-        <div style={{ 
-          backgroundColor: '#ffebee', 
-          padding: '10px', 
-          marginBottom: '20px', 
-          borderRadius: '4px',
-          color: '#c62828'
-        }}>
+        <div className="roes-error-notification">
           Error: {error}
         </div>
       )}
 
       {success && (
-        <div style={{ 
-          backgroundColor: '#e8f5e9', 
-          padding: '10px', 
-          marginBottom: '20px', 
-          borderRadius: '4px',
-          color: '#2e7d32'
-        }}>
+        <div className="roes-success-notification">
           ✓ Order submitted successfully!
         </div>
       )}
@@ -97,14 +80,7 @@ export function CheckoutWithRoesExample() {
       <button
         onClick={handleCheckout}
         disabled={isProcessing || cart.length === 0}
-        style={{
-          padding: '10px 20px',
-          backgroundColor: isProcessing ? '#ccc' : '#1976d2',
-          color: 'white',
-          border: 'none',
-          borderRadius: '4px',
-          cursor: isProcessing ? 'not-allowed' : 'pointer',
-        }}
+        className={`roes-submit-btn${isProcessing ? ' disabled' : ''}`}
       >
         {isProcessing ? 'Processing...' : `Submit Order (${roesEnabled ? 'ROES' : 'Standard'})`}
       </button>

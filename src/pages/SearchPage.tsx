@@ -1,6 +1,5 @@
 import React from 'react';
-import '../App.css';
-import '../AdminStyles.css';
+import '../PhotoLabStyles.css';
 
 const SearchPage: React.FC = () => {
   return (

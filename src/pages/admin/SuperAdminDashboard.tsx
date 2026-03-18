@@ -9,7 +9,7 @@ import { orderService } from '../../services/orderService';
 import { userAdminService } from '../../services/adminService';
 import { albumService } from '../../services/albumService';
 // ...existing code...
-import '../../AdminStyles.css';
+import '../../PhotoLabStyles.css';
 
 interface RevenueBreakdownSummary {
   totalRevenue: number;

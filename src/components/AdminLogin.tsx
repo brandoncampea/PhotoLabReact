@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import '../AdminStyles.css';
 
-const AdminLogin = ({ onLogin }) => {
+type AdminLoginProps = { onLogin: (email: string, password: string) => void };
+const AdminLogin: React.FC<AdminLoginProps> = ({ onLogin }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const handleSubmit = (e) => {
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     onLogin && onLogin(email, password);
   };

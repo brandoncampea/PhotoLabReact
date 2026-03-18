@@ -106,30 +106,30 @@ const MultiPhotoSelector: React.FC<MultiPhotoSelectorProps> = ({
   const activeSlot = activeSlotIndex !== null ? slots[activeSlotIndex] : null;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '1rem' }}>
+    <div className="multi-photo-selector-container">
       {/* Header */}
-      <div style={{ padding: '1rem', borderBottom: '1px solid #ddd' }}>
-        <h3 style={{ margin: '0 0 0.5rem 0' }}>
+      <div className="multi-photo-selector-header">
+        <h3 className="multi-photo-selector-title">
           {product.name} - {selectedSize.name}
         </h3>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ color: '#666' }}>
+        <div className="multi-photo-selector-header-row">
+          <div className="multi-photo-selector-header-desc">
             📸 {filledCount} of {minPhotos === maxPhotos ? minPhotos : `${minPhotos}-${maxPhotos}`} photos selected
           </div>
-          <div style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>
+          <div className="multi-photo-selector-header-price">
             ${selectedSize.price.toFixed(2)}
           </div>
         </div>
       </div>
 
       {/* Cropper Area or Slot Preview */}
-      <div style={{ flex: 1, position: 'relative', backgroundColor: '#000', minHeight: '400px' }}>
+      <div className="multi-photo-selector-crop-area">
         {activeSlot && activeSlot.photo ? (
           <>
             <Cropper
               ref={cropperRef}
               src={activeSlot.photo.fullImageUrl}
-              style={{ height: '100%', width: '100%' }}
+              className="multi-photo-selector-cropper"
               aspectRatio={selectedSize.width / selectedSize.height}
               guides={true}
               viewMode={1}
@@ -140,27 +140,10 @@ const MultiPhotoSelector: React.FC<MultiPhotoSelectorProps> = ({
               autoCropArea={1}
               checkOrientation={false}
             />
-            <div style={{
-              position: 'absolute',
-              top: '1rem',
-              left: '1rem',
-              backgroundColor: 'rgba(0,0,0,0.7)',
-              color: 'white',
-              padding: '0.5rem 1rem',
-              borderRadius: '4px',
-              zIndex: 10,
-            }}>
+            <div className="multi-photo-selector-crop-label">
               Cropping Photo #{activeSlot.position}
             </div>
-            <div style={{
-              position: 'absolute',
-              bottom: '1rem',
-              left: '50%',
-              transform: 'translateX(-50%)',
-              display: 'flex',
-              gap: '1rem',
-              zIndex: 10,
-            }}>
+            <div className="multi-photo-selector-crop-actions">
               <button
                 onClick={() => setActiveSlotIndex(null)}
                 className="btn btn-secondary"
@@ -176,27 +159,16 @@ const MultiPhotoSelector: React.FC<MultiPhotoSelectorProps> = ({
             </div>
           </>
         ) : (
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            height: '100%',
-            color: '#999',
-            fontSize: '1.2rem',
-          }}>
+          <div className="multi-photo-selector-crop-empty">
             Select a photo slot below to begin
           </div>
         )}
       </div>
 
       {/* Photo Slots */}
-      <div style={{ padding: '1rem', borderTop: '1px solid #ddd' }}>
-        <h4 style={{ margin: '0 0 1rem 0' }}>Photo Slots</h4>
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))',
-          gap: '1rem',
-        }}>
+      <div className="multi-photo-selector-slots-section">
+        <h4 className="multi-photo-selector-slots-title">Photo Slots</h4>
+        <div className="multi-photo-selector-slots-grid">
           {slots.map((slot, index) => (
             <div
               key={slot.position}

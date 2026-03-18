@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import '../../AdminStyles.css';
+import '../../PhotoLabStyles.css';
 import AdminLayout from '../../components/AdminLayout';
 
 interface SmugMugAlbumOption {

@@ -121,12 +121,12 @@ export default function AlbumUpload() {
       <div
         onDrop={handleImageDrop}
         onDragOver={e => e.preventDefault()}
-        style={{ border: '2px dashed #888', padding: 20, marginBottom: 20 }}
+        className="album-upload-dropzone"
       >
         Drag and drop images here
       </div>
       <input type="file" accept=".csv" onChange={handleCsvUpload} />
-      {csvError && <div style={{ color: 'red' }}>{csvError}</div>}
+      {csvError && <div className="album-upload-csv-error">{csvError}</div>}
       <button onClick={handleUpload} disabled={!images.length || !players.length}>Upload Album</button>
       <div>Upload Progress: {uploadProgress}%</div>
       <ul>

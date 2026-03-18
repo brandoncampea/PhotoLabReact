@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import '../App.css';
-import '../AdminStyles.css';
+import '../PhotoLabStyles.css';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 // import TopNavbar from '../components/TopNavbar';

@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
-import '../App.css';
-import '../AdminStyles.css';
+import '../PhotoLabStyles.css';
 import { Link, useParams } from 'react-router-dom';
 
 type PublicStudio = {

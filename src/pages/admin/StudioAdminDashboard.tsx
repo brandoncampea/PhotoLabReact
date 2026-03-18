@@ -8,7 +8,7 @@ import { orderService } from '../../services/orderService';
 import { albumService } from '../../services/albumService';
 import api from '../../services/api';
 import { studioFeatureService } from '../../services/studioFeatureService';
-import '../../AdminStyles.css';
+import '../../PhotoLabStyles.css';
 
 interface RevenueBreakdownSummary {
   totalRevenue: number;

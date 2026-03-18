@@ -1,3 +1,4 @@
+import '../../PhotoLabStyles.css';
 import React, { useEffect, useState } from 'react';
 import api from '../../services/api';
 
@@ -40,7 +41,7 @@ const AdminSubscriptionGateway: React.FC = () => {
       {loading ? (
         <div>Loading...</div>
       ) : error ? (
-        <div style={{ color: 'red' }}>{error}</div>
+        <div className="admin-subscription-error">{error}</div>
       ) : (
         <table className="data-table">
           <thead>
@@ -55,7 +56,7 @@ const AdminSubscriptionGateway: React.FC = () => {
               <tr key={p.id}>
                 <td>{p.name}</td>
                 <td>{p.priceId}</td>
-                <td>{p.subscriptionLevel || <span style={{ color: '#888' }}>Not mapped</span>}</td>
+                <td>{p.subscriptionLevel || <span className="admin-subscription-not-mapped">Not mapped</span>}</td>
               </tr>
             ))}
           </tbody>

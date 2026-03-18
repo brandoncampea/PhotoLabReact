@@ -243,8 +243,10 @@ router.get('/stripe-products', async (req, res) => {
         FROM subscription_plans
         ORDER BY monthly_price ASC
       `);
+      console.log('[stripe-products] subscription_plans table exists. Plans:', plans);
     } else {
       plans = getFallbackPlansFromConstants();
+      console.log('[stripe-products] subscription_plans table missing. Using fallback:', plans);
     }
 
     // Map to only id, name, and Stripe price IDs
@@ -254,10 +256,11 @@ router.get('/stripe-products', async (req, res) => {
       stripe_monthly_price_id: plan.stripe_monthly_price_id || plan.stripePriceId || null,
       stripe_yearly_price_id: plan.stripe_yearly_price_id || null
     }));
+    console.log('[stripe-products] mapped output:', mapped);
     res.json(mapped);
   } catch (error) {
-    console.error('Error fetching Stripe product mapping:', error);
-    res.status(500).json({ error: 'Failed to fetch Stripe product mapping' });
+    console.error('[stripe-products] Error fetching Stripe product mapping:', error);
+    res.status(500).json({ error: 'Failed to fetch Stripe product mapping', details: error?.message || error });
   }
 });
 

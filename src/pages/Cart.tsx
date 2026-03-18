@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import '../App.css';
-import '../AdminStyles.css';
+import '../PhotoLabStyles.css';
 import { useNavigate } from 'react-router-dom';
 import { useCart } from '../contexts/CartContext';
 import CartItem from '../components/CartItem';

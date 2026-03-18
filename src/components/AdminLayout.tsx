@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import '../AdminStyles.css';
+import '../PhotoLabStyles.css';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -85,6 +85,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       { to: '/admin/orders', label: '🛒 Orders' },
       { to: '/admin/customers', label: '👥 Customers' },
       { to: '/admin/shipping', label: '🚚 Shipping' },
+      { to: '/admin/album-styles', label: '🎨 Album Styles' },
       { to: '/admin/discount-codes', label: '🎟️ Discount Codes' },
       { to: '/admin/watermarks', label: '💧 Watermarks' },
       { to: '/admin/profile', label: '👤 Profile' },
@@ -116,8 +117,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               Studio
             </button>
             <button
-              className="button"
-              style={{ marginTop: '8px', width: '100%' }}
+              className="button admin-menu-exit-btn"
               onClick={clearStudioView}
             >
               Exit Studio View
@@ -144,7 +144,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       </aside>
       <main className="admin-content">
         {viewAsStudioName && isSuperAdmin && (
-          <div className="card" style={{ marginBottom: '1rem', background: 'var(--bg-panel)' }}>
+          <div className="card admin-view-studio-banner">
             Viewing as studio: <strong>{viewAsStudioName}</strong>
           </div>
         )}

@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
-import '../../AdminStyles.css';
+import { useState } from 'react';
+import '../../PhotoLabStyles.css';
 
-const SuperAdminLogin = ({ onLogin }) => {
+type SuperAdminLoginProps = { onLogin: (email: string, password: string) => void };
+const SuperAdminLogin: React.FC<SuperAdminLoginProps> = ({ onLogin }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const handleSubmit = (e) => {
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     onLogin && onLogin(email, password);
   };

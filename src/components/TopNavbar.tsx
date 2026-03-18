@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import '../AdminStyles.css';
+import '../PhotoLabStyles.css';
 
 const TopNavbar: React.FC = () => {
   return (

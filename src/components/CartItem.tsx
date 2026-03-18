@@ -44,7 +44,7 @@ const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop }) => {
           // Multi-photo grid display
           <div className={`cart-multi-photo-grid grid-cols-${item.photos.length}`}>
             {item.photos.slice(0, 4).map((photoItem, idx) => (
-              <div key={idx} style={{ position: 'relative', overflow: 'hidden' }}>
+              <div key={idx} className="cart-photo-img-container">
                 <WatermarkedImage 
                   src={photoItem.photo.thumbnailUrl} 
                   alt={`Photo ${photoItem.position}`}
@@ -65,7 +65,7 @@ const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop }) => {
               alt={item.photo.fileName}
               className="cart-photo-img"
             />
-            {item.cropData && <div style={getCropStyle()!} />}
+            {item.cropData && <div className="cart-photo-crop-overlay" style={getCropStyle()!} />}
           </>
         ) : (
           <div className="cart-photo-loading">

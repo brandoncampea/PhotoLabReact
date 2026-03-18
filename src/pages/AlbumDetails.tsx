@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import '../App.css';
-import '../AdminStyles.css';
+import '../PhotoLabStyles.css';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Album, Photo, Package } from '../types';
 import { albumService } from '../services/albumService';
@@ -197,24 +196,13 @@ const AlbumDetails: React.FC = () => {
   return (
     <div className="page-container">
       {shareNotification && (
-        <div style={{
-          position: 'fixed',
-          top: '80px',
-          right: '20px',
-          backgroundColor: '#4169E1',
-          color: 'white',
-          padding: '1rem 1.5rem',
-          borderRadius: '8px',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-          zIndex: 1000,
-          animation: 'slideIn 0.3s ease-out'
-        }}>
+        <div className="album-details-notification">
           ✓ {shareNotification}
         </div>
       )}
       <div className="page-header">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', width: '100%' }}>
-          <div style={{ flex: 1 }}>
+        <div className="album-details-header-row">
+          <div className="album-details-header-col">
             <button onClick={() => navigate(slug ? `/s/${slug}` : '/albums')} className="btn-back">
               ← Back to Albums
             </button>
@@ -223,14 +211,7 @@ const AlbumDetails: React.FC = () => {
           </div>
           <button
             onClick={handleShareAlbum}
-            className="btn btn-secondary"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              padding: '0.5rem 1rem',
-              marginTop: '1rem'
-            }}
+            className="btn btn-secondary btn-share-album"
           >
             🔗 Share Album
           </button>
@@ -278,18 +259,12 @@ const AlbumDetails: React.FC = () => {
         )}
       </div>
       {showPackages && packages.length > 0 && (
-        <div style={{
-          padding: '1.5rem',
-          backgroundColor: '#f5f5f5',
-          borderRadius: '8px',
-          marginBottom: '1.5rem',
-          border: '1px solid #e0e0e0'
-        }}>
-          <h3 style={{ marginTop: 0 }}>📦 Available Packages</h3>
-          <p style={{ color: '#666', marginBottom: '1.5rem' }}>
+        <div className="album-details-packages-section">
+          <h3 className="album-details-packages-title">📦 Available Packages</h3>
+          <p className="album-details-packages-desc">
             Select a package, then choose a photo to apply it to. The package will be expanded into individual products in your cart.
           </p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1rem' }}>
+          <div className="album-details-packages-grid">
             {packages.map((pkg) => {
               const retailValue = packageService.calculateRetailValue(pkg);
               const savings = packageService.calculateSavings(pkg);
@@ -297,14 +272,7 @@ const AlbumDetails: React.FC = () => {
               return (
                 <div
                   key={pkg.id}
-                  className="package-card"
-                  style={{
-                    border: '2px solid #ff6b35',
-                    borderRadius: '8px',
-                    padding: '1rem',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s',
-                  }}
+                  className="package-card album-details-package-card"
                   onMouseEnter={(e) => {
                     e.currentTarget.style.transform = 'scale(1.02)';
                     e.currentTarget.style.boxShadow = '0 4px 12px rgba(255, 107, 53, 0.3)';
@@ -314,11 +282,11 @@ const AlbumDetails: React.FC = () => {
                     e.currentTarget.style.boxShadow = 'none';
                   }}
                 >
-                  <h4 style={{ margin: '0 0 0.5rem 0', color: '#ff6b35' }}>{pkg.name}</h4>
-                  <p style={{ fontSize: '0.9rem', color: '#666', marginBottom: '0.75rem' }}>{pkg.description}</p>
-                  <div style={{ borderTop: '1px solid #e0e0e0', paddingTop: '0.75rem', marginBottom: '0.75rem' }}>
+                  <h4 className="album-details-package-title">{pkg.name}</h4>
+                  <p className="album-details-package-desc">{pkg.description}</p>
+                  <div className="album-details-package-includes">
                     <strong>Includes:</strong>
-                    <ul style={{ margin: '0.5rem 0', paddingLeft: '1.5rem', fontSize: '0.9rem' }}>
+                    <ul className="album-details-package-list">
                       {pkg.items.map((item, idx) => (
                         <li key={idx}>
                           {item.quantity}x {item.product?.name} - {item.productSize?.name}
@@ -326,20 +294,20 @@ const AlbumDetails: React.FC = () => {
                       ))}
                     </ul>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                  <div className="album-details-package-row">
                     <div>
-                      <div style={{ fontSize: '0.85rem', color: '#999', textDecoration: 'line-through' }}>
+                      <div className="album-details-package-retail">
                         Retail: ${retailValue.toFixed(2)}
                       </div>
-                      <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#4caf50' }}>
+                      <div className="album-details-package-price">
                         ${pkg.packagePrice.toFixed(2)}
                       </div>
                     </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: '1rem', fontWeight: 'bold', color: '#ff6b35' }}>
+                    <div className="album-details-package-savings">
+                      <div className="album-details-package-savings-percent">
                         Save {savingsPercent}%
                       </div>
-                      <div style={{ fontSize: '0.85rem', color: '#666' }}>
+                      <div className="album-details-package-savings-amount">
                         (${savings.toFixed(2)})
                       </div>
                     </div>
