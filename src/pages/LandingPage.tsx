@@ -1,6 +1,5 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
 import '../PhotoLabStyles.css';
 
 export default function LandingPage() {
@@ -42,7 +41,7 @@ export default function LandingPage() {
       fetchPlans();
     }, []);
   const navigate = useNavigate();
-  const { user } = useAuth();
+  // Removed unused 'user' variable
   // No redirect: allow all users to view LandingPage
 
   return (
