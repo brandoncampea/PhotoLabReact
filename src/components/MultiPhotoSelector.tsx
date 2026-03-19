@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { Photo, Product, ProductSize, CropData } from '../types';
 import Cropper, { ReactCropperElement } from 'react-cropper';
-import 'cropperjs/dist/cropper.css';
+import '../PhotoLabStyles.css';
 
 interface PhotoSlot {
   position: number;

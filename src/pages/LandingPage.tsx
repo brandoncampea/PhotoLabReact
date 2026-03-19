@@ -21,10 +21,18 @@ export default function LandingPage() {
         setPlansError('');
         try {
           const apiUrl = import.meta.env.VITE_API_URL || '/api';
-          const res = await fetch(`${apiUrl}/subscription-plans/stripe-products`);
-          if (!res.ok) throw new Error('Failed to fetch subscription plans');
-          const data = await res.json();
-          setPlans(Array.isArray(data) ? data : []);
+          // Fetch both monthly and yearly plans
+          const monthlyRes = await fetch(`${apiUrl}/subscription-plans?frequency=monthly`);
+          const yearlyRes = await fetch(`${apiUrl}/subscription-plans?frequency=yearly`);
+          if (!monthlyRes.ok && !yearlyRes.ok) throw new Error('Failed to fetch subscription plans');
+          const monthlyData = monthlyRes.ok ? await monthlyRes.json() : [];
+          const yearlyData = yearlyRes.ok ? await yearlyRes.json() : [];
+          // Remove duplicates based on id and frequency
+          const allPlans = [...monthlyData, ...yearlyData];
+          const uniquePlans = allPlans.filter((plan, idx, arr) => {
+            return arr.findIndex(p => p.id === plan.id && p.frequency === plan.frequency) === idx;
+          });
+          setPlans(uniquePlans);
         } catch (err) {
           setPlansError('Unable to load plans.');
         } finally {
@@ -35,17 +43,7 @@ export default function LandingPage() {
     }, []);
   const navigate = useNavigate();
   const { user } = useAuth();
-
-  // Redirect authenticated users
-  React.useEffect(() => {
-    if (user) {
-      if (user.role === 'super_admin' || user.role === 'admin' || user.role === 'studio_admin') {
-        navigate('/admin/dashboard');
-      } else {
-        navigate('/albums');
-      }
-    }
-  }, [user, navigate]);
+  // No redirect: allow all users to view LandingPage
 
   return (
     <div className="main-content dark-bg landing-main">
@@ -73,7 +71,7 @@ export default function LandingPage() {
           <button className="btn btn-primary" onClick={() => navigate('/studio-signup')}>
             🚀 Start Your Studio Free Trial
           </button>
-          <button className="btn" style={{ border: '2px solid var(--color-primary)', color: 'var(--color-primary)', background: 'transparent' }} onClick={() => navigate('/login')}>
+          <button className="btn btn-outline-primary" onClick={() => navigate('/login')}>
             🔑 Studio Login
           </button>
         </div>
@@ -109,15 +107,37 @@ export default function LandingPage() {
           ) : plans.length === 0 ? (
             <div className="pricing-empty">No plans available.</div>
           ) : (
-            plans.map((plan, idx) => (
-              <PricingCard
-                key={plan.id || idx}
-                name={plan.name || plan.nickname || 'Plan'}
-                price={plan.price ? `$${plan.price}` : (plan.amount ? `$${(plan.amount/100).toFixed(0)}` : '')}
-                features={plan.features || plan.metadata?.features || []}
-                highlighted={plan.metadata?.highlighted || false}
-              />
-            ))
+            plans.map((plan, idx) => {
+              // Compose a unique key for each plan
+              const uniqueKey = `${plan.id || ''}-${plan.name || ''}`;
+
+              // Use monthly_price and yearly_price directly from API
+              const monthlyPrice = plan.monthly_price ? `$${plan.monthly_price.toFixed(2)}` : '';
+              const yearlyPrice = plan.yearly_price ? `$${plan.yearly_price.toFixed(2)}` : '';
+              let yearlyDiscount = '';
+              if (plan.monthly_price && plan.yearly_price) {
+                const normalYear = plan.monthly_price * 12;
+                if (plan.yearly_price < normalYear) {
+                  yearlyDiscount = `Save $${(normalYear - plan.yearly_price).toFixed(2)} yearly`;
+                }
+              }
+
+              // Only render one card per plan id
+              if (idx === plans.findIndex(p => p.id === plan.id)) {
+                return (
+                  <PricingCard
+                    key={uniqueKey}
+                    name={plan.name || plan.nickname || 'Plan'}
+                    price={monthlyPrice}
+                    yearlyPrice={yearlyPrice}
+                    yearlyDiscount={yearlyDiscount}
+                    features={plan.features || plan.metadata?.features || []}
+                    highlighted={plan.metadata?.highlighted || false}
+                  />
+                );
+              }
+              return null;
+            })
           )}
         </div>
         <button className="btn btn-primary landing-pricing-btn" onClick={() => navigate('/studio-signup')}>
@@ -130,7 +150,7 @@ export default function LandingPage() {
         <h2 className="gradient-text landing-footer-title">
           Ready to Transform Your Photography Business?
         </h2>
-        <p style={{ fontSize: '1.1rem', color: '#bdbdbd', marginBottom: '2rem' }}>
+        <p className="landing-footer-desc">
           Join hundreds of photographers already using our platform
         </p>
         <button className="btn btn-primary" onClick={() => navigate('/studio-signup')}>
@@ -151,7 +171,14 @@ function FeatureCard({ icon, title, description }: { icon: string; title: string
   );
 }
 
-function PricingCard({ name, price, features, highlighted }: { name: string; price: string; features: string[]; highlighted?: boolean }) {
+function PricingCard({ name, price, yearlyPrice, yearlyDiscount, features, highlighted }: {
+  name: string;
+  price: string;
+  yearlyPrice?: string;
+  yearlyDiscount?: string;
+  features: string[];
+  highlighted?: boolean;
+}) {
   return (
     <div className={`pricing-card${highlighted ? ' pricing-card-highlighted' : ''}`}>
       {highlighted && (
@@ -162,6 +189,12 @@ function PricingCard({ name, price, features, highlighted }: { name: string; pri
         {price}
         <span className="pricing-card-price-unit">/mo</span>
       </div>
+      {yearlyPrice && (
+        <div className="pricing-card-yearly">
+          <span className="pricing-card-yearly-label">Yearly:</span> {yearlyPrice} <span className="pricing-card-yearly-unit">/yr</span>
+          {yearlyDiscount && <span className="pricing-card-yearly-discount">{yearlyDiscount}</span>}
+        </div>
+      )}
       <ul className="pricing-card-features">
         {features.map((feature, index) => (
           <li key={index} className="pricing-card-feature">

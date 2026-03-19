@@ -99,6 +99,7 @@ async function fetchToken(consumerKey, consumerSecret, isSandbox) {
 // Returns a WHCC access token (cached server-side)
 // ---------------------------------------------------------------------------
 router.get('/whcc/token', adminRequired, async (req, res) => {
+    console.log('[WHCCProxy] /whcc/token called', { consumerKey, isSandbox });
   const { consumerKey, consumerSecret, isSandbox } = getCredentials(req);
   if (!consumerKey || !consumerSecret) {
     return res.status(400).json({
@@ -126,8 +127,13 @@ router.get('/whcc/token', adminRequired, async (req, res) => {
 // Returns WHCC product catalog
 // ---------------------------------------------------------------------------
 router.get('/whcc/products', adminRequired, async (req, res) => {
+    console.log('[WHCCProxy] /whcc/products called', { consumerKey, isSandbox });
+  let products = [];
+  if (products.length > 0) {
+    console.log('[WHCCProxy] Sample mapped product:', products[0]);
+  }
   const { consumerKey, consumerSecret, isSandbox } = getCredentials(req);
-    const requestUrl = `${getBaseUrl(isSandbox)}/api/catalog`;
+  const requestUrl = `${getBaseUrl(isSandbox)}/api/catalog`;
   if (!consumerKey || !consumerSecret) {
     console.error('[WHCCProxy] Missing credentials:', { consumerKey, consumerSecret, isSandbox });
     return res.status(400).json({
@@ -138,11 +144,95 @@ router.get('/whcc/products', adminRequired, async (req, res) => {
     });
   }
   try {
+    console.log('[WHCCProxy] Fetching WHCC product catalog:', { requestUrl, consumerKey, isSandbox });
     const token = await fetchToken(consumerKey, consumerSecret, isSandbox);
+    console.log('[WHCCProxy] Got WHCC token:', { token: token ? '***' : null });
     const response = await axios.get(requestUrl, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    res.json(response.data);
+    console.log('[WHCCProxy] WHCC API response:', { status: response.status, data: response.data });
+    // Group products by base name (removing size/dimensions from name)
+    const baseNameGroups = {};
+    function getBaseName(name, category) {
+      // Remove size/dimensions from name (e.g., "8x10 Print" → "Print")
+      const cleaned = name.replace(/\b\d+(?:\.\d+)?\s*[x×]\s*\d+(?:\.\d+)?\b/gi, '').replace(/\s+/g, ' ').trim();
+      return cleaned || category || 'Other';
+    }
+    if (Array.isArray(response.data?.Categories)) {
+      for (const category of response.data.Categories) {
+        if (Array.isArray(category.ProductList)) {
+          category.ProductList.forEach((prod) => {
+            // Log raw product for debugging
+            console.log('[WHCCProxy] Raw product:', prod);
+            // Extract size, width, height from ProductNodes if available
+            let size = prod.Size || '';
+            let width = prod.Width || '';
+            let height = prod.Height || '';
+            if (Array.isArray(prod.ProductNodes) && prod.ProductNodes.length > 0) {
+              const node = prod.ProductNodes[0];
+              width = node.W || width;
+              height = node.H || height;
+              if (!size && width && height) {
+                size = `${width}x${height}`;
+              }
+            }
+            let basePrice = typeof prod.BasePrice === 'number' ? prod.BasePrice : (typeof prod.Cost === 'number' ? prod.Cost : 0);
+            if (Array.isArray(prod.AttributeCategories)) {
+              for (const attrCat of prod.AttributeCategories) {
+                if (Array.isArray(attrCat.Attributes)) {
+                  for (const attr of attrCat.Attributes) {
+                    console.log('[WHCCProxy] Attribute:', attr);
+                    if (basePrice === 0 && attr.AttributeName && /price|cost/i.test(attr.AttributeName) && typeof attr.Value === 'number') {
+                      basePrice = attr.Value;
+                    }
+                  }
+                }
+              }
+            }
+            if (Array.isArray(prod.ProductNodes)) {
+              for (const node of prod.ProductNodes) {
+                console.log('[WHCCProxy] ProductNode:', node);
+                if (basePrice === 0 && typeof node.BasePrice === 'number') {
+                  basePrice = node.BasePrice;
+                }
+              }
+            }
+            if (!size) size = 'Unknown';
+            // Compose size label
+            let sizeLabel = prod.Name || '';
+            if (width && height) {
+              sizeLabel = `${width}x${height}`;
+            } else if (size && size !== 'Unknown') {
+              sizeLabel = size;
+            }
+            const mappedProduct = {
+              productUID: prod.Id || prod.id,
+              name: prod.Name || '',
+              description: prod.Description || '',
+              basePrice,
+              category: category.Name || '',
+              width,
+              height,
+              size: sizeLabel,
+              raw: prod
+            };
+            console.log('[WHCCProxy] Mapped product:', mappedProduct);
+            const baseName = getBaseName(mappedProduct.name, mappedProduct.category);
+            if (!baseNameGroups[baseName]) baseNameGroups[baseName] = [];
+            baseNameGroups[baseName].push(mappedProduct);
+          });
+        }
+      }
+    }
+    if (Object.keys(baseNameGroups).length > 0) {
+      const firstBase = Object.keys(baseNameGroups)[0];
+      console.log('[WHCCProxy] Sample grouped product:', baseNameGroups[firstBase][0]);
+    } else {
+      console.log('[WHCCProxy] No products found in WHCC response.');
+    }
+    // Flatten products for frontend compatibility
+    const flatProducts = Object.values(baseNameGroups).flat();
+    res.json({ productsByBaseName: baseNameGroups, products: flatProducts, raw: response.data });
   } catch (err) {
     console.error('[WHCCProxy] Products error:', {
       requestUrl,
@@ -172,6 +262,7 @@ router.get('/whcc/products', adminRequired, async (req, res) => {
 // Body: { consumerKey?, consumerSecret?, isSandbox?, ...WhccOrderRequest }
 // ---------------------------------------------------------------------------
 router.post('/whcc/order/import', adminRequired, async (req, res) => {
+    console.log('[WHCCProxy] /whcc/order/import called', { key, sandbox, orderRequest });
   const { consumerKey: bodyKey, consumerSecret: bodySecret, isSandbox: bodySandbox, ...orderRequest } =
     req.body;
   const creds = getCredentials(req);
@@ -208,6 +299,7 @@ router.post('/whcc/order/import', adminRequired, async (req, res) => {
 // Body: { consumerKey?, consumerSecret?, isSandbox? }
 // ---------------------------------------------------------------------------
 router.post('/whcc/order/submit/:confirmationId', adminRequired, async (req, res) => {
+    console.log('[WHCCProxy] /whcc/order/submit called', { confirmationId, key, sandbox });
   const { confirmationId } = req.params;
   const { consumerKey: bodyKey, consumerSecret: bodySecret, isSandbox: bodySandbox } = req.body;
   const creds = getCredentials(req);

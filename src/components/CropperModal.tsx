@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import Cropper, { ReactCropperElement } from 'react-cropper';
-import 'cropperjs/dist/cropper.css';
+import '../PhotoLabStyles.css';
 import { Photo, CropData, Product, ProductSize, Watermark, Package } from '../types';
 import { useCart } from '../contexts/CartContext';
 import { productService } from '../services/productService';

@@ -722,7 +722,15 @@ router.post('/:id/setDefault', superAdminRequired, async (req, res) => {
 // Delete price list
 router.delete('/:id', superAdminRequired, async (req, res) => {
   try {
-    await query('DELETE FROM price_lists WHERE id = $1', [req.params.id]);
+    const priceListId = Number(req.params.id);
+    // Cascade delete related records
+    await query('DELETE FROM package_items WHERE package_id IN (SELECT id FROM packages WHERE price_list_id = $1)', [priceListId]);
+    await query('DELETE FROM packages WHERE price_list_id = $1', [priceListId]);
+    await query('DELETE FROM studio_price_list_offerings WHERE price_list_id = $1', [priceListId]);
+    await query('DELETE FROM studio_price_list_size_overrides WHERE price_list_id = $1', [priceListId]);
+    await query('DELETE FROM product_sizes WHERE price_list_id = $1', [priceListId]);
+    await query('DELETE FROM price_list_products WHERE price_list_id = $1', [priceListId]);
+    await query('DELETE FROM price_lists WHERE id = $1', [priceListId]);
     res.json({ message: 'Price list deleted successfully' });
   } catch (error) {
     res.status(500).json({ error: error.message });

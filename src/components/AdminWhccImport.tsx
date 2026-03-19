@@ -34,6 +34,7 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
   const [selectedProducts, setSelectedProducts] = useState<Map<number, ImportMapping>>(new Map());
   const [importing, setImporting] = useState(false);
   const [globalMarkup, setGlobalMarkup] = useState<number>(100);
+  const [progress, setProgress] = useState<string | null>(null);
 
   // Step 1: Load price lists
   const handleLoadPriceLists = async () => {
@@ -55,7 +56,12 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
     setError(null);
     try {
       const catalog = await whccService.getProductCatalog();
-      setWhccProducts(catalog.products || []);
+      let products = catalog.products || [];
+      // If products array is missing, flatten productsBySize
+      if ((!products || products.length === 0) && catalog.productsBySize) {
+        products = Object.values(catalog.productsBySize).flat();
+      }
+      setWhccProducts(products);
       setStep('select-products');
     } catch (err) {
       setError('Failed to load WHCC products. Check your WHCC configuration.');
@@ -128,6 +134,7 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
 
     setImporting(true);
     setError(null);
+    setProgress('Checking for duplicates...');
 
     try {
       // Debug logging
@@ -143,6 +150,7 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
       const existingProductNames = new Set(priceList?.products?.map(p => p.name.toLowerCase()) || []);
       console.log('[WHCC Import] Existing product names:', existingProductNames);
 
+      setProgress('Grouping products...');
       // Group similar products by base name to create a product with multiple sizes
       const groupedProducts = new Map<string, typeof selectedWhccProducts>();
 
@@ -187,7 +195,16 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
 
         const sizes = uniqueProducts.map((product) => {
           const mapping = selectedProducts.get(product.productUID)!;
-          const cost = product.basePrice;
+          let cost = product.basePrice;
+          // Estimate cost if 0
+          if (!cost || cost === 0) {
+            // Estimate: $0.10 per square inch if dimensions exist, else $1.00
+            if (product.width && product.height) {
+              cost = Math.max(0.5, Math.round(product.width * product.height * 0.10 * 100) / 100);
+            } else {
+              cost = 1.0;
+            }
+          }
 
           let price = cost;
           if (mapping.useCustomPrice && mapping.customPrice) {
@@ -220,12 +237,19 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
       if (itemsToAdd.length === 0) {
         setError('All selected products already exist in this price list');
         setImporting(false);
+        setProgress(null);
         return;
       }
 
+      setProgress('Adding products to price list...');
       // Add to price list
-      const addResult = await priceListAdminService.addItemsToPriceList(selectedPriceListId, itemsToAdd);
-      console.log('[WHCC Import] addItemsToPriceList result:', addResult);
+      for (let i = 0; i < itemsToAdd.length; i++) {
+        const item = itemsToAdd[i];
+        setProgress(`Adding products to price list... (${item.productName})`);
+        await priceListAdminService.addItemsToPriceList(selectedPriceListId, [item]);
+      }
+      setProgress('All products added.');
+      console.log('[WHCC Import] addItemsToPriceList result: All products added');
 
       let confirmMsg = `✓ Successfully imported ${itemsToAdd.length} product group(s)`;
       if (skippedDuplicates.length > 0) {
@@ -233,12 +257,15 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
       }
       alert(confirmMsg);
 
+      setProgress(null);
       onImportComplete();
     } catch (err) {
       console.error('[WHCC Import] Import failed:', err);
       setError(`Import failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      setProgress(null);
     } finally {
       setImporting(false);
+      setProgress(null);
     }
   };
 
@@ -354,12 +381,31 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
 
             <div className="import-scroll-panel">
               {whccProducts.map((product) => {
+                const key = product.productUID;
                 const isSelected = selectedProducts.has(product.productUID);
                 const mapping = selectedProducts.get(product.productUID);
 
+                // Estimate cost if basePrice is 0
+                let displayCost = product.basePrice;
+                if (!displayCost || displayCost === 0) {
+                  if (product.width && product.height) {
+                    displayCost = Math.max(0.5, Math.round(product.width * product.height * 0.10 * 100) / 100);
+                  } else {
+                    displayCost = 1.0;
+                  }
+                }
+
+                let displayRetail = displayCost;
+                if (mapping?.useCustomPrice && mapping.customPrice) {
+                  displayRetail = mapping.customPrice;
+                } else {
+                  const markup = mapping?.markupPercentage ?? 100;
+                  displayRetail = displayCost * (1 + markup / 100);
+                }
+
                 return (
                   <div
-                    key={product.productUID}
+                    key={key}
                     className={`import-product-card${isSelected ? ' selected' : ''}`}
                   >
                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '15px' }}>
@@ -376,20 +422,16 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
                           {product.description}
                         </p>
                         <p style={{ margin: '0 0 5px 0', fontSize: '12px' }}>
-                          UID: {product.productUID} | WHCC Cost: ${product.basePrice.toFixed(2)}
+                          UID: {product.productUID} | WHCC Cost: ${displayCost.toFixed(2)}
                           {product.width && product.height && ` | ${product.width}x${product.height}`}
                         </p>
 
                         {isSelected && (
                           <div className="import-pricing-box">
                             <div className="import-pricing-summary">
-                              <strong>Cost:</strong> ${product.basePrice.toFixed(2)}
+                              <strong>Cost:</strong> ${displayCost.toFixed(2)}
                               {' | '}
-                              <strong>Retail Price:</strong> ${
-                                mapping?.useCustomPrice && mapping.customPrice
-                                  ? mapping.customPrice.toFixed(2)
-                                  : (product.basePrice * (1 + (mapping?.markupPercentage ?? 100) / 100)).toFixed(2)
-                              }
+                              <strong>Retail Price:</strong> ${displayRetail.toFixed(2)}
                               {!mapping?.useCustomPrice && (
                                 <>
                                   {' | '}
@@ -432,7 +474,7 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
                                   type="number"
                                   step="0.01"
                                   min="0"
-                                  value={mapping.customPrice || product.basePrice}
+                                  value={mapping.customPrice || displayCost}
                                   onChange={(e) =>
                                     updateMapping(product.productUID, { customPrice: parseFloat(e.target.value) })
                                   }
@@ -494,7 +536,11 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
             <p style={{ color: 'var(--text-secondary)', marginBottom: '20px' }}>
               Review and confirm import of <strong>{selectedProducts.size} products</strong> to the selected price list.
             </p>
-
+            {progress && (
+              <div className="info-box info-box-progress" style={{ marginBottom: '20px' }}>
+                {progress}
+              </div>
+            )}
             <div className="import-scroll-panel" style={{ maxHeight: '300px' }}>
               <h4 style={{ margin: '0 0 10px 0' }}>Products to Import:</h4>
               <ul style={{ margin: 0, paddingLeft: '20px' }}>
@@ -518,7 +564,6 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
                 })}
               </ul>
             </div>
-
             <div style={{ display: 'flex', gap: '10px' }}>
               <button
                 onClick={() => setStep('select-products')}
@@ -526,7 +571,6 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
               >
                 Back
               </button>
-
               <button
                 onClick={handleImport}
                 disabled={importing}

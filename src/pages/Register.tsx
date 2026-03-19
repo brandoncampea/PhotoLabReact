@@ -73,7 +73,7 @@ const Register: React.FC = () => {
   return (
     <>
       {/* <TopNavbar /> */}
-      <div className="main-content dark-bg" style={{ minHeight: 'calc(100vh - 80px)' }}>
+      <div className="main-content dark-bg min-height-full">
         <div className="auth-container">
           <div className="auth-card">
             <h1>Create Account</h1>

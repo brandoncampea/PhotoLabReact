@@ -10,15 +10,39 @@ const getStudioPlanLimits = async (subscriptionPlan) => {
     return { maxAlbums: null, maxStorageGb: null };
   }
 
-  const dbPlan = await queryRow(
-    `SELECT TOP 1
-        max_albums as maxAlbums,
-        max_storage_gb as maxStorageGb
-     FROM subscription_plans
-     WHERE id = TRY_CAST($1 AS INT)
-        OR LOWER(name) = LOWER($1)`,
-    [String(subscriptionPlan)]
-  );
+  let dbPlan = null;
+  // Lookup by Stripe price ID based on payment frequency
+  if (paymentFrequency === 'monthly') {
+    dbPlan = await queryRow(
+      `SELECT TOP 1
+          max_albums as maxAlbums,
+          max_storage_gb as maxStorageGb
+       FROM subscription_plans
+       WHERE stripe_monthly_price_id = $1`,
+      [String(subscriptionPlan)]
+    );
+  } else if (paymentFrequency === 'yearly') {
+    dbPlan = await queryRow(
+      `SELECT TOP 1
+          max_albums as maxAlbums,
+          max_storage_gb as maxStorageGb
+       FROM subscription_plans
+       WHERE stripe_yearly_price_id = $1`,
+      [String(subscriptionPlan)]
+    );
+  }
+  // Fallback to name or id if Stripe price ID lookup fails
+  if (!dbPlan) {
+    dbPlan = await queryRow(
+      `SELECT TOP 1
+          max_albums as maxAlbums,
+          max_storage_gb as maxStorageGb
+       FROM subscription_plans
+       WHERE id = TRY_CAST($1 AS INT)
+          OR LOWER(name) = LOWER($1)`,
+      [String(subscriptionPlan)]
+    );
+  }
 
   if (dbPlan) {
     return {

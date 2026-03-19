@@ -1,1092 +1,662 @@
-  // Fetch studios from API
-  const fetchStudios = async () => {
-    try {
-      const token = localStorage.getItem('authToken');
-      const response = await fetch('/api/studios', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-      if (response.ok) {
-        await response.json();
-         // setStudios(data); // Removed, not used
-      } else {
-         // setError('Failed to load studios'); // Removed, not used
-      }
-    } catch (err: any) {
-      // setError(err.message || 'Failed to load studios'); // Removed, not used
-    }
-  };
 
-  // Fetch plans from API
-  const fetchPlans = async () => {
-    try {
-      const token = localStorage.getItem('authToken');
-      const response = await fetch('/api/subscription-plans', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-      if (response.ok) {
-        await response.json();
-         // setPlans(data); // Removed, not used
-      } else {
-         // setError('Failed to load plans'); // Removed, not used
-      }
-    } catch (err: any) {
-      // setError(err.message || 'Failed to load plans'); // Removed, not used
-    }
-  };
-import { useState, useEffect } from 'react';
-import { useAuth } from '../contexts/AuthContext';
-import { useNavigate } from 'react-router-dom';
-import '../PhotoLabStyles.css';
+import React, { useEffect, useState } from 'react';
 import AdminLayout from '../components/AdminLayout';
+import { useAuth } from '../contexts/AuthContext';
+import { Order, DashboardStats } from '../types/index';
+import { analyticsService } from '../services/analyticsService';
+import { orderService } from '../services/orderService';
+import { userAdminService } from '../services/adminService';
+import { albumService } from '../services/albumService';
+import '../PhotoLabStyles.css';
 
-interface Studio {
-  id: number;
-  name: string;
-  email: string;
-  created_at: string;
-  subscription_status: string;
-  subscription_plan: string;
-  subscription_start?: string;
-  subscription_end?: string;
-  userCount?: number;
-  fee_type?: string;
-  fee_value?: number;
-  billing_cycle?: string;
-  is_free_subscription?: boolean;
-  cancellation_requested?: boolean;
-  cancellation_date?: string;
+interface RevenueBreakdownSummary {
+  totalRevenue: number;
+  totalCost: number;
+  totalProfit: number;
+  totalItems: number;
+  totalOrders: number;
 }
 
-interface Plan {
-  id: string | number;
-  name: string;
-  monthlyPrice: number;
-  yearlyPrice?: number;
-  features: string[];
-  isActive?: boolean;
-}
-
-interface StudioProfitRow {
-  studioId: number;
-  studioName: string;
+interface RevenueByCategory {
+  category: string;
+  revenue: number;
+  cost: number;
+  profit: number;
+  quantity: number;
   orderCount: number;
-  studioRevenue: number;
-  baseRevenue: number;
-  grossStudioMarkup: number;
-  superAdminProfit: number;
-  stripeFeeAmount: number;
-  studioProfitGross: number;
-  totalPayouts: number;
-  payoutCount: number;
-  studioProfit: number;
-  isPayoutEligible: boolean;
-  amountToNextPayout: number;
 }
 
-interface StudioProfitPayout {
-  id: number;
-  studioId: number;
-  amount: number;
-  notes?: string;
-  createdAt: string;
-  createdByName?: string;
+interface RevenueByAlbum {
+  albumId: number;
+  albumName: string;
+  albumCategory: string;
+  photoCount: number;
+  revenue: number;
+  cost: number;
+  profit: number;
+  quantity: number;
+  orderCount: number;
 }
 
-interface ProfitSummary {
-  payoutThreshold: number;
-  totals: {
-    totalStudioRevenue: number;
-    totalBaseRevenue: number;
-    totalGrossStudioMarkup: number;
-    totalSuperAdminProfit: number;
-    totalStripeFees: number;
-    totalStudioProfitGross: number;
-    totalPayouts: number;
-    totalStudioProfit: number;
-    totalOrders: number;
-    eligibleStudioCount: number;
-    totalEligibleStudioPayout: number;
-  };
-  byStudio: StudioProfitRow[];
+interface RevenueByPhoto {
+  albumId: number;
+  albumName: string;
+  photoId: number;
+  fileName: string;
+  thumbnailUrl?: string;
+  revenue: number;
+  cost: number;
+  profit: number;
+  quantity: number;
+  orderCount: number;
 }
 
-export default function SuperAdminDashboard() {
-  // Application version from environment variable
-  const appVersion = process.env.VITE_APP_VERSION || 'unknown';
+interface RevenueBreakdown {
+  summary: RevenueBreakdownSummary;
+  byCategory: RevenueByCategory[];
+  byAlbum: RevenueByAlbum[];
+  byProduct: Array<{
+    productId: number;
+    productName: string;
+    category: string;
+    revenue: number;
+    cost: number;
+    profit: number;
+    quantity: number;
+    orderCount: number;
+  }>;
+  bySize: Array<{
+    productId: number;
+    productName: string;
+    productSizeId: number;
+    sizeName: string;
+    revenue: number;
+    cost: number;
+    profit: number;
+    quantity: number;
+    orderCount: number;
+  }>;
+  byPhoto: RevenueByPhoto[];
+}
+
+const SuperAdminDashboard: React.FC = () => {
   const { user } = useAuth();
-  const navigate = useNavigate();
-  const [studios] = useState<Studio[]>([]);
-  const [plans] = useState<Plan[]>([]);
-  const [_loading] = useState(false);
-  const [error, setError] = useState('');
-  const [selectedStudio, setSelectedStudio] = useState<Studio | null>(null);
-  const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
-  const [showFeeModal, setShowFeeModal] = useState(false);
-  const [newSubscription, setNewSubscription] = useState({
-    subscriptionPlan: '',
-    subscriptionStatus: 'active',
-    billingCycle: 'monthly',
-    isFreeSubscription: false
-  });
-  const [studioFees, setStudioFees] = useState({
-    feeType: 'percentage',
-    feeValue: 0
-  });
-  const [profitSummary, setProfitSummary] = useState<ProfitSummary | null>(null);
-  const [showSuperAdminProfitByStudio, setShowSuperAdminProfitByStudio] = useState(false);
-  const [showStudioProfitByStudio, setShowStudioProfitByStudio] = useState(false);
-  const [payoutThreshold, setPayoutThreshold] = useState(500);
-  const [selectedPayoutStudio, setSelectedPayoutStudio] = useState<StudioProfitRow | null>(null);
-  const [studioPayoutHistory, setStudioPayoutHistory] = useState<StudioProfitPayout[]>([]);
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showRevenueModal, setShowRevenueModal] = useState(false);
+  const [revenueBreakdown, setRevenueBreakdown] = useState<RevenueBreakdown | null>(null);
+  const [revenueBreakdownLoading, setRevenueBreakdownLoading] = useState(false);
+  const [revenueBreakdownError, setRevenueBreakdownError] = useState('');
+  const [selectedAlbumId, setSelectedAlbumId] = useState<number | null>(null);
+  const [revenueFocus, setRevenueFocus] = useState<'revenue' | 'profit'>('revenue');
+  const [analytics, setAnalytics] = useState<{ totalVisitors: number; totalPageViews: number; albumViews: number; photoViews: number } | null>(null);
 
-  const normalizePlanValue = (value: string | number | null | undefined) =>
-    String(value || '').trim().toLowerCase();
+  useEffect(() => {
+    loadStats();
+    const interval = setInterval(loadStats, 30000);
+    return () => clearInterval(interval);
+  }, [user]);
 
-  const findPlan = (value: string | number | null | undefined) => {
-    const normalized = normalizePlanValue(value);
-    if (!normalized) return undefined;
-    return plans.find((candidate) => {
-      const candidateId = normalizePlanValue(candidate.id);
-      const candidateName = normalizePlanValue(candidate.name);
-      return candidateId === normalized || candidateName === normalized;
-    });
-  };
+  const loadStats = async () => {
+    try {
+      const [ordersResult, customersResult, albumsResult] = await Promise.allSettled([
+        orderService.getAdminOrders(),
+        userAdminService.getAll(),
+        albumService.getAlbums(),
+      ]);
 
-  const getPlanSelectionValue = (value: string | number | null | undefined) => {
-    const match = findPlan(value);
-    if (match?.name) return String(match.name);
-    return String(value || '');
+      const ordersData = ordersResult.status === 'fulfilled' ? ordersResult.value : [];
+      const customers = customersResult.status === 'fulfilled' ? customersResult.value : [];
+      const albums = albumsResult.status === 'fulfilled' ? albumsResult.value : [];
+
+      const totalRevenue = ordersData.reduce((sum: number, order: Order) => sum + (order.totalAmount || 0), 0);
+      const pendingOrders = ordersData.filter((order: Order) => (order.status || '').toLowerCase() === 'pending').length;
+      const totalOrders = ordersData.length;
+      const recentOrders = [...ordersData]
+        .sort((a, b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime())
+        .slice(0, 5);
+
+      const albumOrderCounts = new Map<number, { albumId: number; orderCount: number; albumName: string }>();
+      ordersData.forEach((order: Order) => {
+        order.items?.forEach((item: any) => {
+          const albumId = item.photo?.albumId;
+          if (!albumId) return;
+          const albumName = albums.find((a: any) => a.id === albumId)?.name || `Album #${albumId}`;
+          const existing = albumOrderCounts.get(albumId) || { albumId, orderCount: 0, albumName };
+          existing.orderCount += 1;
+          albumOrderCounts.set(albumId, existing);
+        });
+      });
+
+      const topAlbums = Array.from(albumOrderCounts.values())
+        .sort((a, b) => b.orderCount - a.orderCount)
+        .slice(0, 6)
+        .map((entry: any) => {
+          const album = albums.find((a: any) => a.id === entry.albumId);
+          if (!album) return null;
+          return { album, orderCount: entry.orderCount };
+        })
+        .filter((entry): entry is { album: typeof albums[number]; orderCount: number } => entry !== null);
+
+      setStats({
+        totalOrders,
+        totalRevenue,
+        totalCustomers: customers.length,
+        pendingOrders,
+        recentOrders,
+        topAlbums,
+      });
+      setOrders(ordersData);
+    } catch (error) {
+      console.error('Failed to load stats:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
-    if (user?.role === 'super_admin') {
-      fetchStudios();
-      fetchPlans();
-      fetchPayoutThreshold();
-    }
-  }, [user]);
-
-  // ...existing code for fetchPayoutThreshold, fetchStudioPayoutHistory, handleMarkPayoutSent, etc...
-
-  // Place all rendering logic below
-  if (user?.role !== 'super_admin') {
-    return <div className="admin-page">Access denied. Super admin only.</div>;
-  }
-
-  return (
-    <AdminLayout>
-      {/* ...existing JSX for dashboard, payout history, etc... */}
-      {selectedPayoutStudio && selectedPayoutStudio.studioName && (
-        <div className="admin-summary-box dark-card" style={{ marginBottom: '24px' }}>
-          <div className="admin-summary-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 className="admin-summary-title" style={{ marginTop: 0, marginBottom: '0.75rem' }}>
-              Payout History — {selectedPayoutStudio.studioName}
-            </h3>
-            <button className="btn btn-secondary btn-sm dark-btn" onClick={() => setSelectedPayoutStudio(null)}>
-              Close
-            </button>
-          </div>
-          <div style={{ overflowX: 'auto' }}>
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Date</th>
-                  <th style={{ textAlign: 'right' }}>Amount</th>
-                  <th>Created By</th>
-                  <th>Notes</th>
-                </tr>
-              </thead>
-              <tbody>
-                {studioPayoutHistory.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
-                      No payout history for this studio.
-                    </td>
-                  </tr>
-                ) : (
-                  studioPayoutHistory.map((payout) => (
-                    <tr key={payout.id}>
-                      <td>#{payout.id}</td>
-                      <td>{new Date(payout.createdAt).toLocaleString()}</td>
-                      <td style={{ textAlign: 'right', fontWeight: 'bold' }}>${Number(payout.amount || 0).toFixed(2)}</td>
-                      <td>{payout.createdByName || '—'}</td>
-                      <td>{payout.notes || '—'}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-      {/* ...rest of dashboard JSX... */}
-    </AdminLayout>
-  );
-
-  const fetchPayoutThreshold = async () => {
-    try {
-      const token = localStorage.getItem('authToken');
-      const response = await fetch('/api/studios/profit-payout-config', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setPayoutThreshold(Number(data.payoutThreshold) || 500);
-      }
-    } catch (err) {
-      console.error('Failed to fetch payout threshold:', err);
-    }
-  };
-
-
-  const fetchStudioPayoutHistory = async (studio: StudioProfitRow) => {
-    try {
-      const token = localStorage.getItem('authToken');
-      const response = await fetch(`/api/studios/${studio.studioId}/profit-payouts`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setSelectedPayoutStudio(studio);
-        setStudioPayoutHistory(Array.isArray(data.payouts) ? data.payouts : []);
-      }
-    } catch (err) {
-      console.error('Failed to fetch studio payout history:', err);
-    }
-  };
-
-  const handleMarkPayoutSent = async (studio: StudioProfitRow) => {
-    const defaultAmount = Number(studio.studioProfit || 0).toFixed(2);
-    const entered = window.prompt(`Enter payout amount for ${studio.studioName}`, defaultAmount);
-    if (entered === null) return;
-
-    const amount = Number(entered);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      alert('Please enter a valid payout amount greater than 0');
-      return;
-    }
-
-    const notes = window.prompt('Optional payout note', '') || undefined;
-
-    try {
-      const token = localStorage.getItem('authToken');
-      const response = await fetch(`/api/studios/${studio.studioId}/profit-payouts`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({ amount, notes }),
-      });
-
-      if (response.ok) {
-        await fetchProfitSummary();
-        if (selectedPayoutStudio?.studioId === studio.studioId) {
-          await fetchStudioPayoutHistory(studio);
-        }
-        alert('Payout recorded successfully');
-      } else {
-        const data = await response.json();
-        alert(data.error || 'Failed to record payout');
-      }
-    } catch (err) {
-      console.error('Failed to mark payout sent:', err);
-      alert('Failed to record payout');
-    }
-  };
-
-  const fetchProfitSummary = async () => {
-    try {
-      const token = localStorage.getItem('authToken');
-      const studiosResponse = await fetch('/api/studios', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-
-      if (!studiosResponse.ok) {
-        setProfitSummary(null);
-        return;
-      }
-
-      const studiosData: Studio[] = await studiosResponse.json();
-
-      const perStudio = await Promise.all(
-        studiosData.map(async (studio) => {
-          const response = await fetch(`/api/studios/${studio.id}/profit`, {
-            headers: {
-              'Authorization': `Bearer ${token}`,
-            },
-          });
-
-          if (!response.ok) {
-            return {
-              studioId: studio.id,
-              studioName: studio.name,
-              orderCount: 0,
-              studioRevenue: 0,
-              baseRevenue: 0,
-              grossStudioMarkup: 0,
-              superAdminProfit: 0,
-              stripeFeeAmount: 0,
-              studioProfitGross: 0,
-              totalPayouts: 0,
-              payoutCount: 0,
-              studioProfit: 0,
-              isPayoutEligible: false,
-              amountToNextPayout: 0,
-            } as StudioProfitRow;
-          }
-
-          const data = await response.json();
-          return {
-            studioId: Number(data.studioId) || studio.id,
-            studioName: data.studioName || studio.name,
-            orderCount: Number(data.totalOrders) || 0,
-            studioRevenue: Number(data.totalStudioRevenue) || 0,
-            baseRevenue: Number(data.totalBaseRevenue) || 0,
-            grossStudioMarkup: Number(data.totalGrossStudioMarkup) || 0,
-            superAdminProfit: Number(data.totalSuperAdminProfit) || 0,
-            stripeFeeAmount: Number(data.totalStripeFees) || 0,
-            studioProfitGross: Number(data.totalStudioProfitGross) || 0,
-            totalPayouts: Number(data.totalPayouts) || 0,
-            payoutCount: Number(data.payoutCount) || 0,
-            studioProfit: Number(data.totalStudioProfit) || 0,
-            isPayoutEligible: !!data.isPayoutEligible,
-            amountToNextPayout: Number(data.amountToNextPayout) || 0,
-          } as StudioProfitRow;
-        })
-      );
-
-      const totals = perStudio.reduce(
-        (acc, row) => {
-          acc.totalStudioRevenue += row.studioRevenue;
-          acc.totalBaseRevenue += row.baseRevenue;
-          acc.totalGrossStudioMarkup += row.grossStudioMarkup;
-          acc.totalSuperAdminProfit += row.superAdminProfit;
-          acc.totalStripeFees += row.stripeFeeAmount;
-          acc.totalStudioProfitGross += row.studioProfitGross;
-          acc.totalPayouts += row.totalPayouts;
-          acc.totalStudioProfit += row.studioProfit;
-          acc.totalOrders += row.orderCount;
-          if (row.isPayoutEligible) {
-            acc.eligibleStudioCount += 1;
-            acc.totalEligibleStudioPayout += row.studioProfit;
-          }
-          return acc;
-        },
-        {
-          totalStudioRevenue: 0,
-          totalBaseRevenue: 0,
-          totalGrossStudioMarkup: 0,
-          totalSuperAdminProfit: 0,
-          totalStripeFees: 0,
-          totalStudioProfitGross: 0,
-          totalPayouts: 0,
-          totalStudioProfit: 0,
-          totalOrders: 0,
-          eligibleStudioCount: 0,
-          totalEligibleStudioPayout: 0,
-        }
-      );
-
-      setProfitSummary({
-        payoutThreshold,
-        totals,
-        byStudio: perStudio,
-      });
-    } catch (err) {
-      console.error('Failed to fetch profit summary:', err);
-      setProfitSummary(null);
-    }
-  };
-
-
-  const handleUpdateSubscription = async () => {
-    if (!selectedStudio) return;
-
-    try {
-      const token = localStorage.getItem('authToken');
-      const response = await fetch(
-        `/api/studios/${selectedStudio.id}/subscription`,
-        {
-          method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            subscriptionPlan: newSubscription.subscriptionPlan,
-            subscriptionStatus: newSubscription.subscriptionStatus,
-            billingCycle: newSubscription.billingCycle,
-            isFreeSubscription: newSubscription.isFreeSubscription
-          })
-        }
-      );
-
-      if (response.ok) {
-        alert('Subscription updated successfully');
-        setShowSubscriptionModal(false);
-        fetchStudios();
-      } else {
-        setError('Failed to update subscription');
-      }
-    } catch (err: any) {
-      setError(err.message);
-    }
-  };
-
-  const handleOpenFeeModal = async (studio: Studio) => {
-    setSelectedStudio(studio);
-    try {
-      const token = localStorage.getItem('authToken');
-      const response = await fetch(
-        `/api/studios/${studio.id}/fees`,
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        setStudioFees({
-          feeType: data.feeType,
-          feeValue: data.feeValue
+    const loadAnalytics = async () => {
+      try {
+        const summary = await analyticsService.getSummary();
+        setAnalytics({
+          totalVisitors: summary.totalVisits || 0,
+          totalPageViews: summary.totalPageViews || 0,
+          albumViews: summary.albumViews || 0,
+          photoViews: summary.photoViews || 0,
         });
+      } catch (error) {
+        console.error('Failed to load analytics:', error);
       }
-    } catch (err) {
-      console.error('Failed to fetch fees:', err);
-    }
-    setShowFeeModal(true);
-  };
+    };
+    loadAnalytics();
+    const interval = setInterval(loadAnalytics, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
-  const handleUpdateFees = async () => {
-    if (!selectedStudio) return;
-
-    try {
-      const token = localStorage.getItem('authToken');
-      const response = await fetch(
-        `/api/studios/${selectedStudio.id}/fees`,
-        {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            feeType: studioFees.feeType,
-            feeValue: studioFees.feeValue
-          })
-        }
-      );
-
-      if (response.ok) {
-        alert('Studio fees updated successfully');
-        setShowFeeModal(false);
-        fetchStudios();
-      } else {
-        const data = await response.json();
-        setError(data.error || 'Failed to update fees');
-      }
-    } catch (err: any) {
-      setError(err.message);
-    }
-  };
-
-  const getPlanPrice = (planId: string) => {
-    const plan = findPlan(planId);
-    return plan ? `$${plan.monthlyPrice}/mo` : 'N/A';
-  };
-
-  const getMonthlySubscriptionRevenue = (studio: Studio) => {
-    if (
-      !studio ||
-      studio.subscription_status !== 'active' ||
-      studio.is_free_subscription
-    ) {
-      return 0;
-    }
-
-    const plan = findPlan(studio.subscription_plan);
-
-    if (!plan) {
-      return 0;
-    }
-
-    if (studio.billing_cycle === 'yearly') {
-      const yearlyPrice = Number(plan.yearlyPrice);
-      if (Number.isFinite(yearlyPrice) && yearlyPrice > 0) {
-        return yearlyPrice / 12;
-      }
-    }
-
-    const monthlyPrice = Number(plan.monthlyPrice);
-    return Number.isFinite(monthlyPrice) ? monthlyPrice : 0;
-  };
-
-  const monthlyRevenue = studios.reduce(
-    (sum, studio) => sum + getMonthlySubscriptionRevenue(studio),
-    0
-  );
-
-  if (user?.role !== 'super_admin') {
-    return <div style={{ padding: '20px' }}>Access denied. Super admin only.</div>;
+  if (loading) {
+    return <div className="loading">Loading dashboard...</div>;
   }
+
+  const displayTotalRevenue = stats?.totalRevenue || 0;
+  const displayTotalOrders = stats?.totalOrders || 0;
+  const orderCompletionRate = displayTotalOrders
+    ? ((displayTotalOrders - (stats?.pendingOrders || 0)) / displayTotalOrders * 100).toFixed(1)
+    : '0';
+  const averageOrderValue = displayTotalOrders
+    ? (displayTotalRevenue / displayTotalOrders).toFixed(2)
+    : '0.00';
+
+  // Calculate total profit and cost
+  const calculateProfit = () => {
+    let totalCost = 0;
+    orders.forEach(order => {
+      order.items?.forEach(item => {
+        if (item.cost !== undefined) {
+          totalCost += item.cost * item.quantity;
+        }
+      });
+    });
+    const revenue = stats?.totalRevenue || 0;
+    const profit = revenue - totalCost;
+    return { profit, cost: totalCost, margin: revenue > 0 ? ((profit / revenue) * 100).toFixed(1) : 0 };
+  };
+
+  const profitData = calculateProfit();
+
+  const loadRevenueBreakdown = async () => {
+    try {
+      setRevenueBreakdownLoading(true);
+      const data = await analyticsService.getRevenueBreakdown();
+      setRevenueBreakdown(data);
+      setSelectedAlbumId(data.byAlbum?.[0]?.albumId || null);
+      setRevenueBreakdownError('');
+    } catch (error) {
+      console.error('Failed to load revenue breakdown:', error);
+      setRevenueBreakdownError('Failed to load revenue details');
+    } finally {
+      setRevenueBreakdownLoading(false);
+    }
+  };
+
+  const openRevenueModal = async (focus: 'revenue' | 'profit') => {
+    setRevenueFocus(focus);
+    setShowRevenueModal(true);
+    await loadRevenueBreakdown();
+  };
+
+  const formatCurrency = (value: number) => `$${value.toFixed(2)}`;
+  const albumPhotos = revenueBreakdown?.byPhoto.filter((photo) => photo.albumId === selectedAlbumId) || [];
+  const selectedAlbum = revenueBreakdown?.byAlbum.find((album) => album.albumId === selectedAlbumId) || null;
 
   return (
     <AdminLayout>
-      <div style={{ marginBottom: '16px', fontSize: '13px', color: 'var(--text-secondary)' }}>
-        <strong>App Version:</strong> {appVersion || 'unknown'}
-        <div style={{ marginTop: '8px', fontSize: '12px', color: '#888' }}>
-          <strong>Env Debug:</strong>
-          <pre style={{ background: '#222', color: '#fff', padding: '8px', borderRadius: '4px', maxWidth: '400px', overflowX: 'auto' }}>{JSON.stringify(process.env, null, 2)}</pre>
-        </div>
-      </div>
-      <h1>Super Admin Dashboard</h1>
-
-      {error && <div style={{ color: 'var(--error-color)', marginBottom: '20px' }}>{error}</div>}
-
-      <div style={{ marginBottom: '30px' }}>
-        <button
-          onClick={() => navigate('/super-admin-pricing')}
-          className="btn btn-primary"
-          style={{ fontSize: '16px', fontWeight: 'bold' }}
-        >
-          💰 Manage Pricing
-        </button>
-      </div>
-
-      <div className="stats-grid">
-        <div className="stat-card">
-          <h3>Total Studios</h3>
-          <p className="stat-value">{studios.length}</p>
-        </div>
-        <div className="stat-card">
-          <h3>Active Subscriptions</h3>
-          <p className="stat-value">{studios.filter(s => s.subscription_status === 'active').length}</p>
-        </div>
-        <div className="stat-card">
-          <h3>Monthly Revenue</h3>
-          <p className="stat-value">${monthlyRevenue.toFixed(2)}</p>
-        </div>
-        <div className="stat-card">
-          <h3>Total Super Admin Profit</h3>
-          <p className="stat-value" style={{ color: '#fbbf24' }}>
-             ${Number(profitSummary?.totals?.totalSuperAdminProfit ?? 0).toFixed(2)}
+      <div className="admin-page">
+        <div className="page-header">
+          <h1 data-testid="superadmin-dashboard-heading">🛡️ Super Admin Dashboard</h1>
+          <input
+            type="text"
+            placeholder="Search..."
+            className="superadmin-dashboard-search"
+            data-testid="superadmin-dashboard-search"
+          />
+          <p className="dashboard-header-desc">
+            Global business overview and advanced analytics for all labs and studios.
           </p>
-          <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0 }}>
-             Studio payout threshold: ${Number(profitSummary?.payoutThreshold ?? payoutThreshold).toFixed(2)}
-          </p>
-          <button
-            className="btn btn-secondary btn-sm"
-            onClick={() => setShowSuperAdminProfitByStudio((prev) => !prev)}
-            style={{ marginTop: '0.5rem' }}
+        </div>
+
+        {/* Key Metrics */}
+        <div className="dashboard-metrics">
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => openRevenueModal('revenue')}
+            onKeyDown={(e) => e.key === 'Enter' && openRevenueModal('revenue')}
+            className="dashboard-card dashboard-card-revenue"
           >
-            {showSuperAdminProfitByStudio ? 'Hide by Studio' : 'Drill by Studio'}
-          </button>
-        </div>
-        <div className="stat-card">
-          <h3>Total Studio Profit (Pre-Payout)</h3>
-          <p className="stat-value" style={{ color: '#86efac' }}>
-             ${Number(profitSummary?.totals?.totalStudioProfitGross ?? 0).toFixed(2)}
-          </p>
-          <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0 }}>
-             Available after payouts: ${Number(profitSummary?.totals?.totalStudioProfit ?? 0).toFixed(2)}
-          </p>
-          <button
-            className="btn btn-secondary btn-sm"
-            onClick={() => setShowStudioProfitByStudio((prev) => !prev)}
-            style={{ marginTop: '0.5rem' }}
-          >
-            {showStudioProfitByStudio ? 'Hide by Studio' : 'Drill by Studio'}
-          </button>
-        </div>
-        <div className="stat-card">
-          <h3>Total Base Cost</h3>
-           <p className="stat-value">${Number(profitSummary?.totals?.totalBaseRevenue ?? 0).toFixed(2)}</p>
-          <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0 }}>
-            Base order cost across all studios
-          </p>
-        </div>
-        <div className="stat-card">
-          <h3>Total Markup</h3>
-           <p className="stat-value">${Number(profitSummary?.totals?.totalGrossStudioMarkup ?? 0).toFixed(2)}</p>
-          <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0 }}>
-            Revenue minus base order cost
-          </p>
-        </div>
-        <div className="stat-card">
-          <h3>Total Stripe Fees</h3>
-          <p className="stat-value" style={{ color: '#fca5a5' }}>
-             ${Number(profitSummary?.totals?.totalStripeFees ?? 0).toFixed(2)}
-          </p>
-          <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0 }}>
-            Internal only — not charged to customers
-          </p>
-        </div>
-      </div>
+            <span className="dashboard-card-icon">💰</span>
+            <div className="dashboard-card-label">Total Revenue</div>
+            <div className="dashboard-card-value">${displayTotalRevenue.toFixed(2)}</div>
+            <div className="dashboard-card-sub">Avg: ${averageOrderValue} per order</div>
+            <span className="dashboard-card-link">View revenue details →</span>
+          </div>
 
-      {(showSuperAdminProfitByStudio || showStudioProfitByStudio) && profitSummary && (
-        <div className="admin-summary-box" style={{ marginBottom: '24px' }}>
-          <h3 style={{ marginTop: 0 }}>Profit by Studio</h3>
-          <div style={{ overflowX: 'auto' }}>
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Studio</th>
-                  <th>Orders</th>
-                  <th style={{ textAlign: 'right' }}>Revenue</th>
-                  <th style={{ textAlign: 'right' }}>Base Cost</th>
-                  <th style={{ textAlign: 'right' }}>Markup</th>
-                  <th style={{ textAlign: 'right' }}>Stripe Fees</th>
-                  {showSuperAdminProfitByStudio && <th style={{ textAlign: 'right' }}>Super Admin Profit</th>}
-                  {showStudioProfitByStudio && <th style={{ textAlign: 'right' }}>Studio Profit (Pre-Payout)</th>}
-                  <th style={{ textAlign: 'right' }}>Paid Out</th>
-                  {showStudioProfitByStudio && <th style={{ textAlign: 'right' }}>Available After Payouts</th>}
-                  <th style={{ textAlign: 'center' }}>Payout Status</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                 {profitSummary?.byStudio?.map((row) => (
-                  <tr key={row.studioId}>
-                    <td>{row.studioName}</td>
-                    <td>{row.orderCount}</td>
-                    <td style={{ textAlign: 'right' }}>${row.studioRevenue.toFixed(2)}</td>
-                    <td style={{ textAlign: 'right' }}>${Number(row.baseRevenue || 0).toFixed(2)}</td>
-                    <td style={{ textAlign: 'right' }}>${Number(row.grossStudioMarkup || 0).toFixed(2)}</td>
-                    <td style={{ textAlign: 'right', color: '#fca5a5' }}>
-                      ${Number(row.stripeFeeAmount || 0).toFixed(2)}
-                    </td>
-                    {showSuperAdminProfitByStudio && (
-                      <td style={{ textAlign: 'right', color: '#fbbf24', fontWeight: 'bold' }}>
-                        ${row.superAdminProfit.toFixed(2)}
-                      </td>
-                    )}
-                    {showStudioProfitByStudio && (
-                      <td style={{ textAlign: 'right', color: '#86efac', fontWeight: 'bold' }}>
-                        ${row.studioProfitGross.toFixed(2)}
-                      </td>
-                    )}
-                    <td style={{ textAlign: 'right' }}>${(row.totalPayouts || 0).toFixed(2)}</td>
-                    {showStudioProfitByStudio && (
-                      <td style={{ textAlign: 'right', fontWeight: 'bold' }}>
-                        ${row.studioProfit.toFixed(2)}
-                      </td>
-                    )}
-                    <td style={{ textAlign: 'center' }}>
-                      {row.isPayoutEligible ? (
-                        <span className="status-badge status-active">Eligible</span>
-                      ) : (
-                        <span className="status-badge status-inactive">
-                          ${(row.amountToNextPayout || 0).toFixed(2)} to go
-                        </span>
-                      )}
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        <button className="btn btn-secondary btn-sm" onClick={() => fetchStudioPayoutHistory(row)}>
-                          View Payouts
-                        </button>
-                        <button
-                          className="btn btn-success btn-sm"
-                          disabled={!row.isPayoutEligible}
-                          onClick={() => handleMarkPayoutSent(row)}
-                        >
-                          Mark Payout
-                        </button>
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => {}}
+            className="dashboard-card dashboard-card-orders"
+          >
+            <span className="dashboard-card-icon">📦</span>
+            <div className="dashboard-card-label">Total Orders</div>
+            <div className="dashboard-card-value">{displayTotalOrders}</div>
+            <div className="dashboard-card-sub">{orderCompletionRate}% completion rate</div>
+            <span className="dashboard-card-link">Go to orders →</span>
+          </div>
+
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => {}}
+            className="dashboard-card dashboard-card-customers"
+          >
+            <span className="dashboard-card-icon">👥</span>
+            <div className="dashboard-card-label">Total Customers</div>
+            <div className="dashboard-card-value">{stats?.totalCustomers || 0}</div>
+            <div className="dashboard-card-sub">Active user accounts</div>
+            <span className="dashboard-card-link">View customers →</span>
+          </div>
+
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => {}}
+            className="dashboard-card dashboard-card-pending"
+          >
+            <span className="dashboard-card-icon">⏳</span>
+            <div className="dashboard-card-label">Pending Orders</div>
+            <div className="dashboard-card-value">{stats?.pendingOrders || 0}</div>
+            <div className="dashboard-card-sub">Requires attention</div>
+            <span className="dashboard-card-link">Review pending →</span>
+          </div>
+
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => openRevenueModal('profit')}
+            onKeyDown={(e) => e.key === 'Enter' && openRevenueModal('profit')}
+            className="dashboard-card dashboard-card-profit"
+          >
+            <span className="dashboard-card-icon">📈</span>
+            <div className="dashboard-card-label">Total Profit</div>
+            <div className="dashboard-card-value">${profitData.profit.toFixed(2)}</div>
+            <div className="dashboard-card-sub">{profitData.margin}% margin</div>
+            <span className="dashboard-card-link">See profit details →</span>
+          </div>
+        </div>
+
+        {/* Analytics Overview + Order Status */}
+        <div className="dashboard-two-col">
+          {/* Traffic Overview */}
+          <div className="dashboard-widget">
+            <h2><span>📈</span> Traffic Overview</h2>
+            <div className="dashboard-mini-stats">
+              <div className="dashboard-mini-stat">
+                <div className="dashboard-mini-stat-label">Total Visitors</div>
+                <div className="dashboard-mini-stat-value accent-blue">{analytics?.totalVisitors || 0}</div>
+              </div>
+              <div className="dashboard-mini-stat">
+                <div className="dashboard-mini-stat-label">Page Views</div>
+                <div className="dashboard-mini-stat-value accent-purple">{analytics?.totalPageViews || 0}</div>
+              </div>
+              <div className="dashboard-mini-stat">
+                <div className="dashboard-mini-stat-label">Albums Viewed</div>
+                <div className="dashboard-mini-stat-value accent-green">{analytics?.albumViews || 0}</div>
+              </div>
+              <div className="dashboard-mini-stat">
+                <div className="dashboard-mini-stat-label">Photos Viewed</div>
+                <div className="dashboard-mini-stat-value accent-orange">{analytics?.photoViews || 0}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Order Status */}
+          <div className="dashboard-widget">
+            <h2><span>📊</span> Order Status</h2>
+            <div className="dashboard-progress-col">
+              <div className="dashboard-progress-item">
+                <div className="dashboard-progress-label-row">
+                  <span className="dashboard-progress-label-bold">Completed</span>
+                  <span>{stats?.totalOrders ? stats.totalOrders - stats.pendingOrders : 0}</span>
+                </div>
+                <div className="dashboard-progress-track">
+                  <div
+                    className="dashboard-progress-fill accent-green"
+                    style={{ width: `${stats?.totalOrders ? ((stats.totalOrders - stats.pendingOrders) / stats.totalOrders * 100) : 0}%` }}
+                  />
+                </div>
+              </div>
+              <div className="dashboard-progress-item">
+                <div className="dashboard-progress-label-row">
+                  <span className="dashboard-progress-label-bold">Pending</span>
+                  <span>{stats?.pendingOrders || 0}</span>
+                </div>
+                <div className="dashboard-progress-track">
+                  <div
+                    className="dashboard-progress-fill accent-orange"
+                    style={{ width: `${stats?.totalOrders ? (stats.pendingOrders / stats.totalOrders * 100) : 0}%` }}
+                  />
+                </div>
+              </div>
+              <div className="dashboard-completion-ring">
+                <svg width="120" height="120">
+                  <circle cx="60" cy="60" r="50" fill="none" stroke="var(--border-color)" strokeWidth="10" />
+                  <circle
+                    cx="60" cy="60" r="50" fill="none"
+                    stroke="#4caf50" strokeWidth="10"
+                    strokeDasharray={`${2 * Math.PI * 50 * parseFloat(orderCompletionRate) / 100} ${2 * Math.PI * 50}`}
+                    strokeLinecap="round"
+                    transform="rotate(-90 60 60)"
+                  />
+                  <text x="60" y="60" textAnchor="middle" dy=".3em" className="dashboard-completion-ring-text">
+                    {orderCompletionRate}%
+                  </text>
+                </svg>
+                <div className="dashboard-completion-ring-label">Completion Rate</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Top Albums */}
+        <div className="dashboard-widget dashboard-widget-mb">
+          <h2><span>🔥</span> Most Popular Albums</h2>
+          {!stats?.topAlbums || stats.topAlbums.length === 0 ? (
+            <p className="dashboard-albums-empty">
+              No album orders yet. Sales will appear here once customers purchase.
+            </p>
+          ) : (
+            <div className="dashboard-albums-grid">
+              {stats.topAlbums.slice(0, 6).map((entry) => (
+                <div key={entry.album.id} className="dashboard-album-card">
+                  <div className="dashboard-album-name">📁 {entry.album.name}</div>
+                  <div className="dashboard-album-count">{entry.orderCount}</div>
+                  <div className="dashboard-album-count-label">orders</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Quick Actions */}
+        <div className="dashboard-widget">
+          <h2><span>⚡</span> Quick Actions</h2>
+          <div className="dashboard-actions-grid">
+            <a href="/admin/orders"    className="btn btn-primary dashboard-action-link">📦 Manage Orders</a>
+            <a href="/admin/albums"    className="btn btn-primary dashboard-action-link">📁 Manage Albums</a>
+            <a href="/admin/products"  className="btn btn-primary dashboard-action-link">🛍️ Manage Products</a>
+            <a href="/admin/customers" className="btn btn-primary dashboard-action-link">👥 View Customers</a>
+            <a href="/admin/analytics" className="btn btn-secondary dashboard-action-link">📈 View Analytics</a>
+            <a href="/admin/shipping"  className="btn btn-secondary dashboard-action-link">🚚 Shipping Settings</a>
+          </div>
+        </div>
+
+        {showRevenueModal && (
+          <div className="modal-overlay" onClick={() => setShowRevenueModal(false)}>
+            <div className="modal-content admin-modal-content dashboard-modal-content" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header admin-modal-header">
+                <h2>{revenueFocus === 'revenue' ? 'Revenue Details' : 'Profit Details'}</h2>
+                <button onClick={() => setShowRevenueModal(false)} className="btn-close">×</button>
+              </div>
+
+              {revenueBreakdownLoading ? (
+                <div className="loading dashboard-modal-loading">Loading details...</div>
+              ) : revenueBreakdownError ? (
+                <div className="dashboard-widget dashboard-widget-mt">
+                  <h2><span>🔒</span> Advanced Analytics</h2>
+                  <p className="dashboard-modal-error">{revenueBreakdownError}</p>
+                  <p className="dashboard-modal-error">
+                    Upgrade to unlock revenue and profit analytics by category, album, product, size, and photo.
+                  </p>
+                </div>
+              ) : revenueBreakdown ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
+                    <div className="dashboard-widget" style={{ padding: '1rem' }}>
+                      <div className="dashboard-card-label">Total Revenue</div>
+                      <div className="dashboard-card-value" style={{ fontSize: '1.6rem' }}>{formatCurrency(revenueBreakdown.summary.totalRevenue)}</div>
+                    </div>
+                    <div className="dashboard-widget" style={{ padding: '1rem' }}>
+                      <div className="dashboard-card-label">Total Cost</div>
+                      <div className="dashboard-card-value" style={{ fontSize: '1.6rem', color: '#f59e0b' }}>{formatCurrency(revenueBreakdown.summary.totalCost)}</div>
+                    </div>
+                    <div className="dashboard-widget" style={{ padding: '1rem' }}>
+                      <div className="dashboard-card-label">Total Profit</div>
+                      <div className="dashboard-card-value" style={{ fontSize: '1.6rem', color: '#10b981' }}>{formatCurrency(revenueBreakdown.summary.totalProfit)}</div>
+                    </div>
+                    <div className="dashboard-widget" style={{ padding: '1rem' }}>
+                      <div className="dashboard-card-label">Items Sold</div>
+                      <div className="dashboard-card-value" style={{ fontSize: '1.6rem', color: 'var(--text-primary)' }}>{revenueBreakdown.summary.totalItems}</div>
+                    </div>
+                  </div>
+
+                  <div className="dashboard-widget">
+                    <h2><span>🏷️</span> Revenue by Category</h2>
+                    {revenueBreakdown.byCategory.length === 0 ? (
+                      <p style={{ color: 'var(--text-secondary)', margin: 0 }}>No category sales yet.</p>
+                    ) : (
+                      <div style={{ overflowX: 'auto' }}>
+                        <table className="data-table">
+                          <thead>
+                            <tr>
+                              <th>Category</th>
+                              <th>Orders</th>
+                              <th>Items</th>
+                              <th>Revenue</th>
+                              <th>Cost</th>
+                              <th>Profit</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {revenueBreakdown.byCategory.map((row) => (
+                              <tr key={row.category}>
+                                <td>{row.category}</td>
+                                <td>{row.orderCount}</td>
+                                <td>{row.quantity}</td>
+                                <td>{formatCurrency(row.revenue)}</td>
+                                <td>{formatCurrency(row.cost)}</td>
+                                <td style={{ color: row.profit >= 0 ? '#10b981' : 'var(--error-color)', fontWeight: 600 }}>{formatCurrency(row.profit)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+                    )}
+                  </div>
 
-      <div className="admin-summary-box" style={{ marginBottom: '24px' }}>
-        <h3 style={{ marginTop: 0 }}>Studios Management</h3>
-      <div style={{ overflowX: 'auto' }}>
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Studio Name</th>
-              <th>Email</th>
-              <th>Plan</th>
-              <th>Billing</th>
-              <th>Status</th>
-              <th>Fee</th>
-              <th style={{ textAlign: 'right' }}>Studio Profit (Pre-Payout)</th>
-              <th style={{ textAlign: 'right' }}>Super Admin Profit</th>
-              <th style={{ textAlign: 'right' }}>Paid Out</th>
-              <th style={{ textAlign: 'right' }}>Available After Payouts</th>
-              <th>Payout Status</th>
-              <th>Created</th>
-              <th>Users</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {studios.map(studio => (
-              <tr key={studio.id}>
-                <td>{studio.name}</td>
-                <td>{studio.email}</td>
-                <td>{getPlanPrice(studio.subscription_plan)}</td>
-                <td>
-                  <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-                    {studio.is_free_subscription 
-                      ? 'FREE' 
-                      : (studio.billing_cycle === 'yearly' ? 'Yearly' : 'Monthly')}
-                  </span>
-                </td>
-                <td>
-                  <span className={`status-badge ${studio.cancellation_requested ? 'badge-warning' : studio.subscription_status === 'active' ? 'status-active' : 'status-inactive'}`}>
-                    {studio.cancellation_requested 
-                      ? `Cancelling ${studio.subscription_end ? new Date(studio.subscription_end).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}` 
-                      : studio.subscription_status}
-                  </span>
-                </td>
-                <td>
-                  <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-                    {studio.fee_type === 'percentage' 
-                      ? `${studio.fee_value}%` 
-                      : `$${(studio.fee_value || 0).toFixed(2)}`}
-                  </span>
-                </td>
-                <td style={{ textAlign: 'right', color: '#86efac', fontWeight: 'bold' }}>
-                  ${Number(profitSummary?.byStudio?.find((row) => row.studioId === studio.id)?.studioProfitGross || 0).toFixed(2)}
-                </td>
-                <td style={{ textAlign: 'right', color: '#fbbf24', fontWeight: 'bold' }}>
-                  ${Number(profitSummary?.byStudio?.find((row) => row.studioId === studio.id)?.superAdminProfit || 0).toFixed(2)}
-                </td>
-                <td style={{ textAlign: 'right' }}>
-                  ${Number(profitSummary?.byStudio?.find((row) => row.studioId === studio.id)?.totalPayouts || 0).toFixed(2)}
-                </td>
-                <td style={{ textAlign: 'right', fontWeight: 'bold' }}>
-                  ${Number(profitSummary?.byStudio?.find((row) => row.studioId === studio.id)?.studioProfit || 0).toFixed(2)}
-                </td>
-                <td>
-                  {(() => {
-                    const row = profitSummary?.byStudio?.find((item) => item.studioId === studio.id);
-                    if (!row) return <span style={{ color: 'var(--text-secondary)' }}>—</span>;
-                    return row.isPayoutEligible
-                      ? <span className="status-badge status-active">Eligible</span>
-                      : <span className="status-badge status-inactive">${row.amountToNextPayout.toFixed(2)} to go</span>;
-                  })()}
-                </td>
-                <td>{new Date(studio.created_at).toLocaleDateString()}</td>
-                <td>{studio.userCount || 0}</td>
-                <td>
-                  <button
-                    onClick={() => {
-                      setSelectedStudio(studio);
-                      setNewSubscription({
-                        subscriptionPlan: getPlanSelectionValue(studio.subscription_plan),
-                        subscriptionStatus: studio.subscription_status,
-                        billingCycle: studio.billing_cycle || 'monthly',
-                        isFreeSubscription: studio.is_free_subscription || false
-                      });
-                      setShowSubscriptionModal(true);
-                    }}
-                    className="btn btn-primary btn-sm"
-                    style={{ marginRight: '8px' }}
-                  >
-                    Edit Sub
-                  </button>
-                  <button
-                    onClick={() => handleOpenFeeModal(studio)}
-                    className="btn btn-secondary btn-sm"
-                    style={{ marginRight: '8px' }}
-                  >
-                    Edit Fees
-                  </button>
-                  {(() => {
-                    const row = profitSummary?.byStudio?.find((item) => item.studioId === studio.id);
-                    if (!row) return null;
-                    return (
-                      <>
-                        <button
-                          onClick={() => fetchStudioPayoutHistory(row)}
-                          className="btn btn-secondary btn-sm"
-                          style={{ marginRight: '8px' }}
-                        >
-                          View Payouts
-                        </button>
-                        <button
-                          onClick={() => handleMarkPayoutSent(row)}
-                          className="btn btn-success btn-sm"
-                          disabled={!row.isPayoutEligible}
-                        >
-                          Mark Payout
-                        </button>
-                      </>
-                    );
-                  })()}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                  <div className="dashboard-widget">
+                    <h2><span>📁</span> Revenue by Album</h2>
+                    {revenueBreakdown.byAlbum.length === 0 ? (
+                      <p style={{ color: 'var(--text-secondary)', margin: 0 }}>No album sales yet.</p>
+                    ) : (
+                      <div style={{ overflowX: 'auto' }}>
+                        <table className="data-table">
+                          <thead>
+                            <tr>
+                              <th>Album</th>
+                              <th>Category</th>
+                              <th>Photos</th>
+                              <th>Orders</th>
+                              <th>Items</th>
+                              <th>Revenue</th>
+                              <th>Profit</th>
+                              <th></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {revenueBreakdown.byAlbum.map((row) => (
+                              <tr key={row.albumId} style={{ backgroundColor: row.albumId === selectedAlbumId ? 'rgba(124, 92, 255, 0.12)' : 'transparent' }}>
+                                <td>{row.albumName}</td>
+                                <td>{row.albumCategory}</td>
+                                <td>{row.photoCount}</td>
+                                <td>{row.orderCount}</td>
+                                <td>{row.quantity}</td>
+                                <td>{formatCurrency(row.revenue)}</td>
+                                <td style={{ color: row.profit >= 0 ? '#10b981' : 'var(--error-color)', fontWeight: 600 }}>{formatCurrency(row.profit)}</td>
+                                <td>
+                                  <button className="btn btn-secondary btn-sm" onClick={() => setSelectedAlbumId(row.albumId)}>
+                                    View Photos
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="dashboard-widget">
+                    <h2><span>📦</span> Revenue by Product</h2>
+                    {revenueBreakdown.byProduct.length === 0 ? (
+                      <p style={{ color: 'var(--text-secondary)', margin: 0 }}>No product sales yet.</p>
+                    ) : (
+                      <div style={{ overflowX: 'auto' }}>
+                        <table className="data-table">
+                          <thead>
+                            <tr>
+                              <th>Product</th>
+                              <th>Category</th>
+                              <th>Orders</th>
+                              <th>Items</th>
+                              <th>Revenue</th>
+                              <th>Cost</th>
+                              <th>Profit</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {revenueBreakdown.byProduct.map((row) => (
+                              <tr key={row.productId || row.productName}>
+                                <td>{row.productName}</td>
+                                <td>{row.category}</td>
+                                <td>{row.orderCount}</td>
+                                <td>{row.quantity}</td>
+                                <td>{formatCurrency(row.revenue)}</td>
+                                <td>{formatCurrency(row.cost)}</td>
+                                <td style={{ color: row.profit >= 0 ? '#10b981' : 'var(--error-color)', fontWeight: 600 }}>{formatCurrency(row.profit)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="dashboard-widget">
+                    <h2><span>📐</span> Revenue by Size</h2>
+                    {revenueBreakdown.bySize.length === 0 ? (
+                      <p style={{ color: 'var(--text-secondary)', margin: 0 }}>No size-level sales yet.</p>
+                    ) : (
+                      <div style={{ overflowX: 'auto' }}>
+                        <table className="data-table">
+                          <thead>
+                            <tr>
+                              <th>Product</th>
+                              <th>Size</th>
+                              <th>Orders</th>
+                              <th>Items</th>
+                              <th>Revenue</th>
+                              <th>Cost</th>
+                              <th>Profit</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {revenueBreakdown.bySize.map((row) => (
+                              <tr key={`${row.productId}-${row.productSizeId}-${row.sizeName}`}>
+                                <td>{row.productName}</td>
+                                <td>{row.sizeName}</td>
+                                <td>{row.orderCount}</td>
+                                <td>{row.quantity}</td>
+                                <td>{formatCurrency(row.revenue)}</td>
+                                <td>{formatCurrency(row.cost)}</td>
+                                <td style={{ color: row.profit >= 0 ? '#10b981' : 'var(--error-color)', fontWeight: 600 }}>{formatCurrency(row.profit)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="dashboard-widget">
+                    <h2><span>🖼️</span> {selectedAlbum ? `Photo Revenue — ${selectedAlbum.albumName}` : 'Photo Revenue by Album'}</h2>
+                    {!selectedAlbum ? (
+                      <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Select an album above to see photo-level stats.</p>
+                    ) : albumPhotos.length === 0 ? (
+                      <p style={{ color: 'var(--text-secondary)', margin: 0 }}>No photo sales recorded for this album yet.</p>
+                    ) : (
+                      <div style={{ overflowX: 'auto' }}>
+                        <table className="data-table">
+                          <thead>
+                            <tr>
+                              <th>Photo</th>
+                              <th>Filename</th>
+                              <th>Orders</th>
+                              <th>Items</th>
+                              <th>Revenue</th>
+                              <th>Cost</th>
+                              <th>Profit</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {albumPhotos.map((row) => (
+                              <tr key={row.photoId}>
+                                <td>
+                                  {row.thumbnailUrl ? (
+                                    <img src={row.thumbnailUrl} alt={row.fileName} style={{ width: '56px', height: '56px', objectFit: 'cover', borderRadius: '6px', border: '1px solid var(--border-color)' }} />
+                                  ) : '—'}
+                                </td>
+                                <td>{row.fileName}</td>
+                                <td>{row.orderCount}</td>
+                                <td>{row.quantity}</td>
+                                <td>{formatCurrency(row.revenue)}</td>
+                                <td>{formatCurrency(row.cost)}</td>
+                                <td style={{ color: row.profit >= 0 ? '#10b981' : 'var(--error-color)', fontWeight: 600 }}>{formatCurrency(row.profit)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        )}
       </div>
-      </div>
-
-      {selectedPayoutStudio && (
-        <div className="admin-summary-box" style={{ marginBottom: '24px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 style={{ marginTop: 0, marginBottom: '0.75rem' }}>
-               Payout History — {selectedPayoutStudio?.studioName ?? ''}
-            </h3>
-            <button className="btn btn-secondary btn-sm" onClick={() => setSelectedPayoutStudio(null)}>
-              Close
-            </button>
-          </div>
-
-          <div style={{ overflowX: 'auto' }}>
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Date</th>
-                  <th style={{ textAlign: 'right' }}>Amount</th>
-                  <th>Created By</th>
-                  <th>Notes</th>
-                </tr>
-              </thead>
-              <tbody>
-                {studioPayoutHistory.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
-                      No payout history for this studio.
-                    </td>
-                  </tr>
-                ) : (
-                  studioPayoutHistory.map((payout) => (
-                    <tr key={payout.id}>
-                      <td>#{payout.id}</td>
-                      <td>{new Date(payout.createdAt).toLocaleString()}</td>
-                      <td style={{ textAlign: 'right', fontWeight: 'bold' }}>${Number(payout.amount || 0).toFixed(2)}</td>
-                      <td>{payout.createdByName || '—'}</td>
-                      <td>{payout.notes || '—'}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Subscription Modal */}
-      {showSubscriptionModal && selectedStudio && (
-        <div className="modal-overlay">
-          <div className="modal-content admin-modal-content" style={{ padding: '30px', maxWidth: '500px' }}>
-             <h2>Update Subscription for {selectedStudio?.name ?? ''}</h2>
-
-            <div style={{ marginBottom: '20px' }}>
-              <label>Subscription Plan</label>
-              <select
-                value={newSubscription.subscriptionPlan}
-                onChange={(e) => setNewSubscription({
-                  ...newSubscription,
-                  subscriptionPlan: e.target.value
-                })}
-                style={{
-                  width: '100%',
-                  padding: '10px',
-                  marginBottom: '10px',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  backgroundColor: 'var(--bg-primary)',
-                  color: 'var(--text-primary)'
-                }}
-              >
-                {plans.map(plan => (
-                  <option key={String(plan.id)} value={plan.name}>
-                    {plan.name} - ${plan.monthlyPrice}/mo
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div style={{ marginBottom: '20px' }}>
-              <label>Status</label>
-              <select
-                value={newSubscription.subscriptionStatus}
-                onChange={(e) => setNewSubscription({
-                  ...newSubscription,
-                  subscriptionStatus: e.target.value
-                })}
-                style={{
-                  width: '100%',
-                  padding: '10px',
-                  marginBottom: '10px',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  backgroundColor: 'var(--bg-primary)',
-                  color: 'var(--text-primary)'
-                }}
-              >
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-                <option value="past_due">Past Due</option>
-                <option value="canceled">Canceled</option>
-                <option value="paused">Paused</option>
-              </select>
-            </div>
-
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <input
-                  type="checkbox"
-                  checked={newSubscription.isFreeSubscription}
-                  onChange={(e) => setNewSubscription({
-                    ...newSubscription,
-                    isFreeSubscription: e.target.checked
-                  })}
-                />
-                <span>Free Subscription (No Billing)</span>
-              </label>
-            </div>
-
-            {!newSubscription.isFreeSubscription && (
-              <div style={{ marginBottom: '20px' }}>
-                <label>Billing Cycle</label>
-                <select
-                  value={newSubscription.billingCycle}
-                  onChange={(e) => setNewSubscription({
-                    ...newSubscription,
-                    billingCycle: e.target.value
-                  })}
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    marginBottom: '10px',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '4px',
-                    backgroundColor: 'var(--bg-primary)',
-                    color: 'var(--text-primary)'
-                  }}
-                >
-                  <option value="monthly">Monthly</option>
-                  <option value="yearly">Yearly (Save ~17%)</option>
-                </select>
-              </div>
-            )}
-
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <button
-                onClick={handleUpdateSubscription}
-                className="btn btn-success"
-                style={{ flex: 1 }}
-              >
-                Update
-              </button>
-              <button
-                onClick={() => setShowSubscriptionModal(false)}
-                className="btn btn-secondary"
-                style={{ flex: 1 }}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Fee Modal */}
-      {showFeeModal && selectedStudio && (
-        <div className="modal-overlay">
-          <div className="modal-content admin-modal-content" style={{ padding: '30px', maxWidth: '500px' }}>
-             <h2>Update Fees for {selectedStudio?.name ?? ''}</h2>
-
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', marginBottom: '10px', fontWeight: 'bold' }}>
-                Fee Type
-              </label>
-              <div style={{ display: 'flex', gap: '20px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <input
-                    type="radio"
-                    name="feeType"
-                    value="percentage"
-                    checked={studioFees.feeType === 'percentage'}
-                    onChange={() => setStudioFees({ ...studioFees, feeType: 'percentage' })}
-                  />
-                  Percentage (%)
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <input
-                    type="radio"
-                    name="feeType"
-                    value="fixed"
-                    checked={studioFees.feeType === 'fixed'}
-                    onChange={() => setStudioFees({ ...studioFees, feeType: 'fixed' })}
-                  />
-                  Fixed Amount ($)
-                </label>
-              </div>
-            </div>
-
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
-                {studioFees.feeType === 'percentage' ? 'Fee Percentage' : 'Fee Amount ($)'}
-              </label>
-              <input
-                type="number"
-                value={studioFees.feeValue}
-                onChange={(e) => setStudioFees({ ...studioFees, feeValue: parseFloat(e.target.value) || 0 })}
-                min="0"
-                max={studioFees.feeType === 'percentage' ? '100' : undefined}
-                step={studioFees.feeType === 'percentage' ? '0.1' : '0.01'}
-                style={{
-                  width: '100%',
-                  padding: '10px',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  fontSize: '16px'
-                }}
-              />
-              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '8px' }}>
-                {studioFees.feeType === 'percentage'
-                  ? 'This percentage will be added to each product price'
-                  : 'This fixed amount will be added to each product price'}
-              </p>
-            </div>
-
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <button
-                onClick={() => handleUpdateFees()}
-                className="btn btn-success"
-                style={{ flex: 1, fontWeight: 'bold' }}
-              >
-                Update Fees
-              </button>
-              <button
-                onClick={() => setShowFeeModal(false)}
-                className="btn btn-secondary"
-                style={{ flex: 1 }}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </AdminLayout>
   );
-}
+};
 
+export default SuperAdminDashboard;

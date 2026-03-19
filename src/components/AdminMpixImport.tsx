@@ -22,10 +22,8 @@ interface ImportMapping {
   markupPercentage?: number;
 }
 
-const AdminMpixImport: React.FC<{ onClose: () => void; onImportComplete: () => void }> = ({
-  onClose,
-  onImportComplete,
-}) => {
+const AdminMpixImport: React.FC<{ onClose: () => void; onImportComplete: () => void }> = ({ onClose, onImportComplete }) => {
+  const [progress, setProgress] = useState<string | null>(null);
   const [step, setStep] = useState<'select-list' | 'select-products' | 'confirm'>('select-list');
   const [priceLists, setPriceLists] = useState<PriceList[]>([]);
   const [selectedPriceListId, setSelectedPriceListId] = useState<number | null>(null);
@@ -122,6 +120,9 @@ const AdminMpixImport: React.FC<{ onClose: () => void; onImportComplete: () => v
 
   // Import selected products to price list
   const handleImport = async () => {
+      setProgress('Validating Mpix data...');
+      setProgress('Checking for duplicates...');
+      setProgress('Adding products to price list...');
     if (!selectedPriceListId || selectedProducts.size === 0) {
       setError('Please select a price list and at least one product');
       return;
@@ -180,8 +181,17 @@ const AdminMpixImport: React.FC<{ onClose: () => void; onImportComplete: () => v
         // Add the group as a single product with multiple sizes
         const sizes = uniqueProducts.map(product => {
           const mapping = selectedProducts.get(product.productUID)!;
-          const cost = product.basePrice;
-          
+          let cost = product.basePrice;
+          // Estimate cost if 0
+          if (!cost || cost === 0) {
+            // Estimate: $0.10 per square inch if dimensions exist, else $1.00
+            if (product.width && product.height) {
+              cost = Math.max(0.5, Math.round(product.width * product.height * 0.10 * 100) / 100);
+            } else {
+              cost = 1.0;
+            }
+          }
+
           let price = cost;
           if (mapping.useCustomPrice && mapping.customPrice) {
             price = mapping.customPrice;
@@ -210,6 +220,10 @@ const AdminMpixImport: React.FC<{ onClose: () => void; onImportComplete: () => v
       });
 
       if (itemsToAdd.length === 0) {
+          setProgress(null);
+          setProgress(null);
+          setProgress(null);
+          setProgress(null);
         setError('All selected products already exist in this price list');
         setImporting(false);
         return;
@@ -479,6 +493,11 @@ const AdminMpixImport: React.FC<{ onClose: () => void; onImportComplete: () => v
         )}
 
         {/* Step 3: Confirm */}
+                {progress && (
+                  <div className="info-box info-box-progress" style={{ marginBottom: '20px' }}>
+                    {progress}
+                  </div>
+                )}
         {step === 'confirm' && (
           <>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '20px' }}>

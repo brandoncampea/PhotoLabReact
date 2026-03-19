@@ -239,6 +239,8 @@ router.get('/stripe-products', async (req, res) => {
     console.log('[stripe-products] hasPlansTable:', hasPlansTable);
     let plans;
     if (hasPlansTable) {
+      // Ensure columns exist before querying
+      await ensureStripePriceColumns();
       const selectClause = await getPlanSelectClause();
       console.log('[stripe-products] selectClause:', selectClause);
       try {
