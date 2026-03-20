@@ -64,6 +64,7 @@ function App() {
               <Route path="/orders" element={<Orders />} />
               <Route path="/search" element={<SearchPage />} />
               <Route path="/studio/:studioSlug" element={<StudioPublicPage />} />
+              <Route path="/s/:studioSlug/albums/:albumId" element={<AlbumDetails />} />
               {/* Admin and super admin login routes */}
               <Route path="/admin/login" element={<Suspense fallback={<div>Loading...</div>}><AdminLogin /></Suspense>} />
               <Route path="/super-admin/login" element={<Suspense fallback={<div>Loading...</div>}><SuperAdminLogin onLogin={() => {}} /></Suspense>} />

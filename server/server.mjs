@@ -83,6 +83,7 @@ app.use('/api/studios', studiosRoutes);
 app.use('/api/subscription-plans', subscriptionPlansRoutes);
 app.use('/api/invoices', invoicesRoutes);
 app.use('/api/public-search', publicSearchRoutes);
+app.use('/api/publicSearch', publicSearchRoutes);
 app.use('/api/smugmug', smugmugRoutes);
 
 // Health check

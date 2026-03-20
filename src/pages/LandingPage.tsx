@@ -3,13 +3,44 @@ import { useNavigate } from 'react-router-dom';
 import '../PhotoLabStyles.css';
 
 export default function LandingPage() {
-      const [searchQuery, setSearchQuery] = React.useState('');
-      const handleSearchSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (searchQuery.trim()) {
-          navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
-        }
-      };
+  const [searchQuery, setSearchQuery] = React.useState('');
+  const [studioSuggestions, setStudioSuggestions] = React.useState<any[]>([]);
+  const [albumSuggestions, setAlbumSuggestions] = React.useState<any[]>([]);
+  const [photoSuggestions, setPhotoSuggestions] = React.useState<Photo[]>([]);
+  const [showDropdown, setShowDropdown] = React.useState(false);
+  const [loadingSuggestions, setLoadingSuggestions] = React.useState(false);
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
+    }
+    setShowDropdown(false);
+  };
+
+  React.useEffect(() => {
+    if (searchQuery.trim().length < 2) {
+      setStudioSuggestions([]);
+      setAlbumSuggestions([]);
+      setPhotoSuggestions([]);
+      setShowDropdown(false);
+      return;
+    }
+    setLoadingSuggestions(true);
+    fetch(`/api/public-search?q=${encodeURIComponent(searchQuery.trim())}`)
+      .then(res => res.json())
+      .then(data => {
+        setStudioSuggestions(data.studios || []);
+        setAlbumSuggestions(data.albums || []);
+        setPhotoSuggestions(data.photos || []);
+        setShowDropdown(true);
+      })
+      .catch(() => {
+        setStudioSuggestions([]);
+        setAlbumSuggestions([]);
+        setPhotoSuggestions([]);
+      })
+      .finally(() => setLoadingSuggestions(false));
+  }, [searchQuery]);
     const [plans, setPlans] = React.useState<any[]>([]);
     const [plansLoading, setPlansLoading] = React.useState(true);
     const [plansError, setPlansError] = React.useState('');
@@ -54,15 +85,102 @@ export default function LandingPage() {
         <p className="landing-desc">
           Empower your photography business with a complete client portal, online ordering, and professional lab integration
         </p>
-        <form className="search-filter-bar landing-search-form" onSubmit={handleSearchSubmit}>
-          <div className="search-box landing-search-box">
+        <form className="search-filter-bar landing-search-form" onSubmit={handleSearchSubmit} autoComplete="off">
+          <div className="search-box landing-search-box" style={{ position: 'relative' }}>
             <input
               type="text"
               placeholder="Search photos by filename, camera, player, etc..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               className="search-input landing-search-input"
+              onFocus={() => setShowDropdown((studioSuggestions.length + albumSuggestions.length + photoSuggestions.length) > 0)}
+              onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
             />
+            {showDropdown && (studioSuggestions.length > 0 || albumSuggestions.length > 0 || photoSuggestions.length > 0) && (
+              <div className="autocomplete-dropdown" style={{
+                position: 'absolute',
+                top: '100%',
+                left: 0,
+                width: '100%',
+                background: '#222',
+                color: '#fff',
+                borderRadius: '0.75rem',
+                boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
+                zIndex: 10,
+                maxHeight: '320px',
+                overflowY: 'auto',
+                marginTop: '0.5rem',
+                border: '1px solid #333',
+              }}>
+                {loadingSuggestions && <div style={{ padding: '1rem', textAlign: 'center', color: '#aaa' }}>Loading...</div>}
+                {!loadingSuggestions && studioSuggestions.length === 0 && albumSuggestions.length === 0 && photoSuggestions.length === 0 && <div style={{ padding: '1rem', textAlign: 'center', color: '#aaa' }}>No results found</div>}
+                {!loadingSuggestions && studioSuggestions.length > 0 && (
+                  <div style={{ padding: '0.5rem 1rem', fontWeight: 700, color: '#fff', fontSize: '1rem' }}>Studios</div>
+                )}
+                {!loadingSuggestions && studioSuggestions.map(studio => (
+                  <div
+                    key={studio.id}
+                    className="autocomplete-item"
+                    style={{ display: 'flex', alignItems: 'center', padding: '0.75rem 1rem', cursor: 'pointer', borderBottom: '1px solid #333' }}
+                    onMouseDown={() => {
+                      setSearchQuery(studio.name);
+                      setShowDropdown(false);
+                      navigate(studio.url);
+                    }}
+                  >
+                    <div style={{ width: 48, height: 48, borderRadius: '50%', background: '#4169E1', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '1.2rem', marginRight: 12 }}>{studio.initials}</div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, fontSize: '1rem', color: '#fff' }}>{studio.name}</div>
+                      <div style={{ fontSize: '0.85rem', color: '#aaa' }}>{studio.publicSlug}</div>
+                    </div>
+                  </div>
+                ))}
+                {!loadingSuggestions && albumSuggestions.length > 0 && (
+                  <div style={{ padding: '0.5rem 1rem', fontWeight: 700, color: '#fff', fontSize: '1rem' }}>Albums</div>
+                )}
+                {!loadingSuggestions && albumSuggestions.map(album => (
+                  <div
+                    key={album.id}
+                    className="autocomplete-item"
+                    style={{ display: 'flex', alignItems: 'center', padding: '0.75rem 1rem', cursor: 'pointer', borderBottom: '1px solid #333' }}
+                    onMouseDown={() => {
+                      setSearchQuery(album.name);
+                      setShowDropdown(false);
+                      navigate(album.url);
+                    }}
+                  >
+                    {album.coverImageUrl && <img src={album.coverImageUrl} alt={album.name} style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: '0.5rem', marginRight: 12, border: '1px solid #444' }} />}
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, fontSize: '1rem', color: '#fff' }}>{album.name}</div>
+                      <div style={{ fontSize: '0.85rem', color: '#aaa' }}>{album.studioName}</div>
+                      <div style={{ fontSize: '0.8rem', color: '#4169E1' }}>Photos: {album.photoCount}</div>
+                    </div>
+                  </div>
+                ))}
+                {!loadingSuggestions && photoSuggestions.length > 0 && (
+                  <div style={{ padding: '0.5rem 1rem', fontWeight: 700, color: '#fff', fontSize: '1rem' }}>Photos</div>
+                )}
+                {!loadingSuggestions && photoSuggestions.map(photo => (
+                  <div
+                    key={photo.id}
+                    className="autocomplete-item"
+                    style={{ display: 'flex', alignItems: 'center', padding: '0.75rem 1rem', cursor: 'pointer', borderBottom: '1px solid #333' }}
+                    onMouseDown={() => {
+                      setSearchQuery(photo.fileName);
+                      setShowDropdown(false);
+                      navigate(`/search?q=${encodeURIComponent(photo.fileName)}`);
+                    }}
+                  >
+                    <img src={photo.thumbnailUrl} alt={photo.fileName} style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: '0.5rem', marginRight: 12, border: '1px solid #444' }} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, fontSize: '1rem', color: '#fff' }}>{photo.fileName}</div>
+                      <div style={{ fontSize: '0.85rem', color: '#aaa' }}>{photo.albumName} {photo.studioName}</div>
+                      {photo.playerNames && <div style={{ fontSize: '0.8rem', color: '#4169E1' }}>Players: {photo.playerNames}</div>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
           <button className="btn btn-primary landing-search-btn" type="submit">Search</button>
         </form>

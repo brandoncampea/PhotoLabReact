@@ -11,7 +11,9 @@ import PhotoCard from '../components/PhotoCard';
 import CropperModal from '../components/CropperModal';
 
 const AlbumDetails: React.FC = () => {
-  const { id, slug } = useParams<{ id: string; slug?: string }>();
+  const params = useParams<{ id?: string; albumId?: string; slug?: string }>();
+  const id = params.id || params.albumId;
+  const slug = params.slug;
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   
