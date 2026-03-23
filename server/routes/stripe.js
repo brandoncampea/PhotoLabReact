@@ -1,8 +1,28 @@
+
 import express from 'express';
 import { queryRow, query } from '../mssql.mjs';
 import { authRequired, superAdminRequired } from '../middleware/auth.js';
 
 const router = express.Router();
+
+// Update Stripe payment method status/mode (admin only)
+router.post('/admin/payment-method/stripe', authRequired, superAdminRequired, async (req, res) => {
+  try {
+    const { isActive, isLiveMode } = req.body;
+    if (typeof isActive !== 'boolean' || typeof isLiveMode !== 'boolean') {
+      return res.status(400).json({ error: 'isActive and isLiveMode must be boolean.' });
+    }
+    // Update the config row (id = 1)
+    await query(
+      `UPDATE stripe_config SET is_active = @p1, is_live_mode = @p2, updated_at = CURRENT_TIMESTAMP WHERE id = 1`,
+      [isActive ? 1 : 0, isLiveMode ? 1 : 0]
+    );
+    res.json({ success: true, isActive, isLiveMode });
+  } catch (error) {
+    console.error('Error updating Stripe payment method status:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
 
 // Get Stripe configuration
 router.get('/config', async (req, res) => {

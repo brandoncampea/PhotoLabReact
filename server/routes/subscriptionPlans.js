@@ -80,6 +80,48 @@ const getPlanSelectClause = async () => {
   ].join(', ');
 };
 
+
+// Get Stripe product mapping for all subscription plans
+router.get('/stripe-products', async (req, res) => {
+  try {
+    console.log('[stripe-products] Endpoint hit');
+    const hasPlansTable = await tableExists('subscription_plans');
+    if (!hasPlansTable) {
+      return res.status(500).json({ error: 'subscription_plans table does not exist. Stripe price IDs must be managed in the database.' });
+    }
+    await ensureStripePriceColumns();
+    const selectClause = await getPlanSelectClause();
+    console.log('[stripe-products] selectClause:', selectClause);
+    let plans;
+    try {
+      plans = await queryRows(`
+        SELECT ${selectClause}
+        FROM subscription_plans
+        ORDER BY monthly_price ASC
+      `);
+      console.log('[stripe-products] subscription_plans table exists. Plans:', plans);
+    } catch (queryError) {
+      console.error('[stripe-products] Query error:', queryError);
+      throw queryError;
+    }
+    // Map to only id, name, and Stripe price IDs (from DB only)
+    const mapped = plans.map(plan => ({
+      id: plan.id,
+      name: plan.name,
+      stripe_monthly_price_id: plan.stripe_monthly_price_id || null,
+      stripe_yearly_price_id: plan.stripe_yearly_price_id || null
+    }));
+    console.log('[stripe-products] mapped output:', mapped);
+    res.json(mapped);
+  } catch (error) {
+    console.error('[stripe-products] Error fetching Stripe product mapping:', error);
+    if (error && error.stack) {
+      console.error('[stripe-products] Error stack:', error.stack);
+    }
+    res.status(500).json({ error: 'Failed to fetch Stripe product mapping', details: error?.message || error });
+  }
+});
+
 // Get all subscription plans with current pricing
 router.get('/', async (req, res) => {
   try {
@@ -236,34 +278,29 @@ router.get('/stripe-products', async (req, res) => {
   try {
     console.log('[stripe-products] Endpoint hit');
     const hasPlansTable = await tableExists('subscription_plans');
-    console.log('[stripe-products] hasPlansTable:', hasPlansTable);
-    let plans;
-    if (hasPlansTable) {
-      // Ensure columns exist before querying
-      await ensureStripePriceColumns();
-      const selectClause = await getPlanSelectClause();
-      console.log('[stripe-products] selectClause:', selectClause);
-      try {
-        plans = await queryRows(`
-          SELECT ${selectClause}
-          FROM subscription_plans
-          ORDER BY monthly_price ASC
-        `);
-        console.log('[stripe-products] subscription_plans table exists. Plans:', plans);
-      } catch (queryError) {
-        console.error('[stripe-products] Query error:', queryError);
-        throw queryError;
-      }
-    } else {
-      plans = getFallbackPlansFromConstants();
-      console.log('[stripe-products] subscription_plans table missing. Using fallback:', plans);
+    if (!hasPlansTable) {
+      return res.status(500).json({ error: 'subscription_plans table does not exist. Stripe price IDs must be managed in the database.' });
     }
-
-    // Map to only id, name, and Stripe price IDs
+    await ensureStripePriceColumns();
+    const selectClause = await getPlanSelectClause();
+    console.log('[stripe-products] selectClause:', selectClause);
+    let plans;
+    try {
+      plans = await queryRows(`
+        SELECT ${selectClause}
+        FROM subscription_plans
+        ORDER BY monthly_price ASC
+      `);
+      console.log('[stripe-products] subscription_plans table exists. Plans:', plans);
+    } catch (queryError) {
+      console.error('[stripe-products] Query error:', queryError);
+      throw queryError;
+    }
+    // Map to only id, name, and Stripe price IDs (from DB only)
     const mapped = plans.map(plan => ({
       id: plan.id,
       name: plan.name,
-      stripe_monthly_price_id: plan.stripe_monthly_price_id || plan.stripePriceId || null,
+      stripe_monthly_price_id: plan.stripe_monthly_price_id || null,
       stripe_yearly_price_id: plan.stripe_yearly_price_id || null
     }));
     console.log('[stripe-products] mapped output:', mapped);

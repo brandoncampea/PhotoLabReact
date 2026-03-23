@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import AdminWhccConfig from './AdminWhccConfig';
 import AdminRoesConfig from './AdminRoesConfig';
 import AdminMpixConfig from './AdminMpixConfig';
-import AdminLayout from '../../components/AdminLayout';
 
 const TABS = [
   { key: 'whcc', label: 'WHCC' },
@@ -14,7 +13,7 @@ const AdminConfiguration: React.FC = () => {
   const [activeTab, setActiveTab] = useState('whcc');
 
   return (
-    <AdminLayout>
+    <>
       <div className="admin-tab-strip">
         {TABS.map(tab => (
           <button
@@ -31,7 +30,7 @@ const AdminConfiguration: React.FC = () => {
         {activeTab === 'roes' && <AdminRoesConfig />}
         {activeTab === 'mpix' && <AdminMpixConfig />}
       </div>
-    </AdminLayout>
+    </>
   );
 };
 

@@ -1,13 +1,14 @@
-import StudioAlbumStyles from './pages/admin/StudioAlbumStyles';
 
-import { Suspense, lazy } from 'react';
-import { Routes, Route } from 'react-router-dom';
+import React, { Suspense, lazy } from 'react';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { CartProvider } from './contexts/CartContext';
 import Layout from './components/Layout/Layout';
 import AdminProtectedRoute from './components/AdminProtectedRoute';
-
+import StudioAlbumStyles from './pages/admin/StudioAlbumStyles';
 import './PhotoLabStyles.css';
+
+const SuperAdminShipping = lazy(() => import('./pages/admin/SuperAdminShipping'));
 
 const AdminSubscriptionGateway = lazy(() => import('./pages/admin/AdminSubscriptionGateway'));
 
@@ -80,6 +81,7 @@ function App() {
               <Route path="/admin/orders" element={<AdminProtectedRoute><AdminOrders /></AdminProtectedRoute>} />
               <Route path="/admin/customers" element={<AdminProtectedRoute><AdminCustomers /></AdminProtectedRoute>} />
               <Route path="/admin/shipping" element={<AdminProtectedRoute><AdminShipping /></AdminProtectedRoute>} />
+              <Route path="/admin/super-shipping" element={<AdminProtectedRoute><SuperAdminShipping /></AdminProtectedRoute>} />
               <Route path="/admin/album-styles" element={<AdminProtectedRoute><StudioAlbumStyles /></AdminProtectedRoute>} />
               <Route path="/admin/discount-codes" element={<AdminProtectedRoute><AdminDiscountCodes /></AdminProtectedRoute>} />
               <Route path="/admin/watermarks" element={<AdminProtectedRoute><AdminWatermarks /></AdminProtectedRoute>} />
@@ -92,6 +94,8 @@ function App() {
               <Route path="/admin/subscription" element={<AdminProtectedRoute><AdminSubscription /></AdminProtectedRoute>} />
               <Route path="/admin/subscription-gateway" element={<AdminProtectedRoute><AdminSubscriptionGateway /></AdminProtectedRoute>} />
               <Route path="/admin/stripe" element={<AdminProtectedRoute><AdminStripe /></AdminProtectedRoute>} />
+            {/* Catch-all route to redirect to /customer */}
+            <Route path="*" element={<Navigate to="/customer" replace />} />
             </Routes>
           </Suspense>
         </CartProvider>

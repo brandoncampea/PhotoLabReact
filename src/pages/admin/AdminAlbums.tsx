@@ -4,7 +4,7 @@ import { Album, PriceList } from '../../types';
 import { albumService } from '../../services/albumService';
 import { categoryService } from '../../services/categoryService';
 import { albumAdminService } from '../../services/albumAdminService';
-import AdminLayout from '../../components/AdminLayout';
+
 
 const AdminAlbums: React.FC = () => {
   const [albums, setAlbums] = useState<Album[]>([]);
@@ -200,7 +200,7 @@ const AdminAlbums: React.FC = () => {
   }
 
   return (
-    <AdminLayout>
+    <>
       <div className="page-header">
         <h1>Manage Albums</h1>
         <button onClick={handleCreate} className="btn btn-primary">
@@ -208,9 +208,21 @@ const AdminAlbums: React.FC = () => {
         </button>
       </div>
 
-      {categories.length > 0 && (
-        <div className="categories-section">
-          <h3>Categories ({categories.length})</h3>
+
+      <div className="categories-section">
+        <h3>Categories ({categories.length})</h3>
+        <div className="add-category-row">
+          <input
+            className="add-category-input"
+            type="text"
+            placeholder="Add new category"
+            value={newCategory}
+            onChange={e => setNewCategory(e.target.value)}
+            onKeyPress={e => e.key === 'Enter' && (e.preventDefault(), handleAddCategory())}
+          />
+          <button className="add-category-btn" onClick={handleAddCategory}>Add</button>
+        </div>
+        {categories.length > 0 && (
           <div className="category-tags">
             {categories.map((category) => (
               <div key={category} className="category-tag">
@@ -225,8 +237,8 @@ const AdminAlbums: React.FC = () => {
               </div>
             ))}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       <div className="admin-table">
         <table>
@@ -260,7 +272,13 @@ const AdminAlbums: React.FC = () => {
                   <div className="action-buttons">
                     <button onClick={() => handleEdit(album)} className="btn-icon">✏️</button>
                     <button onClick={() => handleDelete(album.id)} className="btn-icon">🗑️</button>
-                    <a href={`/admin/photos?album=${album.id}`} className="btn-icon">📷</a>
+                    <button
+                      onClick={() => window.location.href = `/admin/photos?album=${album.id}`}
+                      className="btn-icon"
+                      title="View Photos"
+                    >
+                      📷
+                    </button>
                   </div>
                 </td>
               </tr>
@@ -448,7 +466,7 @@ const AdminAlbums: React.FC = () => {
           </div>
         </div>
       )}
-    </AdminLayout>
+    </>
   );
 };
 

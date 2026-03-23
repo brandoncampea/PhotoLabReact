@@ -4,7 +4,7 @@ export const SUBSCRIPTION_PLANS = {
     id: 'basic',
     name: 'Basic',
     monthlyPrice: 29,
-    stripePriceId: 'price_1QqI2mFc0tLpWH2y0j1c3K8m', // Test mode Stripe price ID for $29/mo
+    stripePriceId: process.env.BASIC_STRIPE_PRICE_ID || 'price_1QqI2mFc0tLpWH2y0j1c3K8m',
     features: [
       'Up to 5 albums',
       'Basic photo editing',
@@ -20,7 +20,7 @@ export const SUBSCRIPTION_PLANS = {
     id: 'professional',
     name: 'Professional',
     monthlyPrice: 79,
-    stripePriceId: 'price_1QqI2mFc0tLpWH2y0j2d4L9n', // Test mode Stripe price ID for $79/mo
+    stripePriceId: process.env.PROFESSIONAL_STRIPE_PRICE_ID || 'price_1QqI2mFc0tLpWH2y0j2d4L9n',
     features: [
       'Unlimited albums',
       'Advanced analytics',
@@ -38,7 +38,7 @@ export const SUBSCRIPTION_PLANS = {
     id: 'enterprise',
     name: 'Enterprise',
     monthlyPrice: 199,
-    stripePriceId: 'price_1QqI2mFc0tLpWH2y0j3e5M0o', // Test mode Stripe price ID for $199/mo
+    stripePriceId: process.env.ENTERPRISE_STRIPE_PRICE_ID || 'price_1QqI2mFc0tLpWH2y0j3e5M0o',
     features: [
       'Unlimited albums',
       'Advanced analytics',

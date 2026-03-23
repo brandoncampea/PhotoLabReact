@@ -1,69 +1,98 @@
 
-import React, { useState } from 'react';
-import AdminLayout from '../../components/AdminLayout';
+import React, { useState, useEffect } from 'react';
+import { shippingService } from '../../services/shippingService';
+import { ShippingConfig } from '../../types';
+
 
 const AdminShipping: React.FC = () => {
-  const [provider, setProvider] = useState('');
-  const [tracking, setTracking] = useState('');
-  const [status, setStatus] = useState('Pending');
-  const [message, setMessage] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [config, setConfig] = useState<ShippingConfig | null>(null);
+  const [batchDeadline, setBatchDeadline] = useState('');
+  const [directShippingCharge, setDirectShippingCharge] = useState('');
+  const [isActive, setIsActive] = useState(true);
+  const [message, setMessage] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadConfig = async () => {
+      setLoading(true);
+      try {
+        const data = await shippingService.getConfig();
+        setConfig(data);
+        setBatchDeadline(data.batchDeadline || '');
+        setDirectShippingCharge(data.directShippingCharge?.toString() || '');
+        setIsActive(!!data.isActive);
+      } catch (e) {
+        setMessage('Failed to load shipping config');
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadConfig();
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Simulate API call
-    setMessage('Shipping info submitted!');
-    setProvider('');
-    setTracking('');
-    setStatus('Pending');
+    setMessage('');
+    try {
+      const updated = await shippingService.updateConfig({
+        batchDeadline,
+        directShippingCharge: parseFloat(directShippingCharge),
+        isActive,
+      });
+      setConfig(updated);
+      setMessage('Shipping config updated!');
+    } catch (e) {
+      setMessage('Failed to update shipping config');
+    }
     setTimeout(() => setMessage(''), 2000);
   };
 
   return (
-    <AdminLayout>
-      <div className="admin-form">
-        <h1>Admin Shipping</h1>
+    <div className="admin-form">
+      <h1>Admin Shipping Settings</h1>
+      {loading ? (
+        <div>Loading...</div>
+      ) : (
         <form className="form" onSubmit={handleSubmit}>
           <div className="form-group">
-            <label htmlFor="provider">Provider</label>
+            <label htmlFor="batchDeadline">Batch Deadline</label>
             <input
-              id="provider"
-              type="text"
+              id="batchDeadline"
+              type="datetime-local"
               className="input"
-              value={provider}
-              onChange={e => setProvider(e.target.value)}
+              value={batchDeadline}
+              onChange={e => setBatchDeadline(e.target.value)}
               required
             />
           </div>
           <div className="form-group">
-            <label htmlFor="tracking">Tracking Number</label>
+            <label htmlFor="directShippingCharge">Direct Shipping Charge ($)</label>
             <input
-              id="tracking"
-              type="text"
+              id="directShippingCharge"
+              type="number"
               className="input"
-              value={tracking}
-              onChange={e => setTracking(e.target.value)}
+              value={directShippingCharge}
+              onChange={e => setDirectShippingCharge(e.target.value)}
+              min="0"
+              step="0.01"
               required
             />
           </div>
           <div className="form-group">
-            <label htmlFor="status">Status</label>
-            <select
-              id="status"
-              className="input"
-              value={status}
-              onChange={e => setStatus(e.target.value)}
-            >
-              <option value="Pending">Pending</option>
-              <option value="Shipped">Shipped</option>
-              <option value="Delivered">Delivered</option>
-              <option value="Returned">Returned</option>
-            </select>
+            <label htmlFor="isActive">Batch Shipping Active</label>
+            <input
+              id="isActive"
+              type="checkbox"
+              checked={isActive}
+              onChange={e => setIsActive(e.target.checked)}
+            />
           </div>
-          <button type="submit" className="btn btn-primary">Submit</button>
+          <button type="submit" className="btn btn-primary">Save Settings</button>
         </form>
-        {message && <div className="success-message">{message}</div>}
-      </div>
-    </AdminLayout>
+      )}
+      {message && <div className="success-message">{message}</div>}
+    </div>
   );
 };
 

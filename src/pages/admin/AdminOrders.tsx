@@ -1,17 +1,67 @@
-import AdminLayout from '../../components/AdminLayout';
 
-
+import React, { useEffect, useState } from 'react';
+import { Order } from '../../types';
+import { adminMockApi } from '../../services/adminMockApi';
 
 const AdminOrders: React.FC = () => {
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchOrders = async () => {
+      setLoading(true);
+      try {
+        // Simulate fetching orders (replace with real API in prod)
+        // For now, use dashboard stats for demo
+        const stats = await adminMockApi.dashboard.getStats();
+        setOrders(stats.recentOrders || []);
+      } catch (e) {
+        // handle error
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchOrders();
+  }, []);
 
   return (
-    <AdminLayout>
-      <div>
-        {/* ...existing AdminLayout content... */}
-        {/* Place all batch address and order rendering logic here, wrapped in a single parent div or fragment as needed. */}
-        {/* Ensure all JSX is inside this return and properly closed. */}
+    <div className="admin-page dark-bg" style={{ minHeight: '100vh', padding: '2rem' }}>
+      <div className="page-header">
+        <h1>Orders</h1>
       </div>
-    </AdminLayout>
+      <div className="admin-dashboard-content dark-card" style={{ padding: '2rem', marginTop: '2rem' }}>
+        {loading ? (
+          <div className="loading">Loading orders...</div>
+        ) : orders.length === 0 ? (
+          <p style={{ color: '#aaa' }}>No recent orders found.</p>
+        ) : (
+          <table className="data-table" style={{ width: '100%', background: 'rgba(30,30,40,0.7)', borderRadius: '12px' }}>
+            <thead>
+              <tr>
+                <th>Order #</th>
+                <th>Date</th>
+                <th>Status</th>
+                <th>Customer</th>
+                <th>Total</th>
+                <th>Shipping</th>
+              </tr>
+            </thead>
+            <tbody>
+              {orders.map(order => (
+                <tr key={order.id}>
+                  <td>{order.id}</td>
+                  <td>{new Date(order.orderDate).toLocaleDateString()}</td>
+                  <td>{order.status}</td>
+                  <td>{order.shippingAddress.fullName}</td>
+                  <td>${order.totalAmount.toFixed(2)}</td>
+                  <td>{order.shippingOption}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
   );
 };
 

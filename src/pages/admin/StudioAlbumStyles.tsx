@@ -24,20 +24,19 @@ const StudioAlbumStyles: React.FC = () => {
   };
 
   return (
-    <AdminLayout>
-      <div className="admin-form">
-        <h1>Studio Album Styles</h1>
-        <form className="form" onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label>Cover Types</label>
-            <div className="checkbox-group">
-              {COVER_TYPES.map(type => (
-                <label key={type} className="checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={coverType.includes(type)}
-                    onChange={e => handleCheckbox(setCoverType, type, e.target.checked)}
-                  />
+    <div className="admin-form">
+      <h1>Studio Album Styles</h1>
+      <form className="form" onSubmit={handleSubmit}>
+        <div className="form-group">
+          <label>Cover Types</label>
+          <div className="checkbox-group">
+            {COVER_TYPES.map(type => (
+              <label key={type} className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={coverType.includes(type)}
+                  onChange={e => handleCheckbox(setCoverType, type, e.target.checked)}
+                />
                   {type}
                 </label>
               ))}
@@ -77,7 +76,6 @@ const StudioAlbumStyles: React.FC = () => {
         </form>
         {message && <div className="success-message">{message}</div>}
       </div>
-    </AdminLayout>
   );
 };
 

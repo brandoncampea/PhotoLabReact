@@ -83,10 +83,7 @@ const Sidebar: React.FC = () => {
           </div>
         </li>
       </ul>
-      <div className="sidebar-footer">
-        <Link to="/" className="sidebar-footer-link">🏠 Customer Site</Link>
-        <button onClick={handleLogout} className="sidebar-footer-logout">🚪 Logout</button>
-      </div>
+      {/* Sidebar footer removed: Customer Site and Logout now in navbar */}
     </aside>
   );
 };

@@ -160,14 +160,13 @@ const AdminProfile: React.FC = () => {
   }
 
   return (
-    <AdminLayout>
+    <>
       <div className="page-header">
         <h1>👤 Profile Settings</h1>
         <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
           Manage your business profile and notification preferences
         </p>
       </div>
-
       <div className="admin-form" style={{ maxWidth: '600px' }}>
         <div className="form-group">
           <label htmlFor="logo">Site Logo</label>
@@ -554,7 +553,7 @@ const AdminProfile: React.FC = () => {
           </div>
         </div>
       )}
-    </AdminLayout>
+    </>
   );
 };
 

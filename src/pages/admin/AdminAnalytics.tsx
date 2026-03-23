@@ -83,7 +83,7 @@ const AdminAnalytics: React.FC = () => {
   );
 
   return (
-    <AdminLayout>
+    <>
       <div className="page-header">
         <h1>📊 Analytics</h1>
         <p className="muted-text" style={{ fontSize: '0.9rem', marginTop: '0.5rem' }}>
@@ -261,8 +261,7 @@ const AdminAnalytics: React.FC = () => {
           </div>
         )}
       </div>
-
-    </AdminLayout>
+    </>
   );
 };
 

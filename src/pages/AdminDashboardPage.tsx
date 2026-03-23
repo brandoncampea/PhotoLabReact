@@ -18,22 +18,9 @@ const AdminDashboardPage: React.FC = () => {
   }
 
   return (
-    <div className="page-container">
-      <div className="sidebar">
-        {/* Sidebar content here (links, nav, etc.) */}
-        <ul className="sidebar-menu">
-          <li><a href="/admin/dashboard">Dashboard</a></li>
-          <li><a href="/admin/studios">Studio Admins</a></li>
-          <li><a href="/admin/analytics">Analytics</a></li>
-          <li><a href="/admin/profile">Profile</a></li>
-        </ul>
-        <a href="/customer" className="admin-customer-site">Customer Site</a>
-        <button className="btn-logout">Logout</button>
-      </div>
-      <div className="main-content">
-        <AdminDashboard />
-      </div>
-    </div>
+    <AdminLayout>
+      <AdminDashboard />
+    </AdminLayout>
   );
 };
 

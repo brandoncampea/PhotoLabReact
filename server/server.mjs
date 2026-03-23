@@ -1,3 +1,4 @@
+import adminDashboardRoutes from './routes/adminDashboard.js';
 // ...existing code...
 import express from 'express';
 import cors from 'cors';
@@ -60,6 +61,7 @@ app.use(express.json({ limit: '50mb' }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Use routes
+app.use('/api/admin', adminDashboardRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/albums', albumRoutes);
 app.use('/api/photos', photoRoutes);

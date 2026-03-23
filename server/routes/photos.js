@@ -18,40 +18,55 @@ const signPhotoForResponse = (photo) => ({
 });
 
 async function pipeAssetToResponse(source, res) {
-  const download = await downloadBlob(source);
-  if (download?.contentType) {
-    res.setHeader('Content-Type', download.contentType);
-  }
-  if (download?.contentLength) {
-    res.setHeader('Content-Length', String(download.contentLength));
-  }
-  res.setHeader('Cache-Control', 'public, max-age=300');
+  try {
+    const download = await downloadBlob(source);
+    if (!download) {
+      return res.status(404).json({ error: 'Asset not found' });
+    }
+    if (download?.contentType) {
+      res.setHeader('Content-Type', download.contentType);
+    }
+    if (download?.contentLength) {
+      res.setHeader('Content-Length', String(download.contentLength));
+    }
+    res.setHeader('Cache-Control', 'public, max-age=300');
 
-  if (download?.readableStreamBody) {
-    download.readableStreamBody.on('error', (error) => {
-      if (!res.headersSent) {
-        res.status(500).end(error.message);
-      } else {
-        res.end();
-      }
-    });
-    download.readableStreamBody.pipe(res);
-    return;
-  }
-
-  if (typeof source === 'string' && source.startsWith('http')) {
-    const upstream = await fetch(source);
-    if (!upstream.ok) {
-      res.status(upstream.status).end('Failed to fetch asset');
+    if (download?.readableStreamBody) {
+      download.readableStreamBody.on('error', (error) => {
+        console.error('Blob stream error:', error);
+        if (!res.headersSent) {
+          res.status(500).end(error.message);
+        } else {
+          res.end();
+        }
+      });
+      download.readableStreamBody.pipe(res);
       return;
     }
-    const arrayBuffer = await upstream.arrayBuffer();
-    res.setHeader('Content-Type', upstream.headers.get('content-type') || 'application/octet-stream');
-    res.send(Buffer.from(arrayBuffer));
-    return;
-  }
 
-  res.status(404).json({ error: 'Asset not found' });
+    // If download exists but no stream, treat as not found
+    return res.status(404).json({ error: 'Asset not found' });
+  } catch (err) {
+    // If source is a direct URL, try to fetch it
+    if (typeof source === 'string' && source.startsWith('http')) {
+      try {
+        const upstream = await fetch(source);
+        if (!upstream.ok) {
+          return res.status(upstream.status).end('Failed to fetch asset');
+        }
+        const arrayBuffer = await upstream.arrayBuffer();
+        res.setHeader('Content-Type', upstream.headers.get('content-type') || 'application/octet-stream');
+        res.send(Buffer.from(arrayBuffer));
+        return;
+      } catch (fetchErr) {
+        console.error('Fetch asset error:', fetchErr);
+        return res.status(404).json({ error: 'Asset not found' });
+      }
+    }
+    // For all other errors, log and return 500
+    console.error('pipeAssetToResponse error:', err);
+    res.status(500).json({ error: 'Server error: ' + err.message });
+  }
 }
 
 const photoUpload = multer({

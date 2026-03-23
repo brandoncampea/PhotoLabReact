@@ -1,118 +1,71 @@
 import React, { useEffect, useState } from 'react';
 import { Watermark } from '../../types';
 import { watermarkService } from '../../services/watermarkService';
-import AdminLayout from '../../components/AdminLayout';
+
 
 const AdminWatermarks: React.FC = () => {
   const [watermarks, setWatermarks] = useState<Watermark[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingWatermark, setEditingWatermark] = useState<Watermark | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string>('');
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<any>({
     name: '',
-    imageUrl: '',
-    position: 'bottom-right' as Watermark['position'],
-    opacity: 0.5,
+    image: null,
+    position: 'bottom-right',
+    opacity: 1,
     isDefault: false,
     tiled: false,
   });
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    loadWatermarks();
+    // Fetch watermarks here
+    watermarkService.getAll().then(setWatermarks).finally(() => setLoading(false));
   }, []);
-
-  const loadWatermarks = async () => {
-    try {
-      const data = await watermarkService.getAll();
-      setWatermarks(data);
-    } catch (error) {
-      console.error('Failed to load watermarks:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleCreate = () => {
     setEditingWatermark(null);
-    setPreviewUrl('');
-    setImageFile(null);
-    setFormData({
-      name: '',
-      imageUrl: '',
-      position: 'bottom-right',
-      opacity: 0.5,
-      isDefault: false,
-      tiled: false,
-    });
+    setFormData({ name: '', image: null, position: 'bottom-right', opacity: 1, isDefault: false, tiled: false });
+    setPreviewUrl(null);
     setShowModal(true);
   };
 
   const handleEdit = (watermark: Watermark) => {
     setEditingWatermark(watermark);
-    setPreviewUrl(watermark.imageUrl);
-    setImageFile(null);
     setFormData({
       name: watermark.name,
-      imageUrl: '',  // Clear URL so user can upload new file
+      image: null,
       position: watermark.position,
       opacity: watermark.opacity,
       isDefault: watermark.isDefault,
       tiled: watermark.tiled,
     });
+    setPreviewUrl(watermark.imageUrl);
     setShowModal(true);
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleDelete = async (id: number) => {
+    try {
+      await watermarkService.delete(id);
+      setWatermarks(watermarks.filter(w => w.id !== id));
+    } catch (error) {
+      console.error('Failed to delete watermark:', error);
+      alert('Failed to delete watermark. Please try again.');
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (!file.type.startsWith('image/')) {
-        alert('Please select an image file');
-        return;
-      }
-      
-      setImageFile(file);
-      // Create preview URL
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPreviewUrl(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+      setFormData({ ...formData, image: file });
+      setPreviewUrl(URL.createObjectURL(file));
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    try {
-      if (editingWatermark) {
-        await watermarkService.update(editingWatermark.id, formData, imageFile || undefined);
-      } else {
-        if (!imageFile) {
-          alert('Please select an image file');
-          return;
-        }
-        await watermarkService.create(formData as Omit<Watermark, 'id' | 'createdDate'>, imageFile);
-      }
-      setShowModal(false);
-      setImageFile(null);
-      loadWatermarks();
-    } catch (error) {
-      console.error('Failed to save watermark:', error);
-      alert('Failed to save watermark. Please try again.');
-    }
-  };
-
-  const handleDelete = async (id: number) => {
-    if (confirm('Are you sure you want to delete this watermark?')) {
-      try {
-        await watermarkService.delete(id);
-        loadWatermarks();
-      } catch (error) {
-        console.error('Failed to delete watermark:', error);
-        alert('Failed to delete watermark. Please try again.');
-      }
-    }
+    // Save watermark logic here
+    setShowModal(false);
   };
 
   if (loading) {
@@ -120,7 +73,7 @@ const AdminWatermarks: React.FC = () => {
   }
 
   return (
-    <AdminLayout>
+    <>
       <div className="page-header">
         <h1>Manage Watermarks</h1>
         <button onClick={handleCreate} className="btn btn-primary">
@@ -139,9 +92,9 @@ const AdminWatermarks: React.FC = () => {
               {watermark.isDefault && <span className="badge">Default</span>}
               {watermark.tiled && <span className="badge badge-success" style={{ marginLeft: '0.5rem' }}>Tiled</span>}
             </div>
-            <div className="action-buttons">
-              <button onClick={() => handleEdit(watermark)} className="btn-icon">✏️</button>
-              <button onClick={() => handleDelete(watermark.id)} className="btn-icon">🗑️</button>
+            <div className="watermark-actions">
+              <button onClick={() => handleEdit(watermark)} className="btn btn-secondary btn-sm">Edit</button>
+              <button onClick={() => handleDelete(watermark.id)} className="btn btn-danger btn-sm">Delete</button>
             </div>
           </div>
         ))}
@@ -264,7 +217,7 @@ const AdminWatermarks: React.FC = () => {
           </div>
         </div>
       )}
-    </AdminLayout>
+    </>
   );
 };
 

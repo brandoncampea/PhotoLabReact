@@ -2,15 +2,18 @@ import '../../PhotoLabStyles.css';
 import React, { useEffect, useState } from 'react';
 import api from '../../services/api';
 
-interface StripeProduct {
+
+interface StripePlan {
   id: string;
   name: string;
-  priceId: string;
-  subscriptionLevel: string | null;
+  stripe_monthly_price_id: string | null;
+  stripe_yearly_price_id: string | null;
 }
 
 const AdminSubscriptionGateway: React.FC = () => {
-  const [products, setProducts] = useState<StripeProduct[]>([]);
+  const [plans, setPlans] = useState<StripePlan[]>([]);
+  const [editState, setEditState] = useState<Record<string, { monthly: string; yearly: string }>>({});
+  const [savingId, setSavingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -23,7 +26,16 @@ const AdminSubscriptionGateway: React.FC = () => {
     setError(null);
     try {
       const res = await api.get('/subscription-plans/stripe-products');
-      setProducts(res.data);
+      setPlans(res.data);
+      // Initialize edit state
+      const initialEdit: Record<string, { monthly: string; yearly: string }> = {};
+      res.data.forEach((plan: StripePlan) => {
+        initialEdit[plan.id] = {
+          monthly: plan.stripe_monthly_price_id || '',
+          yearly: plan.stripe_yearly_price_id || '',
+        };
+      });
+      setEditState(initialEdit);
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to load Stripe products');
     } finally {
@@ -31,8 +43,32 @@ const AdminSubscriptionGateway: React.FC = () => {
     }
   };
 
-  // Placeholder for mapping logic
-  // In a real app, you would allow mapping/unmapping here
+
+  const handleInputChange = (planId: string, field: 'monthly' | 'yearly', value: string) => {
+    setEditState((prev) => ({
+      ...prev,
+      [planId]: {
+        ...prev[planId],
+        [field]: value,
+      },
+    }));
+  };
+
+  const handleSave = async (planId: string) => {
+    setSavingId(planId);
+    setError(null);
+    try {
+      await api.patch(`/subscription-plans/${planId}`, {
+        stripe_monthly_price_id: editState[planId].monthly,
+        stripe_yearly_price_id: editState[planId].yearly,
+      });
+      await fetchProducts();
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to save changes');
+    } finally {
+      setSavingId(null);
+    }
+  };
 
   return (
     <div className="admin-page">
@@ -46,17 +82,41 @@ const AdminSubscriptionGateway: React.FC = () => {
         <table className="data-table">
           <thead>
             <tr>
-              <th>Stripe Product</th>
-              <th>Stripe Price ID</th>
-              <th>Mapped Subscription Level</th>
+              <th>Plan Name</th>
+              <th>Monthly Price ID</th>
+              <th>Annual Price ID</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {products.map((p) => (
-              <tr key={p.id}>
-                <td>{p.name}</td>
-                <td>{p.priceId}</td>
-                <td>{p.subscriptionLevel || <span className="admin-subscription-not-mapped">Not mapped</span>}</td>
+            {plans.map((plan) => (
+              <tr key={plan.id}>
+                <td>{plan.name}</td>
+                <td>
+                  <input
+                    type="text"
+                    value={editState[plan.id]?.monthly ?? ''}
+                    onChange={(e) => handleInputChange(plan.id, 'monthly', e.target.value)}
+                    style={{ width: '220px' }}
+                  />
+                </td>
+                <td>
+                  <input
+                    type="text"
+                    value={editState[plan.id]?.yearly ?? ''}
+                    onChange={(e) => handleInputChange(plan.id, 'yearly', e.target.value)}
+                    style={{ width: '220px' }}
+                  />
+                </td>
+                <td>
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => handleSave(plan.id)}
+                    disabled={savingId === plan.id}
+                  >
+                    {savingId === plan.id ? 'Saving...' : 'Save'}
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
