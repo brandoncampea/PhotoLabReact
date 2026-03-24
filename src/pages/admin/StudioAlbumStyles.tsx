@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import AdminLayout from '../../components/AdminLayout';
 
 // Example style options; in a real app, fetch from API or config
 const COVER_TYPES = ['Leather', 'Linen', 'Photo Wrap'];

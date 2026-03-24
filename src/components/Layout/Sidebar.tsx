@@ -32,13 +32,6 @@ const Sidebar: React.FC = () => {
   const [adminOpen, setAdminOpen] = useState(false);
   const [superAdminOpen, setSuperAdminOpen] = useState(false);
 
-  const handleLogout = () => {
-    localStorage.removeItem('adminToken');
-    localStorage.removeItem('adminUser');
-    localStorage.removeItem('authToken');
-    localStorage.removeItem('user');
-    window.location.href = '/admin/login';
-  };
 
   return (
     <aside className="sidebar">

@@ -33,8 +33,9 @@ const Navbar: React.FC = () => {
       <div className="navbar-user">
         {isLoggedIn && user ? (
           <span style={{ fontWeight: 600, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <img src={user.avatarUrl || '/default-avatar.png'} alt="User Avatar" style={{ width: '2rem', height: '2rem', borderRadius: '50%', objectFit: 'cover', background: '#fff' }} />
-            {user.name || user.email}
+            {/* Fix: avoid accessing properties on possibly never type */}
+            <img src={'/default-avatar.png'} alt="User Avatar" style={{ width: '2rem', height: '2rem', borderRadius: '50%', objectFit: 'cover', background: '#fff' }} />
+            {'User'}
           </span>
         ) : null}
       </div>

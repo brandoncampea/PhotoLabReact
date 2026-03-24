@@ -1,12 +1,7 @@
 import React from 'react';
 // import { Link } from 'react-router-dom';
-// import { useAuth } from '../contexts/AuthContext';
-// import { profileService } from '../services/profileService';
 
 const Navbar: React.FC = () => {
-  // const { user, logout } = useAuth();
-  // ...existing code...
-  // const [logoUrl, setLogoUrl] = useState('');
 
   // Placeholder: Replace with studio config/profileService when available
   const studioName = "Studio Name";

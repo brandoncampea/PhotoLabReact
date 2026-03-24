@@ -1,13 +1,12 @@
 
 
 import React, { useState, useEffect } from 'react';
-import AdminLayout from '../../components/AdminLayout';
 import { shippingService } from '../../services/shippingService';
-import { ShippingConfig } from '../../types';
+// Removed unused ShippingConfig import
 
 
 const SuperAdminShipping = () => {
-  const [config, setConfig] = useState<ShippingConfig | null>(null);
+  // Removed unused config state
   const [batchDeadline, setBatchDeadline] = useState('');
   const [directShippingCharge, setDirectShippingCharge] = useState('');
   const [isActive, setIsActive] = useState(true);
@@ -19,7 +18,7 @@ const SuperAdminShipping = () => {
       setLoading(true);
       try {
         const data = await shippingService.getConfig();
-        setConfig(data);
+        // Removed unused setConfig
         setBatchDeadline(data.batchDeadline || '');
         setDirectShippingCharge(data.directShippingCharge?.toString() || '');
         setIsActive(!!data.isActive);
@@ -36,12 +35,12 @@ const SuperAdminShipping = () => {
     e.preventDefault();
     setMessage('');
     try {
-      const updated = await shippingService.updateConfig({
+      await shippingService.updateConfig({
         batchDeadline,
         directShippingCharge: parseFloat(directShippingCharge),
         isActive,
       });
-      setConfig(updated);
+      // Removed unused setConfig
       setMessage('Shipping config updated!');
     } catch (e) {
       setMessage('Failed to update shipping config');
@@ -50,7 +49,7 @@ const SuperAdminShipping = () => {
   };
 
   return (
-    <AdminLayout>
+    <>
       <h1 data-testid="superadmin-shipping-heading">Super Admin Shipping Settings</h1>
       <div className="superadmin-shipping-content">
         {loading ? (
@@ -95,7 +94,7 @@ const SuperAdminShipping = () => {
         )}
         {message && <div className="success-message">{message}</div>}
       </div>
-    </AdminLayout>
+    </>
   );
 };
 

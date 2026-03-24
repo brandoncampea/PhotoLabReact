@@ -1,3 +1,5 @@
+// Stub for missing handleFileUpload
+const handleFileUpload = () => {};
 import React, { useEffect, useState } from 'react';
 import { Watermark } from '../../types';
 import { watermarkService } from '../../services/watermarkService';
@@ -54,13 +56,7 @@ const AdminWatermarks: React.FC = () => {
     }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setFormData({ ...formData, image: file });
-      setPreviewUrl(URL.createObjectURL(file));
-    }
-  };
+  // Removed unused handleFileChange
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

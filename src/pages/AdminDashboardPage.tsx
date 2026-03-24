@@ -17,11 +17,7 @@ const AdminDashboardPage: React.FC = () => {
     return <div>Unauthorized</div>;
   }
 
-  return (
-    <AdminLayout>
-      <AdminDashboard />
-    </AdminLayout>
-  );
+  return <AdminDashboard />;
 };
 
 export default AdminDashboardPage;

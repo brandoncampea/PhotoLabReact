@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AnalyticsData } from '../../types';
 import { analyticsService } from '../../services/analyticsService';
-import AdminLayout from '../../components/AdminLayout';
 
 const AdminAnalytics: React.FC = () => {
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);

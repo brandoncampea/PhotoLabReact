@@ -23,7 +23,7 @@ const superAdminLinks = [
 ];
 
 const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const location = useLocation();
   const isSuperAdmin = user?.role === 'super_admin';
 

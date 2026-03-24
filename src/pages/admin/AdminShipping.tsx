@@ -1,12 +1,12 @@
 
 import React, { useState, useEffect } from 'react';
 import { shippingService } from '../../services/shippingService';
-import { ShippingConfig } from '../../types';
+// Removed unused ShippingConfig import
 
 
 const AdminShipping: React.FC = () => {
 
-  const [config, setConfig] = useState<ShippingConfig | null>(null);
+  // Removed unused config state
   const [batchDeadline, setBatchDeadline] = useState('');
   const [directShippingCharge, setDirectShippingCharge] = useState('');
   const [isActive, setIsActive] = useState(true);
@@ -18,7 +18,7 @@ const AdminShipping: React.FC = () => {
       setLoading(true);
       try {
         const data = await shippingService.getConfig();
-        setConfig(data);
+        // Removed unused setConfig
         setBatchDeadline(data.batchDeadline || '');
         setDirectShippingCharge(data.directShippingCharge?.toString() || '');
         setIsActive(!!data.isActive);
@@ -35,12 +35,12 @@ const AdminShipping: React.FC = () => {
     e.preventDefault();
     setMessage('');
     try {
-      const updated = await shippingService.updateConfig({
+      await shippingService.updateConfig({
         batchDeadline,
         directShippingCharge: parseFloat(directShippingCharge),
         isActive,
       });
-      setConfig(updated);
+      // Removed unused setConfig
       setMessage('Shipping config updated!');
     } catch (e) {
       setMessage('Failed to update shipping config');

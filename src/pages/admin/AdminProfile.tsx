@@ -3,7 +3,6 @@ import { ProfileConfig } from '../../types';
 import { profileService } from '../../services/profileService';
 import { useAuth } from '../../contexts/AuthContext';
 import { SUBSCRIPTION_PLANS } from '../../services/subscriptionService';
-import AdminLayout from '../../components/AdminLayout';
 
 const AdminProfile: React.FC = () => {
   const { user } = useAuth();
