@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { studioFeatureService, StudioFeatureSettings } from '../../services/studioFeatureService';
-import AdminLayout from '../../components/AdminLayout';
+
 
 interface StudioAdmin {
   id: number;
@@ -236,7 +236,7 @@ const AdminStudioAdmins: React.FC = () => {
   }
 
   return (
-    <AdminLayout>
+    <>
       <div className="page-header">
         <h1>Studio Admins Management</h1>
         <p>Manage studio administrators across all studios</p>
@@ -579,7 +579,7 @@ const AdminStudioAdmins: React.FC = () => {
           <li><strong>Cannot Delete:</strong> Studio must always have at least one admin</li>
         </ul>
       </div>
-    </AdminLayout>
+    </>
   );
 };
 

@@ -56,7 +56,25 @@ const mapLegacyProducts = (products) => {
 // Get all products
 router.get('/', async (req, res) => {
   try {
-    const products = await queryRows('SELECT * FROM products ORDER BY category, name');
+    const products = await queryRows('SELECT * FROM products ORDER BY order_index ASC, category, name');
+  router.put('/order', adminRequired, requireActiveSubscription, async (req, res) => {
+    try {
+      const { order } = req.body; // [{id: 1, orderIndex: 0}, ...]
+      if (!Array.isArray(order)) {
+        return res.status(400).json({ error: 'Invalid order payload' });
+      }
+      const updatePromises = order.map(({ id, orderIndex }) =>
+        query(
+          'UPDATE products SET order_index = $1 WHERE id = $2',
+          [orderIndex, id]
+        )
+      );
+      await Promise.all(updatePromises);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
     const parsedProducts = mapLegacyProducts(products);
     res.json(parsedProducts);
   } catch (error) {
@@ -150,7 +168,7 @@ router.get('/active', async (req, res) => {
       }
     }
 
-    const products = await queryRows('SELECT * FROM products ORDER BY category, name');
+    const products = await queryRows('SELECT * FROM products ORDER BY order_index ASC, category, name');
     const parsedProducts = mapLegacyProducts(products);
     res.json(parsedProducts.filter((p) => p.isActive !== false));
   } catch (error) {

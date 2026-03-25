@@ -7,7 +7,7 @@ import { siteConfigService } from '../../services/siteConfigService';
 import AdminWhccImport from '../../components/AdminWhccImport';
 import AdminMpixImport from '../../components/AdminMpixImport';
 import { useAuth } from '../../contexts/AuthContext';
-import AdminLayout from '../../components/AdminLayout';
+
 
 const AdminPriceLists: React.FC = () => {
   const { user } = useAuth();
@@ -562,7 +562,7 @@ const AdminPriceLists: React.FC = () => {
   };
 
   return (
-    <AdminLayout>
+    <>
       <div className="page-header">
         <h1>Price Lists</h1>
         <div style={{ display: 'flex', gap: '1rem' }}>
@@ -1398,7 +1398,7 @@ const AdminPriceLists: React.FC = () => {
           }}
         />
       )}
-    </AdminLayout>
+    </>
   );
 };
 

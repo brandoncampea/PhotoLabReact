@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { Order } from '../../types';
-import { adminMockApi } from '../../services/adminMockApi';
+import axios from 'axios';
 
 const AdminOrders: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -11,10 +11,8 @@ const AdminOrders: React.FC = () => {
     const fetchOrders = async () => {
       setLoading(true);
       try {
-        // Simulate fetching orders (replace with real API in prod)
-        // For now, use dashboard stats for demo
-        const stats = await adminMockApi.dashboard.getStats();
-        setOrders(stats.recentOrders || []);
+        const res = await axios.get('/api/orders');
+        setOrders(res.data || []);
       } catch (e) {
         // handle error
       } finally {

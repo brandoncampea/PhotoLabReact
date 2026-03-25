@@ -1,516 +1,351 @@
 import React, { useEffect, useState } from 'react';
+import AdminPackages from './AdminPackages';
+import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
+import axios from 'axios';
 import { PriceList, Package } from '../types';
 import { priceListAdminService } from '../services/priceListAdminService';
 import { packageService } from '../services/packageService';
 
-const AdminProducts = () => {
-  // Markup percentage for all active products/sizes
-  const [markupPercent, setMarkupPercent] = useState('');
-  const [applyingMarkup, setApplyingMarkup] = useState(false);
-  const handleMarkupPercentChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setMarkupPercent(e.target.value);
-  };
+// Helper to format currency
+export const formatCurrency = (value: number) => {
+  return value?.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+};
 
-  const [loading, setLoading] = useState(false);
+
+
+function AdminProducts() {
+  const [tab, setTab] = useState<'products' | 'packages'>('products');
+  const [products, setProducts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [packages, setPackages] = useState<Package[]>([]);
-  const [packageLoading, setPackageLoading] = useState(false);
-  const [packageError, setPackageError] = useState<string | null>(null);
-  const [editingProductId, setEditingProductId] = useState<number | null>(null);
-  const [editingMarkup, setEditingMarkup] = useState<string>('');
-  // ...rest of the component logic...
-
-  const handleApplyMarkup = async () => {
-    if (!selectedPriceListId || !markupPercent || isNaN(Number(markupPercent))) return;
-    setApplyingMarkup(true);
-    try {
-      const selectedPriceList = priceLists.find(pl => pl.id === selectedPriceListId);
-      if (!selectedPriceList || !Array.isArray(selectedPriceList.products)) return;
-      const percent = Number(markupPercent) / 100;
-      // Prepare batch update for all active products and sizes
-      const productsToUpdate = selectedPriceList.products
-        .filter(p => p.isActive)
-        .map(product => ({
-          id: product.id,
-          sizes: (product.sizes || [])
-            .filter(size => size.isOffered !== false)
-            .map(size => ({
-              id: size.id,
-              price: parseFloat((size.price * (1 + percent)).toFixed(2)),
-            })),
-        }));
-      await priceListAdminService.update(selectedPriceListId, { products: productsToUpdate });
-      const lists = await priceListAdminService.getAll();
-      setPriceLists(lists);
-      setMarkupPercent('');
-    } catch {
-      setError('Failed to apply markup');
-    } finally {
-      setApplyingMarkup(false);
-    }
-  };
-  const [priceLists, setPriceLists] = useState<PriceList[]>([]);
+  const [filter, setFilter] = useState('');
   const [selectedPriceListId, setSelectedPriceListId] = useState<number | null>(null);
-  const [savingProductId, setSavingProductId] = useState<number | null>(null);
-  const [packageForm, setPackageForm] = useState<Partial<Package> | null>(null);
-  const [savingPackage, setSavingPackage] = useState(false);
+  const [percentMarkup, setPercentMarkup] = useState<number>(0);
+  const [priceLists, setPriceLists] = useState<PriceList[]>([]);
 
-  // Fetch price list by ID if products are missing
+  // Fetch all price lists on mount
   useEffect(() => {
-    if (!selectedPriceListId) return;
-    const selected = priceLists.find(pl => pl.id === selectedPriceListId);
-    if (selected && (!Array.isArray(selected.products) || selected.products.length === 0)) {
+    const fetchPriceLists = async () => {
       setLoading(true);
-      priceListAdminService.getById(selectedPriceListId)
-        .then((pl) => {
-          if (!pl) return;
-          setPriceLists((prev) => prev.map(p => p.id === pl.id ? pl : p));
-        })
-        .finally(() => setLoading(false));
-    }
-  }, [selectedPriceListId, priceLists]);
-
-  // Load packages for selected price list
-  useEffect(() => {
-    if (!selectedPriceListId) return;
-    setPackageLoading(true);
-    setPackageError(null);
-    packageService.getAll(selectedPriceListId)
-      .then(setPackages)
-      .catch(() => setPackageError('Failed to load packages'))
-      .finally(() => setPackageLoading(false));
-  }, [selectedPriceListId]);
-
-  useEffect(() => {
-    setLoading(true);
-    priceListAdminService.getAll()
-      .then((lists) => {
-        setPriceLists(lists);
-        if (lists.length > 0) {
-          setSelectedPriceListId(lists.find(l => l.isDefault)?.id ?? lists[0].id);
+      setError(null);
+      try {
+        const res = await axios.get('/api/price-lists');
+        setPriceLists(res.data || []);
+        // Auto-select first price list if available
+        if (res.data && res.data.length > 0) {
+          setSelectedPriceListId(res.data[0].id);
         }
-      })
-      .catch((err) => {
+      } catch (err: any) {
         setError('Failed to load price lists');
-      })
-      .finally(() => setLoading(false));
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchPriceLists();
   }, []);
 
-
-  const handleSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setSelectedPriceListId(Number(e.target.value));
-  };
-
-
-  // Product activation toggle
-  const handleToggleProductActive = async (productId: number, checked: boolean) => {
+  // Fetch products for selected price list
+  useEffect(() => {
     if (!selectedPriceListId) return;
-    setSavingProductId(productId);
-    try {
-      await priceListAdminService.update(selectedPriceListId, {
-        products: [
-          { id: productId, isActive: checked },
-        ],
-      });
-      const lists = await priceListAdminService.getAll();
-      setPriceLists(lists);
-    } catch {
-      setError('Failed to update product');
-    } finally {
-      setSavingProductId(null);
-    }
-  };
-
-  // Size activation toggle
-  const handleToggleSizeActive = async (productId: number, sizeId: number, checked: boolean) => {
-    if (!selectedPriceListId) return;
-    setSavingProductId(productId * 10000 + sizeId); // Unique key for size
-    try {
-      await priceListAdminService.update(selectedPriceListId, {
-        products: [
-          {
-            id: productId,
-            sizes: [
-              { id: sizeId, isOffered: checked },
-            ],
-          },
-        ],
-      });
-      const lists = await priceListAdminService.getAll();
-      setPriceLists(lists);
-    } catch {
-      setError('Failed to update size');
-    } finally {
-      setSavingProductId(null);
-    }
-  };
-
-  // Size price editing
-  const [editingSize, setEditingSize] = useState<{ productId: number; sizeId: number } | null>(null);
-  const [editingSizePrice, setEditingSizePrice] = useState<string>('');
-  const handleStartEditSizePrice = (productId: number, sizeId: number, currentPrice: number) => {
-    setEditingSize({ productId, sizeId });
-    setEditingSizePrice(currentPrice.toString());
-  };
-  const handleSizePriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setEditingSizePrice(e.target.value);
-  };
-  const handleSaveSizePrice = async (productId: number, sizeId: number) => {
-    if (!selectedPriceListId) return;
-    setSavingProductId(productId * 10000 + sizeId);
-    try {
-      await priceListAdminService.update(selectedPriceListId, {
-        products: [
-          {
-            id: productId,
-            sizes: [
-              { id: sizeId, price: parseFloat(editingSizePrice) },
-            ],
-          },
-        ],
-      });
-      const lists = await priceListAdminService.getAll();
-      setPriceLists(lists);
-      setEditingSize(null);
-    } catch {
-      setError('Failed to update size price');
-    } finally {
-      setSavingProductId(null);
-    }
-  };
-  const handleCancelEditSizePrice = () => {
-    setEditingSize(null);
-    setEditingSizePrice('');
-  };
-
-  // Package CRUD
-  const handleEditPackage = (pkg: Package) => {
-    setPackageForm({ ...pkg });
-  };
-  const handleNewPackage = () => {
-    setPackageForm({
-      name: '',
-      description: '',
-      packagePrice: 0,
-      items: [],
-      isActive: true,
-      priceListId: selectedPriceListId!,
-      createdDate: new Date().toISOString(),
-    });
-  };
-  const handlePackageFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    if (!packageForm) return;
-    setPackageForm({ ...packageForm, [e.target.name]: e.target.value });
-  };
-  const handleSavePackage = async () => {
-    if (!packageForm || !selectedPriceListId) return;
-    setSavingPackage(true);
-    try {
-      if (packageForm.id) {
-        await packageService.update(packageForm.id, packageForm);
-      } else {
-        await packageService.create({ ...packageForm, priceListId: selectedPriceListId });
+    const fetchProducts = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await axios.get(`/api/price-lists/${selectedPriceListId}`);
+        setProducts(res.data.products || []);
+      } catch (err: any) {
+        setError('Failed to load products');
+      } finally {
+        setLoading(false);
       }
-      setPackageForm(null);
-      // Refresh packages
-      const pkgs = await packageService.getAll(selectedPriceListId);
-      setPackages(pkgs);
-    } catch {
-      setPackageError('Failed to save package');
-    } finally {
-      setSavingPackage(false);
-    }
+    };
+    fetchProducts();
+  }, [selectedPriceListId]);
+
+  const handleApplyMarkup = () => {
+    if (!percentMarkup) return;
+    setProducts((prev) =>
+      prev.map((product) => ({
+        ...product,
+        sizes: product.sizes.map((size: any) =>
+          size.isOffered !== false
+            ? { ...size, basePrice: Math.round((size.cost * (1 + percentMarkup / 100)) * 100) / 100 }
+            : size
+        ),
+      }))
+    );
   };
-  const handleDeletePackage = async (id: number) => {
-    if (!selectedPriceListId) return;
-    setSavingPackage(true);
-    try {
-      await packageService.delete(id);
-      const pkgs = await packageService.getAll(selectedPriceListId);
-      setPackages(pkgs);
-    } catch {
-      setPackageError('Failed to delete package');
-    } finally {
-      setSavingPackage(false);
-    }
-  };
-  const handleCancelPackageForm = () => setPackageForm(null);
+
+  const filteredProducts = products.filter((product) => {
+    const search = filter.toLowerCase();
+    return (
+      product.name?.toLowerCase().includes(search) ||
+      product.category?.toLowerCase().includes(search) ||
+      product.description?.toLowerCase().includes(search) ||
+      (product.sizes || []).some((size: any) => size.name?.toLowerCase().includes(search))
+    );
+  });
 
   return (
-    <>
-      <h2>Products</h2>
-      <div className="admin-products-content">
-        {/* Removed Upload Watermark button */}
-        <div style={{ margin: '16px 0' }}>
+    <div className="admin-products-page">
+      <div className="tabs" style={{ marginBottom: 24 }}>
+        <button
+          className={tab === 'products' ? 'tab-active' : ''}
+          onClick={() => setTab('products')}
+        >
+          Products
+        </button>
+        <button
+          className={tab === 'packages' ? 'tab-active' : ''}
+          onClick={() => setTab('packages')}
+        >
+          Packages
+        </button>
+      </div>
+
+      {/* Price List Selector */}
+      <div style={{ marginBottom: 16 }}>
+        <label htmlFor="price-list-select" style={{ marginRight: 8 }}>Price List:</label>
+        <select
+          id="price-list-select"
+          value={selectedPriceListId ?? ''}
+          onChange={e => setSelectedPriceListId(Number(e.target.value))}
+          style={{ minWidth: 200 }}
+        >
+          {priceLists.map((pl) => (
+            <option key={pl.id} value={pl.id}>{pl.name}</option>
+          ))}
+        </select>
+      </div>
+
+      {tab === 'products' && (
+        <div>
+          <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
+            <input
+              type="text"
+              placeholder="Filter by product, category, description, or size"
+              value={filter}
+              onChange={e => setFilter(e.target.value)}
+              style={{ flex: 1, minWidth: 200 }}
+            />
+            <input
+              type="number"
+              placeholder="% Markup"
+              value={percentMarkup}
+              onChange={e => setPercentMarkup(Number(e.target.value))}
+              style={{ width: 100 }}
+            />
+            <button onClick={handleApplyMarkup} style={{ minWidth: 120 }}>Apply Markup</button>
+          </div>
           {loading ? (
-            <span>Loading price lists...</span>
+            <div>Loading...</div>
           ) : error ? (
-            <span style={{ color: 'red' }}>{error}</span>
+            <div className="error-message">{error}</div>
           ) : (
-            <label>
-              Price List:{' '}
-              <select value={selectedPriceListId ?? ''} onChange={handleSelectChange}>
-                {priceLists.map((pl) => (
-                  <option key={pl.id} value={pl.id}>
-                    {pl.name} {pl.isDefault ? '(Default)' : ''}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-        </div>
-        {/* Product management UI */}
-        {selectedPriceListId && (() => {
-          const selectedPriceList = priceLists.find(pl => pl.id === selectedPriceListId);
-          if (!selectedPriceList) return <div>No products found for this price list.</div>;
-          // Fix: Sometimes products may not be loaded in the priceList object, so check for undefined/null only
-          if (!Array.isArray(selectedPriceList.products)) {
-            if (loading) return <div>Loading products...</div>;
-            return <div>No products in this price list.</div>;
-          }
-          if (selectedPriceList.products.length === 0) {
-            if (loading) return <div>Loading products...</div>;
-            return <div>No products in this price list.</div>;
-          }
-          return (
-            <>
-              {/* Markup percentage for all active products/sizes */}
-              <div style={{
-                margin: '16px 0',
-                padding: '16px',
-                background: '#f7f7f7',
-                borderRadius: 8,
-                display: 'flex',
-                alignItems: 'center',
-                gap: '16px',
-                boxShadow: '0 1px 4px rgba(0,0,0,0.04)'
-              }}>
-                <label style={{ color: '#aaa', fontWeight: 500, fontSize: 15, marginRight: 12 }}>
-                  Markup % for all active products/sizes:
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  step={0.01}
-                  value={markupPercent}
-                  onChange={handleMarkupPercentChange}
-                  disabled={applyingMarkup}
-                  style={{
-                    width: 100,
-                    padding: '8px 12px',
-                    borderRadius: 8,
-                    border: '1px solid #333',
-                    background: '#23232b',
-                    color: '#fff',
-                    fontSize: 16,
-                    outline: 'none',
-                    marginRight: 12
-                  }}
-                />
-                <button
-                  onClick={handleApplyMarkup}
-                  disabled={applyingMarkup || !markupPercent}
-                  style={{
-                    background: '#7c5cff',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: 12,
-                    padding: '10px 28px',
-                    fontWeight: 700,
-                    fontSize: 16,
-                    cursor: applyingMarkup || !markupPercent ? 'not-allowed' : 'pointer',
-                    opacity: applyingMarkup || !markupPercent ? 0.6 : 1,
-                    transition: 'background 0.2s',
-                  }}
-                >
-                  Apply Markup
-                </button>
-              </div>
-              <table className="admin-products-table" style={{ width: '100%', marginTop: 16 }}>
+            <div style={{ overflowX: 'auto' }}>
+              <table className="admin-table">
                 <thead>
                   <tr>
-                    <th>Name</th>
+                    <th>Product</th>
                     <th>Category</th>
+                    <th>Description</th>
                     <th>Active</th>
-                    <th>Popularity</th>
-                    <th>Sizes</th>
+                    <th>Size</th>
+                    <th>Base Price</th>
+                    <th>Cost</th>
+                    <th>Profit</th>
+                    <th>Offered</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {selectedPriceList.products.map(product => (
-                    <tr key={product.id}>
-                      <td>{product.name}</td>
-                      <td>{product.category || '-'}</td>
-                      <td>
-                        <input
-                          type="checkbox"
-                          checked={!!product.isActive}
-                          disabled={savingProductId === product.id}
-                          onChange={e => handleToggleProductActive(product.id, e.target.checked)}
-                        />
-                      </td>
-                      <td>{product.popularity ?? '-'}</td>
-                      <td>
-                        {product.sizes && product.sizes.length > 0 ? (
-                          <table style={{ width: '100%' }}>
-                            <thead>
-                              <tr>
-                                <th>Size</th>
-                                <th>Active</th>
-                                <th>Price</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {product.sizes.map(size => (
-                                <tr key={size.id}>
-                                  <td>{size.name}</td>
-                                  <td>
-                                    <input
-                                      type="checkbox"
-                                      checked={size.isOffered !== false}
-                                      disabled={savingProductId === product.id * 10000 + size.id}
-                                      onChange={e => handleToggleSizeActive(product.id, size.id, e.target.checked)}
-                                    />
-                                  </td>
-                                  <td>
-                                    {editingSize && editingSize.productId === product.id && editingSize.sizeId === size.id ? (
-                                      <>
-                                        <input
-                                          type="number"
-                                          min={0}
-                                          step={0.01}
-                                          value={editingSizePrice}
-                                          onChange={handleSizePriceChange}
-                                          style={{ width: 70 }}
-                                          disabled={savingProductId === product.id * 10000 + size.id}
-                                        />
-                                        <button onClick={() => handleSaveSizePrice(product.id, size.id)} disabled={savingProductId === product.id * 10000 + size.id}>Save</button>
-                                        <button onClick={handleCancelEditSizePrice} disabled={savingProductId === product.id * 10000 + size.id}>Cancel</button>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <input
-                                          type="number"
-                                          min={0}
-                                          step={0.01}
-                                          value={size.price ?? ''}
-                                          readOnly
-                                          style={{ width: 70 }}
-                                        />
-                                        <button onClick={() => handleStartEditSizePrice(product.id, size.id, size.price)} disabled={savingProductId === product.id * 10000 + size.id}>Edit</button>
-                                      </>
-                                    )}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        ) : (
-                          <span>No sizes</span>
-                        )}
-                      </td>
+                  {filteredProducts.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} style={{ textAlign: 'center', color: '#aaa' }}>No products found.</td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-
-              {/* Package Management UI */}
-              <div style={{ marginTop: 32 }}>
-                <h3>Packages</h3>
-                {packageLoading ? (
-                  <span>Loading packages...</span>
-                ) : packageError ? (
-                  <span style={{ color: 'red' }}>{packageError}</span>
-                ) : (
-                  <>
-                    <button onClick={handleNewPackage} style={{ marginBottom: 12 }}>New Package</button>
-                    <table className="admin-packages-table" style={{ width: '100%' }}>
-                      <thead>
-                        <tr>
-                          <th>Name</th>
-                          <th>Description</th>
-                          <th>Price</th>
-                          <th>Active</th>
-                          <th>Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {packages.map(pkg => (
-                          <tr key={pkg.id}>
-                            <td>{pkg.name}</td>
-                            <td>{pkg.description}</td>
-                            <td>${pkg.packagePrice.toFixed(2)}</td>
-                            <td>{pkg.isActive ? 'Yes' : 'No'}</td>
+                  ) : (
+                    filteredProducts.map((product) => (
+                      product.sizes && product.sizes.length > 0 ? (
+                        <React.Fragment key={product.id}>
+                          <tr key={product.id + '-main'}>
+                            <td rowSpan={product.sizes.length}>{product.name}</td>
+                            <td rowSpan={product.sizes.length}>{product.category}</td>
+                            <td rowSpan={product.sizes.length}>{product.description}</td>
+                            <td rowSpan={product.sizes.length}>
+                              <input
+                                type="checkbox"
+                                checked={!!product.isActive}
+                                onChange={async (e) => {
+                                  const newIsActive = e.target.checked;
+                                  try {
+                                    await axios.put(`/api/products/${product.id}/active`, { isActive: newIsActive });
+                                    setProducts((prev) => prev.map((p) => {
+                                      if (p.id === product.id) {
+                                        return {
+                                          ...p,
+                                          isActive: newIsActive,
+                                          sizes: Array.isArray(p.sizes)
+                                            ? p.sizes.map((s: any) => ({ ...s, isOffered: newIsActive }))
+                                            : p.sizes
+                                        };
+                                      }
+                                      return p;
+                                    }));
+                                  } catch (err) {
+                                    setError('Failed to update product active status');
+                                  }
+                                }}
+                              />
+                            </td>
+                            <td>{(() => {
+                              const size = product.sizes[0];
+                              const dim = `${size.width}x${size.height}`;
+                              if (size.name && size.width && size.height && !size.name.includes(dim)) {
+                                return `${size.name} (${dim})`;
+                              }
+                              return size.name;
+                            })()}</td>
                             <td>
-                              <button onClick={() => handleEditPackage(pkg)} disabled={savingPackage}>Edit</button>
-                              <button onClick={() => handleDeletePackage(pkg.id)} disabled={savingPackage}>Delete</button>
+                              <input
+                                type="number"
+                                value={product.sizes[0].basePrice ?? product.sizes[0].price}
+                                min={0}
+                                step={0.01}
+                                style={{ width: 80 }}
+                                onChange={async (e) => {
+                                  const newBasePrice = Number(e.target.value);
+                                  try {
+                                    await axios.put(`/api/price-lists/${selectedPriceListId}/products/${product.id}/sizes/${product.sizes[0].id}`, { basePrice: newBasePrice });
+                                    setProducts((prev) => prev.map((p) =>
+                                      p.id === product.id
+                                        ? {
+                                            ...p,
+                                            sizes: p.sizes.map((s: any, idx: number) =>
+                                              idx === 0 ? { ...s, basePrice: newBasePrice } : s
+                                            ),
+                                          }
+                                        : p
+                                    ));
+                                  } catch (err) {
+                                    setError('Failed to update base price');
+                                  }
+                                }}
+                              />
+                            </td>
+                            <td>{formatCurrency(product.sizes[0].cost)}</td>
+                            <td style={{ color: 'green', fontWeight: 500 }}>
+                              {formatCurrency((product.sizes[0].basePrice ?? product.sizes[0].price) - product.sizes[0].cost)}
+                            </td>
+                            <td>
+                              {product.sizes[0].isOffered !== undefined ? (
+                                <input
+                                  type="checkbox"
+                                  checked={!!product.sizes[0].isOffered}
+                                  onChange={async (e) => {
+                                    const newIsOffered = e.target.checked;
+                                    try {
+                                      await axios.put(`/api/price-lists/${selectedPriceListId}/products/${product.id}/sizes/${product.sizes[0].id}/active`, { isOffered: newIsOffered });
+                                      setProducts((prev) => prev.map((p) =>
+                                        p.id === product.id
+                                          ? {
+                                              ...p,
+                                              sizes: p.sizes.map((s: any, idx: number) =>
+                                                idx === 0 ? { ...s, isOffered: newIsOffered } : s
+                                              ),
+                                            }
+                                          : p
+                                      ));
+                                    } catch (err) {
+                                      setError('Failed to update size active status');
+                                    }
+                                  }}
+                                />
+                              ) : null}
                             </td>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </>
-                )}
-                {/* Package Form Modal (simple inline for now) */}
-                {packageForm && (
-                  <div style={{ border: '1px solid #ccc', padding: 16, marginTop: 16, background: '#fafafa' }}>
-                    <h4>{packageForm.id ? 'Edit Package' : 'New Package'}</h4>
-                    <label>
-                      Name:
-                      <input
-                        name="name"
-                        value={packageForm.name || ''}
-                        onChange={handlePackageFormChange}
-                        disabled={savingPackage}
-                      />
-                    </label>
-                    <br />
-                    <label>
-                      Description:
-                      <textarea
-                        name="description"
-                        value={packageForm.description || ''}
-                        onChange={handlePackageFormChange}
-                        disabled={savingPackage}
-                      />
-                    </label>
-                    <br />
-                    <label>
-                      Price:
-                      <input
-                        name="packagePrice"
-                        type="number"
-                        min={0}
-                        step={0.01}
-                        value={packageForm.packagePrice ?? ''}
-                        onChange={handlePackageFormChange}
-                        disabled={savingPackage}
-                      />
-                    </label>
-                    <br />
-                    <label>
-                      Active:
-                      <input
-                        name="isActive"
-                        type="checkbox"
-                        checked={!!packageForm.isActive}
-                        onChange={e => setPackageForm({ ...packageForm, isActive: e.target.checked })}
-                        disabled={savingPackage}
-                      />
-                    </label>
-                    <br />
-                    {/* TODO: Add package items editing UI */}
-                    <button onClick={handleSavePackage} disabled={savingPackage}>Save</button>
-                    <button onClick={handleCancelPackageForm} disabled={savingPackage}>Cancel</button>
-                  </div>
-                )}
-              </div>
-            </>
-          );
-        })()}
-      </div>
-    </>
+                          {product.sizes.slice(1).map((size: any) => (
+                            <tr key={product.id + '-' + size.id}>
+                              <td>{(() => {
+                                const dim = `${size.width}x${size.height}`;
+                                if (size.name && size.width && size.height && !size.name.includes(dim)) {
+                                  return `${size.name} (${dim})`;
+                                }
+                                return size.name;
+                              })()}</td>
+                              <td>
+                                <input
+                                  type="number"
+                                  value={size.basePrice ?? size.price}
+                                  min={0}
+                                  step={0.01}
+                                  style={{ width: 80 }}
+                                  onChange={async (e) => {
+                                    const newBasePrice = Number(e.target.value);
+                                    try {
+                                      await axios.put(`/api/price-lists/${selectedPriceListId}/products/${product.id}/sizes/${size.id}`, { basePrice: newBasePrice });
+                                      setProducts((prev) => prev.map((p) =>
+                                        p.id === product.id
+                                          ? {
+                                              ...p,
+                                              sizes: p.sizes.map((s: any) =>
+                                                s.id === size.id ? { ...s, basePrice: newBasePrice } : s
+                                              ),
+                                            }
+                                          : p
+                                      ));
+                                    } catch (err) {
+                                      setError('Failed to update base price');
+                                    }
+                                  }}
+                                />
+                              </td>
+                              <td>{formatCurrency(size.cost)}</td>
+                              <td style={{ color: 'green', fontWeight: 500 }}>
+                                {formatCurrency((size.basePrice ?? size.price) - size.cost)}
+                              </td>
+                              <td>
+                                {size.isOffered !== undefined ? (
+                                  <input
+                                    type="checkbox"
+                                    checked={!!size.isOffered}
+                                    onChange={async (e) => {
+                                      const newIsOffered = e.target.checked;
+                                      try {
+                                        await axios.put(`/api/price-lists/${selectedPriceListId}/products/${product.id}/sizes/${size.id}/active`, { isOffered: newIsOffered });
+                                        setProducts((prev) => prev.map((p) =>
+                                          p.id === product.id
+                                            ? {
+                                                ...p,
+                                                sizes: p.sizes.map((s: any) =>
+                                                  s.id === size.id ? { ...s, isOffered: newIsOffered } : s
+                                                ),
+                                              }
+                                            : p
+                                        ));
+                                      } catch (err) {
+                                        setError('Failed to update size active status');
+                                      }
+                                    }}
+                                  />
+                                ) : null}
+                              </td>
+                            </tr>
+                          ))}
+                        </React.Fragment>
+                      ) : null
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'packages' && (
+        <AdminPackages products={products} />
+      )}
+    </div>
   );
-};
+}
 
 export default AdminProducts;

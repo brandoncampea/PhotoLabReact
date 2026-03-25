@@ -255,17 +255,29 @@ const initDb = () => {
   }
 
   // Products table
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS products (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      category TEXT NOT NULL,
-      price REAL NOT NULL,
-      description TEXT,
-      cost REAL,
-      options TEXT
-    )
-  `);
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS products (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        category TEXT NOT NULL,
+        price REAL NOT NULL,
+        description TEXT,
+        cost REAL,
+        options TEXT,
+        order_index INTEGER DEFAULT 0
+      )
+    `);
+
+    // Migrate products table to add order_index column if missing
+    try {
+      const productCols = db.prepare("PRAGMA table_info(products)").all();
+      const colNames = productCols.map(c => c.name);
+      if (!colNames.includes('order_index')) {
+        db.exec("ALTER TABLE products ADD COLUMN order_index INTEGER DEFAULT 0");
+      }
+    } catch (e) {
+      // ignore
+    }
 
   // Price Lists table
   db.exec(`
