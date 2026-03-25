@@ -133,12 +133,15 @@ if (hasClientBuild) {
   });
 }
 
-// Initialize database and start server
-console.log('Starting server...');
+
+console.log('==============================');
+console.log(' PHOTO LAB API SERVER STARTING ');
+console.log('==============================');
 console.log('PORT:', PORT);
 console.log('NODE_ENV:', process.env.NODE_ENV);
 console.log('DB_HOST:', process.env.DB_HOST);
 console.log('APP VERSION:', appVersion);
+console.log('==============================');
 
 const startServer = () => {
   app.listen(PORT, '0.0.0.0', () => {

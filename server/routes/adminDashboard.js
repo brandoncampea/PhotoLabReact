@@ -22,13 +22,134 @@ router.get('/dashboard-stats', async (req, res) => {
     // Top Albums (by photo count)
     const topAlbums = await queryRows('SELECT TOP 5 id, name, photo_count FROM albums ORDER BY photo_count DESC');
 
+    // --- Time Series Data ---
+    // Revenue by day (last 30 days)
+    const revenueDayRows = await queryRows(`
+      SELECT FORMAT(created_at, 'yyyy-MM-dd') as label, SUM(total) as value
+      FROM orders
+      WHERE status = @p1 AND created_at >= DATEADD(day, -29, CAST(GETDATE() AS date))
+      GROUP BY FORMAT(created_at, 'yyyy-MM-dd')
+      ORDER BY label ASC
+    `, ['completed']);
+    // Revenue by week (last 12 weeks)
+    const revenueWeekRows = await queryRows(`
+      SELECT FORMAT(DATEADD(day, -1 * (DATEPART(weekday, created_at) - 1), CAST(created_at AS date)), 'yyyy-MM-dd') as label, SUM(total) as value
+      FROM orders
+      WHERE status = @p1 AND created_at >= DATEADD(week, -11, CAST(GETDATE() AS date))
+      GROUP BY FORMAT(DATEADD(day, -1 * (DATEPART(weekday, created_at) - 1), CAST(created_at AS date)), 'yyyy-MM-dd')
+      ORDER BY label ASC
+    `, ['completed']);
+    // Revenue by month (last 12 months)
+    const revenueMonthRows = await queryRows(`
+      SELECT FORMAT(created_at, 'yyyy-MM') as label, SUM(total) as value
+      FROM orders
+      WHERE status = @p1 AND created_at >= DATEADD(month, -11, CAST(GETDATE() AS date))
+      GROUP BY FORMAT(created_at, 'yyyy-MM')
+      ORDER BY label ASC
+    `, ['completed']);
+
+    // Orders by day/week/month
+    const ordersDayRows = await queryRows(`
+      SELECT FORMAT(created_at, 'yyyy-MM-dd') as label, COUNT(*) as value
+      FROM orders
+      WHERE created_at >= DATEADD(day, -29, CAST(GETDATE() AS date))
+      GROUP BY FORMAT(created_at, 'yyyy-MM-dd')
+      ORDER BY label ASC
+    `);
+    const ordersWeekRows = await queryRows(`
+      SELECT FORMAT(DATEADD(day, -1 * (DATEPART(weekday, created_at) - 1), CAST(created_at AS date)), 'yyyy-MM-dd') as label, COUNT(*) as value
+      FROM orders
+      WHERE created_at >= DATEADD(week, -11, CAST(GETDATE() AS date))
+      GROUP BY FORMAT(DATEADD(day, -1 * (DATEPART(weekday, created_at) - 1), CAST(created_at AS date)), 'yyyy-MM-dd')
+      ORDER BY label ASC
+    `);
+    const ordersMonthRows = await queryRows(`
+      SELECT FORMAT(created_at, 'yyyy-MM') as label, COUNT(*) as value
+      FROM orders
+      WHERE created_at >= DATEADD(month, -11, CAST(GETDATE() AS date))
+      GROUP BY FORMAT(created_at, 'yyyy-MM')
+      ORDER BY label ASC
+    `);
+
+    // Customers by day/week/month (unique new customers)
+    const customersDayRows = await queryRows(`
+      SELECT FORMAT(created_at, 'yyyy-MM-dd') as label, COUNT(*) as value
+      FROM users
+      WHERE created_at >= DATEADD(day, -29, CAST(GETDATE() AS date))
+      GROUP BY FORMAT(created_at, 'yyyy-MM-dd')
+      ORDER BY label ASC
+    `);
+    const customersWeekRows = await queryRows(`
+      SELECT FORMAT(DATEADD(day, -1 * (DATEPART(weekday, created_at) - 1), CAST(created_at AS date)), 'yyyy-MM-dd') as label, COUNT(*) as value
+      FROM users
+      WHERE created_at >= DATEADD(week, -11, CAST(GETDATE() AS date))
+      GROUP BY FORMAT(DATEADD(day, -1 * (DATEPART(weekday, created_at) - 1), CAST(created_at AS date)), 'yyyy-MM-dd')
+      ORDER BY label ASC
+    `);
+    const customersMonthRows = await queryRows(`
+      SELECT FORMAT(created_at, 'yyyy-MM') as label, COUNT(*) as value
+      FROM users
+      WHERE created_at >= DATEADD(month, -11, CAST(GETDATE() AS date))
+      GROUP BY FORMAT(created_at, 'yyyy-MM')
+      ORDER BY label ASC
+    `);
+
+    // Pending Orders by day/week/month
+    const pendingDayRows = await queryRows(`
+      SELECT FORMAT(created_at, 'yyyy-MM-dd') as label, COUNT(*) as value
+      FROM orders
+      WHERE status = @p1 AND created_at >= DATEADD(day, -29, CAST(GETDATE() AS date))
+      GROUP BY FORMAT(created_at, 'yyyy-MM-dd')
+      ORDER BY label ASC
+    `, ['pending']);
+    const pendingWeekRows = await queryRows(`
+      SELECT FORMAT(DATEADD(day, -1 * (DATEPART(weekday, created_at) - 1), CAST(created_at AS date)), 'yyyy-MM-dd') as label, COUNT(*) as value
+      FROM orders
+      WHERE status = @p1 AND created_at >= DATEADD(week, -11, CAST(GETDATE() AS date))
+      GROUP BY FORMAT(DATEADD(day, -1 * (DATEPART(weekday, created_at) - 1), CAST(created_at AS date)), 'yyyy-MM-dd')
+      ORDER BY label ASC
+    `, ['pending']);
+    const pendingMonthRows = await queryRows(`
+      SELECT FORMAT(created_at, 'yyyy-MM') as label, COUNT(*) as value
+      FROM orders
+      WHERE status = @p1 AND created_at >= DATEADD(month, -11, CAST(GETDATE() AS date))
+      GROUP BY FORMAT(created_at, 'yyyy-MM')
+      ORDER BY label ASC
+    `, ['pending']);
+
+    // Helper to format series
+    const formatSeries = (rows) => ({
+      labels: rows.map(r => r.label),
+      data: rows.map(r => Number(r.value)),
+    });
+
     res.json({
       totalOrders,
       totalRevenue,
       totalCustomers,
       pendingOrders,
       recentOrders,
-      topAlbums
+      topAlbums,
+      revenueSeries: {
+        day: formatSeries(revenueDayRows),
+        week: formatSeries(revenueWeekRows),
+        month: formatSeries(revenueMonthRows),
+      },
+      ordersSeries: {
+        day: formatSeries(ordersDayRows),
+        week: formatSeries(ordersWeekRows),
+        month: formatSeries(ordersMonthRows),
+      },
+      customersSeries: {
+        day: formatSeries(customersDayRows),
+        week: formatSeries(customersWeekRows),
+        month: formatSeries(customersMonthRows),
+      },
+      pendingOrdersSeries: {
+        day: formatSeries(pendingDayRows),
+        week: formatSeries(pendingWeekRows),
+        month: formatSeries(pendingMonthRows),
+      },
     });
   } catch (err) {
     console.error('Error fetching dashboard stats:', err);

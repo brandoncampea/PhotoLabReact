@@ -1,11 +1,10 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import '../PhotoLabStyles.css';
 
 const TopNavbar: React.FC = () => {
   return (
     <nav className="top-navbar">
-      <div style={{ fontWeight: 700, fontSize: '1.2rem', color: 'var(--accent)' }}>PhotoLab</div>
+      <div className="navbar-logo gradient-text fw-bold">PhotoLab</div>
       <div className="nav-links">
         <Link to="/albums" className="nav-link">Albums</Link>
         <Link to="/orders" className="nav-link">Orders</Link>

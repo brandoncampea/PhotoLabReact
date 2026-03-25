@@ -98,8 +98,8 @@ export const AdminDashboard: React.FC = () => {
   }
 
   return (
-    <div className="admin-dashboard">
-      <h1>Studio Management Dashboard</h1>
+    <div className="dashboardContainer">
+      <h1 className="gradient-text" style={{ marginBottom: '0.5rem' }}>Studio Management Dashboard</h1>
 
       {error && <div className="error-message">{error}</div>}
 

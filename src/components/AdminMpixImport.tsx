@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import styles from './AdminMpixImport.module.css';
 import { mpixService } from '../services/mpixService';
 import { priceListAdminService } from '../services/priceListAdminService';
 import { PriceList } from '../types';
@@ -276,7 +277,7 @@ const AdminMpixImport: React.FC<{ onClose: () => void; onImportComplete: () => v
               </button>
             ) : (
               <>
-                <div style={{ marginBottom: '20px' }}>
+                <div className={styles.adminmpixMb20}>
                   <label className="block-label mb-8 fw-500">Select Price List</label>
                   <select
                     value={selectedPriceListId || ''}
@@ -312,7 +313,7 @@ const AdminMpixImport: React.FC<{ onClose: () => void; onImportComplete: () => v
             </p>
 
             {/* Global Controls */}
-            <div className="admin-section-card" style={{ marginBottom: '20px' }}>
+            <div className={`admin-section-card ${styles.adminmpixMb20}`}> 
               <div className="flex-row gap-15 align-center flex-wrap">
                 <div className="flex-row gap-10">
                   <button
@@ -329,7 +330,7 @@ const AdminMpixImport: React.FC<{ onClose: () => void; onImportComplete: () => v
                   </button>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1 }}>
+                <div className={styles.adminmpixFlexRow}>
                   <label className="fs-13 fw-500 nowrap">Global Markup %:</label>
                   <input
                     type="number"
@@ -348,7 +349,7 @@ const AdminMpixImport: React.FC<{ onClose: () => void; onImportComplete: () => v
                   </button>
                 </div>
 
-                <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                <div className={`${styles.adminmpixFs12} ${styles.adminmpixTextSecondary}`}>
                   <span className="fs-12 text-secondary">Selected: <strong>{selectedProducts.size}</strong> / {mpixProducts.length}</span>
                 </div>
               </div>
@@ -404,7 +405,7 @@ const AdminMpixImport: React.FC<{ onClose: () => void; onImportComplete: () => v
 
                             {!mapping?.useCustomPrice ? (
                               <>
-                                <label style={{ display: 'block', marginBottom: '8px', fontSize: '12px' }}>
+                                <label className={styles.adminmpixBlockLabel}>
                                   Markup Percentage (%)
                                 </label>
                                 <input
@@ -415,16 +416,7 @@ const AdminMpixImport: React.FC<{ onClose: () => void; onImportComplete: () => v
                                   onChange={(e) =>
                                     updateMapping(product.productUID, { markupPercentage: Math.max(0, parseInt(e.target.value)) })
                                   }
-                                  style={{
-                                    width: '80px',
-                                    padding: '6px',
-                                    border: '1px solid var(--border-color)',
-                                    borderRadius: '4px',
-                                    fontSize: '12px',
-                                    marginBottom: '8px',
-                                    backgroundColor: 'var(--bg-secondary)',
-                                    color: 'var(--text-primary)',
-                                  }}
+                                  className={styles.adminmpixInput}
                                 />
                               </>
                             ) : (
@@ -440,21 +432,12 @@ const AdminMpixImport: React.FC<{ onClose: () => void; onImportComplete: () => v
                                   onChange={(e) =>
                                     updateMapping(product.productUID, { customPrice: parseFloat(e.target.value) })
                                   }
-                                  style={{
-                                    width: '100px',
-                                    padding: '6px',
-                                    border: '1px solid var(--border-color)',
-                                    borderRadius: '4px',
-                                    fontSize: '12px',
-                                    marginBottom: '8px',
-                                    backgroundColor: 'var(--bg-secondary)',
-                                    color: 'var(--text-primary)',
-                                  }}
+                                  className={styles.adminmpixInputLg}
                                 />
                               </>
                             )}
 
-                            <label style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '8px' }}>
+                            <label className={styles.adminmpixCheckboxLabel}>
                               <input
                                 type="checkbox"
                                 checked={mapping?.useCustomPrice || false}
@@ -462,7 +445,7 @@ const AdminMpixImport: React.FC<{ onClose: () => void; onImportComplete: () => v
                                   updateMapping(product.productUID, { useCustomPrice: e.target.checked })
                                 }
                               />
-                              <span style={{ fontSize: '12px' }}>Override with custom price</span>
+                              <span className={styles.adminmpixCheckboxSpan}>Override with custom price</span>
                             </label>
                           </div>
                         )}
@@ -473,7 +456,7 @@ const AdminMpixImport: React.FC<{ onClose: () => void; onImportComplete: () => v
               })}
             </div>
 
-            <div style={{ display: 'flex', gap: '10px' }}>
+            <div className={styles.adminmpixFlexGap10}>
               <button
                 onClick={() => setStep('select-list')}
                 className="btn btn-secondary"
@@ -494,19 +477,19 @@ const AdminMpixImport: React.FC<{ onClose: () => void; onImportComplete: () => v
 
         {/* Step 3: Confirm */}
                 {progress && (
-                  <div className="info-box info-box-progress" style={{ marginBottom: '20px' }}>
+                  <div className={`info-box info-box-progress ${styles.adminmpixMb20}`}>
                     {progress}
                   </div>
                 )}
         {step === 'confirm' && (
           <>
-            <p style={{ color: 'var(--text-secondary)', marginBottom: '20px' }}>
+            <p className={`${styles.adminmpixTextSecondary} ${styles.adminmpixMb20}`}>
               Review and confirm import of <strong>{selectedProducts.size} products</strong> to the selected price list.
             </p>
 
-            <div className="import-scroll-panel" style={{ maxHeight: '300px' }}>
-              <h4 style={{ margin: '0 0 10px 0' }}>Products to Import:</h4>
-              <ul style={{ margin: 0, paddingLeft: '20px' }}>
+            <div className={`import-scroll-panel ${styles.adminmpixScrollPanel}`}>
+              <h4 className={`${styles.adminmpixM0} ${styles.adminmpixMb10}`}>Products to Import:</h4>
+              <ul className={styles.adminmpixPl20}>
                 {Array.from(selectedProducts.values()).map((mapping) => {
                   const product = mpixProducts.find((p) => p.productUID === mapping.productUID);
                   const cost = product?.basePrice || 0;
@@ -514,7 +497,7 @@ const AdminMpixImport: React.FC<{ onClose: () => void; onImportComplete: () => v
                   const margin = ((retailPrice - cost) / cost * 100).toFixed(0);
                   
                   return (
-                    <li key={`mpix-summary-${mapping.productUID}`} style={{ marginBottom: '8px', fontSize: '12px' }}>
+                    <li key={`mpix-summary-${mapping.productUID}`} className={`${styles.adminmpixMb8} ${styles.adminmpixFs12}`}>
                       <strong>{product?.name}</strong>
                       {' — Cost: '}
                       <span style={{ color: 'var(--error-color)' }}>${cost.toFixed(2)}</span>

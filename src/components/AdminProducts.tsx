@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import AdminPackages from './AdminPackages';
-import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
+
 import axios from 'axios';
-import { PriceList, Package } from '../types';
-import { priceListAdminService } from '../services/priceListAdminService';
-import { packageService } from '../services/packageService';
+
+
+
 
 // Helper to format currency
 export const formatCurrency = (value: number) => {
@@ -21,7 +21,7 @@ function AdminProducts() {
   const [filter, setFilter] = useState('');
   const [selectedPriceListId, setSelectedPriceListId] = useState<number | null>(null);
   const [percentMarkup, setPercentMarkup] = useState<number>(0);
-  const [priceLists, setPriceLists] = useState<PriceList[]>([]);
+  const [priceLists, setPriceLists] = useState<any[]>([]);
 
   // Fetch all price lists on mount
   useEffect(() => {

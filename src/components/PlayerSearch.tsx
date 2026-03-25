@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import styles from './PlayerSearch.module.css';
 
 interface SearchResult {
   id: number;
@@ -39,7 +40,7 @@ export default function PlayerSearch() {
       <ul>
         {results.map(r => (
           <li key={r.id}>
-            <img src={r.thumbnailUrl} alt={r.fileName} style={{ width: 80, height: 80, objectFit: 'cover', marginRight: 8 }} />
+            <img src={r.thumbnailUrl} alt={r.fileName} className={styles.playersearchImg} />
             {r.fileName} — {r.playerName} #{r.playerNumber}
           </li>
         ))}

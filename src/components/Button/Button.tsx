@@ -9,7 +9,12 @@ interface ButtonProps {
 }
 
 const Button: React.FC<ButtonProps> = ({ children, onClick, type = 'button', className = '', disabled = false }) => (
-  <button type={type} className={`button ${className}`} onClick={onClick} disabled={disabled}>
+  <button
+    type={type}
+    className={`btn btn-primary ${className}`.trim()}
+    onClick={onClick}
+    disabled={disabled}
+  >
     {children}
   </button>
 );

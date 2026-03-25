@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import '../PhotoLabStyles.css';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 // import TopNavbar from '../components/TopNavbar';
@@ -52,11 +51,11 @@ const Login: React.FC = () => {
   return (
     <>
       {/* <TopNavbar /> */}
-      <div className="main-content dark-bg" style={{ minHeight: 'calc(100vh - 80px)' }}>
+      <div className="main-content dark-bg min-vh-100">
         <div className="auth-container dark-bg">
           <div className="auth-card dark-card">
-            <h1 className="auth-title">Sign In</h1>
-            <p className="auth-subtitle">Welcome back to Photo Lab</p>
+            <h1 className="auth-title gradient-text">Sign In</h1>
+            <p className="auth-subtitle text-secondary">Welcome back to Photo Lab</p>
             {error && <div className="error-message">{error}</div>}
             <form onSubmit={handleSubmit} className="auth-form">
               <div className="form-group">

@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import '../PhotoLabStyles.css';
 import { useLocation } from 'react-router-dom';
 import { Order } from '../types';
 import { orderService } from '../services/orderService';
@@ -37,7 +36,7 @@ const Orders: React.FC = () => {
       <div className="main-content dark-bg orders-full-height">
         <div className="page-header">
           <h1 className="gradient-text">Order History</h1>
-          <p className="orders-description">View your past orders</p>
+          <p className="orders-description text-secondary">View your past orders</p>
         </div>
 
         {successMessage && (
@@ -53,11 +52,11 @@ const Orders: React.FC = () => {
         ) : (
           <div className="orders-list">
             {orders.map((order) => (
-              <div key={order.id} className="order-card">
+              <div key={order.id} className="order-card dark-card">
                 <div className="order-header">
                   <div>
-                    <h3>Order #{order.id}</h3>
-                    <p className="order-date">
+                    <h3 className="gradient-text">Order #{order.id}</h3>
+                    <p className="order-date text-secondary">
                       {new Date(order.orderDate).toLocaleDateString()}
                     </p>
                   </div>

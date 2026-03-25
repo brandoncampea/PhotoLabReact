@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import '../PhotoLabStyles.css';
 
 type AdminLoginProps = { onLogin: (email: string, password: string) => void };
 const AdminLogin: React.FC<AdminLoginProps> = ({ onLogin }) => {

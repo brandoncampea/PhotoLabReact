@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import '../PhotoLabStyles.css';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 // import TopNavbar from '../components/TopNavbar';
@@ -76,8 +75,8 @@ const Register: React.FC = () => {
       <div className="main-content dark-bg min-height-full">
         <div className="auth-container">
           <div className="auth-card">
-            <h1>Create Account</h1>
-            <p className="auth-subtitle">Join Photo Lab today</p>
+              <h1 className="auth-title gradient-text">Sign Up</h1>
+              <p className="auth-subtitle text-secondary">Create your Photo Lab account</p>
             
             {error && <div className="error-message">{error}</div>}
             

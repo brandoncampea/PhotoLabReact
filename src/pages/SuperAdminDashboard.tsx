@@ -7,7 +7,6 @@ import { analyticsService } from '../services/analyticsService';
 import { orderService } from '../services/orderService';
 import { userAdminService } from '../services/adminService';
 import { albumService } from '../services/albumService';
-import '../PhotoLabStyles.css';
 
 interface RevenueBreakdownSummary {
   totalRevenue: number;
@@ -411,13 +410,13 @@ const SuperAdminDashboard: React.FC = () => {
         {/* Quick Actions */}
         <div className="dashboard-widget">
           <h2><span>⚡</span> Quick Actions</h2>
-          <div className="dashboard-actions-grid">
-            <a href="/admin/orders"    className="btn btn-primary dashboard-action-link">📦 Manage Orders</a>
-            <a href="/admin/albums"    className="btn btn-primary dashboard-action-link">📁 Manage Albums</a>
-            <a href="/admin/products"  className="btn btn-primary dashboard-action-link">🛍️ Manage Products</a>
-            <a href="/admin/customers" className="btn btn-primary dashboard-action-link">👥 View Customers</a>
-            <a href="/admin/analytics" className="btn btn-secondary dashboard-action-link">📈 View Analytics</a>
-            <a href="/admin/shipping"  className="btn btn-secondary dashboard-action-link">🚚 Shipping Settings</a>
+          <div className="dashboard-actions-grid tallydark-actions-grid">
+            <a href="/admin/orders"    className="tallydark-sidenav-btn">📦 Manage Orders</a>
+            <a href="/admin/albums"    className="tallydark-sidenav-btn">📁 Manage Albums</a>
+            <a href="/admin/products"  className="tallydark-sidenav-btn">🛍️ Manage Products</a>
+            <a href="/admin/customers" className="tallydark-sidenav-btn">👥 View Customers</a>
+            <a href="/admin/analytics" className="tallydark-sidenav-btn">📈 View Analytics</a>
+            <a href="/admin/shipping"  className="tallydark-sidenav-btn">🚚 Shipping Settings</a>
           </div>
         </div>
 

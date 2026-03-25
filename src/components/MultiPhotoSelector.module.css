@@ -1,0 +1,9 @@
+/* Inline style replacements for MultiPhotoSelector */
+.mps-photo-img { width: 100%; height: 100%; object-fit: cover; }
+.mps-photo-slot { font-size: 2rem; }
+.mps-photo-slot-label { font-size: 12px; }
+.mps-photo-add { font-size: 2rem; }
+.mps-photo-add-label { font-size: 12px; }
+.mps-photo-padding { padding: 1rem; border-top: 1px solid #ddd; max-height: 200px; overflow-y: auto; }
+.mps-photo-h4 { margin: 0 0 1rem 0; }
+.mps-photo-select-list { display: flex; gap: 10px; }

@@ -1,7 +1,6 @@
 
 
 import React, { useState } from 'react';
-import '../PhotoLabStyles.css';
 
 type Plan = { id: string; name: string; monthlyPrice: number };
 

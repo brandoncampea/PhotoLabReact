@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useCart } from '../contexts/CartContext';
 import { roesService } from '../services/roesService';
-import '../PhotoLabStyles.css';
 
 interface RoesEventBus {
   emit: (event: string, payload?: unknown) => void;

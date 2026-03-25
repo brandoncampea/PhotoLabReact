@@ -1,6 +1,5 @@
 
 import { useParams } from 'react-router-dom';
-import '../PhotoLabStyles.css';
 
 const AlbumDetails = () => {
   const { albumId } = useParams();

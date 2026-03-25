@@ -1,0 +1,14 @@
+/* Inline style replacements for Albums page (studio card) */
+.studioCard {
+  padding: 2rem;
+  margin: 1rem;
+  border-radius: 1rem;
+  background: var(--bg-tertiary);
+  border: 2px solid var(--primary-color);
+  color: var(--primary-color);
+  font-weight: 600;
+  font-size: 1.2rem;
+  cursor: pointer;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+  transition: all 0.2s;
+}

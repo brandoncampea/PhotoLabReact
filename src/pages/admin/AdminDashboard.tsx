@@ -2,13 +2,24 @@
 
 
 
-import React, { useEffect, useState } from 'react';
 
-import { DashboardStats } from '../../types';
+
+
+import React, { useEffect, useState } from 'react';
+import DashboardChart from '../../components/DashboardChart';
+import AdminLayout from '../../components/AdminLayout';
+
+
 
 const AdminDashboard: React.FC = () => {
-  const [stats, setStats] = useState<DashboardStats | null>(null);
+  // All hooks must be at the top level
+  const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  // Chart range state for each widget
+  const [revenueRange, setRevenueRange] = useState<'day' | 'week' | 'month'>('month');
+  const [ordersRange, setOrdersRange] = useState<'day' | 'week' | 'month'>('month');
+  const [customersRange, setCustomersRange] = useState<'day' | 'week' | 'month'>('month');
+  const [pendingRange, setPendingRange] = useState<'day' | 'week' | 'month'>('month');
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -19,7 +30,6 @@ const AdminDashboard: React.FC = () => {
         const data = await response.json();
         setStats(data);
       } catch (e) {
-        // handle error
         setStats(null);
       } finally {
         setLoading(false);
@@ -38,7 +48,7 @@ const AdminDashboard: React.FC = () => {
   }
 
   return (
-    <div className="admin-page dark-bg" style={{ minHeight: '100vh', padding: '2rem' }}>
+    <AdminLayout>
       <div className="page-header">
         <h1 className="gradient-text">Admin Dashboard</h1>
         <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
@@ -46,77 +56,102 @@ const AdminDashboard: React.FC = () => {
         </p>
       </div>
 
-      {/* Key Metrics - Responsive 2 column grid, no mock icons */}
-      <div className="dashboard-metrics" style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-        gap: '2.5rem',
-        marginBottom: '2.5rem',
-        alignItems: 'stretch',
-      }}>
-        <div
-          className="dashboard-card dashboard-card-revenue dark-card"
-          role="button"
-          tabIndex={0}
-          style={{ cursor: 'pointer' }}
-          onClick={() => window.location.href = '/admin/analytics'}
-          onKeyDown={e => { if (e.key === 'Enter') window.location.href = '/admin/analytics'; }}
-        >
-          <div className="dashboard-card-label" style={{ fontWeight: 600, fontSize: '1.1rem' }}>Total Revenue</div>
-          <div className="dashboard-card-value" style={{ fontSize: '2.2rem', fontWeight: 700 }}>${stats.totalRevenue.toFixed(2)}</div>
-          <div className="dashboard-card-sub" style={{ color: '#a78bfa', fontSize: '1rem' }}>Avg: ${stats.totalOrders ? (stats.totalRevenue / stats.totalOrders).toFixed(2) : '0.00'} per order</div>
+      {/* Key Metrics - Responsive 2 column grid, modern card style */}
+      <div className="dashboard-metrics tallydark-metrics">
+        {/* Revenue Widget */}
+        <div className="dashboard-card tallydark-card" role="region" tabIndex={0}>
+          {/* Icon removed */}
+          <div className="dashboard-card-label">Total Revenue</div>
+          <div className="dashboard-card-value">${stats.totalRevenue.toFixed(2)}</div>
+          <div className="dashboard-card-sub">Avg: ${stats.totalOrders ? (stats.totalRevenue / stats.totalOrders).toFixed(2) : '0.00'} per order</div>
+          {/* Chart controls */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '10px 0 0 0' }}>
+            <button className="dashboard-pill" style={{ padding: '3px 12px', fontSize: '0.98rem' }} onClick={() => setRevenueRange('day')} disabled={revenueRange === 'day'}>Day</button>
+            <button className="dashboard-pill" style={{ padding: '3px 12px', fontSize: '0.98rem' }} onClick={() => setRevenueRange('week')} disabled={revenueRange === 'week'}>Week</button>
+            <button className="dashboard-pill" style={{ padding: '3px 12px', fontSize: '0.98rem' }} onClick={() => setRevenueRange('month')} disabled={revenueRange === 'month'}>Month</button>
+          </div>
+          <DashboardChart
+            data={stats.revenueSeries?.[revenueRange]?.data || []}
+            labels={stats.revenueSeries?.[revenueRange]?.labels || []}
+            label="Revenue"
+          />
         </div>
-        <div
-          className="dashboard-card dashboard-card-orders dark-card"
-          role="button"
-          tabIndex={0}
-          style={{ cursor: 'pointer' }}
+        {/* Orders Widget */}
+        <div className="dashboard-card tallydark-card" role="button" tabIndex={0} style={{ cursor: 'pointer' }}
           onClick={() => window.location.href = '/admin/orders'}
           onKeyDown={e => { if (e.key === 'Enter') window.location.href = '/admin/orders'; }}
         >
-          <div className="dashboard-card-label" style={{ fontWeight: 600, fontSize: '1.1rem' }}>Total Orders</div>
-          <div className="dashboard-card-value" style={{ fontSize: '2.2rem', fontWeight: 700 }}>{stats.totalOrders}</div>
-          <div className="dashboard-card-sub" style={{ color: '#a78bfa', fontSize: '1rem' }}>{stats.totalOrders ? (((stats.totalOrders - (stats.pendingOrders || 0)) / stats.totalOrders) * 100).toFixed(1) : '0'}% completion rate</div>
+          {/* Icon removed */}
+          <div className="dashboard-card-label">Total Orders</div>
+          <div className="dashboard-card-value">{stats.totalOrders}</div>
+          <div className="dashboard-card-sub">{stats.totalOrders ? (((stats.totalOrders - (stats.pendingOrders || 0)) / stats.totalOrders) * 100).toFixed(1) : '0'}% completion rate</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '10px 0 0 0' }}>
+            <button className="dashboard-pill" style={{ padding: '3px 12px', fontSize: '0.98rem' }} onClick={() => setOrdersRange('day')} disabled={ordersRange === 'day'}>Day</button>
+            <button className="dashboard-pill" style={{ padding: '3px 12px', fontSize: '0.98rem' }} onClick={() => setOrdersRange('week')} disabled={ordersRange === 'week'}>Week</button>
+            <button className="dashboard-pill" style={{ padding: '3px 12px', fontSize: '0.98rem' }} onClick={() => setOrdersRange('month')} disabled={ordersRange === 'month'}>Month</button>
+          </div>
+          <DashboardChart
+            data={stats.ordersSeries?.[ordersRange]?.data || []}
+            labels={stats.ordersSeries?.[ordersRange]?.labels || []}
+            label="Orders"
+          />
         </div>
-        <div
-          className="dashboard-card dashboard-card-customers dark-card"
-          role="button"
-          tabIndex={0}
-          style={{ cursor: 'pointer' }}
+        {/* Customers Widget */}
+        <div className="dashboard-card tallydark-card" role="button" tabIndex={0} style={{ cursor: 'pointer' }}
           onClick={() => window.location.href = '/admin/customers'}
           onKeyDown={e => { if (e.key === 'Enter') window.location.href = '/admin/customers'; }}
         >
-          <div className="dashboard-card-label" style={{ fontWeight: 600, fontSize: '1.1rem' }}>Total Customers</div>
-          <div className="dashboard-card-value" style={{ fontSize: '2.2rem', fontWeight: 700 }}>{stats.totalCustomers}</div>
-          <div className="dashboard-card-sub" style={{ color: '#a78bfa', fontSize: '1rem' }}>Active user accounts</div>
+          {/* Icon removed */}
+          <div className="dashboard-card-label">Total Customers</div>
+          <div className="dashboard-card-value">{stats.totalCustomers}</div>
+          <div className="dashboard-card-sub">Active user accounts</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '10px 0 0 0' }}>
+            <button className="dashboard-pill" style={{ padding: '3px 12px', fontSize: '0.98rem' }} onClick={() => setCustomersRange('day')} disabled={customersRange === 'day'}>Day</button>
+            <button className="dashboard-pill" style={{ padding: '3px 12px', fontSize: '0.98rem' }} onClick={() => setCustomersRange('week')} disabled={customersRange === 'week'}>Week</button>
+            <button className="dashboard-pill" style={{ padding: '3px 12px', fontSize: '0.98rem' }} onClick={() => setCustomersRange('month')} disabled={customersRange === 'month'}>Month</button>
+          </div>
+          <DashboardChart
+            data={stats.customersSeries?.[customersRange]?.data || []}
+            labels={stats.customersSeries?.[customersRange]?.labels || []}
+            label="New Customers"
+          />
         </div>
-        <div
-          className="dashboard-card dashboard-card-pending dark-card"
-          role="button"
-          tabIndex={0}
-          style={{ cursor: 'pointer' }}
+        {/* Pending Orders Widget */}
+        <div className="dashboard-card tallydark-card" role="button" tabIndex={0} style={{ cursor: 'pointer' }}
           onClick={() => window.location.href = '/admin/orders?status=pending'}
           onKeyDown={e => { if (e.key === 'Enter') window.location.href = '/admin/orders?status=pending'; }}
         >
-          <div className="dashboard-card-label" style={{ fontWeight: 600, fontSize: '1.1rem' }}>Pending Orders</div>
-          <div className="dashboard-card-value" style={{ fontSize: '2.2rem', fontWeight: 700 }}>{stats.pendingOrders}</div>
-          <div className="dashboard-card-sub" style={{ color: '#a78bfa', fontSize: '1rem' }}>Requires attention</div>
+          {/* Icon removed */}
+          <div className="dashboard-card-label">Pending Orders</div>
+          <div className="dashboard-card-value">{stats.pendingOrders}</div>
+          <div className="dashboard-card-sub">Requires attention</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '10px 0 0 0' }}>
+            <button className="dashboard-pill" style={{ padding: '3px 12px', fontSize: '0.98rem' }} onClick={() => setPendingRange('day')} disabled={pendingRange === 'day'}>Day</button>
+            <button className="dashboard-pill" style={{ padding: '3px 12px', fontSize: '0.98rem' }} onClick={() => setPendingRange('week')} disabled={pendingRange === 'week'}>Week</button>
+            <button className="dashboard-pill" style={{ padding: '3px 12px', fontSize: '0.98rem' }} onClick={() => setPendingRange('month')} disabled={pendingRange === 'month'}>Month</button>
+          </div>
+          <DashboardChart
+            data={stats.pendingOrdersSeries?.[pendingRange]?.data || []}
+            labels={stats.pendingOrdersSeries?.[pendingRange]?.labels || []}
+            label="Pending Orders"
+          />
         </div>
       </div>
 
       {/* Quick Actions */}
-      <div className="dashboard-widget dark-card">
-        <h2 style={{ fontWeight: 600, fontSize: '1.1rem' }}>Quick Actions</h2>
-        <div className="dashboard-actions-grid">
-          <a href="/admin/orders"    className="btn btn-primary"    style={{ textDecoration: 'none', textAlign: 'center' }}>Manage Orders</a>
-          <a href="/admin/albums"    className="btn btn-primary"    style={{ textDecoration: 'none', textAlign: 'center' }}>Manage Albums</a>
-          <a href="/admin/products"  className="btn btn-primary"    style={{ textDecoration: 'none', textAlign: 'center' }}>Manage Products</a>
-          <a href="/admin/customers" className="btn btn-primary"    style={{ textDecoration: 'none', textAlign: 'center' }}>View Customers</a>
-          <a href="/admin/analytics" className="btn btn-secondary"  style={{ textDecoration: 'none', textAlign: 'center' }}>View Analytics</a>
-          <a href="/admin/shipping"  className="btn btn-secondary"  style={{ textDecoration: 'none', textAlign: 'center' }}>Shipping Settings</a>
+      <div className="dashboard-widget tallydark-card" style={{ paddingBottom: '0.5rem' }}>
+        <h2 style={{ fontWeight: 600, fontSize: '1.1rem', marginBottom: '0.3rem' }}>Quick Actions</h2>
+        <div className="dashboard-actions-grid tallydark-actions-grid" style={{ marginBottom: 0 }}>
+          <a href="/admin/orders"    className="tallydark-sidenav-btn">Manage Orders</a>
+          <a href="/admin/albums"    className="tallydark-sidenav-btn">Manage Albums</a>
+          <a href="/admin/products"  className="tallydark-sidenav-btn">Manage Products</a>
+          <a href="/admin/customers" className="tallydark-sidenav-btn">View Customers</a>
+          <a href="/admin/analytics" className="tallydark-sidenav-btn">View Analytics</a>
+          <a href="/admin/shipping"  className="tallydark-sidenav-btn">Shipping</a>
+          <a href="/admin/settings"  className="tallydark-sidenav-btn">Settings</a>
         </div>
-      </div>
-    </div>
+        </div>
+    </AdminLayout>
   );
 };
 

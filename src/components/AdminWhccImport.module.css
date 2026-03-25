@@ -1,0 +1,23 @@
+/* Inline style replacements for AdminWhccImport */
+.adminwhcc-fs-12 { font-size: 12px; }
+.adminwhcc-text-secondary { color: var(--text-secondary); }
+.adminwhcc-flex-row { display: flex; align-items: flex-start; gap: 15px; }
+.adminwhcc-checkbox-label { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.adminwhcc-checkbox-span { font-size: 12px; }
+.adminwhcc-block-label { display: block; margin-bottom: 8px; font-size: 12px; }
+.adminwhcc-input { width: 80px; padding: 6px; border: 1px solid var(--border-color); border-radius: 4px; font-size: 12px; margin-bottom: 8px; background-color: var(--bg-secondary); color: var(--text-primary); }
+.adminwhcc-input-lg { width: 100px; padding: 6px; border: 1px solid var(--border-color); border-radius: 4px; font-size: 12px; margin-bottom: 8px; background-color: var(--bg-secondary); color: var(--text-primary); }
+.adminwhcc-mb-20 { margin-bottom: 20px; }
+.adminwhcc-mb-8 { margin-bottom: 8px; }
+.adminwhcc-mb-10 { margin-bottom: 10px; }
+.adminwhcc-mb-12 { margin-bottom: 12px; }
+.adminwhcc-mt-5 { margin-top: 5px; }
+.adminwhcc-mt-10 { margin-top: 10px; }
+.adminwhcc-mt-24 { margin-top: 24px; }
+.adminwhcc-pl-20 { padding-left: 20px; }
+.adminwhcc-m-0 { margin: 0; }
+.adminwhcc-flex-gap-10 { display: flex; gap: 10px; }
+.adminwhcc-scroll-panel { max-height: 300px; }
+.adminwhcc-h-18 { height: 18px; width: 18px; cursor: pointer; }
+.adminwhcc-bg-error { color: var(--error-color); }
+.adminwhcc-bg-success { color: #86efac; }

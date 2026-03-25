@@ -3,7 +3,6 @@ import React, { useEffect, useState } from 'react';
 import AdminLayout from '../../components/AdminLayout';
 import { useAuth } from '../../contexts/AuthContext';
 import api from '../../services/api';
-import '../../PhotoLabStyles.css';
 
 interface PriceList {
   id: number;

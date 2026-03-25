@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import '../PhotoLabStyles.css';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Album, Photo, Package } from '../types';
 import { albumService } from '../services/albumService';

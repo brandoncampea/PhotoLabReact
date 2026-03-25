@@ -1,0 +1,4 @@
+/* Inline style replacements for Albums page */
+.albums-flex-row { display: flex; align-items: center; margin-bottom: 24px; }
+.albums-mr-16 { margin-right: 16px; }
+.albums-h2 { margin: 0; color: var(--primary-color); }

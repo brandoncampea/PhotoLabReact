@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import styles from './AdminWhccImport.module.css';
 import { whccService } from '../services/whccService';
 import { priceListAdminService } from '../services/priceListAdminService';
 import { PriceList } from '../types';
@@ -373,7 +374,7 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
                   </button>
                 </div>
 
-                <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                <div className={`${styles.adminwhccFs12} ${styles.adminwhccTextSecondary}`}>
                   Selected: <strong>{selectedProducts.size}</strong> / {whccProducts.length}
                 </div>
               </div>
@@ -408,20 +409,20 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
                     key={key}
                     className={`import-product-card${isSelected ? ' selected' : ''}`}
                   >
-                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '15px' }}>
+                    <div className={styles.adminwhccFlexRow}>
                       <input
                         type="checkbox"
                         checked={isSelected}
                         onChange={() => toggleProductSelection(product.productUID)}
-                        style={{ marginTop: '5px', width: '18px', height: '18px', cursor: 'pointer' }}
+                        className={styles.adminwhccH18}
                       />
 
                       <div style={{ flex: 1 }}>
-                        <h4 style={{ margin: '0 0 5px 0' }}>{product.name}</h4>
-                        <p style={{ margin: '0 0 5px 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                        <h4 className={styles.adminwhccMb5}>{product.name}</h4>
+                        <p className={`${styles.adminwhccMb5} ${styles.adminwhccFs12} ${styles.adminwhccTextSecondary}`}>
                           {product.description}
                         </p>
-                        <p style={{ margin: '0 0 5px 0', fontSize: '12px' }}>
+                        <p className={`${styles.adminwhccMb5} ${styles.adminwhccFs12}`}>
                           UID: {product.productUID} | WHCC Cost: ${displayCost.toFixed(2)}
                           {product.width && product.height && ` | ${product.width}x${product.height}`}
                         </p>
@@ -442,7 +443,7 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
 
                             {!mapping?.useCustomPrice ? (
                               <>
-                                <label style={{ display: 'block', marginBottom: '8px', fontSize: '12px' }}>
+                                <label className={styles.adminwhccBlockLabel}>
                                   Markup Percentage (%)
                                 </label>
                                 <input
@@ -453,21 +454,12 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
                                   onChange={(e) =>
                                     updateMapping(product.productUID, { markupPercentage: Math.max(0, parseInt(e.target.value)) })
                                   }
-                                  style={{
-                                    width: '80px',
-                                    padding: '6px',
-                                    border: '1px solid var(--border-color)',
-                                    borderRadius: '4px',
-                                    fontSize: '12px',
-                                    marginBottom: '8px',
-                                    backgroundColor: 'var(--bg-secondary)',
-                                    color: 'var(--text-primary)',
-                                  }}
+                                  className={styles.adminwhccInput}
                                 />
                               </>
                             ) : (
                               <>
-                                <label style={{ display: 'block', marginBottom: '8px', fontSize: '12px' }}>
+                                <label className={styles.adminwhccBlockLabel}>
                                   Custom Retail Price ($)
                                 </label>
                                 <input
@@ -478,21 +470,12 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
                                   onChange={(e) =>
                                     updateMapping(product.productUID, { customPrice: parseFloat(e.target.value) })
                                   }
-                                  style={{
-                                    width: '100px',
-                                    padding: '6px',
-                                    border: '1px solid var(--border-color)',
-                                    borderRadius: '4px',
-                                    fontSize: '12px',
-                                    marginBottom: '8px',
-                                    backgroundColor: 'var(--bg-secondary)',
-                                    color: 'var(--text-primary)',
-                                  }}
+                                  className={styles.adminwhccInputLg}
                                 />
                               </>
                             )}
 
-                            <label style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '8px' }}>
+                            <label className={styles.adminwhccCheckboxLabel}>
                               <input
                                 type="checkbox"
                                 checked={mapping?.useCustomPrice || false}
@@ -500,7 +483,7 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
                                   updateMapping(product.productUID, { useCustomPrice: e.target.checked })
                                 }
                               />
-                              <span style={{ fontSize: '12px' }}>Override with custom price</span>
+                              <span className={styles.adminwhccCheckboxSpan}>Override with custom price</span>
                             </label>
                           </div>
                         )}
@@ -511,7 +494,7 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
               })}
             </div>
 
-            <div style={{ display: 'flex', gap: '10px' }}>
+            <div className={styles.adminwhccFlexGap10}>
               <button
                 onClick={() => setStep('select-list')}
                 className="btn btn-secondary"
@@ -533,17 +516,17 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
         {/* Step 3: Confirm */}
         {step === 'confirm' && (
           <>
-            <p style={{ color: 'var(--text-secondary)', marginBottom: '20px' }}>
+            <p className={`${styles.adminwhccTextSecondary} ${styles.adminwhccMb20}`}>
               Review and confirm import of <strong>{selectedProducts.size} products</strong> to the selected price list.
             </p>
             {progress && (
-              <div className="info-box info-box-progress" style={{ marginBottom: '20px' }}>
+              <div className={`info-box info-box-progress ${styles.adminwhccMb20}`}>
                 {progress}
               </div>
             )}
-            <div className="import-scroll-panel" style={{ maxHeight: '300px' }}>
-              <h4 style={{ margin: '0 0 10px 0' }}>Products to Import:</h4>
-              <ul style={{ margin: 0, paddingLeft: '20px' }}>
+            <div className={`import-scroll-panel ${styles.adminwhccScrollPanel}`}>
+              <h4 className={`${styles.adminwhccM0} ${styles.adminwhccMb10}`}>Products to Import:</h4>
+              <ul className={styles.adminwhccPl20}>
                 {Array.from(selectedProducts.values()).map((mapping) => {
                   const product = whccProducts.find((p) => p.productUID === mapping.productUID);
                   const cost = product?.basePrice || 0;
@@ -551,12 +534,12 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
                   const margin = ((retailPrice - cost) / cost * 100).toFixed(0);
                   
                   return (
-                    <li key={mapping.productUID} style={{ marginBottom: '8px', fontSize: '12px' }}>
+                    <li key={mapping.productUID} className={`${styles.adminwhccMb8} ${styles.adminwhccFs12}`}>
                       <strong>{product?.name}</strong>
                       {' — Cost: '}
-                      <span style={{ color: 'var(--error-color)' }}>${cost.toFixed(2)}</span>
+                      <span className={styles.adminwhccBgError}>${cost.toFixed(2)}</span>
                       {' | Retail: '}
-                      <span className="success-text">${retailPrice.toFixed(2)}</span>
+                      <span className={styles.adminwhccBgSuccess}>${retailPrice.toFixed(2)}</span>
                       {' | Margin: '}
                       <span>{margin}%</span>
                     </li>

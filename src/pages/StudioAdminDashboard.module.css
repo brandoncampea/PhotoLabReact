@@ -1,0 +1,39 @@
+/* Inline style replacements for StudioAdminDashboard */
+.studioadmin-mb-20 { margin-bottom: 20px; }
+.studioadmin-mb-10 { margin-bottom: 10px; }
+.studioadmin-mb-12 { margin-bottom: 12px; }
+.studioadmin-mt-10 { margin-top: 10px; }
+.studioadmin-mt-24 { margin-top: 24px; }
+.studioadmin-mt-5 { margin-top: 5px; }
+.studioadmin-mt-15 { margin-top: 15px; }
+.studioadmin-mt-20 { margin-top: 20px; }
+.studioadmin-fs-12 { font-size: 12px; }
+.studioadmin-fs-13 { font-size: 13px; }
+.studioadmin-fs-14 { font-size: 14px; }
+.studioadmin-fs-16 { font-size: 16px; }
+.studioadmin-fs-22 { font-size: 22px; }
+.studioadmin-fs-24 { font-size: 24px; }
+.studioadmin-fw-bold { font-weight: bold; }
+.studioadmin-fw-900 { font-weight: 900; }
+.studioadmin-text-secondary { color: var(--text-secondary); }
+.studioadmin-text-primary { color: var(--primary-color); }
+.studioadmin-text-success { color: #86efac; }
+.studioadmin-bg-primary { background-color: var(--bg-primary); }
+.studioadmin-bg-tertiary { background-color: var(--bg-tertiary); }
+.studioadmin-border { border: 1px solid var(--border-color); }
+.studioadmin-radius { border-radius: 8px; }
+.studioadmin-radius-lg { border-radius: 12px; }
+.studioadmin-padding { padding: 16px; }
+.studioadmin-grid { display: grid; gap: 20px; }
+.studioadmin-flex { display: flex; gap: 10px; }
+.studioadmin-flex-wrap { flex-wrap: wrap; }
+.studioadmin-align-center { align-items: center; }
+.studioadmin-align-start { align-items: flex-start; }
+.studioadmin-justify-between { justify-content: space-between; }
+.studioadmin-opacity-60 { opacity: 0.6; }
+.studioadmin-overflow-hidden { overflow: hidden; }
+.studioadmin-w-100 { width: 100%; }
+.studioadmin-h-8 { height: 8px; }
+.studioadmin-m-0 { margin: 0; }
+.studioadmin-p-0 { padding: 0; }
+.studioadmin-pl-20 { padding-left: 20px; }

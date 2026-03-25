@@ -1,6 +1,5 @@
 
 import { useNavigate } from 'react-router-dom';
-import '../PhotoLabStyles.css';
 
 const albums = [
   { id: 1, name: 'NWC Girls', cover: 'https://picsum.photos/seed/album1/400/300' },

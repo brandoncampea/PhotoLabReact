@@ -1,3 +1,72 @@
+/* Dashboard pill-style quick action buttons */
+/* Modern dashboard pill-style quick action buttons */
+.dashboard-pill {
+	color: #bcbcff !important;
+	background: none !important;
+	border-radius: 999px !important;
+	border: 2.5px solid #bcbcff !important;
+	font-weight: 600 !important;
+	font-size: 1.08rem !important;
+	padding: 7px 18px !important;
+	margin: 2px 0 !important;
+	letter-spacing: 0.01em !important;
+	transition: background 0.18s, color 0.18s, border 0.18s !important;
+	display: inline-block !important;
+	box-sizing: border-box !important;
+}
+.dashboard-pill.primary {
+	background: #7c5cff !important;
+	color: #fff !important;
+	border: 2.5px solid #a78bfa !important;
+}
+.dashboard-pill:hover,
+.dashboard-pill:focus {
+	background: #23234a !important;
+	color: #fff !important;
+	border: 2.5px solid #a78bfa !important;
+}
+/* Modern dashboard card styles for widgets */
+.dashboard-card {
+	background: #18182a !important;
+	color: #e0e0e0 !important;
+	border-radius: 22px !important;
+	box-shadow: 0 8px 32px 0 rgba(31,38,135,0.25), 0 1.5px 8px rgba(124,92,255,0.10) !important;
+	padding: 2.2rem 2.1rem 1.7rem 2.1rem !important;
+	margin: 1.5rem 0 !important;
+	max-width: 900px !important;
+	width: 100% !important;
+	backdrop-filter: blur(16px) !important;
+	-webkit-backdrop-filter: blur(16px) !important;
+	border: 2.5px solid #7c5cff !important;
+	transition: box-shadow 0.2s, border 0.2s, background 0.2s !important;
+}
+.dashboard-card-label {
+	font-size: 1.13rem !important;
+	font-weight: 700 !important;
+	color: #bcbcff !important;
+	margin-bottom: 0.3rem !important;
+	letter-spacing: 0.01em !important;
+}
+.dashboard-card-value {
+	font-size: 2.2rem !important;
+	font-weight: 800 !important;
+	color: #fff !important;
+	margin-bottom: 0.2rem !important;
+	letter-spacing: 0.01em !important;
+	text-shadow: 0 2px 12px rgba(124,92,255,0.10) !important;
+}
+.dashboard-card-sub {
+	font-size: 1.02rem !important;
+	color: #a78bfa !important;
+	margin-bottom: 0.1rem !important;
+}
+.dashboard-card-icon {
+	font-size: 2.1rem !important;
+	color: #a78bfa !important;
+	margin-bottom: 0.7rem !important;
+	filter: drop-shadow(0 2px 8px #7c5cff33) !important;
+	align-self: flex-start !important;
+}
 /* Admin Albums Category Styles */
 .categories-section {
 	margin-bottom: 2rem;
@@ -101,6 +170,27 @@
 .dashboard-actions-grid .btn-secondary {
 	width: 100%;
 	box-sizing: border-box;
+	color: #bcbcff !important;
+	background: none !important;
+	border-radius: 999px !important;
+	border: 1.5px solid #bcbcff !important;
+	font-weight: 600 !important;
+	font-size: 1.08rem !important;
+	padding: 7px 18px !important;
+	margin: 2px 0;
+	letter-spacing: 0.01em;
+	transition: background 0.18s, color 0.18s, border 0.18s;
+}
+.dashboard-actions-grid .btn-primary {
+	background: #7c5cff !important;
+	color: #fff !important;
+	border: 1.5px solid #a78bfa !important;
+}
+.dashboard-actions-grid .btn-primary:hover,
+.dashboard-actions-grid .btn-secondary:hover {
+	background: #23234a !important;
+	color: #fff !important;
+	border: 1.5px solid #bcbcff !important;
 }
 .page-container {
 	display: flex;
@@ -177,64 +267,6 @@ table {
 	overflow-y: auto;
 }
 /* Dashboard cards modern glassmorphism */
-.dashboard-card, .dark-card {
-	background: rgba(35,35,42,0.72) !important;
-	color: #e0e0e0 !important;
-	border-radius: 20px !important;
-	box-shadow: 0 8px 32px 0 rgba(31,38,135,0.25), 0 1.5px 8px rgba(124,92,255,0.10);
-	padding: 2rem 1.7rem !important;
-	margin: 1.5rem 0 !important;
-	max-width: 900px !important;
-	width: 100% !important;
-	backdrop-filter: blur(16px) !important;
-	-webkit-backdrop-filter: blur(16px) !important;
-	border: 1.5px solid rgba(124,92,255,0.13) !important;
-	transition: box-shadow 0.2s, border 0.2s, background 0.2s;
-}
-.dashboard-card:hover, .dark-card:hover {
-	box-shadow: 0 12px 48px 0 rgba(124,92,255,0.18), 0 2px 16px rgba(31,38,135,0.18);
-	border: 1.5px solid #7c5cff !important;
-	background: rgba(60,40,120,0.18) !important;
-}
-
-/* Widget styles */
-.dashboard-card-icon, .widget-icon {
-	font-size: 2.5rem;
-	color: #7c5cff;
-	margin-bottom: 0.7rem;
-	filter: drop-shadow(0 2px 8px #7c5cff33);
-}
-.dashboard-card-label {
-	font-size: 1.08rem;
-	font-weight: 700;
-	color: #bdbdbd;
-	margin-bottom: 0.2rem;
-	letter-spacing: 0.01em;
-}
-.dashboard-card-value {
-	font-size: 2.1rem;
-	font-weight: 900;
-	color: #fff;
-	margin-bottom: 0.1rem;
-	text-shadow: 0 2px 12px rgba(124,92,255,0.10);
-}
-.dashboard-card-sub {
-	font-size: 1.02rem;
-	color: #a78bfa;
-	margin-bottom: 0.2rem;
-}
-.dashboard-card-link {
-	font-size: 0.98rem;
-	color: #7c5cff;
-	font-weight: 600;
-	cursor: pointer;
-	margin-top: 0.3rem;
-	transition: color 0.2s;
-}
-.dashboard-card-link:hover {
-	color: #a78bfa;
-	text-decoration: underline;
-}
 
 /* Remove gradients from buttons, use solid accent */
 button, .btn-primary, .btn-success, .btn-secondary, .btn-logout, .dark-btn {
@@ -2533,14 +2565,14 @@ body, html {
 /* Add new styles below this line. */
 /* AdminDashboard styles */
 .admin-dashboard {
-	background: #23232a !important;
+	background: #232334 !important;
 	color: #e0e0e0 !important;
-	padding: 2rem;
-	border-radius: 12px;
-	box-shadow: 0 2px 12px rgba(0,0,0,0.25);
-	max-width: 1400px;
-	margin: 0 auto;
-	padding: 40px 20px;
+	padding: 28px 32px 32px 32px;
+	border-radius: 18px;
+	box-shadow: 0 2px 16px 0 rgba(30, 30, 60, 0.10);
+	max-width: 100%;
+	border: 1.5px solid #35354d;
+	margin: 16px auto 32px auto;
 }
 .admin-dashboard h1 {
 	font-size: 2rem;

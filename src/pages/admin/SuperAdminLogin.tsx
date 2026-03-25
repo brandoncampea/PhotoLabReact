@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import '../../PhotoLabStyles.css';
 
 type SuperAdminLoginProps = { onLogin: (email: string, password: string) => void };
 const SuperAdminLogin: React.FC<SuperAdminLoginProps> = ({ onLogin }) => {

@@ -7,6 +7,29 @@ import stripeService from '../services/stripeService.js';
 
 const router = express.Router();
 
+// Public list of studios (id, name, publicSlug)
+router.get('/public-list', async (req, res) => {
+  try {
+    console.log('[GET] /api/studios/public-list - Request received');
+    const hasPublicSlug = await columnExists('studios', 'public_slug');
+    console.log('[GET] /api/studios/public-list - columnExists public_slug:', hasPublicSlug);
+    if (!hasPublicSlug) {
+      console.warn('[GET] /api/studios/public-list - public_slug column missing');
+      return res.status(404).json({ error: 'Studio public links not available' });
+    }
+    const query = `SELECT id, name, public_slug as publicSlug\n       FROM studios\n       WHERE public_slug IS NOT NULL\n       ORDER BY name ASC`;
+    console.log('[GET] /api/studios/public-list - Executing query:', query);
+    const studios = await queryRows(query);
+    console.log('[GET] /api/studios/public-list - Studios found:', studios.length);
+    res.json(studios);
+  } catch (error) {
+    console.error('[GET] /api/studios/public-list - Error:', error);
+    res.status(500).json({ error: 'Failed to fetch studios' });
+  }
+});
+
+
+
 // Get album styles for a studio
 router.get('/:studioId/album-styles', authRequired, async (req, res) => {
   const { studioId } = req.params;

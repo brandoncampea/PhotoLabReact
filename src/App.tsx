@@ -6,7 +6,6 @@ import { CartProvider } from './contexts/CartContext';
 import Layout from './components/Layout/Layout';
 import AdminProtectedRoute from './components/AdminProtectedRoute';
 import StudioAlbumStyles from './pages/admin/StudioAlbumStyles';
-import './PhotoLabStyles.css';
 
 const SuperAdminShipping = lazy(() => import('./pages/admin/SuperAdminShipping'));
 
@@ -94,8 +93,8 @@ function App() {
               <Route path="/admin/subscription" element={<AdminProtectedRoute><AdminSubscription /></AdminProtectedRoute>} />
               <Route path="/admin/subscription-gateway" element={<AdminProtectedRoute><AdminSubscriptionGateway /></AdminProtectedRoute>} />
               <Route path="/admin/stripe" element={<AdminProtectedRoute><AdminStripe /></AdminProtectedRoute>} />
-            {/* Catch-all route to redirect to /customer */}
-            <Route path="*" element={<Navigate to="/customer" replace />} />
+            {/* Catch-all route to redirect to landing page */}
+            <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Suspense>
         </CartProvider>

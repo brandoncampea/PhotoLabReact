@@ -2,9 +2,9 @@ import React from 'react';
 
 type Photo = any;
 import { useNavigate } from 'react-router-dom';
-import '../PhotoLabStyles.css';
 
 export default function LandingPage() {
+  const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = React.useState('');
   const [studioSuggestions, setStudioSuggestions] = React.useState<any[]>([]);
   const [albumSuggestions, setAlbumSuggestions] = React.useState<any[]>([]);
@@ -43,39 +43,31 @@ export default function LandingPage() {
       })
       .finally(() => setLoadingSuggestions(false));
   }, [searchQuery]);
-    const [plans, setPlans] = React.useState<any[]>([]);
-    const [plansLoading, setPlansLoading] = React.useState(true);
-    const [plansError, setPlansError] = React.useState('');
+  const [plans, setPlans] = React.useState<any[]>([]);
+  const [plansLoading, setPlansLoading] = React.useState(true);
+  const [plansError, setPlansError] = React.useState('');
 
-    React.useEffect(() => {
-      async function fetchPlans() {
-        setPlansLoading(true);
-        setPlansError('');
-        try {
-          const apiUrl = import.meta.env.VITE_API_URL || '/api';
-          // Fetch both monthly and yearly plans
-          const monthlyRes = await fetch(`${apiUrl}/subscription-plans?frequency=monthly`);
-          const yearlyRes = await fetch(`${apiUrl}/subscription-plans?frequency=yearly`);
-          if (!monthlyRes.ok && !yearlyRes.ok) throw new Error('Failed to fetch subscription plans');
-          const monthlyData = monthlyRes.ok ? await monthlyRes.json() : [];
-          const yearlyData = yearlyRes.ok ? await yearlyRes.json() : [];
-          // Remove duplicates based on id and frequency
-          const allPlans = [...monthlyData, ...yearlyData];
-          const uniquePlans = allPlans.filter((plan, idx, arr) => {
-            return arr.findIndex(p => p.id === plan.id && p.frequency === plan.frequency) === idx;
-          });
-          setPlans(uniquePlans);
-        } catch (err) {
-          setPlansError('Unable to load plans.');
-        } finally {
-          setPlansLoading(false);
-        }
+  React.useEffect(() => {
+    async function fetchPlans() {
+      setPlansLoading(true);
+      setPlansError('');
+      try {
+        const apiUrl = import.meta.env.VITE_API_URL || '/api';
+        // Fetch both monthly and yearly plans
+        const monthlyRes = await fetch(`${apiUrl}/subscription-plans?frequency=monthly`);
+        const yearlyRes = await fetch(`${apiUrl}/subscription-plans?frequency=yearly`);
+        if (!monthlyRes.ok && !yearlyRes.ok) throw new Error('Failed to fetch subscription plans');
+        const monthlyData = monthlyRes.ok ? await monthlyRes.json() : [];
+        const yearlyData = yearlyRes.ok ? await yearlyRes.json() : [];
+        setPlans([...monthlyData, ...yearlyData]);
+      } catch (err) {
+        setPlansError('Failed to load plans');
+      } finally {
+        setPlansLoading(false);
       }
-      fetchPlans();
-    }, []);
-  const navigate = useNavigate();
-  // Removed unused 'user' variable
-  // No redirect: allow all users to view LandingPage
+    }
+    fetchPlans();
+  }, []);
 
   return (
     <div className="main-content dark-bg landing-main">
