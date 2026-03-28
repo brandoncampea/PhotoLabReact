@@ -113,9 +113,12 @@ const AdminStudioAdmins: React.FC = () => {
 
   const handleSelectStudio = (studio: Studio) => {
     setSelectedStudio(studio);
-    studioFeatureService.getStudioSettings(studio.id).then(setFeatureSettings);
+    // Persist studio selection for cross-page context
+    localStorage.setItem('viewAsStudioId', String(studio.id));
+    localStorage.setItem('viewAsStudioName', studio.name);
     setShowAddForm(false);
     setFormData({ email: '', name: '', role: 'studio_admin' });
+    studioFeatureService.getStudioSettings(studio.id).then(setFeatureSettings);
     const cached = adminsByStudio[studio.id];
     if (cached) {
       setAdmins(cached);

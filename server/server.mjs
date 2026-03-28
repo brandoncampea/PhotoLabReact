@@ -1,17 +1,22 @@
+// Load environment variables from .env.local (for WHCC and other secrets)
+import '../server/env-loader.mjs';
 import adminDashboardRoutes from './routes/adminDashboard.js';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const blobSasRoutes = require('./routes/blobSas.cjs');
 // ...existing code...
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { initializeDatabase } from './mssql.mjs';
+import mssql from './mssql.cjs';
+const { initializeDatabase } = mssql;
 
 import authRoutes from './routes/auth.js';
-import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
 const infoRoutes = require('./routes/info.cjs');
-import albumRoutes from './routes/albums.js';
+import albumsModule from './routes/albums.js';
+const albumRoutes = albumsModule.default || albumsModule;
 import photoRoutes from './routes/photos.js';
 import orderRoutes from './routes/orders.js';
 import productRoutes from './routes/products.js';
@@ -86,6 +91,7 @@ app.use('/api/subscription-plans', subscriptionPlansRoutes);
 app.use('/api/invoices', invoicesRoutes);
 app.use('/api/public-search', publicSearchRoutes);
 app.use('/api/publicSearch', publicSearchRoutes);
+app.use('/api/blob-sas', blobSasRoutes);
 app.use('/api/smugmug', smugmugRoutes);
 
 // Health check

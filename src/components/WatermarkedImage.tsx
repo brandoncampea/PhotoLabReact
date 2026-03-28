@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useSasUrl } from '../hooks/useSasUrl';
 import { Watermark } from '../types';
 import { watermarkService } from '../services/watermarkService';
 import { getBlobUrl } from '../utils/getBlobUrl';
@@ -27,7 +28,7 @@ const WatermarkedImage: React.FC<WatermarkedImageProps> = ({ src, alt, className
 
   const loadWatermark = async () => {
     try {
-      const defaultWatermark = await watermarkService.getDefaultWatermark();
+      const defaultWatermark = await watermarkService.getDefaultWatermark(1);
       setWatermark(defaultWatermark);
     } catch (error) {
       console.error('Failed to load watermark:', error);
@@ -99,9 +100,11 @@ const WatermarkedImage: React.FC<WatermarkedImageProps> = ({ src, alt, className
     ? { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', ...style }
     : { width: '100%', height: 'auto', display: 'block', objectFit: 'contain', ...style };
 
-  // Workaround: If src is a legacy /uploads/ path or an API route, use as-is
-  // Otherwise, use getBlobUrl for Azure Blob Storage
-  const resolvedSrc = src.startsWith('/api/') || src.startsWith('/uploads/') ? src : getBlobUrl(src);
+  // If src is a full URL, use it directly. If it's a legacy /uploads/ path or API route, use as-is. Otherwise, use SAS URL for Azure Blob Storage.
+  const isFullUrl = src.startsWith('http://') || src.startsWith('https://');
+  const isApiOrUploads = src.startsWith('/api/') || src.startsWith('/uploads/');
+  const sasUrl = !isFullUrl && !isApiOrUploads ? useSasUrl(src) : null;
+  const resolvedSrc = isFullUrl || isApiOrUploads ? src : (sasUrl || '');
   // For watermark, if watermark.imageUrl starts with /uploads/, strip it before getBlobUrl
   let watermarkUrl = watermark?.imageUrl || '';
   if (watermarkUrl.startsWith('/uploads/')) {
@@ -109,7 +112,12 @@ const WatermarkedImage: React.FC<WatermarkedImageProps> = ({ src, alt, className
   }
   return (
     <div style={containerStyle}>
-      <img src={resolvedSrc} alt={alt} className={className} style={imageStyle} />
+      <img
+        src={resolvedSrc}
+        alt={alt}
+        className={className}
+        style={imageStyle}
+      />
       {watermark && (
         <div style={getWatermarkStyle()}>
           {!watermark.tiled && (

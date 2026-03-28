@@ -1,4 +1,14 @@
+function PlayerSearchResultItem({ result }: { result: SearchResult }) {
+  const sasUrl = useSasUrl(result.thumbnailUrl);
+  return (
+    <div className={styles.resultItem}>
+      <img src={sasUrl || result.thumbnailUrl} alt={result.playerName} />
+      <div>{result.playerName} #{result.playerNumber}</div>
+    </div>
+  );
+}
 import { useState } from 'react';
+import { useSasUrl } from '../hooks/useSasUrl';
 import styles from './PlayerSearch.module.css';
 
 interface SearchResult {
@@ -37,12 +47,10 @@ export default function PlayerSearch() {
       />
       <button onClick={handleSearch} disabled={loading || !query}>Search</button>
       {loading && <div>Loading...</div>}
+      // Helper component for SAS-protected player search result items
       <ul>
         {results.map(r => (
-          <li key={r.id}>
-            <img src={r.thumbnailUrl} alt={r.fileName} className={styles.playersearchImg} />
-            {r.fileName} — {r.playerName} #{r.playerNumber}
-          </li>
+            <PlayerSearchResultItem key={r.id} result={r} />
         ))}
       </ul>
     </div>

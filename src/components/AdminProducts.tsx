@@ -30,12 +30,22 @@ function AdminProducts() {
       setError(null);
       try {
         const res = await axios.get('/api/price-lists');
-        setPriceLists(res.data || []);
-        // Auto-select first price list if available
-        if (res.data && res.data.length > 0) {
-          setSelectedPriceListId(res.data[0].id);
+        let lists = res.data || [];
+        // Always show WHCC price list first if present
+        lists = lists.sort((a: any, b: any) => {
+          if (a.name && a.name.toLowerCase().includes('whcc')) return -1;
+          if (b.name && b.name.toLowerCase().includes('whcc')) return 1;
+          return a.name.localeCompare(b.name);
+        });
+        setPriceLists(lists);
+        // Auto-select WHCC price list if present, else first
+        const whcc = lists.find((pl: any) => pl.name && pl.name.toLowerCase().includes('whcc'));
+        if (whcc) {
+          setSelectedPriceListId(whcc.id);
+        } else if (lists.length > 0) {
+          setSelectedPriceListId(lists[0].id);
         }
-      } catch (err: any) {
+      } catch (err) {
         setError('Failed to load price lists');
       } finally {
         setLoading(false);
@@ -52,7 +62,10 @@ function AdminProducts() {
       setError(null);
       try {
         const res = await axios.get(`/api/price-lists/${selectedPriceListId}`);
-        setProducts(res.data.products || []);
+        const products = res.data.products || [];
+        // Debug log all product names and IDs
+        console.log('[AdminProducts] Products from backend:', products.map((p: any) => ({ id: p.id, name: p.name })));
+        setProducts(products);
       } catch (err: any) {
         setError('Failed to load products');
       } finally {
@@ -164,37 +177,35 @@ function AdminProducts() {
                     </tr>
                   ) : (
                     filteredProducts.map((product) => (
-                      product.sizes && product.sizes.length > 0 ? (
-                        <React.Fragment key={product.id}>
+                      <React.Fragment key={product.id}>
                           <tr key={product.id + '-main'}>
-                            <td rowSpan={product.sizes.length}>{product.name}</td>
-                            <td rowSpan={product.sizes.length}>{product.category}</td>
-                            <td rowSpan={product.sizes.length}>{product.description}</td>
-                            <td rowSpan={product.sizes.length}>
+                            <td>{product.name}</td>
+                            <td>{product.category}</td>
+                            <td>{product.description}</td>
+                            <td>
                               <input
                                 type="checkbox"
-                                checked={!!product.isActive}
+                                checked={!!product.offered}
                                 onChange={async (e) => {
-                                  const newIsActive = e.target.checked;
+                                  const newOffered = e.target.checked;
                                   try {
-                                    await axios.put(`/api/products/${product.id}/active`, { isActive: newIsActive });
-                                    setProducts((prev) => prev.map((p) => {
-                                      if (p.id === product.id) {
-                                        return {
-                                          ...p,
-                                          isActive: newIsActive,
-                                          sizes: Array.isArray(p.sizes)
-                                            ? p.sizes.map((s: any) => ({ ...s, isOffered: newIsActive }))
-                                            : p.sizes
-                                        };
-                                      }
-                                      return p;
-                                    }));
+                                    if (selectedPriceListId) {
+                                      await axios.post(`/api/price-lists/${selectedPriceListId}/products`, { productId: product.id });
+                                    }
+                                    setProducts((prev) => prev.map((p) =>
+                                      p.id === product.id ? { ...p, offered: newOffered } : p
+                                    ));
                                   } catch (err) {
-                                    setError('Failed to update product active status');
+                                    setError('Failed to update offered status');
                                   }
                                 }}
                               />
+                            </td>
+                            {/* Optionally, display size info or a message if no sizes */}
+                            <td colSpan={5} style={{ color: '#888', fontStyle: 'italic' }}>
+                              {product.sizes && product.sizes.length > 0
+                                ? product.sizes.map((size: any) => size.name).join(', ')
+                                : 'No sizes'}
                             </td>
                             <td>{(() => {
                               const size = product.sizes[0];
@@ -213,6 +224,11 @@ function AdminProducts() {
                                 style={{ width: 80 }}
                                 onChange={async (e) => {
                                   const newBasePrice = Number(e.target.value);
+                                  try {
+                                    if (selectedPriceListId) {
+                                      await axios.post(`/api/price-lists/${selectedPriceListId}/products`, { productId: product.id });
+                                    }
+                                  } catch (err) {/* ignore if already exists */}
                                   try {
                                     await axios.put(`/api/price-lists/${selectedPriceListId}/products/${product.id}/sizes/${product.sizes[0].id}`, { basePrice: newBasePrice });
                                     setProducts((prev) => prev.map((p) =>
@@ -242,6 +258,11 @@ function AdminProducts() {
                                   checked={!!product.sizes[0].isOffered}
                                   onChange={async (e) => {
                                     const newIsOffered = e.target.checked;
+                                    try {
+                                      if (selectedPriceListId) {
+                                        await axios.post(`/api/price-lists/${selectedPriceListId}/products`, { productId: product.id });
+                                      }
+                                    } catch (err) {/* ignore if already exists */}
                                     try {
                                       await axios.put(`/api/price-lists/${selectedPriceListId}/products/${product.id}/sizes/${product.sizes[0].id}/active`, { isOffered: newIsOffered });
                                       setProducts((prev) => prev.map((p) =>
@@ -281,6 +302,11 @@ function AdminProducts() {
                                   onChange={async (e) => {
                                     const newBasePrice = Number(e.target.value);
                                     try {
+                                      if (selectedPriceListId) {
+                                        await axios.post(`/api/price-lists/${selectedPriceListId}/products`, { productId: product.id });
+                                      }
+                                    } catch (err) {/* ignore if already exists */}
+                                    try {
                                       await axios.put(`/api/price-lists/${selectedPriceListId}/products/${product.id}/sizes/${size.id}`, { basePrice: newBasePrice });
                                       setProducts((prev) => prev.map((p) =>
                                         p.id === product.id
@@ -310,6 +336,11 @@ function AdminProducts() {
                                     onChange={async (e) => {
                                       const newIsOffered = e.target.checked;
                                       try {
+                                        if (selectedPriceListId) {
+                                          await axios.post(`/api/price-lists/${selectedPriceListId}/products`, { productId: product.id });
+                                        }
+                                      } catch (err) {/* ignore if already exists */}
+                                      try {
                                         await axios.put(`/api/price-lists/${selectedPriceListId}/products/${product.id}/sizes/${size.id}/active`, { isOffered: newIsOffered });
                                         setProducts((prev) => prev.map((p) =>
                                           p.id === product.id
@@ -331,7 +362,6 @@ function AdminProducts() {
                             </tr>
                           ))}
                         </React.Fragment>
-                      ) : null
                     ))
                   )}
                 </tbody>

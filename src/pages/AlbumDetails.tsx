@@ -6,6 +6,7 @@ import { photoService } from '../services/photoService';
 import { analyticsService } from '../services/analyticsService';
 import { exifService } from '../services/exifService';
 import { packageService } from '../services/packageService';
+import { productService } from '../services/productService';
 import PhotoCard from '../components/PhotoCard';
 import CropperModal from '../components/CropperModal';
 
@@ -72,6 +73,7 @@ const AlbumDetails: React.FC = () => {
         albumService.getAlbum(albumId),
         photoService.getPhotosByAlbum(albumId),
       ]);
+      console.log('[DEBUG] Photos API response:', photosData);
       setAlbum(albumData);
       setPhotos(photosData);
       
@@ -342,11 +344,20 @@ const AlbumDetails: React.FC = () => {
           </div>
         </div>
       )}
-      <div className="photos-grid">
+      <div
+        className="tallydark-photos-grid"
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+          gap: '2rem',
+          padding: '2rem 0',
+          width: '100%',
+        }}
+      >
         {filteredPhotos.length === 0 ? (
           <p className="empty-state">
-            {photos.length === 0 
-              ? 'No photos in this album' 
+            {photos.length === 0
+              ? 'No photos in this album'
               : 'No photos match your search'}
           </p>
         ) : (
@@ -365,6 +376,7 @@ const AlbumDetails: React.FC = () => {
           photo={selectedPhoto}
           albumPhotos={photos}
           onClose={handleCloseCropper}
+          productService={productService}
         />
       )}
       {selectedPhotoForPackage && selectedPackageForOrder && (
@@ -373,6 +385,7 @@ const AlbumDetails: React.FC = () => {
           albumPhotos={photos}
           onClose={handleCloseCropper}
           selectedPackage={selectedPackageForOrder}
+          productService={productService}
         />
       )}
     </div>

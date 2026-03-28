@@ -1,17 +1,21 @@
 import express from 'express';
-import { queryRow, query } from '../mssql.mjs';
+import mssql from '../mssql.cjs';
+const { queryRow, query } = mssql;
 
 const router = express.Router();
 
-// Get shipping configuration
+// Get shipping configuration (studio-specific, super admin can specify studioId)
 router.get('/config', async (req, res) => {
   try {
-    const config = await queryRow('SELECT * FROM shipping_config WHERE id = 1');
-    
+    const user = req.user;
+    let studioId = user?.role === 'super_admin' ? (req.query.studioId || null) : user?.studio_id;
+    if (!studioId) {
+      return res.status(403).json({ error: 'Studio ID required' });
+    }
+    const config = await queryRow('SELECT * FROM shipping_config WHERE id = $1', [studioId]);
     if (!config) {
       return res.status(404).json({ error: 'Shipping config not found' });
     }
-    
     // Transform to camelCase for frontend
     res.json({
       id: config.id,
@@ -25,29 +29,32 @@ router.get('/config', async (req, res) => {
   }
 });
 
-// Update shipping configuration
+// Update shipping configuration (studio-specific, super admin can specify studioId)
 router.put('/config', async (req, res) => {
   try {
+    const user = req.user;
+    let studioId = user?.role === 'super_admin' ? (req.body.studioId || null) : user?.studio_id;
+    if (!studioId) {
+      return res.status(403).json({ error: 'Studio ID required' });
+    }
     const { batchDeadline, directShippingCharge, isActive } = req.body;
-    
     await query(`
-      IF EXISTS (SELECT 1 FROM shipping_config WHERE id = 1)
+      IF EXISTS (SELECT 1 FROM shipping_config WHERE id = $1)
       BEGIN
         UPDATE shipping_config
-        SET batch_deadline = $1,
-            direct_shipping_charge = $2,
-            is_active = $3,
+        SET batch_deadline = $2,
+            direct_shipping_charge = $3,
+            is_active = $4,
             updated_at = CURRENT_TIMESTAMP
-        WHERE id = 1
+        WHERE id = $1
       END
       ELSE
       BEGIN
         INSERT INTO shipping_config (id, batch_deadline, direct_shipping_charge, is_active)
-        VALUES (1, $1, $2, $3)
+        VALUES ($1, $2, $3, $4)
       END
-    `, [batchDeadline, directShippingCharge, !!isActive]);
-    
-    const updated = await queryRow('SELECT * FROM shipping_config WHERE id = 1');
+    `, [studioId, batchDeadline, directShippingCharge, !!isActive]);
+    const updated = await queryRow('SELECT * FROM shipping_config WHERE id = $1', [studioId]);
     res.json(updated);
   } catch (error) {
     console.error('Error updating shipping config:', error);

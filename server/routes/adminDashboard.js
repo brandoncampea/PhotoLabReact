@@ -1,5 +1,6 @@
 import express from 'express';
-import { query, queryRow, queryRows } from '../mssql.mjs';
+import mssql from '../mssql.cjs';
+const { query, queryRow, queryRows } = mssql;
 const router = express.Router();
 
 // TODO: Replace with real DB queries

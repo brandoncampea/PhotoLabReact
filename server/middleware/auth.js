@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
-import { queryRow } from '../mssql.mjs';
+import mssql from '../mssql.cjs';
+const { queryRow } = mssql;
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 

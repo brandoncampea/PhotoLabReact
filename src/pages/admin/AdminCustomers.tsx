@@ -1,6 +1,8 @@
+
 import React, { useEffect, useState } from 'react';
 import { Customer } from '../../types';
 import { customerAdminService } from '../../services/customerAdminService';
+import AdminLayout from '../../components/AdminLayout';
 
 
 const AdminCustomers: React.FC = () => {
@@ -32,11 +34,16 @@ const AdminCustomers: React.FC = () => {
   };
 
   if (loading) {
-    return <div className="loading">Loading customers...</div>;
+    return (
+      <AdminLayout>
+        <div className="loading">Loading customers...</div>
+      </AdminLayout>
+    );
   }
 
   return (
-    <>
+    <AdminLayout>
+      <>
       <div className="page-header">
         <h1>Manage Customers</h1>
       </div>
@@ -80,7 +87,8 @@ const AdminCustomers: React.FC = () => {
           </tbody>
         </table>
       </div>
-    </>
+      </>
+    </AdminLayout>
   );
 };
 

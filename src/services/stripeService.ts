@@ -39,50 +39,18 @@ export const stripeService = {
       });
       return response.data;
     } catch (error: any) {
-      // If Stripe is not configured (503) or any other error, fall back to mock payment
-      if (error.response?.status === 503 || error.message?.includes('Stripe')) {
-        console.warn('Stripe not configured, using mock payment:', error.message);
-        const totalAmount = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-        const finalAmount = Math.round((totalAmount + shippingCost - discountAmount) * 100);
-        
-        return {
-          id: 'pi_mock_' + Math.random().toString(36).substring(7),
-          clientSecret: 'pi_mock_secret_' + Math.random().toString(36).substring(7),
-          amount: finalAmount,
-          currency: 'usd',
-          status: 'requires_payment_method',
-        };
-      }
       throw error;
     }
   },
 
   async confirmPayment(paymentIntentId: string): Promise<{ success: boolean; message: string }> {
-    // If the payment ID is a mock ID, use mock confirmation
-    if (paymentIntentId.startsWith('pi_mock_')) {
-      // Simulate payment confirmation delay
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      return {
-        success: true,
-        message: 'Payment successful! (Mock)',
-      };
-    }
-    
+    // No mock confirmation allowed
     try {
       const response = await api.post<{ success: boolean; message: string }>(
         `/stripe/confirm-payment/${paymentIntentId}`
       );
       return response.data;
     } catch (error: any) {
-      // If backend fails, fall back to mock confirmation
-      if (error.response?.status === 404 || error.response?.status === 503) {
-        console.warn('Stripe confirm failed, using mock confirmation:', error.message);
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        return {
-          success: true,
-          message: 'Payment successful! (Mock)',
-        };
-      }
       throw error;
     }
   },

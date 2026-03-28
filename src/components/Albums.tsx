@@ -1,6 +1,13 @@
+import { useSasUrl } from '../hooks/useSasUrl';
+function AlbumSasCover({ src, alt }: { src: string, alt: string }) {
+  const isAzureBlob = src && !src.startsWith('http://') && !src.startsWith('https://picsum.photos');
+  const sasUrl = useSasUrl(isAzureBlob ? src : undefined);
+  return <img src={sasUrl || src} alt={alt} />;
+}
 
 import { useNavigate } from 'react-router-dom';
 
+// Example albums array; in real usage, covers may be Azure blobs
 const albums = [
   { id: 1, name: 'NWC Girls', cover: 'https://picsum.photos/seed/album1/400/300' },
   { id: 2, name: 'Soccer Team', cover: 'https://picsum.photos/seed/album2/400/300' },
@@ -23,7 +30,7 @@ const Albums = () => {
               navigate(`/albums/${album.id}`);
             }}
           >
-            <img src={album.cover} alt={album.name} />
+            <AlbumSasCover src={album.cover} alt={album.name} />
             <div>{album.name}</div>
           </a>
         ))}

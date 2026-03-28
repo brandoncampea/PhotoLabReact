@@ -5,10 +5,11 @@ import { Watermark } from '../types';
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 export const watermarkService = {
-  async getDefaultWatermark(): Promise<Watermark | null> {
+  async getDefaultWatermark(studioId: number): Promise<Watermark | null> {
     try {
       const timestamp = Date.now();
-      const response = await axios.get(`${API_URL}/watermarks/default?t=${timestamp}`);
+      if (!studioId) throw new Error('studioId is required');
+      const response = await axios.get(`${API_URL}/watermarks/public-default?studioId=${studioId}&t=${timestamp}`);
       const watermark = response.data;
       // Add timestamp to image URL to bust browser cache
       if (watermark && watermark.imageUrl) {
@@ -19,6 +20,21 @@ export const watermarkService = {
       // No default watermark configured
       return null;
     }
+    },
+
+    async getWatermark(albumId: number): Promise<Watermark | null> {
+      try {
+        const timestamp = Date.now();
+        if (!albumId) throw new Error('albumId is required');
+        const response = await axios.get(`${API_URL}/watermarks/public?albumId=${albumId}&t=${timestamp}`);
+        const watermark = response.data;
+        if (watermark && watermark.imageUrl) {
+          watermark.imageUrl = `${watermark.imageUrl}?t=${timestamp}`;
+        }
+        return watermark;
+      } catch (error) {
+        return null;
+      }
   },
 
   async getAll(): Promise<Watermark[]> {

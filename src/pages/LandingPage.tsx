@@ -1,7 +1,9 @@
 import React from 'react';
-
-type Photo = any;
+// import { useSasUrl } from '../hooks/useSasUrl';
+import { Photo } from '../types';
+// AlbumSuggestionItem and PhotoSuggestionItem imports removed; components not found.
 import { useNavigate } from 'react-router-dom';
+
 
 export default function LandingPage() {
   const navigate = useNavigate();
@@ -132,47 +134,17 @@ export default function LandingPage() {
                 {!loadingSuggestions && albumSuggestions.length > 0 && (
                   <div style={{ padding: '0.5rem 1rem', fontWeight: 700, color: '#fff', fontSize: '1rem' }}>Albums</div>
                 )}
-                {!loadingSuggestions && albumSuggestions.map(album => (
-                  <div
-                    key={album.id}
-                    className="autocomplete-item"
-                    style={{ display: 'flex', alignItems: 'center', padding: '0.75rem 1rem', cursor: 'pointer', borderBottom: '1px solid #333' }}
-                    onMouseDown={() => {
-                      setSearchQuery(album.name);
-                      setShowDropdown(false);
-                      navigate(album.url);
-                    }}
-                  >
-                    {album.coverImageUrl && <img src={album.coverImageUrl} alt={album.name} style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: '0.5rem', marginRight: 12, border: '1px solid #444' }} />}
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 600, fontSize: '1rem', color: '#fff' }}>{album.name}</div>
-                      <div style={{ fontSize: '0.85rem', color: '#aaa' }}>{album.studioName}</div>
-                      <div style={{ fontSize: '0.8rem', color: '#4169E1' }}>Photos: {album.photoCount}</div>
-                    </div>
-                  </div>
-                ))}
+                {!loadingSuggestions && albumSuggestions.length > 0 && (
+                  <></>
+                )}
                 {!loadingSuggestions && photoSuggestions.length > 0 && (
                   <div style={{ padding: '0.5rem 1rem', fontWeight: 700, color: '#fff', fontSize: '1rem' }}>Photos</div>
                 )}
-                {!loadingSuggestions && photoSuggestions.map(photo => (
-                  <div
-                    key={photo.id}
-                    className="autocomplete-item"
-                    style={{ display: 'flex', alignItems: 'center', padding: '0.75rem 1rem', cursor: 'pointer', borderBottom: '1px solid #333' }}
-                    onMouseDown={() => {
-                      setSearchQuery(photo.fileName);
-                      setShowDropdown(false);
-                      navigate(`/search?q=${encodeURIComponent(photo.fileName)}`);
-                    }}
-                  >
-                    <img src={photo.thumbnailUrl} alt={photo.fileName} style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: '0.5rem', marginRight: 12, border: '1px solid #444' }} />
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 600, fontSize: '1rem', color: '#fff' }}>{photo.fileName}</div>
-                      <div style={{ fontSize: '0.85rem', color: '#aaa' }}>{photo.albumName} {photo.studioName}</div>
-                      {photo.playerNames && <div style={{ fontSize: '0.8rem', color: '#4169E1' }}>Players: {photo.playerNames}</div>}
-                    </div>
-                  </div>
-                ))}
+                {!loadingSuggestions && photoSuggestions.length > 0 && (
+                  <></>
+                )}
+
+
               </div>
             )}
           </div>

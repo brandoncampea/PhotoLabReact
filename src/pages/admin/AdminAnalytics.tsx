@@ -1,6 +1,8 @@
+
 import React, { useState, useEffect } from 'react';
 import { AnalyticsData } from '../../types';
 import { analyticsService } from '../../services/analyticsService';
+import AdminLayout from '../../components/AdminLayout';
 
 const AdminAnalytics: React.FC = () => {
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
@@ -82,7 +84,8 @@ const AdminAnalytics: React.FC = () => {
   );
 
   return (
-    <>
+    <AdminLayout>
+      <>
       <div className="page-header">
         <h1>📊 Analytics</h1>
         <p className="muted-text" style={{ fontSize: '0.9rem', marginTop: '0.5rem' }}>
@@ -260,7 +263,8 @@ const AdminAnalytics: React.FC = () => {
           </div>
         )}
       </div>
-    </>
+      </>
+    </AdminLayout>
   );
 };
 

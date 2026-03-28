@@ -1,5 +1,6 @@
 import Stripe from 'stripe';
-import { queryRow } from '../mssql.mjs';
+import mssql from '../mssql.cjs';
+const { queryRow } = mssql;
 
 // Initialize Stripe with secret key from environment
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY || 'sk_test_51QqI2mFc0tLpWH2yXzAbCdEfGhIjKlMnOpQrStUvWxYzAbCdEfGhIjKlMn';

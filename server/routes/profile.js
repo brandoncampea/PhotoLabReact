@@ -1,5 +1,6 @@
 import express from 'express';
-import { queryRow, query, tableExists } from '../mssql.mjs';
+import mssql from '../mssql.cjs';
+const { queryRow, query, tableExists } = mssql;
 import { authRequired } from '../middleware/auth.js';
 const router = express.Router();
 
@@ -30,38 +31,47 @@ const ensureProfileConfigTable = async () => {
   return true;
 };
 
-// Get profile config
+// Get profile config (studio-specific, super admin can specify studioId)
 router.get('/', async (req, res) => {
   try {
     await ensureProfileConfigTable();
-
+    const user = req.user;
+    let studioId;
+    if (user?.role === 'super_admin') {
+      studioId = req.query.studioId || null;
+      // If no studioId specified, use global profile (id=1)
+      if (!studioId) studioId = 1;
+    } else {
+      studioId = user?.studio_id;
+      if (!studioId) {
+        return res.status(403).json({ error: 'Studio ID required' });
+      }
+    }
     let profile = await queryRow(`
       SELECT id, owner_name as ownerName, business_name as businessName, 
              email, receive_order_notifications as receiveOrderNotifications, 
              logo_url as logoUrl
       FROM profile_config
-      WHERE id = 1
-    `);
+      WHERE id = $1
+    `, [studioId]);
 
     // Initialize if doesn't exist
     if (!profile) {
       await query(`
-        IF NOT EXISTS (SELECT 1 FROM profile_config WHERE id = 1)
+        IF NOT EXISTS (SELECT 1 FROM profile_config WHERE id = $1)
         BEGIN
           INSERT INTO profile_config (id, owner_name, business_name, email, receive_order_notifications, logo_url)
-          VALUES (1, 'John Smith', 'PhotoLab Studio', 'admin@photolab.com', 1, '')
+          VALUES ($1, 'John Smith', 'PhotoLab Studio', 'admin@photolab.com', 1, '')
         END
-      `);
-      
+      `, [studioId]);
       profile = await queryRow(`
         SELECT id, owner_name as ownerName, business_name as businessName, 
                email, receive_order_notifications as receiveOrderNotifications, 
                logo_url as logoUrl
         FROM profile_config
-        WHERE id = 1
-      `);
+        WHERE id = $1
+      `, [studioId]);
     }
-
     res.json(profile || defaultProfile);
   } catch (error) {
     console.warn('Profile config unavailable, returning defaults:', error?.message || error);
@@ -69,41 +79,41 @@ router.get('/', async (req, res) => {
   }
 });
 
-// Update profile config
-// Require auth to update profile config
+// Update profile config (studio-specific, super admin can specify studioId)
 router.put('/', authRequired, async (req, res) => {
   try {
     await ensureProfileConfigTable();
-
+    const user = req.user;
+    let studioId = user?.role === 'super_admin' ? (req.body.studioId || null) : user?.studio_id;
+    if (!studioId) {
+      return res.status(403).json({ error: 'Studio ID required' });
+    }
     const { ownerName, businessName, email, receiveOrderNotifications, logoUrl } = req.body;
-
     await query(`
-      IF EXISTS (SELECT 1 FROM profile_config WHERE id = 1)
+      IF EXISTS (SELECT 1 FROM profile_config WHERE id = $1)
       BEGIN
         UPDATE profile_config
-        SET owner_name = $1,
-            business_name = $2,
-            email = $3,
-            receive_order_notifications = $4,
-            logo_url = $5,
+        SET owner_name = $2,
+            business_name = $3,
+            email = $4,
+            receive_order_notifications = $5,
+            logo_url = $6,
             updated_at = CURRENT_TIMESTAMP
-        WHERE id = 1
+        WHERE id = $1
       END
       ELSE
       BEGIN
         INSERT INTO profile_config (id, owner_name, business_name, email, receive_order_notifications, logo_url)
-        VALUES (1, $1, $2, $3, $4, $5)
+        VALUES ($1, $2, $3, $4, $5, $6)
       END
-    `, [ownerName, businessName, email, !!receiveOrderNotifications, logoUrl]);
-
+    `, [studioId, ownerName, businessName, email, !!receiveOrderNotifications, logoUrl]);
     const profile = await queryRow(`
       SELECT id, owner_name as ownerName, business_name as businessName, 
              email, receive_order_notifications as receiveOrderNotifications, 
              logo_url as logoUrl
       FROM profile_config
-      WHERE id = 1
-    `);
-
+      WHERE id = $1
+    `, [studioId]);
     res.json(profile || {
       ...defaultProfile,
       ownerName,

@@ -1,6 +1,7 @@
 
 import express from 'express';
-import { queryRow, query } from '../mssql.mjs';
+import mssql from '../mssql.cjs';
+const { queryRow, query } = mssql;
 import { authRequired, superAdminRequired } from '../middleware/auth.js';
 
 const router = express.Router();

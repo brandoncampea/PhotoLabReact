@@ -1,19 +1,39 @@
 import express from 'express';
-import { queryRow, queryRows, query } from '../mssql.mjs';
+import mssql from '../mssql.cjs';
+const { queryRow, queryRows, query } = mssql;
 import { adminRequired } from '../middleware/auth.js';
 const router = express.Router();
 
 // Get all discount codes
+// Get all discount codes (studio-specific, super admin sees all)
 router.get('/', async (req, res) => {
   try {
-    const codes = await queryRows(`
-      SELECT id, code, description, discount_type as discountType, discount_value as discountValue,
-             application_type as applicationType, expiration_date as expirationDate, 
-             is_one_time_use as isOneTimeUse, usage_count as usageCount, max_usages as maxUsages,
-             is_active as isActive, created_at as createdDate
-      FROM discount_codes
-      ORDER BY created_at DESC
-    `);
+    const user = req.user;
+    let codes;
+    if (user?.role === 'super_admin') {
+      codes = await queryRows(`
+        SELECT id, code, description, discount_type as discountType, discount_value as discountValue,
+               application_type as applicationType, expiration_date as expirationDate, 
+               is_one_time_use as isOneTimeUse, usage_count as usageCount, max_usages as maxUsages,
+               is_active as isActive, created_at as createdDate, studio_id as studioId
+        FROM discount_codes
+        ORDER BY created_at DESC
+      `);
+    } else {
+      const studioId = user?.studio_id;
+      if (!studioId) {
+        return res.status(403).json({ error: 'Studio ID required' });
+      }
+      codes = await queryRows(`
+        SELECT id, code, description, discount_type as discountType, discount_value as discountValue,
+               application_type as applicationType, expiration_date as expirationDate, 
+               is_one_time_use as isOneTimeUse, usage_count as usageCount, max_usages as maxUsages,
+               is_active as isActive, created_at as createdDate, studio_id as studioId
+        FROM discount_codes
+        WHERE studio_id = $1
+        ORDER BY created_at DESC
+      `, [studioId]);
+    }
 
     // Get applicable products for each code
     const enriched = [];
@@ -67,15 +87,22 @@ router.get('/:id', async (req, res) => {
 });
 
 // Create discount code
+// Create discount code (studio-specific)
 router.post('/', adminRequired, async (req, res) => {
   try {
+    const user = req.user;
     const { code, description, discountType, discountValue, applicationType, expirationDate, 
             isOneTimeUse, maxUsages, isActive, applicableProductIds } = req.body;
 
+    let studioId = user?.role === 'super_admin' ? (req.body.studioId || null) : user?.studio_id;
+    if (!studioId) {
+      return res.status(403).json({ error: 'Studio ID required' });
+    }
+
     const result = await queryRow(`
       INSERT INTO discount_codes (code, description, discount_type, discount_value, application_type, 
-                                  expiration_date, is_one_time_use, max_usages, is_active)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                                  expiration_date, is_one_time_use, max_usages, is_active, studio_id)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       RETURNING id
     `, [
       code,
@@ -86,7 +113,8 @@ router.post('/', adminRequired, async (req, res) => {
       expirationDate || null,
       !!isOneTimeUse,
       maxUsages || null,
-      !!isActive
+      !!isActive,
+      studioId
     ]);
 
     const codeId = result.id;
@@ -105,7 +133,7 @@ router.post('/', adminRequired, async (req, res) => {
       SELECT id, code, description, discount_type as discountType, discount_value as discountValue,
              application_type as applicationType, expiration_date as expirationDate, 
              is_one_time_use as isOneTimeUse, usage_count as usageCount, max_usages as maxUsages,
-             is_active as isActive, created_at as createdDate
+             is_active as isActive, created_at as createdDate, studio_id as studioId
       FROM discount_codes
       WHERE id = $1
     `, [codeId]);
@@ -120,10 +148,20 @@ router.post('/', adminRequired, async (req, res) => {
 });
 
 // Update discount code
+// Update discount code (studio-specific)
 router.put('/:id', adminRequired, async (req, res) => {
   try {
+    const user = req.user;
     const { description, discountType, discountValue, applicationType, expirationDate, 
             isOneTimeUse, maxUsages, isActive, applicableProductIds } = req.body;
+
+    // Only allow update if code belongs to studio (unless super admin)
+    let studioId = user?.role === 'super_admin' ? null : user?.studio_id;
+    let code = await queryRow('SELECT * FROM discount_codes WHERE id = $1', [req.params.id]);
+    if (!code) return res.status(404).json({ error: 'Discount code not found' });
+    if (studioId && code.studio_id !== studioId) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
 
     await query(`
       UPDATE discount_codes
@@ -157,7 +195,7 @@ router.put('/:id', adminRequired, async (req, res) => {
       SELECT id, code, description, discount_type as discountType, discount_value as discountValue,
              application_type as applicationType, expiration_date as expirationDate, 
              is_one_time_use as isOneTimeUse, usage_count as usageCount, max_usages as maxUsages,
-             is_active as isActive, created_at as createdDate
+             is_active as isActive, created_at as createdDate, studio_id as studioId
       FROM discount_codes
       WHERE id = $1
     `, [req.params.id]);

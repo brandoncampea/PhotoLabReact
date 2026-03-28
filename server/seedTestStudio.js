@@ -4,10 +4,10 @@ import { transaction } from './mssql.js';
 const main = async () => {
   const { studioId, userId } = await transaction(async (client) => {
     const studioResult = await client.query(`
-      INSERT INTO studios (name, email, subscription_plan, subscription_status, subscription_start, subscription_end, is_free_subscription, created_at)
-      VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, DATEADD(month, 1, CURRENT_TIMESTAMP), $5, CURRENT_TIMESTAMP)
+      INSERT INTO studios (name, email, subscription_plan, subscription_status, subscription_start, subscription_end, is_free_subscription, created_at, public_slug)
+      VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, DATEADD(month, 1, CURRENT_TIMESTAMP), $5, CURRENT_TIMESTAMP, $6)
       RETURNING id
-    `, ['Test Studio', 'teststudio@example.com', 'pro', 'active', 1]);
+    `, ['Test Studio', 'teststudio@example.com', 'pro', 'active', 1, 'test-studio']);
 
     const createdStudioId = studioResult.rows[0].id;
 

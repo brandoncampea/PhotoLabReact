@@ -1,49 +1,36 @@
 
-import React from 'react';
-// import { useAuth } from '../contexts/AuthContext';
-// import { Link, useLocation } from 'react-router-dom';
 
-// const adminLinks = [
-//   { label: 'Dashboard', to: '/admin/dashboard' },
-//   { label: 'Albums', to: '/admin/albums' },
-//   { label: 'Orders', to: '/admin/orders' },
-// ];
-// const superAdminLinks = [
-//   { label: 'Super Admin Dashboard', to: '/admin/dashboard' },
-//   { label: 'Payment Methods', to: '/admin/payment-methods' },
-//   { label: 'Studio Subscription Payment Gateway', to: '/admin/subscription-gateway' },
-//   { label: 'Subscription Pricing', to: '/admin/subscription-pricing' },
-//   { label: 'Lab Configuration', to: '/admin/lab-config' },
-//   { label: 'Price Lists', to: '/admin/price-lists' },
-//   { label: 'Users', to: '/admin/users' },
-//   { label: 'Studio Admins', to: '/admin/studio-admins' },
-//   { label: 'Analytics', to: '/admin/analytics' },
-//   { label: 'Profile', to: '/admin/profile' },
-// ];
+import React, { useEffect, useState } from 'react';
+import { studioService } from '../services/studioService';
 
 const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // const { user } = useAuth();
-  // const location = useLocation();
-  // const isSuperAdmin = user?.role === 'super_admin';
+  const [studioName, setStudioName] = useState<string | null>(null);
 
-  // Flat admin links: Dashboard, Albums, Orders first, then all others (no duplicates)
-  // All admin links as top-level items in the side nav (no grouping, no Admin section)
-  // const flatAdminLinks = [
-  //   { label: 'Dashboard', to: '/admin/dashboard' },
-  //   { label: 'Albums', to: '/admin/albums' },
-  //   { label: 'Orders', to: '/admin/orders' },
-  //   { label: 'Analytics', to: '/admin/analytics' },
-  //   { label: 'Products', to: '/admin/products' },
-  //   { label: 'Customers', to: '/admin/customers' },
-  //   { label: 'Shipping', to: '/admin/shipping' },
-  //   { label: 'Album Styles', to: '/admin/album-styles' },
-  //   { label: 'Discount Codes', to: '/admin/discount-codes' },
-  //   { label: 'Watermarks', to: '/admin/watermarks' },
-  //   { label: 'Profile', to: '/admin/profile' },
-  // ];
+  useEffect(() => {
+    const viewAsStudioId = localStorage.getItem('viewAsStudioId');
+    console.log('[AdminLayout] viewAsStudioId:', viewAsStudioId);
+    if (viewAsStudioId) {
+      studioService.getStudio(Number(viewAsStudioId)).then(studio => {
+        console.log('[AdminLayout] studioService.getStudio result:', studio);
+        setStudioName(studio.name);
+      }).catch((err) => {
+        console.error('[AdminLayout] Failed to fetch studio:', err);
+        setStudioName(null);
+      });
+    } else {
+      setStudioName(null);
+    }
+  }, []);
 
   return (
-    <>{children}</>
+    <>
+      {studioName && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', background: '#222', color: '#fff', padding: '0.5rem 1.5rem', fontWeight: 700, fontSize: '1.2rem', zIndex: 1000, letterSpacing: '0.02em' }}>
+          Managing: {studioName}
+        </div>
+      )}
+      <div style={{ marginTop: studioName ? '2.5rem' : 0 }}>{children}</div>
+    </>
   );
 };
 

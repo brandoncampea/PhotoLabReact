@@ -1,10 +1,35 @@
 import express from 'express';
+import { authRequired } from '../middleware/auth.js';
 import multer from 'multer';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { queryRow, queryRows, query } from '../mssql.mjs';
+import mssql from '../mssql.cjs';
+const { queryRow, queryRows, query } = mssql;
 import { uploadImageBufferToAzure } from '../services/azureStorage.js';
 const router = express.Router();
+
+
+
+// Public endpoint: get the default watermark for a given studio (no auth)
+router.get('/public-default', async (req, res) => {
+  try {
+    const studioId = req.query.studioId;
+    if (!studioId) return res.status(400).json({ error: 'studioId is required' });
+    const watermark = await queryRow(`
+      SELECT TOP 1 id, name, image_url as imageUrl, position, opacity,
+        is_default as isDefault, tiled, created_at as createdDate, studio_id as studioId
+      FROM watermarks
+      WHERE is_default = 1 AND studio_id = $1
+    `, [studioId]);
+    if (!watermark) return res.status(404).json({ error: 'No default watermark found for this studio' });
+    res.json(watermark);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Auth required for all except public endpoints
+router.use(authRequired);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,31 +47,61 @@ const upload = multer({
   }
 });
 
-// Get all watermarks
+// Get all watermarks (studio-specific, super admin sees all)
 router.get('/', async (req, res) => {
   try {
-    const watermarks = await queryRows(`
-      SELECT id, name, image_url as imageUrl, position, opacity, 
-             is_default as isDefault, tiled, created_at as createdDate
-      FROM watermarks
-      ORDER BY name ASC
-    `);
+    const user = req.user;
+    let watermarks;
+    if (user?.role === 'super_admin') {
+      watermarks = await queryRows(`
+        SELECT id, name, image_url as imageUrl, position, opacity, 
+               is_default as isDefault, tiled, created_at as createdDate, studio_id as studioId
+        FROM watermarks
+        ORDER BY name ASC
+      `);
+    } else {
+      const studioId = user?.studio_id;
+      if (!studioId) {
+        return res.status(403).json({ error: 'Studio ID required' });
+      }
+      watermarks = await queryRows(`
+        SELECT id, name, image_url as imageUrl, position, opacity, 
+               is_default as isDefault, tiled, created_at as createdDate, studio_id as studioId
+        FROM watermarks
+        WHERE studio_id = $1
+        ORDER BY name ASC
+      `, [studioId]);
+    }
     res.json(watermarks);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// Get default watermark
+// Get default watermark (studio-specific, super admin sees all)
 router.get('/default', async (req, res) => {
   try {
-    const watermark = await queryRow(`
-      SELECT TOP 1 id, name, image_url as imageUrl, position, opacity, 
-             is_default as isDefault, tiled, created_at as createdDate
-      FROM watermarks
-      WHERE is_default = 1
-    `);
-    
+    const user = req.user;
+    let watermark;
+    if (user?.role === 'super_admin') {
+      watermark = await queryRow(`
+        SELECT TOP 1 id, name, image_url as imageUrl, position, opacity, 
+               is_default as isDefault, tiled, created_at as createdDate, studio_id as studioId
+        FROM watermarks
+        WHERE is_default = 1
+      `);
+    } else {
+      const studioId = user?.studio_id;
+      if (!studioId) {
+        return res.status(403).json({ error: 'Studio ID required' });
+      }
+      watermark = await queryRow(`
+        SELECT TOP 1 id, name, image_url as imageUrl, position, opacity, 
+               is_default as isDefault, tiled, created_at as createdDate, studio_id as studioId
+        FROM watermarks
+        WHERE is_default = 1 AND studio_id = $1
+      `, [studioId]);
+    }
     if (!watermark) {
       return res.status(404).json({ error: 'No default watermark configured' });
     }
@@ -56,16 +111,30 @@ router.get('/default', async (req, res) => {
   }
 });
 
-// Get watermark by ID
+// Get watermark by ID (studio-specific, super admin sees all)
 router.get('/:id', async (req, res) => {
   try {
-    const watermark = await queryRow(`
-      SELECT id, name, image_url as imageUrl, position, opacity, 
-             is_default as isDefault, tiled, created_at as createdDate
-      FROM watermarks
-      WHERE id = $1
-    `, [req.params.id]);
-    
+    const user = req.user;
+    let watermark;
+    if (user?.role === 'super_admin') {
+      watermark = await queryRow(`
+        SELECT id, name, image_url as imageUrl, position, opacity, 
+               is_default as isDefault, tiled, created_at as createdDate, studio_id as studioId
+        FROM watermarks
+        WHERE id = $1
+      `, [req.params.id]);
+    } else {
+      const studioId = user?.studio_id;
+      if (!studioId) {
+        return res.status(403).json({ error: 'Studio ID required' });
+      }
+      watermark = await queryRow(`
+        SELECT id, name, image_url as imageUrl, position, opacity, 
+               is_default as isDefault, tiled, created_at as createdDate, studio_id as studioId
+        FROM watermarks
+        WHERE id = $1 AND studio_id = $2
+      `, [req.params.id, studioId]);
+    }
     if (!watermark) {
       return res.status(404).json({ error: 'Watermark not found' });
     }
@@ -75,9 +144,10 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// Create watermark
+// Create watermark (studio-specific)
 router.post('/', upload.single('image'), async (req, res) => {
   try {
+    const user = req.user;
     console.log('POST /watermarks - body:', req.body, 'file:', req.file?.originalname);
     const { name, position, opacity, isDefault, tiled } = req.body;
     let imageUrl = null;
@@ -93,12 +163,16 @@ router.post('/', upload.single('image'), async (req, res) => {
     if (!imageUrl) {
       return res.status(400).json({ error: 'Image is required' });
     }
+    let studioId = user?.role === 'super_admin' ? (req.body.studioId || null) : user?.studio_id;
+    if (!studioId) {
+      return res.status(403).json({ error: 'Studio ID required' });
+    }
     if (isDefault === 'true' || isDefault === true) {
-      await query('UPDATE watermarks SET is_default = 0');
+      await query('UPDATE watermarks SET is_default = 0 WHERE studio_id = $1', [studioId]);
     }
     const result = await queryRow(`
-      INSERT INTO watermarks (name, image_url, position, opacity, is_default, tiled)
-      VALUES ($1, $2, $3, $4, $5, $6)
+      INSERT INTO watermarks (name, image_url, position, opacity, is_default, tiled, studio_id)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING id
     `, [
       name,
@@ -106,11 +180,12 @@ router.post('/', upload.single('image'), async (req, res) => {
       position || 'bottom-right',
       opacity ? parseFloat(opacity) : 0.5,
       (isDefault === 'true' || isDefault === true),
-      (tiled === 'true' || tiled === true)
+      (tiled === 'true' || tiled === true),
+      studioId
     ]);
     const watermark = await queryRow(`
       SELECT id, name, image_url as imageUrl, position, opacity, 
-             is_default as isDefault, tiled, created_at as createdDate
+             is_default as isDefault, tiled, created_at as createdDate, studio_id as studioId
       FROM watermarks
       WHERE id = $1
     `, [result.id]);
@@ -121,9 +196,10 @@ router.post('/', upload.single('image'), async (req, res) => {
   }
 });
 
-// Update watermark
+// Update watermark (studio-specific)
 router.put('/:id', upload.single('image'), async (req, res) => {
   try {
+    const user = req.user;
     console.log('PUT /watermarks/:id - body:', req.body, 'file:', req.file?.originalname);
     const { name, position, opacity, isDefault, tiled } = req.body;
     let imageUrl = req.body.imageUrl;
@@ -139,8 +215,14 @@ router.put('/:id', upload.single('image'), async (req, res) => {
     if (!imageUrl) {
       return res.status(400).json({ error: 'Image URL is required' });
     }
+    let studioId = user?.role === 'super_admin' ? null : user?.studio_id;
+    let watermark = await queryRow('SELECT * FROM watermarks WHERE id = $1', [req.params.id]);
+    if (!watermark) return res.status(404).json({ error: 'Watermark not found' });
+    if (studioId && watermark.studio_id !== studioId) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
     if (isDefault === 'true' || isDefault === true) {
-      await query('UPDATE watermarks SET is_default = 0');
+      await query('UPDATE watermarks SET is_default = 0 WHERE studio_id = $1', [watermark.studio_id]);
     }
     await query(`
       UPDATE watermarks
@@ -155,9 +237,9 @@ router.put('/:id', upload.single('image'), async (req, res) => {
       (tiled === 'true' || tiled === true),
       req.params.id
     ]);
-    const watermark = await queryRow(`
+    watermark = await queryRow(`
       SELECT id, name, image_url as imageUrl, position, opacity, 
-             is_default as isDefault, tiled, created_at as createdDate
+             is_default as isDefault, tiled, created_at as createdDate, studio_id as studioId
       FROM watermarks
       WHERE id = $1
     `, [req.params.id]);
@@ -168,9 +250,16 @@ router.put('/:id', upload.single('image'), async (req, res) => {
   }
 });
 
-// Delete watermark
+// Delete watermark (studio-specific)
 router.delete('/:id', async (req, res) => {
   try {
+    const user = req.user;
+    let studioId = user?.role === 'super_admin' ? null : user?.studio_id;
+    let watermark = await queryRow('SELECT * FROM watermarks WHERE id = $1', [req.params.id]);
+    if (!watermark) return res.status(404).json({ error: 'Watermark not found' });
+    if (studioId && watermark.studio_id !== studioId) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
     await query('DELETE FROM watermarks WHERE id = $1', [req.params.id]);
     res.json({ message: 'Watermark deleted successfully' });
   } catch (error) {

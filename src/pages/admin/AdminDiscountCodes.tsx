@@ -5,7 +5,9 @@
   const isExpired = (_expirationDate: any) => false;
   const isMaxedOut = (_code: any) => false;
 
+
 import React from 'react';
+import AdminLayout from '../../components/AdminLayout';
 
 type DiscountCode = any;
 const AdminDiscountCodes: React.FC = () => {
@@ -23,7 +25,8 @@ const AdminDiscountCodes: React.FC = () => {
   // const isMaxedOut = (code: DiscountCode) => false;
 
   return (
-    <>
+    <AdminLayout>
+      <>
       <div className="page-header">
         <h1>Manage Discount Codes</h1>
         <button onClick={handleCreate} className="btn btn-primary">
@@ -107,7 +110,8 @@ const AdminDiscountCodes: React.FC = () => {
           </div>
         </div>
       )}
-    </>
+      </>
+    </AdminLayout>
   );
 };
 

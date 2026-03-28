@@ -1,5 +1,6 @@
 import express from 'express';
-import { queryRow, queryRows, query, tableExists } from '../mssql.mjs';
+import mssql from '../mssql.cjs';
+const { queryRow, queryRows, query, tableExists } = mssql;
 import { adminRequired } from '../middleware/auth.js';
 import { SUBSCRIPTION_PLANS } from '../constants/subscriptions.js';
 const router = express.Router();
@@ -87,14 +88,20 @@ router.get('/summary', async (req, res) => {
       });
     }
 
+    let studioFilter = '';
+    let params = [];
+    if (req.user?.role === 'studio_admin' && req.user?.studio_id) {
+      studioFilter = `AND JSON_VALUE(event_data, '$.studioId') = $1`;
+      params = [req.user.studio_id];
+    }
     const totalVisitsResult = await queryRow(`
       SELECT COUNT(DISTINCT JSON_VALUE(event_data, '$.sessionId')) AS count
       FROM analytics
-      WHERE event_type = 'site_visit'
-    `);
-    const totalPageViewsResult = await queryRow("SELECT COUNT(*) AS count FROM analytics WHERE event_type = 'page_view'");
-    const albumViewsResult = await queryRow("SELECT COUNT(*) AS count FROM analytics WHERE event_type = 'album_view'");
-    const photoViewsResult = await queryRow("SELECT COUNT(*) AS count FROM analytics WHERE event_type = 'photo_view'");
+      WHERE event_type = 'site_visit' ${studioFilter}
+    `, params);
+    const totalPageViewsResult = await queryRow(`SELECT COUNT(*) AS count FROM analytics WHERE event_type = 'page_view' ${studioFilter}`, params);
+    const albumViewsResult = await queryRow(`SELECT COUNT(*) AS count FROM analytics WHERE event_type = 'album_view' ${studioFilter}`, params);
+    const photoViewsResult = await queryRow(`SELECT COUNT(*) AS count FROM analytics WHERE event_type = 'photo_view' ${studioFilter}`, params);
 
     const totalVisits = parseInt(totalVisitsResult?.count ?? 0) || 0;
     const totalPageViews = parseInt(totalPageViewsResult?.count ?? 0) || 0;
@@ -333,6 +340,13 @@ router.get('/revenue-breakdown', adminRequired, async (req, res) => {
 // Get detailed analytics — per-album and per-photo breakdowns from DB
 router.get('/details', async (req, res) => {
   try {
+    let studioFilter = '';
+    let params = [];
+    if (req.user?.role === 'studio_admin' && req.user?.studio_id) {
+      studioFilter = `AND JSON_VALUE(an.event_data, '$.studioId') = $1`;
+      params = [req.user.studio_id];
+    }
+    // Top albums for this studio
     const albumViewRows = await queryRows(`
       SELECT
         JSON_VALUE(an.event_data, '$.albumId') AS albumId,
@@ -344,11 +358,13 @@ router.get('/details', async (req, res) => {
       FROM analytics an
       LEFT JOIN albums a
         ON a.id = TRY_CAST(JSON_VALUE(an.event_data, '$.albumId') AS INT)
-      WHERE an.event_type = 'album_view' AND an.event_data IS NOT NULL
+      WHERE an.event_type = 'album_view' AND an.event_data IS NOT NULL ${studioFilter}
+        ${req.user?.role === 'studio_admin' ? 'AND a.studio_id = $1' : ''}
       GROUP BY JSON_VALUE(an.event_data, '$.albumId'), JSON_VALUE(an.event_data, '$.albumName'), a.cover_photo_id, a.cover_image_url
       ORDER BY views DESC
-    `);
+    `, params);
 
+    // Top photos for this studio
     const photoViewRows = await queryRows(`
       SELECT
         JSON_VALUE(an.event_data, '$.photoId') AS photoId,
@@ -362,7 +378,8 @@ router.get('/details', async (req, res) => {
       FROM analytics an
       LEFT JOIN photos p
         ON p.id = TRY_CAST(JSON_VALUE(an.event_data, '$.photoId') AS INT)
-      WHERE an.event_type = 'photo_view' AND an.event_data IS NOT NULL
+      WHERE an.event_type = 'photo_view' AND an.event_data IS NOT NULL ${studioFilter}
+        ${req.user?.role === 'studio_admin' ? 'AND p.studio_id = $1' : ''}
       GROUP BY
         JSON_VALUE(an.event_data, '$.photoId'),
         JSON_VALUE(an.event_data, '$.photoFileName'),
@@ -371,7 +388,28 @@ router.get('/details', async (req, res) => {
         , p.thumbnail_url
         , p.full_image_url
       ORDER BY views DESC
-    `);
+    `, params);
+
+    // Recent activity for this studio
+    let recentActivityRows;
+    if (req.user?.role === 'studio_admin' && req.user?.studio_id) {
+      recentActivityRows = await queryRows(`
+        SELECT an.*, u.email as userEmail
+        FROM analytics an
+        LEFT JOIN users u ON u.id = TRY_CAST(JSON_VALUE(an.event_data, '$.userId') AS INT)
+        WHERE JSON_VALUE(an.event_data, '$.studioId') = $1
+        ORDER BY an.created_at DESC
+        OFFSET 0 ROWS FETCH NEXT 50 ROWS ONLY
+      `, [req.user.studio_id]);
+    } else {
+      recentActivityRows = await queryRows(`
+        SELECT an.*, u.email as userEmail
+        FROM analytics an
+        LEFT JOIN users u ON u.id = TRY_CAST(JSON_VALUE(an.event_data, '$.userId') AS INT)
+        ORDER BY an.created_at DESC
+        OFFSET 0 ROWS FETCH NEXT 50 ROWS ONLY
+      `);
+    }
 
     const recentRows = await queryRows(`
       SELECT TOP 50 id, event_type, event_data, created_at

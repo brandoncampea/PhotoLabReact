@@ -1,6 +1,7 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
-import { queryRow, query, tableExists } from '../mssql.mjs';
+import mssql from '../mssql.cjs';
+const { queryRow, query, tableExists } = mssql;
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
@@ -121,6 +122,52 @@ router.delete('/', async (req, res) => {
     res.json({ success: true, message: 'Cart cleared' });
   } catch (error) {
     console.error('Cart DELETE error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+// Add item to cart (for Playwright and legacy compatibility)
+router.post('/add', async (req, res) => {
+  try {
+    const user = getOptionalUser(req);
+    const userId = user?.id;
+    const { productId, quantity = 1 } = req.body;
+    if (!userId) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+    // Verify user exists
+    const userExists = await queryRow('SELECT TOP 1 id FROM users WHERE id = $1', [userId]);
+    if (!userExists) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    // Get current cart
+    const cartRow = await queryRow('SELECT TOP 1 cart_data as cartData FROM user_cart WHERE user_id = $1', [userId]);
+    let cart = [];
+    if (cartRow && cartRow.cartData) {
+      try { cart = JSON.parse(cartRow.cartData); } catch {}
+    }
+    // Add or update item
+    const idx = cart.findIndex(item => item.productId === productId);
+    if (idx >= 0) {
+      cart[idx].quantity = (cart[idx].quantity || 1) + quantity;
+    } else {
+      cart.push({ productId, quantity });
+    }
+    const cartData = JSON.stringify(cart);
+    await query(`
+      IF EXISTS (SELECT 1 FROM user_cart WHERE user_id = $1)
+      BEGIN
+        UPDATE user_cart SET cart_data = $2, updated_at = CURRENT_TIMESTAMP WHERE user_id = $1
+      END
+      ELSE
+      BEGIN
+        INSERT INTO user_cart (user_id, cart_data) VALUES ($1, $2)
+      END
+    `, [userId, cartData]);
+    res.json({ success: true, cart });
+  } catch (error) {
+    console.error('Cart ADD error:', error);
     res.status(500).json({ error: error.message });
   }
 });

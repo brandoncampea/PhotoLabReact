@@ -1,6 +1,7 @@
 import express from 'express';
 import crypto from 'crypto';
-import { queryRow, queryRows, query, columnExists } from '../mssql.mjs';
+import mssql from '../mssql.cjs';
+const { queryRow, queryRows, query, columnExists } = mssql;
 import { authRequired } from '../middleware/auth.js';
 import { uploadImageBufferToAzure } from '../services/azureStorage.js';
 

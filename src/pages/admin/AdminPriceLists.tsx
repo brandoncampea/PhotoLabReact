@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { studioService, Studio } from '../../services/studioService';
 import { PriceList, Package, PriceListProductSize } from '../../types';
 import { priceListAdminService } from '../../services/priceListAdminService';
 import { packageService } from '../../services/packageService';
@@ -46,6 +47,13 @@ const AdminPriceLists: React.FC = () => {
   // Form states
   const [newListName, setNewListName] = useState('');
   const [newListDesc, setNewListDesc] = useState('');
+  const [studios, setStudios] = useState<Studio[]>([]);
+  const [newListStudioId, setNewListStudioId] = useState<number|null>(null);
+    useEffect(() => {
+      if (isSuperAdmin) {
+        studioService.getAll().then(setStudios).catch(() => setStudios([]));
+      }
+    }, [isSuperAdmin]);
   
   // Import states
   const [importFile, setImportFile] = useState<File | null>(null);
@@ -106,10 +114,12 @@ const AdminPriceLists: React.FC = () => {
         name: newListName,
         description: newListDesc,
         products: [],
+        studioId: newListStudioId ?? null,
       });
       setPriceLists([...priceLists, newList]);
       setNewListName('');
       setNewListDesc('');
+      setNewListStudioId(null);
       setShowCreateForm(false);
     } catch (error) {
       console.error('Failed to create price list:', error);
@@ -608,6 +618,22 @@ const AdminPriceLists: React.FC = () => {
                   rows={3}
                 />
               </div>
+              <div className="form-group">
+                <label>Studio</label>
+                <select
+                  value={newListStudioId === null ? '' : newListStudioId}
+                  onChange={e => setNewListStudioId(e.target.value === '' ? null : Number(e.target.value))}
+                  required={false}
+                >
+                  <option value="">Global (All Studios)</option>
+                  {studios.map(studio => (
+                    <option key={studio.id} value={studio.id}>{studio.name}</option>
+                  ))}
+                </select>
+                <div className="muted-text" style={{ fontSize: '0.85rem' }}>
+                  If you select a studio, only that studio can use this price list. Leave as Global to make available to all studios.
+                </div>
+              </div>
               <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
                 <button type="button" onClick={() => setShowCreateForm(false)} className="btn btn-secondary">
                   Cancel
@@ -915,51 +941,62 @@ const AdminPriceLists: React.FC = () => {
 
       {/* Price Lists Grid */}
       <div className="selection-grid">
-        {priceLists.map(priceList => (
-          <div
-            key={priceList.id}
-            className={`selection-card ${selectedPriceList?.id === priceList.id ? 'active' : ''}`}
-            onClick={() => handleSelectPriceList(priceList.id)}
-          >
-            <h3 className="selection-card-title">{priceList.name}</h3>
-            <p className="muted-text" style={{ fontSize: '0.9rem', margin: '0.5rem 0' }}>
-              {priceList.description || 'No description'}
-            </p>
-            <p className="muted-text" style={{ fontSize: '0.85rem', margin: '0.5rem 0' }}>
-              {(typeof priceList.productCount === 'number'
-                ? priceList.productCount
-                : (Array.isArray(priceList.products) ? priceList.products.length : 0))} product(s)
-            </p>
-            {priceList.isDefault && (
-              <span className="status-badge status-active" style={{ marginTop: '0.25rem', display: 'inline-block' }}>
-                Default
-              </span>
-            )}
-            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
-              <button
-                onClick={e => {
-                  e.stopPropagation();
-                  handleSetDefault(priceList.id);
-                }}
-                className="btn btn-sm"
-                style={{ flex: 1, padding: '0.5rem', fontSize: '0.85rem' }}
-                disabled={priceList.isDefault}
-              >
-                {priceList.isDefault ? 'Default' : 'Set Default'}
-              </button>
-              <button
-                onClick={e => {
-                  e.stopPropagation();
-                  handleDeletePriceList(priceList.id);
-                }}
-                className="btn btn-sm"
-                style={{ flex: 1, padding: '0.5rem', fontSize: '0.85rem' }}
-              >
-                Delete
-              </button>
+        {priceLists.map(priceList => {
+          let studioName = 'Global';
+          if ((priceList as any).studioId) {
+            const studio = studios.find(s => s.id === (priceList as any).studioId);
+            if (studio) studioName = studio.name;
+            else studioName = `Studio #${(priceList as any).studioId}`;
+          }
+          return (
+            <div
+              key={priceList.id}
+              className={`selection-card ${selectedPriceList?.id === priceList.id ? 'active' : ''}`}
+              onClick={() => handleSelectPriceList(priceList.id)}
+            >
+              <h3 className="selection-card-title">{priceList.name}</h3>
+              <p className="muted-text" style={{ fontSize: '0.9rem', margin: '0.5rem 0' }}>
+                {priceList.description || 'No description'}
+              </p>
+              <p className="muted-text" style={{ fontSize: '0.85rem', margin: '0.5rem 0' }}>
+                {(typeof priceList.productCount === 'number'
+                  ? priceList.productCount
+                  : (Array.isArray(priceList.products) ? priceList.products.length : 0))} product(s)
+              </p>
+              <p className="muted-text" style={{ fontSize: '0.85rem', margin: '0.5rem 0' }}>
+                <strong>Studio:</strong> {studioName}
+              </p>
+              {priceList.isDefault && (
+                <span className="status-badge status-active" style={{ marginTop: '0.25rem', display: 'inline-block' }}>
+                  Default
+                </span>
+              )}
+              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
+                <button
+                  onClick={e => {
+                    e.stopPropagation();
+                    handleSetDefault(priceList.id);
+                  }}
+                  className="btn btn-sm"
+                  style={{ flex: 1, padding: '0.5rem', fontSize: '0.85rem' }}
+                  disabled={priceList.isDefault}
+                >
+                  {priceList.isDefault ? 'Default' : 'Set Default'}
+                </button>
+                <button
+                  onClick={e => {
+                    e.stopPropagation();
+                    handleDeletePriceList(priceList.id);
+                  }}
+                  className="btn btn-sm"
+                  style={{ flex: 1, padding: '0.5rem', fontSize: '0.85rem' }}
+                >
+                  Delete
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Details Panel */}

@@ -1,3 +1,4 @@
+import AdminLayout from '../../components/AdminLayout';
 
 import React, { useState, useEffect } from 'react';
 import { shippingService } from '../../services/shippingService';
@@ -49,50 +50,52 @@ const AdminShipping: React.FC = () => {
   };
 
   return (
-    <div className="admin-form">
-      <h1>Admin Shipping Settings</h1>
-      {loading ? (
-        <div>Loading...</div>
-      ) : (
-        <form className="form" onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label htmlFor="batchDeadline">Batch Deadline</label>
-            <input
-              id="batchDeadline"
-              type="datetime-local"
-              className="input"
-              value={batchDeadline}
-              onChange={e => setBatchDeadline(e.target.value)}
-              required
-            />
-          </div>
-          <div className="form-group">
-            <label htmlFor="directShippingCharge">Direct Shipping Charge ($)</label>
-            <input
-              id="directShippingCharge"
-              type="number"
-              className="input"
-              value={directShippingCharge}
-              onChange={e => setDirectShippingCharge(e.target.value)}
-              min="0"
-              step="0.01"
-              required
-            />
-          </div>
-          <div className="form-group">
-            <label htmlFor="isActive">Batch Shipping Active</label>
-            <input
-              id="isActive"
-              type="checkbox"
-              checked={isActive}
-              onChange={e => setIsActive(e.target.checked)}
-            />
-          </div>
-          <button type="submit" className="btn btn-primary">Save Settings</button>
-        </form>
-      )}
-      {message && <div className="success-message">{message}</div>}
-    </div>
+    <AdminLayout>
+      <div className="admin-form">
+        <h1>Admin Shipping Settings</h1>
+        {loading ? (
+          <div>Loading...</div>
+        ) : (
+          <form className="form" onSubmit={handleSubmit}>
+            <div className="form-group">
+              <label htmlFor="batchDeadline">Batch Deadline</label>
+              <input
+                id="batchDeadline"
+                type="datetime-local"
+                className="input"
+                value={batchDeadline}
+                onChange={e => setBatchDeadline(e.target.value)}
+                required
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="directShippingCharge">Direct Shipping Charge ($)</label>
+              <input
+                id="directShippingCharge"
+                type="number"
+                className="input"
+                value={directShippingCharge}
+                onChange={e => setDirectShippingCharge(e.target.value)}
+                min="0"
+                step="0.01"
+                required
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="isActive">Batch Shipping Active</label>
+              <input
+                id="isActive"
+                type="checkbox"
+                checked={isActive}
+                onChange={e => setIsActive(e.target.checked)}
+              />
+            </div>
+            <button type="submit" className="btn btn-primary">Save Settings</button>
+          </form>
+        )}
+        {message && <div className="success-message">{message}</div>}
+      </div>
+    </AdminLayout>
   );
 };
 

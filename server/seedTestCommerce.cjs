@@ -1,7 +1,7 @@
-import bcrypt from 'bcryptjs';
-import Stripe from 'stripe';
+const bcrypt = require('bcryptjs');
+const Stripe = require('stripe');
 const { queryRow, query, queryRows, columnExists, tableExists } = require('./mssql.cjs');
-import orderReceiptService from './services/orderReceiptService.js';
+const orderReceiptService = require('./services/orderReceiptService.js');
 
 const TEST_PASSWORD = 'Test1234!';
 const PLAYWRIGHT_TEST_USER_EMAIL = 'playwright@example.com';
@@ -422,10 +422,10 @@ const ensureStudio = async (index, subscriptionPlan) => {
   let studio = await queryRow('SELECT TOP 1 id FROM studios WHERE email = $1', [email]);
   if (!studio) {
     studio = await queryRow(
-      `INSERT INTO studios (name, email, subscription_plan, subscription_status, subscription_start, subscription_end, is_free_subscription, created_at)
-       VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, DATEADD(month, 1, CURRENT_TIMESTAMP), $5, CURRENT_TIMESTAMP)
+      `INSERT INTO studios (name, email, subscription_plan, subscription_status, subscription_start, subscription_end, is_free_subscription, created_at, public_slug)
+       VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, DATEADD(month, 1, CURRENT_TIMESTAMP), $5, CURRENT_TIMESTAMP, $6)
        RETURNING id`,
-      [name, email, subscriptionPlan, 'active', 0]
+      [name, email, subscriptionPlan, 'active', 0, name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')]
     );
   } else {
     await query(
@@ -788,27 +788,11 @@ const main = async () => {
   }
 
   const stripe = await ensureStripeClient();
+  // Ensure Playwright test user exists
   await ensurePlaywrightTestUser();
   const subscriptionPlans = await getSeedSubscriptionPlans();
-
-  // Create a global price list (studio_id = NULL)
-  const globalPriceListId = await ensureDefaultPriceList();
-  const allPriceListIds = [globalPriceListId];
-  const studioPriceListIds = [];
-  const studios = [];
-  for (let i = 1; i <= STUDIO_COUNT; i += 1) {
-    const studioPlan = subscriptionPlans[(i - 1) % subscriptionPlans.length];
-    const studio = await ensureStudio(i, studioPlan);
-    studios.push(studio);
-    const studioPriceList = await queryRow(
-      `INSERT INTO price_lists (name, description, is_default, created_at, studio_id)
-       VALUES ($1, $2, $3, CURRENT_TIMESTAMP, $4)
-       RETURNING id`,
-      [`Studio ${i} Price List`, `Auto-created for studio ${studio.name}`, 1, studio.id]
-    );
-    studioPriceListIds.push(Number(studioPriceList.id));
-    allPriceListIds.push(Number(studioPriceList.id));
-  }
+  const priceListId = await ensureDefaultPriceList();
+  const allPriceListIds = await getAllPriceListIds(priceListId);
   const markupResults = [];
   for (const listId of allPriceListIds) {
     const result = await enforceStudioMarkupForPriceList(listId);
@@ -822,14 +806,15 @@ const main = async () => {
     }),
     { updated: 0, skipped: 0, total: 0 }
   );
+  // Ensure Playwright test user exists
+  await ensurePlaywrightTestUser();
 
-  // Use the first studio's price list for fallback product/size
-  const fallbackProductChoice = await ensureSeedProductAndSize(studioPriceListIds[0] || globalPriceListId);
+  const fallbackProductChoice = await ensureSeedProductAndSize(priceListId);
   const repairResult = await repairSeedOrderItemProductReferences({
     fallbackProductChoice,
-    defaultPriceListId: globalPriceListId,
+    defaultPriceListId: priceListId,
   });
-  const orderProductCatalog = await buildOrderProductCatalog(globalPriceListId, fallbackProductChoice);
+  const orderProductCatalog = await buildOrderProductCatalog(priceListId, fallbackProductChoice);
 
   if (!orderProductCatalog.length) {
     throw new Error('No seedable products were found for order creation');
@@ -851,8 +836,8 @@ const main = async () => {
   );
 
   for (let i = 1; i <= STUDIO_COUNT; i += 1) {
-    const studio = studios[i - 1];
-    const studioPriceListId = studioPriceListIds[i - 1];
+    const studioPlan = subscriptionPlans[(i - 1) % subscriptionPlans.length];
+    const studio = await ensureStudio(i, studioPlan);
 
     const studioAdminId = await ensureUser({
       email: `seed-studio-admin-${i}@example.com`,
@@ -870,10 +855,10 @@ const main = async () => {
       studioId: studio.id,
     });
 
-    const photoIds = await ensureAlbumsAndPhotos(studio.id, studioPriceListId, i);
+    const photoIds = await ensureAlbumsAndPhotos(studio.id, priceListId, i);
     const overrideMarkupResult = await enforceStudioOverrideMarkupForStudio({
       studioId: studio.id,
-      priceListId: studioPriceListId,
+      priceListId,
     });
 
     const purchases = [];

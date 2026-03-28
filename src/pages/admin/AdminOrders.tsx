@@ -1,7 +1,9 @@
 
+
 import React, { useEffect, useState } from 'react';
 import { Order } from '../../types';
-import axios from 'axios';
+import { orderService } from '../../services/orderService';
+import AdminLayout from '../../components/AdminLayout';
 
 const AdminOrders: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -11,8 +13,8 @@ const AdminOrders: React.FC = () => {
     const fetchOrders = async () => {
       setLoading(true);
       try {
-        const res = await axios.get('/api/orders');
-        setOrders(res.data || []);
+        const data = await orderService.getAdminOrders();
+        setOrders(data || []);
       } catch (e) {
         // handle error
       } finally {
@@ -22,8 +24,9 @@ const AdminOrders: React.FC = () => {
     fetchOrders();
   }, []);
 
-  return (
-    <div className="admin-page dark-bg" style={{ minHeight: '100vh', padding: '2rem' }}>
+    return (
+      <AdminLayout>
+        <div className="admin-page dark-bg" style={{ minHeight: '100vh', padding: '2rem' }}>
       <div className="page-header">
         <h1>Orders</h1>
       </div>
@@ -60,6 +63,7 @@ const AdminOrders: React.FC = () => {
         )}
       </div>
     </div>
+      </AdminLayout>
   );
 };
 

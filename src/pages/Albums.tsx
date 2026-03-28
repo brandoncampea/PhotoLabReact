@@ -61,7 +61,7 @@ const Albums: React.FC = () => {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`/api/albums?studioSlug=${encodeURIComponent(studioSlug)}`);
+      const res = await fetch(`/api/albums/public?studioSlug=${encodeURIComponent(studioSlug)}`);
       if (!res.ok) throw new Error('Failed to load albums');
       const data = await res.json();
       setAlbums(data);

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSasUrl } from '../../hooks/useSasUrl';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Photo, Album, PhotoMetadata } from '../../types';
 import { photoService } from '../../services/photoService';
@@ -76,6 +77,8 @@ const AdminPhotos: React.FC = () => {
       setAlbums(data);
     } catch (error) {
       console.error('Failed to load albums:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -91,9 +94,9 @@ const AdminPhotos: React.FC = () => {
     }
   };
 
+  // Upload files handler (moved from loadPhotos)
   const uploadFiles = async (files: File[]) => {
-    if (files.length === 0 || !albumId) return;
-
+    // Clean up previous previews
     uploadItems.forEach((item) => URL.revokeObjectURL(item.previewUrl));
 
     const items: UploadItem[] = files.map((file, idx) => ({
@@ -107,11 +110,8 @@ const AdminPhotos: React.FC = () => {
     setUploadItems(items);
     setUploading(true);
     try {
-      // Extract metadata from each file
-      // Metadata extraction is currently unused
-      
-      // Descriptions currently unused; we pass files only
-      await photoService.uploadPhotos(albumId, files);
+      // Extract metadata from each file (currently unused)
+      await photoService.uploadPhotos(albumId ?? 0, files);
       loadPhotos();
       loadAlbums(); // Reload albums to update photo count
     } catch (error) {
@@ -196,16 +196,11 @@ const AdminPhotos: React.FC = () => {
     }
   };
 
-  const handleAlbumChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const newAlbumId = e.target.value;
-    setShowUploadPanel(true);
-    navigate(`/admin/photos?album=${newAlbumId}`);
-  };
-
-  const getMetadataForDisplay = (photo: Photo): Record<string, string> => {
-    const rawMetadata = photo.metadata;
+  const handleAlbumChange = () => {
     let parsedMetadata: Record<string, any> = {};
 
+    let rawMetadata: any = null;
+    let photo: any = null;
     if (typeof rawMetadata === 'string') {
       try {
         parsedMetadata = JSON.parse(rawMetadata);
@@ -409,10 +404,20 @@ const AdminPhotos: React.FC = () => {
         </div>
       )}
 
-      <div className="photos-grid">
+      <div className="photos-grid" style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))',
+        gap: '2rem',
+        marginTop: '2rem',
+        justifyItems: 'center',
+      }}>
         {photos.map((photo) => (
           <div key={photo.id} className="admin-photo-card">
-            <img src={photo.thumbnailUrl} alt={photo.fileName} />
+            <div style={{ cursor: 'pointer' }}
+                 onClick={() => window.open(photo.fullImageUrl || photo.thumbnailUrl, '_blank')}
+                 title="Click to view full size">
+              <PhotoSasThumbnail src={photo.thumbnailUrl} alt={photo.fileName} />
+            </div>
             <div className="photo-info">
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
                 <p className="photo-filename" style={{ margin: 0 }}>{photo.fileName}</p>
@@ -466,7 +471,7 @@ const AdminPhotos: React.FC = () => {
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(0, 0, 0, 0.55)',
+            background: 'rgba(30, 32, 48, 0.92)', // solid dark background
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -516,5 +521,48 @@ const AdminPhotos: React.FC = () => {
     </>
   );
 };
+
+// Helper component for SAS-protected photo thumbnails
+function PhotoSasThumbnail({ src, alt }: { src: string, alt: string }) {
+  const isBlobName = src && !src.startsWith('/') && !src.startsWith('http');
+  const sasUrl = isBlobName ? useSasUrl(src) : null;
+  return (
+    <img
+      src={isBlobName ? (sasUrl || '') : src}
+      alt={alt}
+      style={{
+        width: 360,
+        height: 360,
+        objectFit: 'cover',
+        borderRadius: 8,
+        background: '#222',
+        display: 'block',
+      }}
+    />
+  );
+}
+
+// Helper to format photo metadata for display
+function getMetadataForDisplay(photo: Photo | null): Record<string, string | number> {
+  if (!photo) return {};
+  const metadata: Record<string, string | number> = {
+    'File Name': photo.fileName || 'N/A',
+    'Photo ID': photo.id,
+  };
+  if (photo.width && photo.height) {
+    metadata['Dimensions'] = `${photo.width} × ${photo.height}`;
+  }
+  if ((photo as any).aspectRatio) {
+    metadata['Aspect Ratio'] = (photo as any).aspectRatio;
+  }
+  if ((photo as any).orientation) {
+    metadata['Orientation'] = (photo as any).orientation;
+  }
+  if ((photo as any).megapixels) {
+    metadata['Megapixels'] = (photo as any).megapixels;
+  }
+  // Add more fields as needed
+  return metadata;
+}
 
 export default AdminPhotos;

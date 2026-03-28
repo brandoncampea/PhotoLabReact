@@ -1,7 +1,8 @@
 import express from 'express';
 import multer from 'multer';
 import path from 'path';
-import { queryRow, queryRows, query } from '../mssql.mjs';
+import mssql from '../mssql.cjs';
+const { queryRow, queryRows, query } = mssql;
 import csv from 'csv-parser';
 import sharp from 'sharp';
 import { uploadImageBufferToAzure, deleteBlobByUrl, downloadBlob } from '../services/azureStorage.js';
@@ -11,11 +12,13 @@ const router = express.Router();
 const getPhotoAssetUrl = (photoId, variant = 'full') => `/api/photos/${photoId}/asset?variant=${variant}`;
 const getProxySourceUrl = (source) => `/api/photos/proxy?source=${encodeURIComponent(source)}`;
 
-const signPhotoForResponse = (photo) => ({
-  ...photo,
-  thumbnailUrl: photo?.id ? getPhotoAssetUrl(photo.id, 'thumbnail') : photo?.thumbnailUrl,
-  fullImageUrl: photo?.id ? getPhotoAssetUrl(photo.id, 'full') : photo?.fullImageUrl,
-});
+// Removed duplicate declaration. Only the updated signPhotoForResponse remains below.
+  const signPhotoForResponse = (photo) => ({
+    ...photo,
+    // Always return the direct Azure blob URLs for frontend use
+    thumbnailUrl: photo?.thumbnailUrl,
+    fullImageUrl: photo?.fullImageUrl,
+  });
 
 async function pipeAssetToResponse(source, res) {
   try {

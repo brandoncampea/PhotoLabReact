@@ -1,5 +1,10 @@
+function PhotoSasThumbnail({ src, alt }: { src: string, alt: string }) {
+  const sasUrl = useSasUrl(src);
+  return <img src={sasUrl || ''} alt={alt} style={{ width: '56px', height: '56px', objectFit: 'cover', borderRadius: '6px', border: '1px solid var(--border-color)' }} />;
+}
 
 import React, { useEffect, useState } from 'react';
+import { useSasUrl } from '../hooks/useSasUrl';
 import AdminLayout from '../components/AdminLayout';
 import { useAuth } from '../contexts/AuthContext';
 import { Order, DashboardStats } from '../types/index';
@@ -632,8 +637,11 @@ const SuperAdminDashboard: React.FC = () => {
                               <tr key={row.photoId}>
                                 <td>
                                   {row.thumbnailUrl ? (
-                                    <img src={row.thumbnailUrl} alt={row.fileName} style={{ width: '56px', height: '56px', objectFit: 'cover', borderRadius: '6px', border: '1px solid var(--border-color)' }} />
+                                    <PhotoSasThumbnail src={row.thumbnailUrl} alt={row.fileName} />
                                   ) : '—'}
+
+                                
+                                // Helper component for SAS-protected photo thumbnails
                                 </td>
                                 <td>{row.fileName}</td>
                                 <td>{row.orderCount}</td>

@@ -1,8 +1,48 @@
 import express from 'express';
-import { queryRow, queryRows, query } from '../mssql.mjs';
+import mssql from '../mssql.cjs';
+const { queryRow, queryRows, query } = mssql;
 import { requireActiveSubscription } from '../middleware/subscription.js';
 import { enforceAlbumQuotaForStudio } from '../middleware/subscription.js';
+import { authRequired } from '../middleware/auth.js';
 const router = express.Router();
+
+// Public: Get albums by studioSlug (for customer view)
+router.get('/public', async (req, res) => {
+  try {
+    const { studioSlug } = req.query;
+    if (!studioSlug) {
+      return res.status(400).json({ error: 'studioSlug is required' });
+    }
+    // Find studio by public_slug
+    const studio = await queryRow('SELECT id FROM studios WHERE public_slug = $1', [studioSlug]);
+    if (!studio) {
+      return res.status(404).json({ error: 'Studio not found' });
+    }
+    // Only return albums that are not deleted and are public (add more filters if needed)
+    const albums = await queryRows(`
+      SELECT 
+        a.id,
+        COALESCE(a.name, a.title) as name,
+        a.description,
+        a.cover_image_url as coverImageUrl,
+        a.cover_photo_id as coverPhotoId,
+        a.photo_count as photoCount,
+        a.category,
+        a.price_list_id as priceListId,
+        a.is_password_protected as isPasswordProtected,
+        a.password,
+        a.password_hint as passwordHint,
+        a.created_at as createdDate
+      FROM albums a
+      WHERE a.studio_id = $1
+      ORDER BY a.created_at DESC
+    `, [studio.id]);
+    const albumsWithPreviews = await addAlbumPreviewImages(albums);
+    res.json(albumsWithPreviews.map(signAlbumForResponse));
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 const signAlbumForResponse = (album) => ({
   ...album,
@@ -52,40 +92,60 @@ const addAlbumPreviewImages = async (albums) => {
   }));
 };
 
-// Get all albums
-router.get('/', async (req, res) => {
+// Get all albums (auth required)
+router.get('/', authRequired, async (req, res) => {
   try {
-    const studioSlug = String(req.query.studioSlug || '').trim().toLowerCase();
-    const hasStudioSlugColumn = studioSlug ? await queryRow(
-      `SELECT TOP 1 1 as existsFlag
-       FROM sys.columns c
-       INNER JOIN sys.tables t ON t.object_id = c.object_id
-       WHERE t.name = 'studios' AND c.name = 'public_slug'`
-    ) : { existsFlag: 1 };
-
-    if (studioSlug && !hasStudioSlugColumn) {
+    console.log('ALBUMS ROUTE: headers:', req.headers);
+    const user = req.user;
+    console.log('ALBUMS ROUTE: user:', user);
+    let albums;
+    const studioId = user?.studio_id;
+    if (studioId) {
+      // If studioId is present (even for super_admin), filter by studio
+      console.log('ALBUMS ROUTE: Filtering by studioId:', studioId);
+      albums = await queryRows(`
+        SELECT 
+          a.id,
+          COALESCE(a.name, a.title) as name,
+          a.description,
+          a.cover_image_url as coverImageUrl,
+          a.cover_photo_id as coverPhotoId,
+          a.photo_count as photoCount,
+          a.category,
+          a.price_list_id as priceListId,
+          a.is_password_protected as isPasswordProtected,
+          a.password,
+          a.password_hint as passwordHint,
+          a.created_at as createdDate
+        FROM albums a
+        WHERE a.studio_id = $1
+        ORDER BY a.created_at DESC
+      `, [studioId]);
+    } else if (user?.role === 'super_admin') {
+      // Only show all albums if super_admin and no studioId
+      console.log('ALBUMS ROUTE: super_admin, no studioId, returning all albums');
+      albums = await queryRows(`
+        SELECT 
+          a.id,
+          COALESCE(a.name, a.title) as name,
+          a.description,
+          a.cover_image_url as coverImageUrl,
+          a.cover_photo_id as coverPhotoId,
+          a.photo_count as photoCount,
+          a.category,
+          a.price_list_id as priceListId,
+          a.is_password_protected as isPasswordProtected,
+          a.password,
+          a.password_hint as passwordHint,
+          a.created_at as createdDate
+        FROM albums a
+        ORDER BY a.created_at DESC
+      `);
+    } else {
+      // No studioId and not super_admin
+      console.log('ALBUMS ROUTE: No studioId and not super_admin, returning empty array');
       return res.json([]);
     }
-
-    const albums = await queryRows(`
-      SELECT 
-        a.id,
-        COALESCE(a.name, a.title) as name,
-        a.description,
-        a.cover_image_url as coverImageUrl,
-        a.cover_photo_id as coverPhotoId,
-        a.photo_count as photoCount,
-        a.category,
-        a.price_list_id as priceListId,
-        a.is_password_protected as isPasswordProtected,
-        a.password,
-        a.password_hint as passwordHint,
-        a.created_at as createdDate
-      FROM albums a
-      LEFT JOIN studios s ON s.id = a.studio_id
-      WHERE ($1 = '' OR LOWER(COALESCE(s.public_slug, '')) = $1)
-      ORDER BY a.created_at DESC
-    `, [studioSlug]);
     const albumsWithPreviews = await addAlbumPreviewImages(albums);
     res.json(albumsWithPreviews.map(signAlbumForResponse));
   } catch (error) {

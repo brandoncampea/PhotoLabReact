@@ -1,7 +1,9 @@
-import { queryRow, transaction } from './mssql.js';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const { queryRow, transaction } = require('./mssql.cjs');
 
 const seed = async () => {
-  const countRow = await queryRow('SELECT COUNT(*)::int as c FROM products');
+  const countRow = await queryRow('SELECT CAST(COUNT(*) AS INT) as c FROM products');
   const count = Number(countRow?.c || 0);
   if (count > 0) {
     console.log(`Products already exist (${count}); skipping seed.`);

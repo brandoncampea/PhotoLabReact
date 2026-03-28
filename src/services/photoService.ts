@@ -101,5 +101,10 @@ export const photoService = {
   }> {
     const response = await api.get(`/photos/${photoId}/recommendations`);
     return normalizeRecommendations(response.data);
+    },
+
+    async getPhotoAspectRatio(photoId: number): Promise<{ aspectRatio: number }> {
+      const response = await api.get<{ aspectRatio: number }>(`/photos/${photoId}/aspect-ratio`);
+      return response.data;
   },
 };

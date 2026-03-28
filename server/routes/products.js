@@ -1,5 +1,7 @@
+
 import express from 'express';
-import { queryRow, queryRows, query } from '../mssql.mjs';
+import mssql from '../mssql.cjs';
+const { queryRow, queryRows, query } = mssql;
 import { adminRequired } from '../middleware/auth.js';
 import { requireActiveSubscription } from '../middleware/subscription.js';
 const router = express.Router();
@@ -17,7 +19,6 @@ const decodeSizeName = (storedName) => {
     const height = Number(matched[3]) || 0;
     return { name: matched[1].trim() || raw, width, height };
   }
-
   const [namePart, dimensionPart] = raw.split(SIZE_DIMENSION_DELIMITER);
   const [widthPart, heightPart] = String(dimensionPart || '').split('x');
   return {
@@ -52,6 +53,198 @@ const mapLegacyProducts = (products) => {
     };
   });
 };
+
+// Get all products (studio-specific, super admin sees all)
+router.get('/', async (req, res) => {
+  try {
+    const user = req.user;
+    let products;
+    if (user?.role === 'super_admin') {
+      products = await queryRows('SELECT * FROM products ORDER BY order_index ASC, category, name');
+    } else {
+      const studioId = user?.studio_id;
+      if (!studioId) {
+        return res.json([]); // No studio context, return nothing
+      }
+      products = await queryRows(
+        'SELECT * FROM products WHERE studio_id = $1 ORDER BY order_index ASC, category, name',
+        [studioId]
+      );
+    }
+    const parsedProducts = mapLegacyProducts(products);
+    res.json(parsedProducts);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update product order (admin only)
+router.put('/order', adminRequired, requireActiveSubscription, async (req, res) => {
+  try {
+    const { order } = req.body; // [{id: 1, orderIndex: 0}, ...]
+    if (!Array.isArray(order)) {
+      return res.status(400).json({ error: 'Invalid order payload' });
+    }
+    const updatePromises = order.map(({ id, orderIndex }) =>
+      query(
+        'UPDATE products SET order_index = $1 WHERE id = $2',
+        [orderIndex, id]
+      )
+    );
+    await Promise.all(updatePromises);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get active products (studio-specific, super admin sees all)
+router.get('/active', async (req, res) => {
+  try {
+    const user = req.user;
+    let studioId = user?.studio_id;
+    const albumId = Number(req.query.albumId);
+    if (Number.isInteger(albumId) && albumId > 0) {
+      // Only allow super admin to see any album, others only their own
+      const album = await queryRow(
+        user?.role === 'super_admin'
+          ? `SELECT id, price_list_id as priceListId, studio_id as studioId FROM albums WHERE id = $1`
+          : `SELECT id, price_list_id as priceListId, studio_id as studioId FROM albums WHERE id = $1 AND studio_id = $2`,
+        user?.role === 'super_admin' ? [albumId] : [albumId, studioId]
+      );
+      let priceListId = album?.priceListId;
+      // If no priceListId, use studio's default/only price list, or a global price list
+      if (!priceListId && album?.studioId) {
+        // Try studio-specific price lists first
+        let studioPriceLists = await queryRows(
+          `SELECT id, is_default FROM price_lists WHERE studio_id = $1 ORDER BY is_default DESC, id ASC`,
+          [album.studioId]
+        );
+        // If none, try global price lists (studio_id IS NULL)
+        if (studioPriceLists.length === 0) {
+          studioPriceLists = await queryRows(
+            `SELECT id, is_default FROM price_lists WHERE studio_id IS NULL ORDER BY is_default DESC, id ASC`
+          );
+        }
+        if (studioPriceLists.length === 1) {
+          priceListId = studioPriceLists[0].id;
+        } else if (studioPriceLists.length > 1) {
+          const defaultPL = studioPriceLists.find(pl => pl.is_default);
+          priceListId = defaultPL ? defaultPL.id : studioPriceLists[0].id;
+        }
+      }
+      if (priceListId) {
+        const products = await queryRows(
+          user?.role === 'super_admin'
+            ? `SELECT DISTINCT p.id, p.name, p.category, p.price, p.description, p.options
+                 FROM products p
+                 INNER JOIN price_list_products plp ON plp.product_id = p.id
+                 WHERE plp.price_list_id = $1
+                 ORDER BY p.category, p.name`
+            : `SELECT DISTINCT p.id, p.name, p.category, p.price, p.description, p.options
+                 FROM products p
+                 INNER JOIN price_list_products plp ON plp.product_id = p.id
+                 WHERE plp.price_list_id = $1
+                   AND p.studio_id = $2
+                   AND (
+                     $3 IS NULL
+                     OR NOT EXISTS (
+                       SELECT 1
+                       FROM studio_price_list_offerings spo
+                       WHERE spo.studio_id = $3
+                         AND spo.price_list_id = plp.price_list_id
+                         AND spo.product_id = p.id
+                         AND spo.is_offered = 0
+                     )
+                   )
+                 ORDER BY p.category, p.name`,
+          user?.role === 'super_admin'
+            ? [priceListId]
+            : [priceListId, studioId, studioId]
+        );
+        const productSizes = await queryRows(
+          user?.role === 'super_admin'
+            ? `SELECT ps.id, ps.product_id as productId, ps.size_name as sizeName, ps.price, ps.cost
+                 FROM product_sizes ps
+                 WHERE ps.price_list_id = $1`
+            : `SELECT ps.id, ps.product_id as productId, ps.size_name as sizeName, COALESCE(spsso.price, ps.price) as price, ps.cost
+                 FROM product_sizes ps
+                 LEFT JOIN studio_price_list_size_overrides spsso
+                   ON spsso.product_size_id = ps.id
+                  AND spsso.price_list_id = ps.price_list_id
+                  AND spsso.studio_id = $2
+                 WHERE ps.price_list_id = $1
+                   AND (
+                     $2 IS NULL
+                     OR COALESCE(spsso.is_offered, 1) = 1
+                   )`,
+          user?.role === 'super_admin'
+            ? [priceListId]
+            : [priceListId, studioId]
+        );
+        const parsedProducts = products.map((product) => {
+          const options = product.options ? JSON.parse(product.options) : null;
+          const sizes = productSizes
+            .filter((size) => Number(size.productId) === Number(product.id))
+            .map((size) => {
+              const decoded = decodeSizeName(size.sizeName);
+              return {
+                id: Number(size.id),
+                name: decoded.name,
+                width: decoded.width,
+                height: decoded.height,
+                price: Number(size.price) || 0,
+                cost: Number(size.cost) || 0,
+              };
+            });
+          return {
+            id: product.id,
+            name: product.name,
+            category: product.category,
+            price: product.price,
+            description: product.description,
+            sizes,
+            isActive: options?.isActive !== undefined ? !!options.isActive : true,
+            popularity: Number(options?.popularity) || 0,
+            isDigital: !!options?.isDigital,
+          };
+        });
+        return res.json(parsedProducts.filter((product) => product.isActive !== false));
+      }
+    }
+    // Fallback: only return products for this studio, or all for super admin
+    let products;
+    if (user?.role === 'super_admin') {
+      products = await queryRows('SELECT * FROM products ORDER BY order_index ASC, category, name');
+    } else {
+      if (!studioId) {
+        return res.json([]);
+      }
+      products = await queryRows('SELECT * FROM products WHERE studio_id = $1 ORDER BY order_index ASC, category, name', [studioId]);
+    }
+    const parsedProducts = mapLegacyProducts(products);
+    res.json(parsedProducts.filter((p) => p.isActive !== false));
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Create product (requires active subscription)
+router.post('/', adminRequired, requireActiveSubscription, async (req, res) => {
+  try {
+    const { name, category, price, description, options } = req.body;
+    const result = await queryRow(`
+      INSERT INTO products (name, category, price, description, options)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING id
+    `, [name, category, price, description, options ? JSON.stringify(options) : null]);
+    const product = await queryRow('SELECT * FROM products WHERE id = $1', [result.id]);
+    res.status(201).json(product);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 
 // Get all products
 router.get('/', async (req, res) => {

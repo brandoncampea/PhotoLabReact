@@ -1,6 +1,7 @@
 import express from 'express';
 import multer from 'multer';
-import { queryRow, queryRows, query, tableExists, columnExists } from '../mssql.mjs';
+import mssql from '../mssql.cjs';
+const { queryRow, queryRows, query, tableExists, columnExists } = mssql;
 import { adminRequired, superAdminRequired } from '../middleware/auth.js';
 import { uploadImageBufferToAzure, deleteBlobByUrl } from '../services/azureStorage.js';
 const router = express.Router();
@@ -106,13 +107,13 @@ router.get('/:id', adminRequired, async (req, res) => {
       columnExists('studio_price_list_size_overrides', 'is_offered'),
     ]);
 
-    // Get products for this price list
+    // Get all products, and mark which are offered in this price list
     const products = await queryRows(`
       SELECT DISTINCT p.id, p.name, p.category, p.price, p.description, p.cost, p.options,
-             ${hasSamplePhotoUrl ? 'p.sample_photo_url' : 'CAST(NULL AS NVARCHAR(MAX))'} as samplePhotoUrl
+             ${hasSamplePhotoUrl ? 'p.sample_photo_url' : 'CAST(NULL AS NVARCHAR(MAX))'} as samplePhotoUrl,
+             CASE WHEN plp.product_id IS NOT NULL THEN 1 ELSE 0 END as isOffered
       FROM products p
-      JOIN price_list_products plp ON p.id = plp.product_id
-      WHERE plp.price_list_id = $1
+      LEFT JOIN price_list_products plp ON p.id = plp.product_id AND plp.price_list_id = $1
     `, [req.params.id]);
 
     // Get product sizes for this price list, including studio-specific price overrides
@@ -155,6 +156,7 @@ router.get('/:id', adminRequired, async (req, res) => {
         isDigital: !!productOptions.isDigital,
         isActive: productOptions.isActive !== undefined ? !!productOptions.isActive : true,
         popularity: Number(productOptions.popularity) || 0,
+        offered: !!product.isOffered,
         sizes: productSizes
           .filter((size) => size.productId === product.id)
           .map((size) => {
@@ -485,8 +487,41 @@ router.delete('/:id/products/:productId/sample-photo', superAdminRequired, async
 router.post('/:id/products', superAdminRequired, async (req, res) => {
   try {
     const priceListId = Number(req.params.id);
-    const { name, description, isDigital, category, basePrice, cost, isActive, popularity } = req.body;
+    const { productId, name, description, isDigital, category, basePrice, cost, isActive, popularity } = req.body;
 
+    // If productId is provided, just link the existing product
+    if (productId) {
+      // Check if already linked
+      const exists = await queryRow(
+        'SELECT 1 FROM price_list_products WHERE price_list_id = $1 AND product_id = $2',
+        [priceListId, productId]
+      );
+      if (!exists) {
+        await query(
+          'INSERT INTO price_list_products (price_list_id, product_id) VALUES ($1, $2)',
+          [priceListId, productId]
+        );
+      }
+      // Return the product info
+      const product = await queryRow('SELECT id, name, description, category, price, cost, options FROM products WHERE id = $1', [productId]);
+      if (!product) return res.status(404).json({ error: 'Product not found' });
+      const productOptions = parseProductOptions(product.options);
+      return res.status(201).json({
+        id: product.id,
+        name: product.name,
+        description: product.description,
+        category: product.category,
+        price: Number(product.price) || 0,
+        cost: Number(product.cost) || 0,
+        samplePhotoUrl: product.sample_photo_url || null,
+        isDigital: !!productOptions.isDigital,
+        isActive: productOptions.isActive !== undefined ? !!productOptions.isActive : true,
+        popularity: Number(productOptions.popularity) || 0,
+        sizes: [],
+      });
+    }
+
+    // Otherwise, create a new product and link it
     if (!name || !String(name).trim()) {
       return res.status(400).json({ error: 'Product name is required' });
     }

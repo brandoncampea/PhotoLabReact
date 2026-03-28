@@ -1,10 +1,25 @@
 import React, { useEffect, useState } from 'react';
+import { useSasUrl } from '../../hooks/useSasUrl';
 import api from '../../services/api';
 import { Album, PriceList } from '../../types';
-// import { albumService } from '../../services/albumService';
 import { categoryService } from '../../services/categoryService';
 import { albumAdminService } from '../../services/albumAdminService';
+import AdminLayout from '../../components/AdminLayout';
 
+// Helper component for SAS-protected album covers
+function AlbumSasCover({ src, alt }: { src: string, alt: string }) {
+  // Only use SAS if src is a blob name, not a full URL or API endpoint
+  const isBlobName = src && !src.startsWith('/') && !src.startsWith('http');
+  const sasUrl = isBlobName ? useSasUrl(src) : null;
+  return (
+    <img
+      src={isBlobName ? (sasUrl || '') : src}
+      alt={alt}
+      className="table-thumbnail"
+      style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 6, background: '#222' }}
+    />
+  );
+}
 
 const AdminAlbums: React.FC = () => {
     // Load albums from API
@@ -43,6 +58,18 @@ const AdminAlbums: React.FC = () => {
     const handleAddCategory = () => {};
     const handleEdit = (album: Album) => {
       setEditingAlbum(album);
+      setFormData({
+        name: album.name || '',
+        description: album.description || '',
+        category: album.category || '',
+        priceListId: album.priceListId,
+        isPasswordProtected: album.isPasswordProtected || false,
+        password: album.password || '',
+        passwordHint: album.passwordHint || '',
+        coverType: '',
+        paperType: '',
+        albumSize: '',
+      });
       setShowModal(true);
     };
     const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); };
@@ -54,18 +81,18 @@ const AdminAlbums: React.FC = () => {
   const [categories, setCategories] = useState<string[]>([]);
   // const [showNewCategory, setShowNewCategory] = useState(false);
   const [newCategory, setNewCategory] = useState('');
-  // const [formData, setFormData] = useState({
-  //   name: '',
-  //   description: '',
-  //   category: '',
-  //   priceListId: undefined as number | undefined,
-  //   isPasswordProtected: false,
-  //   password: '',
-  //   passwordHint: '',
-  //   coverType: '',
-  //   paperType: '',
-  //   albumSize: '',
-  // });
+  const [formData, setFormData] = useState({
+    name: '',
+    description: '',
+    category: '',
+    priceListId: undefined as number | undefined,
+    isPasswordProtected: false,
+    password: '',
+    passwordHint: '',
+    coverType: '',
+    paperType: '',
+    albumSize: '',
+  });
 
   // const [albumStyles, setAlbumStyles] = useState<{coverTypes: string[], paperTypes: string[], albumSizes: string[]} | null>(null);
   // Minimal stub for setShowModal to avoid errors if not present
@@ -122,11 +149,16 @@ const AdminAlbums: React.FC = () => {
   };
 
   if (loading) {
-    return <div className="loading">Loading albums...</div>;
+    return (
+      <AdminLayout>
+        <div className="loading">Loading albums...</div>
+      </AdminLayout>
+    );
   }
 
   return (
-    <div>
+    <AdminLayout>
+      <div>
       <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
         <h1 className="gradient-text" style={{ margin: 0 }}>Manage Albums</h1>
         <button onClick={handleCreate} className="btn btn-primary" style={{ fontSize: 18, padding: '8px 24px' }}>
@@ -198,7 +230,7 @@ const AdminAlbums: React.FC = () => {
                 albums.map((album) => (
                   <tr key={album.id} style={{ borderBottom: '1px solid #29294a' }}>
                     <td style={{ padding: '8px 12px' }}>
-                      <img src={album.coverImageUrl} alt={album.name} className="table-thumbnail" style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 6, background: '#222' }} />
+                      <AlbumSasCover src={album.coverImageUrl || ''} alt={album.name} />
                     </td>
                     <td style={{ fontWeight: 500, padding: '8px 12px', color: '#fff' }}>{album.name}</td>
                     <td style={{ padding: '8px 12px', color: '#fff' }}>{album.category || '-'}</td>
@@ -235,13 +267,68 @@ const AdminAlbums: React.FC = () => {
               <h2>{editingAlbum ? 'Edit Album' : 'Create Album'}</h2>
               <button onClick={() => setShowModal(false)} className="btn-close">×</button>
             </div>
-            <form onSubmit={handleSubmit} className="modal-body admin-modal-body">
-              {/* ...existing form fields... */}
+            <form onSubmit={handleSubmit} className="modal-body admin-modal-body" autoComplete="off">
+              <div className="form-group">
+                <label>Name</label>
+                <input type="text" value={formData.name} onChange={e => setFormData(f => ({ ...f, name: e.target.value }))} required />
+              </div>
+              <div className="form-group">
+                <label>Description</label>
+                <textarea value={formData.description} onChange={e => setFormData(f => ({ ...f, description: e.target.value }))} />
+              </div>
+              <div className="form-group">
+                <label>Category</label>
+                <select value={formData.category} onChange={e => setFormData(f => ({ ...f, category: e.target.value }))}>
+                  <option value="">Select category</option>
+                  {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Price List</label>
+                <select value={formData.priceListId ?? ''} onChange={e => setFormData(f => ({ ...f, priceListId: e.target.value ? Number(e.target.value) : undefined }))}>
+                  <option value="">Default</option>
+                  {priceLists.map(pl => <option key={pl.id} value={pl.id}>{pl.name}</option>)}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Protected</label>
+                <input type="checkbox" checked={formData.isPasswordProtected} onChange={e => setFormData(f => ({ ...f, isPasswordProtected: e.target.checked }))} />
+              </div>
+              {formData.isPasswordProtected && (
+                <>
+                  <div className="form-group">
+                    <label>Password</label>
+                    <input type="text" value={formData.password} onChange={e => setFormData(f => ({ ...f, password: e.target.value }))} />
+                  </div>
+                  <div className="form-group">
+                    <label>Password Hint</label>
+                    <input type="text" value={formData.passwordHint} onChange={e => setFormData(f => ({ ...f, passwordHint: e.target.value }))} />
+                  </div>
+                </>
+              )}
+              <div className="form-group">
+                <label>Cover Type</label>
+                <input type="text" value={formData.coverType} onChange={e => setFormData(f => ({ ...f, coverType: e.target.value }))} />
+              </div>
+              <div className="form-group">
+                <label>Paper Type</label>
+                <input type="text" value={formData.paperType} onChange={e => setFormData(f => ({ ...f, paperType: e.target.value }))} />
+              </div>
+              <div className="form-group">
+                <label>Album Size</label>
+                <input type="text" value={formData.albumSize} onChange={e => setFormData(f => ({ ...f, albumSize: e.target.value }))} />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24 }}>
+                <button type="button" className="btn" onClick={() => setShowModal(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary">Save</button>
+              </div>
             </form>
           </div>
         </div>
+
       )}
     </div>
+    </AdminLayout>
   );
 };
 

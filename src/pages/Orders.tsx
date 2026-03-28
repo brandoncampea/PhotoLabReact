@@ -1,4 +1,10 @@
+// Helper component for SAS-protected order items
+function OrderItemWithSas({ item }: { item: any }) {
+  const sasUrl = useSasUrl(item.photo.thumbnailUrl);
+  return <img src={sasUrl || ''} alt={item.photo.fileName} style={{ width: '56px', height: '56px', objectFit: 'cover', borderRadius: '6px', border: '1px solid var(--border-color)' }} />;
+}
 import React, { useEffect, useState } from 'react';
+import { useSasUrl } from '../hooks/useSasUrl';
 import { useLocation } from 'react-router-dom';
 import { Order } from '../types';
 import { orderService } from '../services/orderService';
@@ -69,15 +75,9 @@ const Orders: React.FC = () => {
                 </div>
                 <div className="order-items">
                   {order.items.map((item) => (
-                    <div key={item.id} className="order-item">
-                      <img src={item.photo.thumbnailUrl} alt={item.photo.fileName} />
-                      <div className="order-item-info">
-                        <p>{item.photo.fileName}</p>
-                        <p className="order-item-quantity">Quantity: {item.quantity}</p>
-                      </div>
-                      <p className="order-item-price">${item.price.toFixed(2)}</p>
-                    </div>
+                    <OrderItemWithSas key={item.id} item={item} />
                   ))}
+
                 </div>
               </div>
             ))}

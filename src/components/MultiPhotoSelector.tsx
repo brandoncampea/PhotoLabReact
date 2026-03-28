@@ -1,4 +1,6 @@
 import React, { useState, useRef } from 'react';
+// import { useSasUrl } from '../hooks/useSasUrl';
+// SlotImage import removed; component not found.
 import { Photo, Product, ProductSize, CropData } from '../types';
 import Cropper, { ReactCropperElement } from 'react-cropper';
 
@@ -184,11 +186,7 @@ const MultiPhotoSelector: React.FC<MultiPhotoSelectorProps> = ({
             >
               {slot.photo ? (
                 <>
-                  <img
-                    src={slot.photo.thumbnailUrl}
-                    alt={`Slot ${slot.position}`}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                  />
+                  {/* <SlotImage blobName={slot.photo.thumbnailUrl} alt={`Slot ${slot.position}`} /> */}
                   {slot.cropData && (
                     <div style={{
                       position: 'absolute',
@@ -268,11 +266,7 @@ const MultiPhotoSelector: React.FC<MultiPhotoSelectorProps> = ({
                     handlePhotoSelect(photo, targetIndex);
                   }}
                 >
-                  <img
-                    src={photo.thumbnailUrl}
-                    alt={photo.fileName}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                  />
+                  {/* <SlotImage blobName={photo.thumbnailUrl} alt={photo.fileName} /> */}
                   {isSelected && (
                     <div style={{
                       position: 'absolute',

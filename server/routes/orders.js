@@ -1,5 +1,6 @@
 import express from 'express';
-import { queryRow, queryRows, query } from '../mssql.mjs';
+import mssql from '../mssql.cjs';
+const { queryRow, queryRows, query } = mssql;
 import { authRequired, adminRequired } from '../middleware/auth.js';
 import { requireActiveSubscription } from '../middleware/subscription.js';
 import orderReceiptService from '../services/orderReceiptService.js';
@@ -499,34 +500,68 @@ router.post('/', requireActiveSubscription, async (req, res) => {
 router.get('/', async (req, res) => {
   try {
     const userId = req.user.id;
-    const orders = await queryRows(`
-      SELECT 
-        o.id, 
-        o.user_id as userId, 
-        o.total as totalAmount,
-        o.subtotal,
-        o.tax_amount as taxAmount,
-        o.tax_rate as taxRate,
-        o.status,
-        o.shipping_address as shippingAddress,
-        o.shipping_option as shippingOption,
-        o.shipping_cost as shippingCost,
-        o.is_batch as isBatch,
-        o.batch_shipping_address as batchShippingAddress,
-        o.batch_ready_date as batchReadyDate,
-        o.batch_queue_status as batchQueueStatus,
-        o.batch_lab_vendor as batchLabVendor,
-        o.lab_submitted as labSubmitted,
-        o.lab_submitted_at as labSubmittedAt,
-        o.stripe_fee_amount as stripeFeeAmount,
-        o.payment_intent_id as paymentIntentId,
-        o.customer_receipt_sent_at as customerReceiptSentAt,
-        o.studio_receipt_sent_at as studioReceiptSentAt,
-        o.created_at as orderDate
-      FROM orders o
-      WHERE o.user_id = $1
-      ORDER BY o.created_at DESC
-    `, [userId]);
+    const actingStudioId = req.headers['x-acting-studio-id'];
+    console.log('ORDERS ROUTE: actingStudioId:', actingStudioId);
+    let orders;
+    if (actingStudioId) {
+      orders = await queryRows(`
+        SELECT 
+          o.id, 
+          o.user_id as userId, 
+          o.total as totalAmount,
+          o.subtotal,
+          o.tax_amount as taxAmount,
+          o.tax_rate as taxRate,
+          o.status,
+          o.shipping_address as shippingAddress,
+          o.shipping_option as shippingOption,
+          o.shipping_cost as shippingCost,
+          o.is_batch as isBatch,
+          o.batch_shipping_address as batchShippingAddress,
+          o.batch_ready_date as batchReadyDate,
+          o.batch_queue_status as batchQueueStatus,
+          o.batch_lab_vendor as batchLabVendor,
+          o.lab_submitted as labSubmitted,
+          o.lab_submitted_at as labSubmittedAt,
+          o.stripe_fee_amount as stripeFeeAmount,
+          o.payment_intent_id as paymentIntentId,
+          o.customer_receipt_sent_at as customerReceiptSentAt,
+          o.studio_receipt_sent_at as studioReceiptSentAt,
+          o.created_at as orderDate
+        FROM orders o
+        WHERE o.studio_id = $1
+        ORDER BY o.created_at DESC
+      `, [actingStudioId]);
+    } else {
+      orders = await queryRows(`
+        SELECT 
+          o.id, 
+          o.user_id as userId, 
+          o.total as totalAmount,
+          o.subtotal,
+          o.tax_amount as taxAmount,
+          o.tax_rate as taxRate,
+          o.status,
+          o.shipping_address as shippingAddress,
+          o.shipping_option as shippingOption,
+          o.shipping_cost as shippingCost,
+          o.is_batch as isBatch,
+          o.batch_shipping_address as batchShippingAddress,
+          o.batch_ready_date as batchReadyDate,
+          o.batch_queue_status as batchQueueStatus,
+          o.batch_lab_vendor as batchLabVendor,
+          o.lab_submitted as labSubmitted,
+          o.lab_submitted_at as labSubmittedAt,
+          o.stripe_fee_amount as stripeFeeAmount,
+          o.payment_intent_id as paymentIntentId,
+          o.customer_receipt_sent_at as customerReceiptSentAt,
+          o.studio_receipt_sent_at as studioReceiptSentAt,
+          o.created_at as orderDate
+        FROM orders o
+        WHERE o.user_id = $1
+        ORDER BY o.created_at DESC
+      `, [userId]);
+    }
     
     const parsedOrders = [];
     for (const order of orders) {
@@ -628,7 +663,11 @@ router.get('/admin/all-orders', adminRequired, async (req, res) => {
       FROM orders o
     `;
     const params = [];
-    if (req.user.role === 'studio_admin') {
+    const actingStudioId = req.headers['x-acting-studio-id'];
+    if (actingStudioId) {
+      queryText += ` WHERE o.studio_id = $1`;
+      params.push(actingStudioId);
+    } else if (req.user.role === 'studio_admin') {
       queryText += ` WHERE o.user_id IN (SELECT u.id FROM users u WHERE u.studio_id = $1)`;
       params.push(req.user.studio_id);
     }

@@ -1,9 +1,17 @@
+// Helper component for SAS-protected watermark images
+function WatermarkSasImage({ src, alt }: { src: string, alt: string }) {
+  const sasUrl = useSasUrl(src);
+  return <img src={sasUrl || ''} alt={alt} style={{ width: '56px', height: '56px', objectFit: 'cover', borderRadius: '6px', border: '1px solid var(--border-color)' }} />;
+}
 // Stub for missing handleFileUpload
 const handleFileUpload = () => {};
 import React, { useEffect, useState } from 'react';
+import { useSasUrl } from '../../hooks/useSasUrl';
 import { Watermark } from '../../types';
 import { watermarkService } from '../../services/watermarkService';
 
+
+import AdminLayout from '../../components/AdminLayout';
 
 const AdminWatermarks: React.FC = () => {
   const [watermarks, setWatermarks] = useState<Watermark[]>([]);
@@ -65,11 +73,16 @@ const AdminWatermarks: React.FC = () => {
   };
 
   if (loading) {
-    return <div className="loading">Loading watermarks...</div>;
+    return (
+      <AdminLayout>
+        <div className="loading">Loading watermarks...</div>
+      </AdminLayout>
+    );
   }
 
   return (
-    <>
+    <AdminLayout>
+      <>
       <div className="page-header">
         <h1>Manage Watermarks</h1>
         <button onClick={handleCreate} className="btn btn-primary">
@@ -80,7 +93,8 @@ const AdminWatermarks: React.FC = () => {
       <div className="watermarks-grid">
         {watermarks.map((watermark) => (
           <div key={watermark.id} className="watermark-card">
-            <img src={watermark.imageUrl} alt={watermark.name} />
+            <WatermarkSasImage src={watermark.imageUrl} alt={watermark.name} />
+
             <div className="watermark-info">
               <h3>{watermark.name}</h3>
               <p>Position: {watermark.tiled ? 'Tiled' : watermark.position}</p>
@@ -213,7 +227,8 @@ const AdminWatermarks: React.FC = () => {
           </div>
         </div>
       )}
-    </>
+      </>
+    </AdminLayout>
   );
 };
 
