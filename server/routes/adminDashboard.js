@@ -1,161 +1,299 @@
 import express from 'express';
 import mssql from '../mssql.cjs';
-const { query, queryRow, queryRows } = mssql;
+import { adminRequired } from '../middleware/auth.js';
+
+const { queryRow, queryRows } = mssql;
 const router = express.Router();
 
-// TODO: Replace with real DB queries
-router.get('/dashboard-stats', async (req, res) => {
-  try {
-    // Total Orders
-    const totalOrdersRow = await queryRow('SELECT COUNT(*) as count FROM orders');
-    const totalOrders = totalOrdersRow?.count || 0;
-    // Total Revenue
-    const totalRevenueRow = await queryRow('SELECT ISNULL(SUM(total), 0) as sum FROM orders WHERE status = @p1', ['completed']);
-    const totalRevenue = totalRevenueRow?.sum || 0;
-    // Total Customers
-    const totalCustomersRow = await queryRow('SELECT COUNT(DISTINCT user_id) as count FROM orders');
-    const totalCustomers = totalCustomersRow?.count || 0;
-    // Pending Orders
-    const pendingOrdersRow = await queryRow('SELECT COUNT(*) as count FROM orders WHERE status = @p1', ['pending']);
-    const pendingOrders = pendingOrdersRow?.count || 0;
-    // Recent Orders (last 5)
-    const recentOrders = await queryRows('SELECT TOP 5 id, user_id, total, status, created_at FROM orders ORDER BY created_at DESC');
-    // Top Albums (by photo count)
-    const topAlbums = await queryRows('SELECT TOP 5 id, name, photo_count FROM albums ORDER BY photo_count DESC');
+router.get('/dashboard-stats', adminRequired, async (req, res) => {
+    try {
+        const studioId = req.user?.studio_id ? Number(req.user.studio_id) : null;
+        const orderStudioFilter = studioId ? ` AND o.studio_id = ${studioId}` : '';
+        const userStudioFilter = studioId ? ` AND studio_id = ${studioId}` : '';
 
-    // --- Time Series Data ---
-    // Revenue by day (last 30 days)
-    const revenueDayRows = await queryRows(`
-      SELECT FORMAT(created_at, 'yyyy-MM-dd') as label, SUM(total) as value
-      FROM orders
-      WHERE status = @p1 AND created_at >= DATEADD(day, -29, CAST(GETDATE() AS date))
-      GROUP BY FORMAT(created_at, 'yyyy-MM-dd')
-      ORDER BY label ASC
-    `, ['completed']);
-    // Revenue by week (last 12 weeks)
-    const revenueWeekRows = await queryRows(`
-      SELECT FORMAT(DATEADD(day, -1 * (DATEPART(weekday, created_at) - 1), CAST(created_at AS date)), 'yyyy-MM-dd') as label, SUM(total) as value
-      FROM orders
-      WHERE status = @p1 AND created_at >= DATEADD(week, -11, CAST(GETDATE() AS date))
-      GROUP BY FORMAT(DATEADD(day, -1 * (DATEPART(weekday, created_at) - 1), CAST(created_at AS date)), 'yyyy-MM-dd')
-      ORDER BY label ASC
-    `, ['completed']);
-    // Revenue by month (last 12 months)
-    const revenueMonthRows = await queryRows(`
-      SELECT FORMAT(created_at, 'yyyy-MM') as label, SUM(total) as value
-      FROM orders
-      WHERE status = @p1 AND created_at >= DATEADD(month, -11, CAST(GETDATE() AS date))
-      GROUP BY FORMAT(created_at, 'yyyy-MM')
-      ORDER BY label ASC
-    `, ['completed']);
+        const totalOrdersRow = await queryRow(
+            `SELECT COUNT(*) as count FROM orders o WHERE 1=1${orderStudioFilter}`
+        );
+        const totalOrders = totalOrdersRow?.count || 0;
 
-    // Orders by day/week/month
-    const ordersDayRows = await queryRows(`
-      SELECT FORMAT(created_at, 'yyyy-MM-dd') as label, COUNT(*) as value
-      FROM orders
-      WHERE created_at >= DATEADD(day, -29, CAST(GETDATE() AS date))
-      GROUP BY FORMAT(created_at, 'yyyy-MM-dd')
-      ORDER BY label ASC
-    `);
-    const ordersWeekRows = await queryRows(`
-      SELECT FORMAT(DATEADD(day, -1 * (DATEPART(weekday, created_at) - 1), CAST(created_at AS date)), 'yyyy-MM-dd') as label, COUNT(*) as value
-      FROM orders
-      WHERE created_at >= DATEADD(week, -11, CAST(GETDATE() AS date))
-      GROUP BY FORMAT(DATEADD(day, -1 * (DATEPART(weekday, created_at) - 1), CAST(created_at AS date)), 'yyyy-MM-dd')
-      ORDER BY label ASC
-    `);
-    const ordersMonthRows = await queryRows(`
-      SELECT FORMAT(created_at, 'yyyy-MM') as label, COUNT(*) as value
-      FROM orders
-      WHERE created_at >= DATEADD(month, -11, CAST(GETDATE() AS date))
-      GROUP BY FORMAT(created_at, 'yyyy-MM')
-      ORDER BY label ASC
-    `);
+        const totalRevenueRow = await queryRow(
+            `SELECT ISNULL(SUM(o.total), 0) as sum
+             FROM orders o
+             WHERE LOWER(o.status) NOT IN ('cancelled', 'refunded')${orderStudioFilter}`
+        );
+        const totalRevenue = Number(totalRevenueRow?.sum || 0);
 
-    // Customers by day/week/month (unique new customers)
-    const customersDayRows = await queryRows(`
-      SELECT FORMAT(created_at, 'yyyy-MM-dd') as label, COUNT(*) as value
-      FROM users
-      WHERE created_at >= DATEADD(day, -29, CAST(GETDATE() AS date))
-      GROUP BY FORMAT(created_at, 'yyyy-MM-dd')
-      ORDER BY label ASC
-    `);
-    const customersWeekRows = await queryRows(`
-      SELECT FORMAT(DATEADD(day, -1 * (DATEPART(weekday, created_at) - 1), CAST(created_at AS date)), 'yyyy-MM-dd') as label, COUNT(*) as value
-      FROM users
-      WHERE created_at >= DATEADD(week, -11, CAST(GETDATE() AS date))
-      GROUP BY FORMAT(DATEADD(day, -1 * (DATEPART(weekday, created_at) - 1), CAST(created_at AS date)), 'yyyy-MM-dd')
-      ORDER BY label ASC
-    `);
-    const customersMonthRows = await queryRows(`
-      SELECT FORMAT(created_at, 'yyyy-MM') as label, COUNT(*) as value
-      FROM users
-      WHERE created_at >= DATEADD(month, -11, CAST(GETDATE() AS date))
-      GROUP BY FORMAT(created_at, 'yyyy-MM')
-      ORDER BY label ASC
-    `);
+        const totalCustomersRow = studioId
+            ? await queryRow(`SELECT COUNT(*) as count FROM users WHERE role = 'customer'${userStudioFilter}`)
+            : await queryRow('SELECT COUNT(DISTINCT user_id) as count FROM orders');
+        const totalCustomers = totalCustomersRow?.count || 0;
 
-    // Pending Orders by day/week/month
-    const pendingDayRows = await queryRows(`
-      SELECT FORMAT(created_at, 'yyyy-MM-dd') as label, COUNT(*) as value
-      FROM orders
-      WHERE status = @p1 AND created_at >= DATEADD(day, -29, CAST(GETDATE() AS date))
-      GROUP BY FORMAT(created_at, 'yyyy-MM-dd')
-      ORDER BY label ASC
-    `, ['pending']);
-    const pendingWeekRows = await queryRows(`
-      SELECT FORMAT(DATEADD(day, -1 * (DATEPART(weekday, created_at) - 1), CAST(created_at AS date)), 'yyyy-MM-dd') as label, COUNT(*) as value
-      FROM orders
-      WHERE status = @p1 AND created_at >= DATEADD(week, -11, CAST(GETDATE() AS date))
-      GROUP BY FORMAT(DATEADD(day, -1 * (DATEPART(weekday, created_at) - 1), CAST(created_at AS date)), 'yyyy-MM-dd')
-      ORDER BY label ASC
-    `, ['pending']);
-    const pendingMonthRows = await queryRows(`
-      SELECT FORMAT(created_at, 'yyyy-MM') as label, COUNT(*) as value
-      FROM orders
-      WHERE status = @p1 AND created_at >= DATEADD(month, -11, CAST(GETDATE() AS date))
-      GROUP BY FORMAT(created_at, 'yyyy-MM')
-      ORDER BY label ASC
-    `, ['pending']);
+        const pendingOrdersRow = await queryRow(
+            `SELECT COUNT(*) as count FROM orders o WHERE LOWER(o.status) = 'pending'${orderStudioFilter}`
+        );
+        const pendingOrders = pendingOrdersRow?.count || 0;
 
-    // Helper to format series
-    const formatSeries = (rows) => ({
-      labels: rows.map(r => r.label),
-      data: rows.map(r => Number(r.value)),
-    });
+        const batchOrdersRow = await queryRow(
+            `SELECT COUNT(*) as count FROM orders o WHERE o.is_batch = 1${orderStudioFilter}`
+        );
+        const batchOrders = batchOrdersRow?.count || 0;
 
-    res.json({
-      totalOrders,
-      totalRevenue,
-      totalCustomers,
-      pendingOrders,
-      recentOrders,
-      topAlbums,
-      revenueSeries: {
-        day: formatSeries(revenueDayRows),
-        week: formatSeries(revenueWeekRows),
-        month: formatSeries(revenueMonthRows),
-      },
-      ordersSeries: {
-        day: formatSeries(ordersDayRows),
-        week: formatSeries(ordersWeekRows),
-        month: formatSeries(ordersMonthRows),
-      },
-      customersSeries: {
-        day: formatSeries(customersDayRows),
-        week: formatSeries(customersWeekRows),
-        month: formatSeries(customersMonthRows),
-      },
-      pendingOrdersSeries: {
-        day: formatSeries(pendingDayRows),
-        week: formatSeries(pendingWeekRows),
-        month: formatSeries(pendingMonthRows),
-      },
-    });
-  } catch (err) {
-    console.error('Error fetching dashboard stats:', err);
-    res.status(500).json({ error: 'Failed to fetch dashboard stats' });
-  }
+        const recentOrders = await queryRows(
+            `SELECT TOP 10
+                    o.id,
+                    o.user_id,
+                    o.total,
+                    o.status,
+                    o.created_at,
+                    u.email as customer_email
+             FROM orders o
+             LEFT JOIN users u ON u.id = o.user_id
+             WHERE 1=1${orderStudioFilter}
+             ORDER BY o.created_at DESC`
+        );
+
+        const revenueDayRows = await queryRows(
+            `SELECT FORMAT(o.created_at, 'yyyy-MM-dd') as label, SUM(o.total) as value
+             FROM orders o
+             WHERE LOWER(o.status) NOT IN ('cancelled', 'refunded')
+                 AND o.created_at >= DATEADD(day, -29, CAST(GETDATE() AS date))${orderStudioFilter}
+             GROUP BY FORMAT(o.created_at, 'yyyy-MM-dd')
+             ORDER BY label ASC`
+        );
+
+        const revenueWeekRows = await queryRows(
+            `SELECT FORMAT(DATEADD(day, -1 * (DATEPART(weekday, o.created_at) - 1), CAST(o.created_at AS date)), 'yyyy-MM-dd') as label,
+                            SUM(o.total) as value
+             FROM orders o
+             WHERE LOWER(o.status) NOT IN ('cancelled', 'refunded')
+                 AND o.created_at >= DATEADD(week, -11, CAST(GETDATE() AS date))${orderStudioFilter}
+             GROUP BY FORMAT(DATEADD(day, -1 * (DATEPART(weekday, o.created_at) - 1), CAST(o.created_at AS date)), 'yyyy-MM-dd')
+             ORDER BY label ASC`
+        );
+
+        const revenueMonthRows = await queryRows(
+            `SELECT FORMAT(o.created_at, 'yyyy-MM') as label, SUM(o.total) as value
+             FROM orders o
+             WHERE LOWER(o.status) NOT IN ('cancelled', 'refunded')
+                 AND o.created_at >= DATEADD(month, -11, CAST(GETDATE() AS date))${orderStudioFilter}
+             GROUP BY FORMAT(o.created_at, 'yyyy-MM')
+             ORDER BY label ASC`
+        );
+
+        const ordersDayRows = await queryRows(
+            `SELECT FORMAT(o.created_at, 'yyyy-MM-dd') as label, COUNT(*) as value
+             FROM orders o
+             WHERE o.created_at >= DATEADD(day, -29, CAST(GETDATE() AS date))${orderStudioFilter}
+             GROUP BY FORMAT(o.created_at, 'yyyy-MM-dd')
+             ORDER BY label ASC`
+        );
+
+        const ordersWeekRows = await queryRows(
+            `SELECT FORMAT(DATEADD(day, -1 * (DATEPART(weekday, o.created_at) - 1), CAST(o.created_at AS date)), 'yyyy-MM-dd') as label,
+                            COUNT(*) as value
+             FROM orders o
+             WHERE o.created_at >= DATEADD(week, -11, CAST(GETDATE() AS date))${orderStudioFilter}
+             GROUP BY FORMAT(DATEADD(day, -1 * (DATEPART(weekday, o.created_at) - 1), CAST(o.created_at AS date)), 'yyyy-MM-dd')
+             ORDER BY label ASC`
+        );
+
+        const ordersMonthRows = await queryRows(
+            `SELECT FORMAT(o.created_at, 'yyyy-MM') as label, COUNT(*) as value
+             FROM orders o
+             WHERE o.created_at >= DATEADD(month, -11, CAST(GETDATE() AS date))${orderStudioFilter}
+             GROUP BY FORMAT(o.created_at, 'yyyy-MM')
+             ORDER BY label ASC`
+        );
+
+        const customersDayRows = await queryRows(
+            `SELECT FORMAT(created_at, 'yyyy-MM-dd') as label, COUNT(*) as value
+             FROM users
+             WHERE created_at >= DATEADD(day, -29, CAST(GETDATE() AS date))${userStudioFilter}
+             GROUP BY FORMAT(created_at, 'yyyy-MM-dd')
+             ORDER BY label ASC`
+        );
+
+        const customersWeekRows = await queryRows(
+            `SELECT FORMAT(DATEADD(day, -1 * (DATEPART(weekday, created_at) - 1), CAST(created_at AS date)), 'yyyy-MM-dd') as label,
+                            COUNT(*) as value
+             FROM users
+             WHERE created_at >= DATEADD(week, -11, CAST(GETDATE() AS date))${userStudioFilter}
+             GROUP BY FORMAT(DATEADD(day, -1 * (DATEPART(weekday, created_at) - 1), CAST(created_at AS date)), 'yyyy-MM-dd')
+             ORDER BY label ASC`
+        );
+
+        const customersMonthRows = await queryRows(
+            `SELECT FORMAT(created_at, 'yyyy-MM') as label, COUNT(*) as value
+             FROM users
+             WHERE created_at >= DATEADD(month, -11, CAST(GETDATE() AS date))${userStudioFilter}
+             GROUP BY FORMAT(created_at, 'yyyy-MM')
+             ORDER BY label ASC`
+        );
+
+        const pendingDayRows = await queryRows(
+            `SELECT FORMAT(o.created_at, 'yyyy-MM-dd') as label, COUNT(*) as value
+             FROM orders o
+             WHERE LOWER(o.status) = 'pending'
+                 AND o.created_at >= DATEADD(day, -29, CAST(GETDATE() AS date))${orderStudioFilter}
+             GROUP BY FORMAT(o.created_at, 'yyyy-MM-dd')
+             ORDER BY label ASC`
+        );
+
+        const pendingWeekRows = await queryRows(
+            `SELECT FORMAT(DATEADD(day, -1 * (DATEPART(weekday, o.created_at) - 1), CAST(o.created_at AS date)), 'yyyy-MM-dd') as label,
+                            COUNT(*) as value
+             FROM orders o
+             WHERE LOWER(o.status) = 'pending'
+                 AND o.created_at >= DATEADD(week, -11, CAST(GETDATE() AS date))${orderStudioFilter}
+             GROUP BY FORMAT(DATEADD(day, -1 * (DATEPART(weekday, o.created_at) - 1), CAST(o.created_at AS date)), 'yyyy-MM-dd')
+             ORDER BY label ASC`
+        );
+
+        const pendingMonthRows = await queryRows(
+            `SELECT FORMAT(o.created_at, 'yyyy-MM') as label, COUNT(*) as value
+             FROM orders o
+             WHERE LOWER(o.status) = 'pending'
+                 AND o.created_at >= DATEADD(month, -11, CAST(GETDATE() AS date))${orderStudioFilter}
+             GROUP BY FORMAT(o.created_at, 'yyyy-MM')
+             ORDER BY label ASC`
+        );
+
+        const batchDayRows = await queryRows(
+            `SELECT FORMAT(o.created_at, 'yyyy-MM-dd') as label, COUNT(*) as value
+             FROM orders o
+             WHERE o.is_batch = 1
+                 AND o.created_at >= DATEADD(day, -29, CAST(GETDATE() AS date))${orderStudioFilter}
+             GROUP BY FORMAT(o.created_at, 'yyyy-MM-dd')
+             ORDER BY label ASC`
+        );
+
+        const batchWeekRows = await queryRows(
+            `SELECT FORMAT(DATEADD(day, -1 * (DATEPART(weekday, o.created_at) - 1), CAST(o.created_at AS date)), 'yyyy-MM-dd') as label,
+                            COUNT(*) as value
+             FROM orders o
+             WHERE o.is_batch = 1
+                 AND o.created_at >= DATEADD(week, -11, CAST(GETDATE() AS date))${orderStudioFilter}
+             GROUP BY FORMAT(DATEADD(day, -1 * (DATEPART(weekday, o.created_at) - 1), CAST(o.created_at AS date)), 'yyyy-MM-dd')
+             ORDER BY label ASC`
+        );
+
+        const batchMonthRows = await queryRows(
+            `SELECT FORMAT(o.created_at, 'yyyy-MM') as label, COUNT(*) as value
+             FROM orders o
+             WHERE o.is_batch = 1
+                 AND o.created_at >= DATEADD(month, -11, CAST(GETDATE() AS date))${orderStudioFilter}
+             GROUP BY FORMAT(o.created_at, 'yyyy-MM')
+             ORDER BY label ASC`
+        );
+
+        const formatSeries = (rows) => ({
+            labels: rows.map((r) => r.label),
+            data: rows.map((r) => Number(r.value)),
+        });
+
+        let analytics = {
+            totalVisitors: 0,
+            totalPageViews: 0,
+            albumViews: [],
+            photoViews: [],
+        };
+
+        try {
+            const analyticsStudioFilter = studioId
+                ? ` AND JSON_VALUE(event_data, '$.studioId') = '${studioId}'`
+                : '';
+
+            const totalVisitorsRow = await queryRow(
+                `SELECT COUNT(DISTINCT JSON_VALUE(event_data, '$.sessionId')) as count
+                 FROM analytics
+                 WHERE event_type = 'site_visit'${analyticsStudioFilter}`
+            );
+            const totalPageViewsRow = await queryRow(
+                `SELECT COUNT(*) as count
+                 FROM analytics
+                 WHERE event_type = 'page_view'${analyticsStudioFilter}`
+            );
+
+            const albumViewsRows = await queryRows(
+                `SELECT TOP 5
+                    TRY_CAST(JSON_VALUE(event_data, '$.albumId') AS INT) as albumId,
+                    JSON_VALUE(event_data, '$.albumName') as albumName,
+                    COUNT(*) as views
+                 FROM analytics
+                 WHERE event_type = 'album_view'${analyticsStudioFilter}
+                 GROUP BY JSON_VALUE(event_data, '$.albumId'), JSON_VALUE(event_data, '$.albumName')
+                 ORDER BY views DESC`
+            );
+
+            const photoViewsRows = await queryRows(
+                `SELECT TOP 5
+                    TRY_CAST(JSON_VALUE(event_data, '$.photoId') AS INT) as photoId,
+                    JSON_VALUE(event_data, '$.photoFileName') as photoFileName,
+                    JSON_VALUE(event_data, '$.albumName') as albumName,
+                    COUNT(*) as views
+                 FROM analytics
+                 WHERE event_type = 'photo_view'${analyticsStudioFilter}
+                 GROUP BY JSON_VALUE(event_data, '$.photoId'), JSON_VALUE(event_data, '$.photoFileName'), JSON_VALUE(event_data, '$.albumName')
+                 ORDER BY views DESC`
+            );
+
+            analytics = {
+                totalVisitors: Number(totalVisitorsRow?.count || 0),
+                totalPageViews: Number(totalPageViewsRow?.count || 0),
+                albumViews: (albumViewsRows || []).map((r) => ({
+                    albumId: Number(r.albumId || 0),
+                    albumName: r.albumName || 'Unknown Album',
+                    views: Number(r.views || 0),
+                })),
+                photoViews: (photoViewsRows || []).map((r) => ({
+                    photoId: Number(r.photoId || 0),
+                    photoFileName: r.photoFileName || 'Unknown Photo',
+                    albumName: r.albumName || 'Unknown Album',
+                    views: Number(r.views || 0),
+                })),
+            };
+        } catch {
+            // Analytics table may not exist yet in some environments.
+        }
+
+        res.json({
+            totalOrders,
+            totalRevenue,
+            totalCustomers,
+            pendingOrders,
+            batchOrders,
+            analytics,
+            recentOrders,
+            revenueSeries: {
+                day: formatSeries(revenueDayRows),
+                week: formatSeries(revenueWeekRows),
+                month: formatSeries(revenueMonthRows),
+            },
+            ordersSeries: {
+                day: formatSeries(ordersDayRows),
+                week: formatSeries(ordersWeekRows),
+                month: formatSeries(ordersMonthRows),
+            },
+            customersSeries: {
+                day: formatSeries(customersDayRows),
+                week: formatSeries(customersWeekRows),
+                month: formatSeries(customersMonthRows),
+            },
+            pendingOrdersSeries: {
+                day: formatSeries(pendingDayRows),
+                week: formatSeries(pendingWeekRows),
+                month: formatSeries(pendingMonthRows),
+            },
+            batchOrdersSeries: {
+                day: formatSeries(batchDayRows),
+                week: formatSeries(batchWeekRows),
+                month: formatSeries(batchMonthRows),
+            },
+        });
+    } catch (err) {
+        console.error('Error fetching dashboard stats:', err);
+        res.status(500).json({ error: 'Failed to fetch dashboard stats' });
+    }
 });
 
 export default router;

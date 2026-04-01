@@ -32,7 +32,7 @@ const ensureProfileConfigTable = async () => {
 };
 
 // Get profile config (studio-specific, super admin can specify studioId)
-router.get('/', async (req, res) => {
+router.get('/', authRequired, async (req, res) => {
   try {
     await ensureProfileConfigTable();
     const user = req.user;
@@ -84,7 +84,16 @@ router.put('/', authRequired, async (req, res) => {
   try {
     await ensureProfileConfigTable();
     const user = req.user;
-    let studioId = user?.role === 'super_admin' ? (req.body.studioId || null) : user?.studio_id;
+    let studioId;
+    if (user?.role === 'super_admin') {
+      studioId = req.body.studioId || req.query.studioId || user?.acting_studio_id || 1;
+    } else if (user?.role === 'admin') {
+      studioId = user?.studio_id || 1;
+    } else {
+      studioId = user?.studio_id;
+    }
+
+    studioId = Number(studioId);
     if (!studioId) {
       return res.status(403).json({ error: 'Studio ID required' });
     }

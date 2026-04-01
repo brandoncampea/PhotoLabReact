@@ -1,33 +1,54 @@
 
-
-
-
-
-
-
 import React, { useEffect, useState } from 'react';
 import DashboardChart from '../../components/DashboardChart';
 import AdminLayout from '../../components/AdminLayout';
+import './AdminDashboard.css';
 
-
+type DashboardStats = {
+  totalRevenue: number;
+  totalOrders: number;
+  totalCustomers: number;
+  pendingOrders: number;
+  batchOrders: number;
+  analytics?: {
+    totalVisitors: number;
+    totalPageViews: number;
+    albumViews: Array<{ albumId: number; albumName: string; views: number }>;
+    photoViews: Array<{ photoId: number; photoFileName: string; albumName: string; views: number }>;
+  };
+  recentOrders?: Array<{
+    id: number;
+    total: number;
+    status: string;
+    created_at: string;
+    customer_email?: string;
+  }>;
+  revenueSeries?: Record<'day' | 'week' | 'month', { data: number[]; labels: string[] }>;
+  ordersSeries?: Record<'day' | 'week' | 'month', { data: number[]; labels: string[] }>;
+  customersSeries?: Record<'day' | 'week' | 'month', { data: number[]; labels: string[] }>;
+  pendingOrdersSeries?: Record<'day' | 'week' | 'month', { data: number[]; labels: string[] }>;
+  batchOrdersSeries?: Record<'day' | 'week' | 'month', { data: number[]; labels: string[] }>;
+};
 
 const AdminDashboard: React.FC = () => {
-  // All hooks must be at the top level
-  const [stats, setStats] = useState<any>(null);
+  const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
-  // Chart range state for each widget
   const [revenueRange, setRevenueRange] = useState<'day' | 'week' | 'month'>('month');
   const [ordersRange, setOrdersRange] = useState<'day' | 'week' | 'month'>('month');
   const [customersRange, setCustomersRange] = useState<'day' | 'week' | 'month'>('month');
   const [pendingRange, setPendingRange] = useState<'day' | 'week' | 'month'>('month');
+  const [batchRange, setBatchRange] = useState<'day' | 'week' | 'month'>('month');
 
   useEffect(() => {
     const fetchStats = async () => {
       setLoading(true);
       try {
-        const response = await fetch('/api/admin/dashboard-stats');
-        if (!response.ok) throw new Error('Failed to fetch dashboard stats');
-        const data = await response.json();
+        const token = localStorage.getItem('token');
+        const statsResponse = await fetch('/api/admin/dashboard-stats', {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!statsResponse.ok) throw new Error('Failed to fetch dashboard stats');
+        const data = await statsResponse.json();
         setStats(data);
       } catch (e) {
         setStats(null);
@@ -51,24 +72,20 @@ const AdminDashboard: React.FC = () => {
     <AdminLayout>
       <div className="page-header">
         <h1 className="gradient-text">Admin Dashboard</h1>
-        <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
-          Business overview, stats, and quick actions for your studio.
+        <p className="admin-dashboard-subtitle">
+          Business overview, stats, and recent activity for your studio.
         </p>
       </div>
 
-      {/* Key Metrics - Responsive 2 column grid, modern card style */}
-      <div className="dashboard-metrics tallydark-metrics">
-        {/* Revenue Widget */}
-        <div className="dashboard-card tallydark-card" role="region" tabIndex={0}>
-          {/* Icon removed */}
+      <div className="dashboard-metrics tallydark-metrics admin-dashboard-metrics">
+        <div className="dashboard-card tallydark-card admin-dashboard-card" role="region" tabIndex={0}>
           <div className="dashboard-card-label">Total Revenue</div>
-          <div className="dashboard-card-value">${stats.totalRevenue.toFixed(2)}</div>
+          <div className="dashboard-card-value revenue">${stats.totalRevenue.toFixed(2)}</div>
           <div className="dashboard-card-sub">Avg: ${stats.totalOrders ? (stats.totalRevenue / stats.totalOrders).toFixed(2) : '0.00'} per order</div>
-          {/* Chart controls */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '10px 0 0 0' }}>
-            <button className="dashboard-pill" style={{ padding: '3px 12px', fontSize: '0.98rem' }} onClick={() => setRevenueRange('day')} disabled={revenueRange === 'day'}>Day</button>
-            <button className="dashboard-pill" style={{ padding: '3px 12px', fontSize: '0.98rem' }} onClick={() => setRevenueRange('week')} disabled={revenueRange === 'week'}>Week</button>
-            <button className="dashboard-pill" style={{ padding: '3px 12px', fontSize: '0.98rem' }} onClick={() => setRevenueRange('month')} disabled={revenueRange === 'month'}>Month</button>
+          <div className="dashboard-range-controls">
+            <button className="dashboard-pill" onClick={() => setRevenueRange('day')} disabled={revenueRange === 'day'}>Day</button>
+            <button className="dashboard-pill" onClick={() => setRevenueRange('week')} disabled={revenueRange === 'week'}>Week</button>
+            <button className="dashboard-pill" onClick={() => setRevenueRange('month')} disabled={revenueRange === 'month'}>Month</button>
           </div>
           <DashboardChart
             data={stats.revenueSeries?.[revenueRange]?.data || []}
@@ -76,19 +93,17 @@ const AdminDashboard: React.FC = () => {
             label="Revenue"
           />
         </div>
-        {/* Orders Widget */}
-        <div className="dashboard-card tallydark-card" role="button" tabIndex={0} style={{ cursor: 'pointer' }}
+        <div className="dashboard-card tallydark-card admin-dashboard-card" role="button" tabIndex={0}
           onClick={() => window.location.href = '/admin/orders'}
           onKeyDown={e => { if (e.key === 'Enter') window.location.href = '/admin/orders'; }}
         >
-          {/* Icon removed */}
           <div className="dashboard-card-label">Total Orders</div>
-          <div className="dashboard-card-value">{stats.totalOrders}</div>
+          <div className="dashboard-card-value orders">{stats.totalOrders}</div>
           <div className="dashboard-card-sub">{stats.totalOrders ? (((stats.totalOrders - (stats.pendingOrders || 0)) / stats.totalOrders) * 100).toFixed(1) : '0'}% completion rate</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '10px 0 0 0' }}>
-            <button className="dashboard-pill" style={{ padding: '3px 12px', fontSize: '0.98rem' }} onClick={() => setOrdersRange('day')} disabled={ordersRange === 'day'}>Day</button>
-            <button className="dashboard-pill" style={{ padding: '3px 12px', fontSize: '0.98rem' }} onClick={() => setOrdersRange('week')} disabled={ordersRange === 'week'}>Week</button>
-            <button className="dashboard-pill" style={{ padding: '3px 12px', fontSize: '0.98rem' }} onClick={() => setOrdersRange('month')} disabled={ordersRange === 'month'}>Month</button>
+          <div className="dashboard-range-controls">
+            <button className="dashboard-pill" onClick={() => setOrdersRange('day')} disabled={ordersRange === 'day'}>Day</button>
+            <button className="dashboard-pill" onClick={() => setOrdersRange('week')} disabled={ordersRange === 'week'}>Week</button>
+            <button className="dashboard-pill" onClick={() => setOrdersRange('month')} disabled={ordersRange === 'month'}>Month</button>
           </div>
           <DashboardChart
             data={stats.ordersSeries?.[ordersRange]?.data || []}
@@ -96,19 +111,17 @@ const AdminDashboard: React.FC = () => {
             label="Orders"
           />
         </div>
-        {/* Customers Widget */}
-        <div className="dashboard-card tallydark-card" role="button" tabIndex={0} style={{ cursor: 'pointer' }}
+        <div className="dashboard-card tallydark-card admin-dashboard-card" role="button" tabIndex={0}
           onClick={() => window.location.href = '/admin/customers'}
           onKeyDown={e => { if (e.key === 'Enter') window.location.href = '/admin/customers'; }}
         >
-          {/* Icon removed */}
           <div className="dashboard-card-label">Total Customers</div>
-          <div className="dashboard-card-value">{stats.totalCustomers}</div>
+          <div className="dashboard-card-value customers">{stats.totalCustomers}</div>
           <div className="dashboard-card-sub">Active user accounts</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '10px 0 0 0' }}>
-            <button className="dashboard-pill" style={{ padding: '3px 12px', fontSize: '0.98rem' }} onClick={() => setCustomersRange('day')} disabled={customersRange === 'day'}>Day</button>
-            <button className="dashboard-pill" style={{ padding: '3px 12px', fontSize: '0.98rem' }} onClick={() => setCustomersRange('week')} disabled={customersRange === 'week'}>Week</button>
-            <button className="dashboard-pill" style={{ padding: '3px 12px', fontSize: '0.98rem' }} onClick={() => setCustomersRange('month')} disabled={customersRange === 'month'}>Month</button>
+          <div className="dashboard-range-controls">
+            <button className="dashboard-pill" onClick={() => setCustomersRange('day')} disabled={customersRange === 'day'}>Day</button>
+            <button className="dashboard-pill" onClick={() => setCustomersRange('week')} disabled={customersRange === 'week'}>Week</button>
+            <button className="dashboard-pill" onClick={() => setCustomersRange('month')} disabled={customersRange === 'month'}>Month</button>
           </div>
           <DashboardChart
             data={stats.customersSeries?.[customersRange]?.data || []}
@@ -116,19 +129,17 @@ const AdminDashboard: React.FC = () => {
             label="New Customers"
           />
         </div>
-        {/* Pending Orders Widget */}
-        <div className="dashboard-card tallydark-card" role="button" tabIndex={0} style={{ cursor: 'pointer' }}
+        <div className="dashboard-card tallydark-card admin-dashboard-card" role="button" tabIndex={0}
           onClick={() => window.location.href = '/admin/orders?status=pending'}
           onKeyDown={e => { if (e.key === 'Enter') window.location.href = '/admin/orders?status=pending'; }}
         >
-          {/* Icon removed */}
           <div className="dashboard-card-label">Pending Orders</div>
-          <div className="dashboard-card-value">{stats.pendingOrders}</div>
+          <div className="dashboard-card-value pending">{stats.pendingOrders}</div>
           <div className="dashboard-card-sub">Requires attention</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '10px 0 0 0' }}>
-            <button className="dashboard-pill" style={{ padding: '3px 12px', fontSize: '0.98rem' }} onClick={() => setPendingRange('day')} disabled={pendingRange === 'day'}>Day</button>
-            <button className="dashboard-pill" style={{ padding: '3px 12px', fontSize: '0.98rem' }} onClick={() => setPendingRange('week')} disabled={pendingRange === 'week'}>Week</button>
-            <button className="dashboard-pill" style={{ padding: '3px 12px', fontSize: '0.98rem' }} onClick={() => setPendingRange('month')} disabled={pendingRange === 'month'}>Month</button>
+          <div className="dashboard-range-controls">
+            <button className="dashboard-pill" onClick={() => setPendingRange('day')} disabled={pendingRange === 'day'}>Day</button>
+            <button className="dashboard-pill" onClick={() => setPendingRange('week')} disabled={pendingRange === 'week'}>Week</button>
+            <button className="dashboard-pill" onClick={() => setPendingRange('month')} disabled={pendingRange === 'month'}>Month</button>
           </div>
           <DashboardChart
             data={stats.pendingOrdersSeries?.[pendingRange]?.data || []}
@@ -136,20 +147,112 @@ const AdminDashboard: React.FC = () => {
             label="Pending Orders"
           />
         </div>
+
+        <div className="dashboard-card tallydark-card admin-dashboard-card" role="button" tabIndex={0}
+          onClick={() => window.location.href = '/admin/orders'}
+          onKeyDown={e => { if (e.key === 'Enter') window.location.href = '/admin/orders'; }}
+        >
+          <div className="dashboard-card-label">Batch Orders</div>
+          <div className="dashboard-card-value batch">{stats.batchOrders || 0}</div>
+          <div className="dashboard-card-sub">Orders queued for batch fulfillment</div>
+          <div className="dashboard-range-controls">
+            <button className="dashboard-pill" onClick={() => setBatchRange('day')} disabled={batchRange === 'day'}>Day</button>
+            <button className="dashboard-pill" onClick={() => setBatchRange('week')} disabled={batchRange === 'week'}>Week</button>
+            <button className="dashboard-pill" onClick={() => setBatchRange('month')} disabled={batchRange === 'month'}>Month</button>
+          </div>
+          <DashboardChart
+            data={stats.batchOrdersSeries?.[batchRange]?.data || []}
+            labels={stats.batchOrdersSeries?.[batchRange]?.labels || []}
+            label="Batch Orders"
+          />
+        </div>
       </div>
 
-      {/* Quick Actions */}
-      <div className="dashboard-widget tallydark-card" style={{ paddingBottom: '0.5rem' }}>
-        <h2 style={{ fontWeight: 600, fontSize: '1.1rem', marginBottom: '0.3rem' }}>Quick Actions</h2>
-        <div className="dashboard-actions-grid tallydark-actions-grid" style={{ marginBottom: 0 }}>
-          <a href="/admin/orders"    className="tallydark-sidenav-btn">Manage Orders</a>
-          <a href="/admin/albums"    className="tallydark-sidenav-btn">Manage Albums</a>
-          <a href="/admin/products"  className="tallydark-sidenav-btn">Manage Products</a>
-          <a href="/admin/customers" className="tallydark-sidenav-btn">View Customers</a>
-          <a href="/admin/analytics" className="tallydark-sidenav-btn">View Analytics</a>
-          <a href="/admin/shipping"  className="tallydark-sidenav-btn">Shipping</a>
-          <a href="/admin/settings"  className="tallydark-sidenav-btn">Settings</a>
+      <div className="dashboard-widget tallydark-card admin-dashboard-widget">
+        <h2 className="admin-dashboard-section-title">Analytics</h2>
+
+        <div className="admin-dashboard-analytics-stats">
+          <div className="admin-dashboard-analytics-stat">
+            <div className="admin-dashboard-analytics-value">{(stats.analytics?.totalVisitors || 0).toLocaleString()}</div>
+            <div className="admin-dashboard-analytics-label">Visitors</div>
+          </div>
+          <div className="admin-dashboard-analytics-stat">
+            <div className="admin-dashboard-analytics-value">{(stats.analytics?.totalPageViews || 0).toLocaleString()}</div>
+            <div className="admin-dashboard-analytics-label">Page Views</div>
+          </div>
+          <div className="admin-dashboard-analytics-stat">
+            <div className="admin-dashboard-analytics-value">{(stats.analytics?.albumViews?.reduce((sum, a) => sum + a.views, 0) || 0).toLocaleString()}</div>
+            <div className="admin-dashboard-analytics-label">Album Views</div>
+          </div>
+          <div className="admin-dashboard-analytics-stat">
+            <div className="admin-dashboard-analytics-value">{(stats.analytics?.photoViews?.reduce((sum, p) => sum + p.views, 0) || 0).toLocaleString()}</div>
+            <div className="admin-dashboard-analytics-label">Photo Views</div>
+          </div>
         </div>
+
+        <div className="admin-dashboard-analytics-grid">
+          <div className="admin-dashboard-analytics-panel">
+            <h3 className="admin-dashboard-analytics-title">Top Albums</h3>
+            <ul className="admin-dashboard-analytics-list">
+              {(stats.analytics?.albumViews || []).slice().sort((a, b) => b.views - a.views).slice(0, 5).map((album) => (
+                <li key={album.albumId}>
+                  <span>{album.albumName}</span>
+                  <strong>{album.views}</strong>
+                </li>
+              ))}
+              {!stats.analytics?.albumViews?.length && <li className="empty">No album activity yet</li>}
+            </ul>
+          </div>
+
+          <div className="admin-dashboard-analytics-panel">
+            <h3 className="admin-dashboard-analytics-title">Top Photos</h3>
+            <ul className="admin-dashboard-analytics-list">
+              {(stats.analytics?.photoViews || []).slice().sort((a, b) => b.views - a.views).slice(0, 5).map((photo) => (
+                <li key={photo.photoId}>
+                  <span>{photo.photoFileName}</span>
+                  <strong>{photo.views}</strong>
+                </li>
+              ))}
+              {!stats.analytics?.photoViews?.length && <li className="empty">No photo activity yet</li>}
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div className="dashboard-widget tallydark-card admin-dashboard-widget">
+        <h2 className="admin-dashboard-section-title">Recent Orders</h2>
+        {(stats.recentOrders?.length || 0) === 0 ? (
+          <p className="admin-dashboard-empty">No recent orders found for this studio.</p>
+        ) : (
+          <div className="admin-dashboard-table-wrap">
+            <table className="admin-dashboard-table">
+              <thead>
+                <tr>
+                  <th>Order</th>
+                  <th>Customer</th>
+                  <th>Status</th>
+                  <th>Total</th>
+                  <th>Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stats.recentOrders!.map((order) => (
+                  <tr key={order.id}>
+                    <td>#{order.id}</td>
+                    <td>{order.customer_email || 'Unknown'}</td>
+                    <td>
+                      <span className={`admin-dashboard-status ${String(order.status || '').toLowerCase()}`}>
+                        {order.status || 'Unknown'}
+                      </span>
+                    </td>
+                    <td>${Number(order.total || 0).toFixed(2)}</td>
+                    <td>{new Date(order.created_at).toLocaleDateString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
         </div>
     </AdminLayout>
   );

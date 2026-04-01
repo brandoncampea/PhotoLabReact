@@ -1341,6 +1341,88 @@ router.post('/:studioId/subscription/reactivate', authRequired, async (req, res)
   }
 });
 
+// Self-service subscription edit (studio admin for their own studio, or super admin)
+router.patch('/:studioId/subscription/self-service', authRequired, async (req, res) => {
+  try {
+    const { studioId } = req.params;
+    const parsedStudioId = parseInt(studioId, 10);
+    const { planId, billingCycle = 'monthly' } = req.body || {};
+
+    if (req.user.role !== 'super_admin') {
+      if (req.user.role !== 'studio_admin' || req.user.studio_id !== parsedStudioId) {
+        return res.status(403).json({ error: 'Unauthorized' });
+      }
+    }
+
+    const resolvedPlan = await resolveSubscriptionPlanValue(planId);
+    if (!resolvedPlan) {
+      return res.status(400).json({ error: 'Invalid subscription plan' });
+    }
+
+    if (!['monthly', 'yearly'].includes(String(billingCycle))) {
+      return res.status(400).json({ error: 'Invalid billing cycle' });
+    }
+
+    const studio = await queryRow('SELECT id FROM studios WHERE id = $1', [parsedStudioId]);
+    if (!studio) {
+      return res.status(404).json({ error: 'Studio not found' });
+    }
+
+    try {
+      await query(
+        `UPDATE studios
+         SET subscription_plan = $1,
+             billing_cycle = $2,
+             subscription_status = $3,
+             is_free_subscription = $4,
+             cancellation_requested = $5,
+             cancellation_date = NULL
+         WHERE id = $6`,
+        [resolvedPlan, billingCycle, SUBSCRIPTION_STATUSES.active, 0, 0, parsedStudioId]
+      );
+    } catch (error) {
+      if (!isMissingColumnError(error)) throw error;
+      await query(
+        `UPDATE studios
+         SET subscription_plan = $1,
+             subscription_status = $2
+         WHERE id = $3`,
+        [resolvedPlan, SUBSCRIPTION_STATUSES.active, parsedStudioId]
+      );
+    }
+
+    const updatedStudio = await queryRow(
+      `SELECT
+         id,
+         name,
+         subscription_plan,
+         subscription_status,
+         subscription_start,
+         subscription_end,
+         is_free_subscription,
+         cancellation_requested,
+         cancellation_date,
+         billing_cycle
+       FROM studios
+       WHERE id = $1`,
+      [parsedStudioId]
+    );
+
+    const plan = updatedStudio?.subscription_plan
+      ? SUBSCRIPTION_PLANS[updatedStudio.subscription_plan] || null
+      : null;
+
+    res.json({
+      message: 'Subscription updated successfully',
+      studio: updatedStudio,
+      plan,
+    });
+  } catch (error) {
+    console.error('Self-service subscription update error:', error);
+    res.status(500).json({ error: 'Failed to update subscription' });
+  }
+});
+
 // Update studio subscription
 router.patch('/:studioId/subscription', authRequired, async (req, res) => {
   try {

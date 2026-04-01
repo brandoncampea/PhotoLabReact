@@ -1,5 +1,21 @@
 import { useState, useEffect } from 'react';
-import { whccService } from '../../services/whccService';
+import { whccService, WhccWebhookStatus } from '../../services/whccService';
+
+const formatWebhookSummary = (webhookStatus: WhccWebhookStatus | null) => {
+  const payload = webhookStatus?.lastPayload;
+  const shippingInfo = Array.isArray(payload?.ShippingInfo) ? payload.ShippingInfo[0] : null;
+
+  return {
+    event: payload?.Event || null,
+    status: payload?.Status || null,
+    orderNumber: payload?.OrderNumber || null,
+    confirmationId: payload?.ConfirmationId || payload?.ConfirmationID || null,
+    carrier: shippingInfo?.Carrier || null,
+    trackingNumber: shippingInfo?.TrackingNumber || null,
+    trackingUrl: shippingInfo?.TrackingUrl || null,
+    shipDate: shippingInfo?.ShipDate || null,
+  };
+};
 
 const AdminWhccConfig = () => {
   const [enabled, setEnabled] = useState(false);
@@ -13,6 +29,10 @@ const AdminWhccConfig = () => {
   const [shipFromState, setShipFromState] = useState('');
   const [shipFromZip, setShipFromZip] = useState('');
   const [shipFromPhone, setShipFromPhone] = useState('');
+  const [webhookCallbackUri, setWebhookCallbackUri] = useState('');
+  const [webhookStatus, setWebhookStatus] = useState<WhccWebhookStatus | null>(null);
+  const [webhookMessage, setWebhookMessage] = useState<string | null>(null);
+  const [isWebhookLoading, setIsWebhookLoading] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,6 +48,7 @@ const AdminWhccConfig = () => {
         setConsumerKey(parsed.consumerKey || '');
         setConsumerSecret(parsed.consumerSecret || '');
         setIsSandbox(parsed.isSandbox ?? true);
+        setWebhookCallbackUri(parsed.webhookCallbackUri || whccService.getDefaultWebhookCallbackUri());
         
         if (parsed.shipFromAddress) {
           const addr = parsed.shipFromAddress;
@@ -39,10 +60,24 @@ const AdminWhccConfig = () => {
           setShipFromZip(addr.zip || '');
           setShipFromPhone(addr.phone || '');
         }
+      } else {
+        setWebhookCallbackUri(whccService.getDefaultWebhookCallbackUri());
       }
     } catch (err) {
       console.error('Failed to load WHCC config:', err);
     }
+  }, []);
+
+  useEffect(() => {
+    const loadWebhookStatus = async () => {
+      try {
+        const status = await whccService.getWebhookStatus();
+        setWebhookStatus(status);
+      } catch {
+        setWebhookStatus(null);
+      }
+    };
+    loadWebhookStatus();
   }, []);
 
   const handleSave = () => {
@@ -52,6 +87,7 @@ const AdminWhccConfig = () => {
         consumerKey,
         consumerSecret,
         isSandbox,
+        webhookCallbackUri,
         shipFromAddress: {
           name: shipFromName,
           addr1: shipFromAddr1,
@@ -70,6 +106,45 @@ const AdminWhccConfig = () => {
       setTimeout(() => setSaved(false), 3000);
     } catch (err) {
       setError('Failed to save configuration');
+    }
+  };
+
+  const refreshWebhookStatus = async () => {
+    setIsWebhookLoading(true);
+    setWebhookMessage(null);
+    try {
+      const status = await whccService.getWebhookStatus();
+      setWebhookStatus(status);
+    } catch (err) {
+      setWebhookMessage(`Failed to load webhook status: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setIsWebhookLoading(false);
+    }
+  };
+
+  const handleRegisterWebhook = async () => {
+    setIsWebhookLoading(true);
+    setWebhookMessage(null);
+    try {
+      await whccService.registerWebhook(webhookCallbackUri);
+      setWebhookMessage('✓ Webhook registration requested. WHCC should send a verifier callback immediately.');
+      await refreshWebhookStatus();
+    } catch (err) {
+      setWebhookMessage(`✗ Failed to register webhook: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      setIsWebhookLoading(false);
+    }
+  };
+
+  const handleVerifyWebhook = async () => {
+    setIsWebhookLoading(true);
+    setWebhookMessage(null);
+    try {
+      await whccService.verifyWebhook(webhookStatus?.lastVerifier || undefined);
+      setWebhookMessage('✓ Webhook verified successfully.');
+      await refreshWebhookStatus();
+    } catch (err) {
+      setWebhookMessage(`✗ Failed to verify webhook: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      setIsWebhookLoading(false);
     }
   };
 
@@ -99,6 +174,8 @@ const AdminWhccConfig = () => {
       setIsTestLoading(false);
     }
   };
+
+  const webhookSummary = formatWebhookSummary(webhookStatus);
 
   return (
     <div style={{ maxWidth: '900px', margin: '0 auto', padding: '20px' }}>
@@ -374,6 +451,74 @@ const AdminWhccConfig = () => {
         >
           Save Configuration
         </button>
+      </div>
+
+      <div style={{ backgroundColor: 'var(--bg-tertiary)', padding: '20px', borderRadius: '8px', marginBottom: '30px' }}>
+        <h2 style={{ fontSize: '18px', marginBottom: '15px' }}>Webhooks</h2>
+        <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '15px' }}>
+          Register a public callback URL so WHCC can send verifier, status, and shipped tracking updates for this studio.
+        </p>
+
+        {webhookMessage && (
+          <div className={webhookMessage.startsWith('✓') ? 'info-box-success' : 'info-box-error'} style={{ marginBottom: '20px' }}>
+            {webhookMessage}
+          </div>
+        )}
+
+        <div style={{ marginBottom: '20px' }}>
+          <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500 }}>Webhook Callback URL</label>
+          <input
+            type="url"
+            value={webhookCallbackUri}
+            onChange={(e) => setWebhookCallbackUri(e.target.value)}
+            placeholder="https://your-domain.com/api/webhooks/whcc"
+            style={{
+              width: '100%',
+              padding: '10px',
+              border: '1px solid var(--border-color)',
+              borderRadius: '4px',
+              boxSizing: 'border-box',
+            }}
+          />
+          <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '5px' }}>
+            Must be a public HTTPS URL. The studio ID is appended automatically during registration.
+          </p>
+        </div>
+
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '20px' }}>
+          <button onClick={handleRegisterWebhook} disabled={!consumerKey || !consumerSecret || !webhookCallbackUri || isWebhookLoading} className="btn btn-primary" style={{ opacity: !consumerKey || !consumerSecret || !webhookCallbackUri || isWebhookLoading ? 0.5 : 1 }}>
+            {isWebhookLoading ? 'Working...' : 'Register Webhook'}
+          </button>
+          <button onClick={handleVerifyWebhook} disabled={!webhookStatus?.lastVerifier || isWebhookLoading} className="btn btn-success" style={{ opacity: !webhookStatus?.lastVerifier || isWebhookLoading ? 0.5 : 1 }}>
+            Verify Webhook
+          </button>
+          <button onClick={refreshWebhookStatus} disabled={isWebhookLoading} className="btn btn-secondary" style={{ opacity: isWebhookLoading ? 0.5 : 1 }}>
+            Refresh Status
+          </button>
+        </div>
+
+        <div className="info-box-blue">
+          <div style={{ fontSize: '12px', lineHeight: '1.7' }}>
+            <div><strong>Registered callback:</strong> {webhookStatus?.callbackUri || 'Not registered'}</div>
+            <div><strong>Last verifier:</strong> {webhookStatus?.lastVerifier || 'None yet'}</div>
+            <div><strong>Verified at:</strong> {webhookStatus?.verifiedAt ? new Date(webhookStatus.verifiedAt).toLocaleString() : 'Not verified'}</div>
+            <div><strong>Last webhook received:</strong> {webhookStatus?.lastReceivedAt ? new Date(webhookStatus.lastReceivedAt).toLocaleString() : 'None yet'}</div>
+          </div>
+        </div>
+
+        <div className="info-box-blue" style={{ marginTop: '15px' }}>
+          <h3 style={{ fontSize: '14px', marginBottom: '10px' }}>Latest Order Event</h3>
+          <div style={{ fontSize: '12px', lineHeight: '1.7' }}>
+            <div><strong>Event:</strong> {webhookSummary.event || 'None yet'}</div>
+            <div><strong>Status:</strong> {webhookSummary.status || 'None yet'}</div>
+            <div><strong>WHCC Order #:</strong> {webhookSummary.orderNumber || 'None yet'}</div>
+            <div><strong>Confirmation ID:</strong> {webhookSummary.confirmationId || 'None yet'}</div>
+            <div><strong>Carrier:</strong> {webhookSummary.carrier || 'None yet'}</div>
+            <div><strong>Tracking Number:</strong> {webhookSummary.trackingNumber || 'None yet'}</div>
+            <div><strong>Ship Date:</strong> {webhookSummary.shipDate ? new Date(webhookSummary.shipDate).toLocaleString() : 'None yet'}</div>
+            <div><strong>Tracking URL:</strong> {webhookSummary.trackingUrl ? <a href={webhookSummary.trackingUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary-color)' }}>{webhookSummary.trackingUrl}</a> : 'None yet'}</div>
+          </div>
+        </div>
       </div>
 
       <div className="info-box-blue" style={{ marginBottom: '20px' }}>

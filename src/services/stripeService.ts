@@ -28,7 +28,9 @@ export const stripeService = {
     items: CartItem[],
     shippingOption: 'batch' | 'direct',
     shippingCost: number,
-    discountAmount: number = 0
+    discountAmount: number = 0,
+    taxAmount: number = 0,
+    feeAmount: number = 0
   ): Promise<PaymentIntent> {
     try {
       const response = await api.post<PaymentIntent>('/stripe/create-payment-intent', {
@@ -36,6 +38,8 @@ export const stripeService = {
         shippingOption,
         shippingCost,
         discountAmount,
+        taxAmount,
+        feeAmount,
       });
       return response.data;
     } catch (error: any) {

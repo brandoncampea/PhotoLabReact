@@ -1,6 +1,6 @@
 import api from './api';
 // import { mockApi } from './mockApi'; // Removed: unused
-import { Order, CartItem, ShippingAddress } from '../types';
+import { Order, CartItem, ShippingAddress, BatchQueueSummary } from '../types';
 import { taxService } from './taxService';
 
 export const orderService = {
@@ -85,6 +85,20 @@ export const orderService = {
 
   async getOrder(id: number): Promise<Order> {
     const response = await api.get<Order>(`/orders/${id}`);
+    return response.data;
+  },
+
+  async getBatchQueue(): Promise<BatchQueueSummary> {
+    const response = await api.get<BatchQueueSummary>('/orders/admin/batch-queue');
+    return response.data;
+  },
+
+  async submitBatch(orderIds: number[], batchAddress: ShippingAddress, selectedLab: string): Promise<{ success: boolean; updatedCount: number; notReadyCount: number; selectedLab: string; }> {
+    const response = await api.post('/orders/admin/submit-batch', {
+      orderIds,
+      batchAddress,
+      selectedLab,
+    });
     return response.data;
   },
 };

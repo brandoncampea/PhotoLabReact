@@ -1,0 +1,109 @@
+{
+  "studioId": 7,
+  "product": {
+    "photoId": 1,
+    "productId": 136,
+    "productSizeId": 907,
+    "productName": "Print",
+    "sizeName": "2x3",
+    "price": 1.015
+  },
+  "futureConfig": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "id": 7,
+      "batchDeadline": "2099-12-31T23:59:59.000Z",
+      "directShippingCharge": 12.5,
+      "isActive": true,
+      "batchShippingAddress": {
+        "fullName": "Campea Photography Batch Ship",
+        "addressLine1": "123 Studio Lane",
+        "addressLine2": "Suite 200",
+        "city": "Phoenix",
+        "state": "AZ",
+        "zipCode": "85001",
+        "country": "US",
+        "email": "batch@example.com",
+        "phone": "555-0101"
+      }
+    }
+  },
+  "configCheck": {
+    "status": 200,
+    "batchDeadline": "2099-12-31T23:59:59.000Z",
+    "directShippingCharge": 12.5,
+    "batchShippingAddressFullName": "Campea Photography Batch Ship"
+  },
+  "directOrder": {
+    "status": 201,
+    "id": 99,
+    "shippingOption": "direct",
+    "orderStatus": "processing",
+    "labSubmitted": true,
+    "batchQueueStatus": null,
+    "batchReadyDate": null
+  },
+  "futureBatchOrder": {
+    "status": 201,
+    "id": 100,
+    "shippingOption": "batch",
+    "orderStatus": "pending",
+    "labSubmitted": false,
+    "batchQueueStatus": "queued",
+    "batchReadyDate": "2099-12-31T23:59:59.000Z"
+  },
+  "queueFuture": {
+    "status": 200,
+    "totalQueued": 1,
+    "eligibleCount": 0,
+    "nextBatchDate": "2099-12-31T23:59:59.000Z"
+  },
+  "pastConfig": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "id": 7,
+      "batchDeadline": "2024-01-01T00:00:00.000Z",
+      "directShippingCharge": 12.5,
+      "isActive": true,
+      "batchShippingAddress": {
+        "fullName": "Campea Photography Batch Ship",
+        "addressLine1": "123 Studio Lane",
+        "addressLine2": "Suite 200",
+        "city": "Phoenix",
+        "state": "AZ",
+        "zipCode": "85001",
+        "country": "US",
+        "email": "batch@example.com",
+        "phone": "555-0101"
+      }
+    }
+  },
+  "eligibleBatchOrder": {
+    "status": 201,
+    "id": 101,
+    "shippingOption": "batch",
+    "orderStatus": "pending",
+    "labSubmitted": false,
+    "batchQueueStatus": "queued",
+    "batchReadyDate": "2024-01-01T00:00:00.000Z"
+  },
+  "queueEligible": {
+    "status": 200,
+    "totalQueued": 2,
+    "eligibleCount": 1,
+    "eligibleOrderIds": [
+      101
+    ]
+  },
+  "submitBatch": {
+    "status": 200,
+    "body": {
+      "success": true,
+      "selectedLab": "whcc",
+      "updatedCount": 1,
+      "notReadyCount": 0
+    }
+  }
+}

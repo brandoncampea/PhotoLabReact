@@ -33,7 +33,7 @@ export default function CheckoutSuccess() {
           {message}
         </p>
         <div className="checkout-success-spinner"></div>
-        {/* Spinner animation is now handled in PhotoLabStyles.css */}
+
       </div>
     </div>
   );

@@ -484,7 +484,7 @@ router.delete('/:id/products/:productId/sample-photo', superAdminRequired, async
   }
 });
 
-router.post('/:id/products', superAdminRequired, async (req, res) => {
+router.post('/:id/products', adminRequired, async (req, res) => {
   try {
     const priceListId = Number(req.params.id);
     const { productId, name, description, isDigital, category, basePrice, cost, isActive, popularity } = req.body;

@@ -1,99 +1,356 @@
+
+
+
 import React, { useState } from 'react';
-import styles from './AdminWhccImport.module.css';
+// Helper for deep selection
+const getAllSizeKeys = (grouped: any, category: string, product: string) => {
+  return Object.keys(grouped[category]?.[product] || {});
+};
+
+const getAllProductKeys = (grouped: any, category: string) => {
+  return Object.keys(grouped[category] || {});
+};
+
+const getAllCategoryKeys = (grouped: any) => {
+  return Object.keys(grouped || {});
+};
+
+/** Extract the WHCC ProductNodeID from a raw catalog product object. */
+const getProductNodeID = (prod: any): number | null => {
+  const raw =
+    prod?.ProductNodeID ??
+    prod?.productNodeID ??
+    prod?.DefaultProductNodeID ??
+    (Array.isArray(prod?.ProductNodes) ? prod.ProductNodes[0]?.ProductNodeID : null) ??
+    (Array.isArray(prod?.productNodes) ? prod.productNodes[0]?.productNodeID : null);
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
+
+/** Extract ordered list of ItemAttribute UIDs from a raw catalog product object. */
+const getItemAttributeUIDs = (prod: any): number[] => {
+  const attrs =
+    prod?.DefaultItemAttributes ??
+    prod?.defaultItemAttributes ??
+    prod?.ItemAttributes ??
+    prod?.itemAttributes ??
+    [];
+  if (!Array.isArray(attrs)) return [];
+  return attrs
+    .map((a: any) => Number(a?.AttributeUID ?? a?.attributeUID ?? a?.uid ?? a))
+    .filter((v: number) => Number.isInteger(v) && v > 0);
+};
+import Papa from 'papaparse';
+// CSV will be fetched at runtime from public/
+import { superPriceListService } from '../services/superPriceListService';
 import { whccService } from '../services/whccService';
-import { priceListAdminService } from '../services/priceListAdminService';
-import { PriceList } from '../types';
 
-interface WhccProduct {
-  productUID: number;
-  name: string;
-  description?: string;
-  basePrice: number;
-  width?: number;
-  height?: number;
-  category?: string;
-}
-
-interface ImportMapping {
-  productUID: number;
-  selectedSizeId?: number;
-  customPrice?: number;
-  useCustomPrice: boolean;
-  markupPercentage?: number;
-}
-
-const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => void }> = ({
-  onClose,
-  onImportComplete,
-}) => {
-  const [step, setStep] = useState<'select-list' | 'select-products' | 'confirm'>('select-list');
-  const [priceLists, setPriceLists] = useState<PriceList[]>([]);
-  const [selectedPriceListId, setSelectedPriceListId] = useState<number | null>(null);
-  const [whccProducts, setWhccProducts] = useState<WhccProduct[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [selectedProducts, setSelectedProducts] = useState<Map<number, ImportMapping>>(new Map());
-  const [importing, setImporting] = useState(false);
-  const [globalMarkup, setGlobalMarkup] = useState<number>(100);
-  const [progress, setProgress] = useState<string | null>(null);
-
-  // Step 1: Load price lists
-  const handleLoadPriceLists = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const lists = await priceListAdminService.getAll();
-      setPriceLists(lists);
-    } catch (err) {
-      setError('Failed to load price lists');
-    } finally {
-      setLoading(false);
-    }
+const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => void }> = ({ onClose, onImportComplete }) => {
+  const getUid = (prod: any): number => {
+    const raw = prod?.productUID ?? prod?.ProductUID ?? prod?.productUid ?? prod?.ProductUid;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : 0;
   };
 
-  // Step 2: Load WHCC products
-  const handleLoadWhccProducts = async () => {
-    setLoading(true);
-    setError(null);
+  // Import handler for the confirm step
+  const handleImport = async () => {
+    setImporting(true);
+    setError('');
+    setInfo('');
     try {
-      const catalog = await whccService.getProductCatalog();
-      let products = catalog.products || [];
-      // If products array is missing, flatten productsBySize
-      if ((!products || products.length === 0) && catalog.productsBySize) {
-        products = Object.values(catalog.productsBySize).flat();
-      }
-      setWhccProducts(products);
-      setStep('select-products');
-    } catch (err) {
-      setError('Failed to load WHCC products. Check your WHCC configuration.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Toggle product selection
-  const toggleProductSelection = (productUID: number) => {
-    const newSelected = new Map(selectedProducts);
-    if (newSelected.has(productUID)) {
-      newSelected.delete(productUID);
-    } else {
-      newSelected.set(productUID, {
-        productUID,
-        useCustomPrice: false,
-        markupPercentage: globalMarkup,
+      // Build a fast lookup map once (avoids expensive nested scan per selected row)
+      const rowBySelectionKey = new Map<string, any>();
+      Object.keys(groupedProducts).forEach((cat) => {
+        Object.keys(groupedProducts[cat] || {}).forEach((prod) => {
+          Object.keys(groupedProducts[cat][prod] || {}).forEach((size) => {
+            const row = groupedProducts[cat][prod][size];
+            const key = String(row?.selectionKey || '');
+            if (!key) return;
+            rowBySelectionKey.set(key, {
+              row,
+              category: cat,
+              size,
+            });
+          });
+        });
       });
+
+      const items = Array.from(selectedProducts.values())
+        .map((mapping: any) => {
+          const key = String(mapping.selectionKey || '');
+          const hit = rowBySelectionKey.get(key);
+          if (!hit) return null;
+          const product = hit.row;
+          const cost = Number(product.price || 0);
+          const whccUID = Number(product.productUID || product.ProductUID || 0) || undefined;
+          const whccNodeID = getProductNodeID(product) ?? undefined;
+          const whccAttrUIDs = getItemAttributeUIDs(product);
+          return {
+            product_size_id: Number(mapping.importId || product.importId || product.productUID || 0),
+            base_cost: cost,
+            markup_percent: null,
+            custom_price: mapping.useCustomPrice ? mapping.customPrice : undefined,
+            product_name: String(product.name || product.Name || ''),
+            size_name: String(hit.size || ''),
+            category: String(hit.category || 'whcc'),
+            description: 'Imported from WHCC',
+            ...(whccUID ? { whccProductUID: whccUID } : {}),
+            ...(whccNodeID ? { whccProductNodeID: whccNodeID } : {}),
+            ...(whccAttrUIDs.length ? { whccItemAttributeUIDs: whccAttrUIDs } : {}),
+          };
+        })
+        .filter(Boolean);
+
+      if (!items.length) {
+        setError('No valid products selected to import.');
+        setImporting(false);
+        return;
+      }
+
+      // Send in batches to keep requests responsive for very large imports
+      const batchSize = 50;
+      const totalBatches = Math.ceil(items.length / batchSize);
+      let importedTotal = 0;
+      let skippedTotal = 0;
+      const errorSamples: any[] = [];
+      for (let i = 0; i < items.length; i += batchSize) {
+        const batch = items.slice(i, i + batchSize);
+        const batchIndex = Math.floor(i / batchSize) + 1;
+        setInfo(`Importing batch ${batchIndex}/${totalBatches}...`);
+        const result = await superPriceListService.importItems(Number(selectedPriceListId), batch) as any;
+        importedTotal += Number(result?.importedCount || 0);
+        skippedTotal += Number(result?.skippedCount || 0);
+        if (Array.isArray(result?.errorSamples)) {
+          errorSamples.push(...result.errorSamples);
+        }
+        setInfo(`Imported ${importedTotal}/${items.length} so far...`);
+      }
+
+      if (importedTotal === 0 && items.length > 0) {
+        const firstErr = errorSamples[0]?.error ? ` First error: ${errorSamples[0].error}` : '';
+        setError(`No products were imported.${firstErr}`);
+      } else {
+        const skippedMsg = skippedTotal > 0 ? ` (${skippedTotal} skipped)` : '';
+        setInfo(`${importedTotal} products imported successfully${skippedMsg}.`);
+      }
+      if (importedTotal > 0) {
+        setSelectedProducts(new Map());
+      }
+    } catch (err: any) {
+      const responseDetails = err?.response?.data
+        ? ` ${typeof err.response.data === 'string' ? err.response.data : JSON.stringify(err.response.data)}`
+        : '';
+      setError('Failed to import products: ' + (err?.message || 'Unknown error') + responseDetails);
+    } finally {
+      setImporting(false);
     }
-    setSelectedProducts(newSelected);
   };
+
+  // State declarations must come first
+  const [step, setStep] = useState('select-list');
+  const [selectedProducts, setSelectedProducts] = useState(new Map());
+  const [groupedProducts, setGroupedProducts] = useState<any>({});
+  const [importing, setImporting] = useState(false);
+  const [error, setError] = useState('');
+  const [info, setInfo] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [priceLists, setPriceLists] = useState<any[]>([]);
+  const [selectedPriceListId, setSelectedPriceListId] = useState<string | undefined>();
+  const [missingPrices, setMissingPrices] = useState(0);
+
+  // Load price lists on mount
+  React.useEffect(() => {
+    const fetchPriceLists = async () => {
+      setLoading(true);
+      setError('');
+      try {
+        const lists = await superPriceListService.getLists();
+        setPriceLists(lists);
+      } catch (err: any) {
+        setError('Failed to load price lists');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchPriceLists();
+  }, []);
+
+  // Load WHCC products and group them
+  React.useEffect(() => {
+    const fetchProducts = async () => {
+      setLoading(true);
+      setError('');
+      try {
+        // 1. Load WHCC catalog
+        const catalog = await whccService.getProductCatalog();
+        if (!catalog || !Array.isArray(catalog.Categories)) {
+          setGroupedProducts({});
+          return;
+        }
+        // 2. Fetch and parse CSV for prices
+        let csvData: any[] = [];
+        const csvUrl = '/whcc_all_products_full.csv';
+        const response = await fetch(csvUrl);
+        const csvText = await response.text();
+        Papa.parse(csvText, {
+          header: true,
+          complete: (results) => {
+            csvData = results.data;
+          },
+        });
+        // Wait for Papa.parse to finish (it is synchronous in this mode)
+        // 3. Group products by category/product/size and match price (improved)
+        const grouped: any = {};
+        const normalize = (str: string) => (str || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+        const extractSize = (str: string) => {
+          const m = String(str || '').match(/(\d+(?:\.\d+)?x\d+(?:\.\d+)?)/i);
+          return m ? m[1].toLowerCase() : '';
+        };
+        const tokenize = (str: string) => {
+          const stop = new Set(['print', 'with', 'styrene', 'backing', 'the', 'and', 'for', 'inch', 'in']);
+          return String(str || '')
+            .toLowerCase()
+            .replace(/[^a-z0-9\s]+/g, ' ')
+            .split(/\s+/)
+            .filter(Boolean)
+            .filter(t => !stop.has(t));
+        };
+        let localMissingPrices = 0;
+        let rowCounter = 0;
+        catalog.Categories.forEach((cat: any) => {
+          if (!Array.isArray(cat.ProductList)) return;
+          if (!grouped[cat.Name]) grouped[cat.Name] = {};
+          const catNorm = normalize(cat.Name || '');
+          cat.ProductList.forEach((prod: any) => {
+            const uid = getUid(prod);
+            const name = prod.name || prod.Name || '';
+            const sizeMatch = name.match(/(\d+(?:x\d+)+)/i);
+            const baseName = sizeMatch ? name.replace(sizeMatch[0], '').trim() : name;
+            const size = sizeMatch ? sizeMatch[0] : '';
+            if (!grouped[cat.Name][baseName]) grouped[cat.Name][baseName] = {};
+            // Price matching from CSV only
+            let price = '';
+            let csvRow: any = null;
+            const productCode = String(prod.ProductCode || prod.productCode || prod.Code || prod.code || '').trim();
+            const productSize = extractSize(name);
+            const nameNorm = normalize(name);
+            const baseNorm = normalize(baseName.replace(/\bprint\b/ig, ''));
+
+            // 1) Strongest: Product code
+            if (productCode) {
+              csvRow = csvData.find((row: any) => String(row['Product Code'] || '').trim() === productCode);
+            }
+
+            // 2) Exact full-name match
+            if (!csvRow) {
+              csvRow = csvData.find((row: any) => normalize(row['Product Name/Size'] || '') === nameNorm);
+            }
+
+            // 3) Size-aware scored match (prevents same-cost collisions)
+            if (!csvRow) {
+              const candidates = csvData.filter((row: any) => {
+                const rowName = String(row['Product Name/Size'] || '');
+                if (!rowName) return false;
+                const rowSize = extractSize(rowName);
+                return productSize ? rowSize === productSize : true;
+              });
+
+              let best: any = null;
+              let bestScore = -1;
+              const pTokens = new Set(tokenize(baseName));
+              for (const row of candidates) {
+                const rowName = String(row['Product Name/Size'] || '');
+                const rowNorm = normalize(rowName);
+                const rowBaseNorm = normalize(rowName.replace(/(\d+(?:\.\d+)?x\d+(?:\.\d+)?)/ig, '').replace(/\bprint\b/ig, ''));
+                const rowSheetNorm = normalize(String(row['Sheet'] || ''));
+
+                let score = 0;
+                if (rowNorm === nameNorm) score += 100;
+                if (rowBaseNorm === baseNorm) score += 60;
+                if (rowBaseNorm.includes(baseNorm) || baseNorm.includes(rowBaseNorm)) score += 25;
+                if (rowSheetNorm && (rowSheetNorm.includes(catNorm) || catNorm.includes(rowSheetNorm))) score += 20;
+
+                const rowTokens = new Set(tokenize(rowName));
+                let overlap = 0;
+                pTokens.forEach(t => { if (rowTokens.has(t)) overlap += 1; });
+                score += overlap * 8;
+
+                if (score > bestScore) {
+                  bestScore = score;
+                  best = row;
+                }
+              }
+              if (bestScore >= 20) csvRow = best;
+            }
+
+            if (csvRow && csvRow['Price']) price = String(csvRow['Price']);
+            else localMissingPrices++;
+
+            const csvCode = Number(csvRow?.['Product Code'] || 0);
+            const importId = Number(productCode || csvCode || uid || 0);
+            const selectionKey = `row-${++rowCounter}-${catNorm}-${normalize(baseName)}-${String(size).toLowerCase()}`;
+
+            grouped[cat.Name][baseName][size] = {
+              ...prod,
+              productUID: uid,
+              importId,
+              selectionKey,
+              price,
+              csvRow,
+            };
+          });
+        });
+        setGroupedProducts(grouped);
+        setMissingPrices(localMissingPrices);
+      } catch (err: any) {
+        setError('Failed to load WHCC products');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchProducts();
+  }, [step]);
+
+
+
+  // Load price lists on mount
+  React.useEffect(() => {
+    const fetchPriceLists = async () => {
+      setLoading(true);
+      setError('');
+      try {
+        const lists = await superPriceListService.getLists();
+        setPriceLists(lists);
+      } catch (err: any) {
+        setError('Failed to load price lists');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchPriceLists();
+  }, []);
+
+
+  // --- Enhanced Product Selection Handlers ---
 
   // Select all products
   const handleSelectAll = () => {
-    const newSelected = new Map<number, ImportMapping>();
-    whccProducts.forEach(product => {
-      newSelected.set(product.productUID, {
-        productUID: product.productUID,
-        useCustomPrice: false,
-        markupPercentage: globalMarkup,
+    const newSelected = new Map(selectedProducts);
+    Object.keys(groupedProducts).forEach((cat) => {
+      Object.keys(groupedProducts[cat] || {}).forEach((prod) => {
+        Object.keys(groupedProducts[cat][prod] || {}).forEach((size) => {
+          const row = groupedProducts[cat][prod][size];
+          const selectionKey = String(row?.selectionKey || '');
+          if (!selectionKey) return;
+          if (!newSelected.has(selectionKey)) {
+            newSelected.set(selectionKey, {
+              selectionKey,
+              importId: Number(row?.importId || row?.productUID || 0),
+              useCustomPrice: false,
+              customPrice: '',
+            });
+          }
+        });
       });
     });
     setSelectedProducts(newSelected);
@@ -104,477 +361,310 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
     setSelectedProducts(new Map());
   };
 
-  // Apply global markup to all selected products
-  const handleApplyGlobalMarkup = () => {
-    const newSelected = new Map(selectedProducts);
-    newSelected.forEach((mapping, productUID) => {
-      if (!mapping.useCustomPrice) {
-        newSelected.set(productUID, {
-          ...mapping,
-          markupPercentage: globalMarkup,
+  // Update mapping for a product
+  const updateMapping = (selectionKey: string, updates: any) => {
+    setSelectedProducts((prev) => {
+      const newSelected = new Map(prev);
+      const current = newSelected.get(selectionKey) || { selectionKey };
+      newSelected.set(selectionKey, { ...current, ...updates });
+      return newSelected;
+    });
+  };
+
+  // Collapsible state for categories/products
+  const [collapsed, setCollapsed] = useState<any>({});
+
+  const toggleCollapse = (level: string) => {
+    setCollapsed((prev: any) => ({ ...prev, [level]: !prev[level] }));
+  };
+
+  const handleExpandAll = () => {
+    const next: any = {};
+    Object.keys(groupedProducts).forEach((cat) => {
+      next[`cat-${cat}`] = false;
+      Object.keys(groupedProducts[cat] || {}).forEach((prod) => {
+        next[`prod-${cat}-${prod}`] = false;
+      });
+    });
+    setCollapsed(next);
+  };
+
+  const handleCollapseAll = () => {
+    const next: any = {};
+    Object.keys(groupedProducts).forEach((cat) => {
+      next[`cat-${cat}`] = true;
+      Object.keys(groupedProducts[cat] || {}).forEach((prod) => {
+        next[`prod-${cat}-${prod}`] = true;
+      });
+    });
+    setCollapsed(next);
+  };
+
+  // Multi-level selection handlers
+  const isCategorySelected = (cat: string) => {
+    const productKeys = getAllProductKeys(groupedProducts, cat);
+    return productKeys.every(prod => {
+      const sizeKeys = getAllSizeKeys(groupedProducts, cat, prod);
+      return sizeKeys.every(size => selectedProducts.has(groupedProducts[cat][prod][size].selectionKey));
+    });
+  };
+  const isProductSelected = (cat: string, prod: string) => {
+    const sizeKeys = getAllSizeKeys(groupedProducts, cat, prod);
+    return sizeKeys.every(size => selectedProducts.has(groupedProducts[cat][prod][size].selectionKey));
+  };
+  const isSizeSelected = (cat: string, prod: string, size: string) => {
+    return selectedProducts.has(groupedProducts[cat][prod][size].selectionKey);
+  };
+  const handleCategorySelect = (cat: string, checked: boolean) => {
+    const productKeys = getAllProductKeys(groupedProducts, cat);
+    let newSelected = new Map(selectedProducts);
+    productKeys.forEach(prod => {
+      const sizeKeys = getAllSizeKeys(groupedProducts, cat, prod);
+      sizeKeys.forEach(size => {
+        const row = groupedProducts[cat][prod][size];
+        const selectionKey = String(row.selectionKey);
+        if (checked) {
+          newSelected.set(selectionKey, {
+            selectionKey,
+            importId: Number(row.importId || row.productUID || 0),
+            useCustomPrice: false,
+            customPrice: '',
+          });
+        } else {
+          newSelected.delete(selectionKey);
+        }
+      });
+    });
+    setSelectedProducts(newSelected);
+  };
+  const handleProductSelect = (cat: string, prod: string, checked: boolean) => {
+    const sizeKeys = getAllSizeKeys(groupedProducts, cat, prod);
+    let newSelected = new Map(selectedProducts);
+    sizeKeys.forEach(size => {
+      const row = groupedProducts[cat][prod][size];
+      const selectionKey = String(row.selectionKey);
+      if (checked) {
+        newSelected.set(selectionKey, {
+          selectionKey,
+          importId: Number(row.importId || row.productUID || 0),
+          useCustomPrice: false,
+          customPrice: '',
         });
+      } else {
+        newSelected.delete(selectionKey);
       }
     });
     setSelectedProducts(newSelected);
   };
-
-  // Update mapping for a product
-  const updateMapping = (productUID: number, updates: Partial<ImportMapping>) => {
-    const newSelected = new Map(selectedProducts);
-    const current = newSelected.get(productUID) || { productUID, useCustomPrice: false };
-    newSelected.set(productUID, { ...current, ...updates });
+  const handleSizeSelect = (cat: string, prod: string, size: string, checked: boolean) => {
+    const row = groupedProducts[cat][prod][size];
+    const selectionKey = String(row.selectionKey);
+    let newSelected = new Map(selectedProducts);
+    if (checked) {
+      newSelected.set(selectionKey, {
+        selectionKey,
+        importId: Number(row.importId || row.productUID || 0),
+        useCustomPrice: false,
+        customPrice: '',
+      });
+    } else {
+      newSelected.delete(selectionKey);
+    }
     setSelectedProducts(newSelected);
   };
 
-  // Import selected products to price list
-  const handleImport = async () => {
-    if (!selectedPriceListId || selectedProducts.size === 0) {
-      setError('Please select a price list and at least one product');
-      return;
-    }
-
-    setImporting(true);
-    setError(null);
-    setProgress('Checking for duplicates...');
-
-    try {
-      // Debug logging
-      console.log('[WHCC Import] Selected Price List ID:', selectedPriceListId);
-      console.log('[WHCC Import] Selected Products Map:', selectedProducts);
-      const selectedWhccProducts = whccProducts.filter((p) =>
-        selectedProducts.has(p.productUID)
-      );
-      console.log('[WHCC Import] Filtered WHCC Products:', selectedWhccProducts);
-
-      // Get existing price list to check for duplicates
-      const priceList = await priceListAdminService.getById(selectedPriceListId);
-      const existingProductNames = new Set(priceList?.products?.map(p => p.name.toLowerCase()) || []);
-      console.log('[WHCC Import] Existing product names:', existingProductNames);
-
-      setProgress('Grouping products...');
-      // Group similar products by base name to create a product with multiple sizes
-      const groupedProducts = new Map<string, typeof selectedWhccProducts>();
-
-      const getBaseName = (name: string, category?: string) => {
-        const cleaned = name
-          .replace(/\b\d+(?:\.\d+)?\s*[x×]\s*\d+(?:\.\d+)?\b/gi, '')
-          .replace(/\s+/g, ' ')
-          .trim();
-        return cleaned || category || 'Other';
-      };
-
-      selectedWhccProducts.forEach((product) => {
-        const baseName = getBaseName(product.name, product.category);
-
-        if (!groupedProducts.has(baseName)) {
-          groupedProducts.set(baseName, []);
-        }
-        groupedProducts.get(baseName)!.push(product);
-      });
-      console.log('[WHCC Import] Grouped products:', groupedProducts);
-
-      const itemsToAdd: any[] = [];
-      const skippedDuplicates: string[] = [];
-
-      groupedProducts.forEach((products, baseName) => {
-        const productName = baseName;
-
-        // Skip if product already exists in selected price list
-        if (existingProductNames.has(productName.toLowerCase())) {
-          skippedDuplicates.push(productName);
-          return;
-        }
-
-        // Deduplicate sizes by dimensions/name
-        const seenSizes = new Set<string>();
-        const uniqueProducts = products.filter((product) => {
-          const sizeKey = `${product.width ?? ''}x${product.height ?? ''}|${product.name.toLowerCase()}`;
-          if (seenSizes.has(sizeKey)) return false;
-          seenSizes.add(sizeKey);
-          return true;
-        });
-
-        const sizes = uniqueProducts.map((product) => {
-          const mapping = selectedProducts.get(product.productUID)!;
-          let cost = product.basePrice;
-          // Estimate cost if 0
-          if (!cost || cost === 0) {
-            // Estimate: $0.10 per square inch if dimensions exist, else $1.00
-            if (product.width && product.height) {
-              cost = Math.max(0.5, Math.round(product.width * product.height * 0.10 * 100) / 100);
-            } else {
-              cost = 1.0;
-            }
-          }
-
-          let price = cost;
-          if (mapping.useCustomPrice && mapping.customPrice) {
-            price = mapping.customPrice;
-          } else {
-            const markup = mapping.markupPercentage ?? 100;
-            price = cost * (1 + markup / 100);
-          }
-
-          return {
-            name: product.width && product.height ? `${product.width}x${product.height}` : product.name,
-            width: product.width,
-            height: product.height,
-            price,
-            cost,
-          };
-        });
-
-        itemsToAdd.push({
-          productName,
-          description: uniqueProducts[0].description || `${productName} - Multiple sizes`,
-          category: uniqueProducts[0].category || 'Other',
-          sizes,
-          whccProductUIDs: uniqueProducts.map(p => p.productUID),
-        });
-      });
-      console.log('[WHCC Import] Items to add:', itemsToAdd);
-      console.log('[WHCC Import] Skipped duplicates:', skippedDuplicates);
-
-      if (itemsToAdd.length === 0) {
-        setError('All selected products already exist in this price list');
-        setImporting(false);
-        setProgress(null);
-        return;
-      }
-
-      setProgress('Adding products to price list...');
-      // Add to price list
-      for (let i = 0; i < itemsToAdd.length; i++) {
-        const item = itemsToAdd[i];
-        setProgress(`Adding products to price list... (${item.productName})`);
-        await priceListAdminService.addItemsToPriceList(selectedPriceListId, [item]);
-      }
-      setProgress('All products added.');
-      console.log('[WHCC Import] addItemsToPriceList result: All products added');
-
-      let confirmMsg = `✓ Successfully imported ${itemsToAdd.length} product group(s)`;
-      if (skippedDuplicates.length > 0) {
-        confirmMsg += ` (${skippedDuplicates.length} duplicate(s) skipped)`;
-      }
-      alert(confirmMsg);
-
-      setProgress(null);
-      onImportComplete();
-    } catch (err) {
-      console.error('[WHCC Import] Import failed:', err);
-      setError(`Import failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
-      setProgress(null);
-    } finally {
-      setImporting(false);
-      setProgress(null);
-    }
-  };
-
+  // Only one return at the end:
   return (
-    <div className="modal-overlay">
-      <div className="modal-content import-modal">
-        <h2>Import Products from WHCC</h2>
-
-        {error && (
-          <div className="info-box-error info-box-error-margin">
-            ✗ {error}
-          </div>
-        )}
-
-        {/* Step 1: Select Price List */}
-        {step === 'select-list' && (
-          <>
-            <p className="admin-whcc-desc">
-              Select a price list where you want to add WHCC products.
-            </p>
-
-            {priceLists.length === 0 ? (
+    <div className="admin-whcc-modal">
+          <h2>Import Products from WHCC</h2>
+          {error && <div className="info-box-error info-box-error-margin">✗ {error}</div>}
+          {info && <div className="info-box info-box-margin">{info}</div>}
+          {/* Step 1: Select Price List */}
+          {step === 'select-list' && (
+            <div className="admin-whcc-step-select-list">
+              <label htmlFor="price-list-select" className="admin-whcc-select-label">Select a Price List:</label>
+              <select
+                id="price-list-select"
+                value={selectedPriceListId || ''}
+                onChange={e => setSelectedPriceListId(e.target.value)}
+                className="admin-whcc-select"
+              >
+                <option value="" disabled>Select a price list...</option>
+                {priceLists.map((pl: any) => (
+                  <option key={pl.id} value={pl.id}>{pl.name}</option>
+                ))}
+              </select>
+              <div className="admin-whcc-modal-footer">
                 <button
-                  onClick={handleLoadPriceLists}
-                  disabled={loading}
-                  className="btn btn-primary admin-whcc-btn-margin"
+                  className="btn btn-primary"
+                  disabled={!selectedPriceListId}
+                  onClick={() => setStep('select-products')}
                 >
-                {loading ? 'Loading...' : 'Load Price Lists'}
-              </button>
-            ) : (
-              <>
-                <div className="admin-whcc-select-margin">
-                  <label className="admin-whcc-select-label">
-                    Select Price List
-                  </label>
-                  <select
-                    value={selectedPriceListId || ''}
-                    onChange={(e) => setSelectedPriceListId(Number(e.target.value))}
-                    className="admin-whcc-select"
-                  >
-                    <option value="">-- Select a price list --</option>
-                    {priceLists.map((list) => (
-                      <option key={list.id} value={list.id}>
-                        {list.name} ({list.description})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <button
-                  onClick={handleLoadWhccProducts}
-                  disabled={!selectedPriceListId || loading}
-                  className="btn btn-success"
-                >
-                  {loading ? 'Loading...' : 'Next: Select Products'}
+                  Next: Select Products
                 </button>
-              </>
-            )}
-          </>
-        )}
-
-        {/* Step 2: Select Products */}
-        {step === 'select-products' && (
-          <>
-            <p className="admin-whcc-desc">
-              Select products from WHCC catalog to add to your price list.
-            </p>
-
-            {/* Global Controls */}
-            <div className="admin-section-card admin-whcc-section-margin">
-              <div className="admin-whcc-controls-row">
-                <div className="admin-whcc-controls-btns">
-                  <button
-                    onClick={handleSelectAll}
-                    className="btn btn-primary btn-sm"
-                  >
-                    Select All ({whccProducts.length})
-                  </button>
-                  <button
-                    onClick={handleDeselectAll}
-                    className="btn btn-secondary btn-sm"
-                  >
-                    Deselect All
-                  </button>
-                </div>
-
-                <div className="admin-whcc-controls-markup">
-                  <label className="admin-whcc-markup-label">
-                    Global Markup %:
-                  </label>
-                  <input
-                    type="number"
-                    step="1"
-                    min="0"
-                    value={globalMarkup}
-                    onChange={(e) => setGlobalMarkup(Math.max(0, parseInt(e.target.value) || 0))}
-                    className="admin-whcc-markup-input"
-                  />
-                  <button
-                    onClick={handleApplyGlobalMarkup}
-                    disabled={selectedProducts.size === 0}
-                    className="btn btn-success btn-sm"
-                  >
-                    Apply to Selected
-                  </button>
-                </div>
-
-                <div className={`${styles.adminwhccFs12} ${styles.adminwhccTextSecondary}`}>
-                  Selected: <strong>{selectedProducts.size}</strong> / {whccProducts.length}
-                </div>
+                <button onClick={onClose} className="btn btn-secondary admin-whcc-btn-margin">Cancel</button>
               </div>
             </div>
-
-            <div className="import-scroll-panel">
-              {whccProducts.map((product) => {
-                const key = product.productUID;
-                const isSelected = selectedProducts.has(product.productUID);
-                const mapping = selectedProducts.get(product.productUID);
-
-                // Estimate cost if basePrice is 0
-                let displayCost = product.basePrice;
-                if (!displayCost || displayCost === 0) {
-                  if (product.width && product.height) {
-                    displayCost = Math.max(0.5, Math.round(product.width * product.height * 0.10 * 100) / 100);
-                  } else {
-                    displayCost = 1.0;
-                  }
-                }
-
-                let displayRetail = displayCost;
-                if (mapping?.useCustomPrice && mapping.customPrice) {
-                  displayRetail = mapping.customPrice;
-                } else {
-                  const markup = mapping?.markupPercentage ?? 100;
-                  displayRetail = displayCost * (1 + markup / 100);
-                }
-
-                return (
-                  <div
-                    key={key}
-                    className={`import-product-card${isSelected ? ' selected' : ''}`}
-                  >
-                    <div className={styles.adminwhccFlexRow}>
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => toggleProductSelection(product.productUID)}
-                        className={styles.adminwhccH18}
-                      />
-
-                      <div style={{ flex: 1 }}>
-                        <h4 className={styles.adminwhccMb5}>{product.name}</h4>
-                        <p className={`${styles.adminwhccMb5} ${styles.adminwhccFs12} ${styles.adminwhccTextSecondary}`}>
-                          {product.description}
-                        </p>
-                        <p className={`${styles.adminwhccMb5} ${styles.adminwhccFs12}`}>
-                          UID: {product.productUID} | WHCC Cost: ${displayCost.toFixed(2)}
-                          {product.width && product.height && ` | ${product.width}x${product.height}`}
-                        </p>
-
-                        {isSelected && (
-                          <div className="import-pricing-box">
-                            <div className="import-pricing-summary">
-                              <strong>Cost:</strong> ${displayCost.toFixed(2)}
-                              {' | '}
-                              <strong>Retail Price:</strong> ${displayRetail.toFixed(2)}
-                              {!mapping?.useCustomPrice && (
-                                <>
-                                  {' | '}
-                                  <strong>Margin:</strong> {mapping?.markupPercentage ?? 100}%
-                                </>
-                              )}
-                            </div>
-
-                            {!mapping?.useCustomPrice ? (
-                              <>
-                                <label className={styles.adminwhccBlockLabel}>
-                                  Markup Percentage (%)
-                                </label>
-                                <input
-                                  type="number"
-                                  step="1"
-                                  min="0"
-                                  value={mapping?.markupPercentage ?? 100}
-                                  onChange={(e) =>
-                                    updateMapping(product.productUID, { markupPercentage: Math.max(0, parseInt(e.target.value)) })
-                                  }
-                                  className={styles.adminwhccInput}
-                                />
-                              </>
-                            ) : (
-                              <>
-                                <label className={styles.adminwhccBlockLabel}>
-                                  Custom Retail Price ($)
-                                </label>
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  min="0"
-                                  value={mapping.customPrice || displayCost}
-                                  onChange={(e) =>
-                                    updateMapping(product.productUID, { customPrice: parseFloat(e.target.value) })
-                                  }
-                                  className={styles.adminwhccInputLg}
-                                />
-                              </>
-                            )}
-
-                            <label className={styles.adminwhccCheckboxLabel}>
-                              <input
-                                type="checkbox"
-                                checked={mapping?.useCustomPrice || false}
-                                onChange={(e) =>
-                                  updateMapping(product.productUID, { useCustomPrice: e.target.checked })
-                                }
-                              />
-                              <span className={styles.adminwhccCheckboxSpan}>Override with custom price</span>
-                            </label>
-                          </div>
-                        )}
-                      </div>
+          )}
+          {/* Step 2: Select Products */}
+          {step === 'select-products' && (
+            <>
+              <p className="admin-whcc-desc">Select the WHCC products you want to import. Use the checkboxes to select/deselect.</p>
+              {loading ? (
+                <div>Loading WHCC products...</div>
+              ) : (
+                <>
+                  {(Object.keys(groupedProducts).length > 0 && missingPrices > 0) && (
+                    <div className="admin-whcc-warning">
+                      {missingPrices > 0 && <div>Warning: {missingPrices} products are missing prices and will show as <b>No Cost</b>.</div>}
                     </div>
+                  )}
+                  <div className="admin-whcc-toolbar">
+                    <button onClick={handleSelectAll} className="btn btn-secondary admin-whcc-btn-margin">Select All</button>
+                    <button onClick={handleDeselectAll} className="btn btn-secondary admin-whcc-btn-margin">Deselect All</button>
+                    <button onClick={handleExpandAll} className="btn btn-secondary admin-whcc-btn-margin">Expand All</button>
+                    <button onClick={handleCollapseAll} className="btn btn-secondary admin-whcc-btn-margin">Collapse All</button>
                   </div>
-                );
-              })}
-            </div>
-
-            <div className={styles.adminwhccFlexGap10}>
-              <button
-                onClick={() => setStep('select-list')}
-                className="btn btn-secondary"
-              >
-                Back
-              </button>
-
-              <button
-                onClick={() => setStep('confirm')}
-                disabled={selectedProducts.size === 0}
-                className="btn btn-success"
-              >
-                Review & Import ({selectedProducts.size})
-              </button>
-            </div>
-          </>
-        )}
-
-        {/* Step 3: Confirm */}
-        {step === 'confirm' && (
-          <>
-            <p className={`${styles.adminwhccTextSecondary} ${styles.adminwhccMb20}`}>
-              Review and confirm import of <strong>{selectedProducts.size} products</strong> to the selected price list.
-            </p>
-            {progress && (
-              <div className={`info-box info-box-progress ${styles.adminwhccMb20}`}>
-                {progress}
-              </div>
-            )}
-            <div className={`import-scroll-panel ${styles.adminwhccScrollPanel}`}>
-              <h4 className={`${styles.adminwhccM0} ${styles.adminwhccMb10}`}>Products to Import:</h4>
-              <ul className={styles.adminwhccPl20}>
-                {Array.from(selectedProducts.values()).map((mapping) => {
-                  const product = whccProducts.find((p) => p.productUID === mapping.productUID);
-                  const cost = product?.basePrice || 0;
-                  const retailPrice = mapping.useCustomPrice && mapping.customPrice ? mapping.customPrice : cost * (1 + (mapping.markupPercentage ?? 100) / 100);
-                  const margin = ((retailPrice - cost) / cost * 100).toFixed(0);
-                  
+                  <div className="admin-whcc-products-list">
+                    {Object.keys(groupedProducts).length === 0 ? (
+                      <div className="admin-whcc-no-products">No WHCC products available.</div>
+                    ) : (
+                      getAllCategoryKeys(groupedProducts).map((cat) => (
+                        <div key={`cat-${cat}`} className="admin-whcc-category-card">
+                          <div className="admin-whcc-category-header" onClick={() => toggleCollapse('cat-' + cat)}>
+                            <input
+                              type="checkbox"
+                              checked={isCategorySelected(cat)}
+                              onChange={e => handleCategorySelect(cat, e.target.checked)}
+                              onClick={e => e.stopPropagation()}
+                              className="admin-whcc-checkbox-space"
+                            />
+                            {cat} {collapsed['cat-' + cat] ? '▶' : '▼'}
+                          </div>
+                          {!collapsed['cat-' + cat] && (
+                            <div className="admin-whcc-category-children">
+                              {getAllProductKeys(groupedProducts, cat).map(prod => (
+                                <div key={`prod-${cat}-${prod}`} className="admin-whcc-product-group">
+                                  <div className="admin-whcc-product-header" onClick={() => toggleCollapse('prod-' + cat + '-' + prod)}>
+                                    <input
+                                      type="checkbox"
+                                      checked={isProductSelected(cat, prod)}
+                                      onChange={e => handleProductSelect(cat, prod, e.target.checked)}
+                                      onClick={e => e.stopPropagation()}
+                                      className="admin-whcc-checkbox-space"
+                                    />
+                                    {prod} {collapsed['prod-' + cat + '-' + prod] ? '▶' : '▼'}
+                                  </div>
+                                  {!collapsed['prod-' + cat + '-' + prod] && (
+                                    <div className="admin-whcc-size-list">
+                                      {getAllSizeKeys(groupedProducts, cat, prod).map(size => {
+                                        const product = groupedProducts[cat][prod][size];
+                                        const selected = isSizeSelected(cat, prod, size);
+                                        const mapping = selectedProducts.get(product.selectionKey) || {};
+                                        return (
+                                          <div key={`size-${cat}-${prod}-${size}-${product.productUID}`} className="admin-whcc-product-row admin-whcc-row">
+                                            <label className="admin-whcc-row-label">
+                                              <input
+                                                type="checkbox"
+                                                checked={selected}
+                                                onChange={e => handleSizeSelect(cat, prod, size, e.target.checked)}
+                                                className="admin-whcc-checkbox-space"
+                                              />
+                                              <span className="admin-whcc-size">{size}</span>
+                                              <span className="admin-whcc-name">{product.name || product.Name}</span>
+                                              <span className={`admin-whcc-price ${product.price ? '' : 'admin-whcc-price-missing'}`}>
+                                                {product.price ? `$${product.price}` : 'No Cost'}
+                                              </span>
+                                            </label>
+                                            {selected && (
+                                              <div className="admin-whcc-row-actions">
+                                                <label className="admin-whcc-custom-label">
+                                                  <input
+                                                    type="checkbox"
+                                                    checked={!!mapping.useCustomPrice}
+                                                    onChange={e => updateMapping(product.selectionKey, { useCustomPrice: e.target.checked })}
+                                                    className="admin-whcc-checkbox-space"
+                                                  />
+                                                  Custom Price:
+                                                  <input
+                                                    type="number"
+                                                    min={0}
+                                                    value={mapping.customPrice ?? ''}
+                                                    onChange={e => updateMapping(product.selectionKey, { customPrice: e.target.value, useCustomPrice: true })}
+                                                    className="admin-whcc-custom-input"
+                                                    disabled={!mapping.useCustomPrice}
+                                                  />
+                                                </label>
+                                              </div>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  {/* Sticky footer for action buttons */}
+                  <div className="admin-whcc-modal-footer">
+                    <button
+                      className="btn btn-primary admin-whcc-btn-margin"
+                      disabled={selectedProducts.size === 0}
+                      onClick={() => setStep('confirm')}
+                    >
+                      Next: Confirm Import
+                    </button>
+                    <button onClick={onClose} className="btn btn-secondary admin-whcc-btn-margin">Cancel</button>
+                  </div>
+                </>
+              )}
+            </>
+          )}
+          {/* Step 3: Confirm Import */}
+          {step === 'confirm' && (
+            <>
+              <p className="admin-whcc-desc">Confirm your import selections and settings below.</p>
+              <ul>
+                {Array.from(selectedProducts.values()).map((mapping: any, idx) => {
+                  // Find the product in groupedProducts
+                  let found = null;
+                  let foundSize = '';
+                  outer: for (const cat of Object.keys(groupedProducts)) {
+                    for (const prod of Object.keys(groupedProducts[cat])) {
+                      for (const size of Object.keys(groupedProducts[cat][prod])) {
+                        const p = groupedProducts[cat][prod][size];
+                        if (String(p.selectionKey) === String(mapping.selectionKey)) {
+                          found = p;
+                          foundSize = size;
+                          break outer;
+                        }
+                      }
+                    }
+                  }
+                  // Use a composite key: productUID-size (or fallback to idx)
+                  const key = found ? `${mapping.selectionKey}-${foundSize}` : `${mapping.selectionKey || idx}`;
                   return (
-                    <li key={mapping.productUID} className={`${styles.adminwhccMb8} ${styles.adminwhccFs12}`}>
-                      <strong>{product?.name}</strong>
-                      {' — Cost: '}
-                      <span className={styles.adminwhccBgError}>${cost.toFixed(2)}</span>
-                      {' | Retail: '}
-                      <span className={styles.adminwhccBgSuccess}>${retailPrice.toFixed(2)}</span>
-                      {' | Margin: '}
-                      <span>{margin}%</span>
-                    </li>
+                    <li key={key}>{found ? `${found.name || found.Name} (${found.price})` : (mapping.selectionKey || idx)}</li>
                   );
                 })}
               </ul>
-            </div>
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <button
-                onClick={() => setStep('select-products')}
-                className="btn btn-secondary"
-              >
-                Back
-              </button>
-              <button
-                onClick={handleImport}
-                disabled={importing}
-                className="btn btn-success"
-              >
-                {importing ? 'Importing...' : 'Import to Price List'}
-              </button>
-            </div>
-          </>
-        )}
 
-        {/* Close button */}
-        <button
-          onClick={onClose}
-          className="import-close"
-        >
-          ×
-        </button>
-      </div>
+
+              <div className="admin-whcc-modal-footer">
+                <button onClick={() => setStep('select-products')} className="btn btn-secondary">Back</button>
+                <button onClick={handleImport} disabled={importing} className="btn btn-success">{importing ? 'Importing...' : 'Import to Price List'}</button>
+                <button onClick={onImportComplete} disabled={importing} className="btn btn-primary">Done & Refresh</button>
+                <button onClick={onClose} className="btn btn-secondary admin-whcc-btn-margin">Cancel</button>
+              </div>
+            </>
+          )}
     </div>
   );
-};
+}
 
 export default AdminWhccImport;

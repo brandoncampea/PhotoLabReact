@@ -1,4 +1,3 @@
-
 import { Suspense, lazy } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
@@ -25,13 +24,13 @@ const Register = lazy(() => import('./pages/Register'));
 const Albums = lazy(() => import('./pages/Albums'));
 const AlbumDetails = lazy(() => import('./pages/AlbumDetails'));
 const Cart = lazy(() => import('./pages/Cart'));
+const Checkout = lazy(() => import('./pages/Checkout'));
 const Orders = lazy(() => import('./pages/Orders'));
 const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard'));
 const AdminSmugMug = lazy(() => import('./pages/admin/AdminSmugMug'));
 const AdminPriceLists = lazy(() => import('./pages/admin/AdminPriceLists'));
 const AdminConfiguration = lazy(() => import('./pages/admin/AdminConfiguration'));
 const StudioAdminDashboard = lazy(() => import('./pages/admin/StudioAdminDashboard'));
-const AdminAnalytics = lazy(() => import('./pages/admin/AdminAnalytics'));
 const AdminAlbums = lazy(() => import('./pages/admin/AdminAlbums'));
 const AdminPhotos = lazy(() => import('./pages/admin/AdminPhotos'));
 const AdminProducts = lazy(() => import('./pages/admin/AdminProducts'));
@@ -47,10 +46,11 @@ const AdminLogin = lazy(() => import('./pages/admin/AdminLogin'));
 const SuperAdminLogin = lazy(() => import('./pages/admin/SuperAdminLogin'));
 
 
+
 function App() {
   return (
-    <Layout>
-      <AuthProvider>
+    <AuthProvider>
+      <Layout>
         <CartProvider>
           <Suspense fallback={<div className="loader">Loading...</div>}>
             <Routes>
@@ -61,6 +61,7 @@ function App() {
               <Route path="/albums" element={<Albums />} />
               <Route path="/albums/:albumId" element={<AlbumDetails />} />
               <Route path="/cart" element={<Cart />} />
+              <Route path="/checkout" element={<Checkout />} />
               <Route path="/orders" element={<Orders />} />
               <Route path="/search" element={<SearchPage />} />
               <Route path="/studio/:studioSlug" element={<StudioPublicPage />} />
@@ -71,9 +72,10 @@ function App() {
               {/* Admin and super admin protected routes */}
               <Route path="/super-admin" element={<AdminProtectedRoute><SuperAdminDashboard /></AdminProtectedRoute>} />
               <Route path="/super-admin-pricing" element={<AdminProtectedRoute><SuperAdminPricing /></AdminProtectedRoute>} />
+              <Route path="/admin/super-pricing" element={<AdminProtectedRoute><SuperAdminPricing /></AdminProtectedRoute>} />
               <Route path="/admin/studio-dashboard" element={<AdminProtectedRoute><StudioAdminDashboard /></AdminProtectedRoute>} />
               <Route path="/admin/dashboard" element={<AdminProtectedRoute><AdminDashboard /></AdminProtectedRoute>} />
-              <Route path="/admin/analytics" element={<AdminProtectedRoute><AdminAnalytics /></AdminProtectedRoute>} />
+              <Route path="/admin/analytics" element={<Navigate to="/admin/dashboard" replace />} />
               <Route path="/admin/albums" element={<AdminProtectedRoute><AdminAlbums /></AdminProtectedRoute>} />
               <Route path="/admin/photos" element={<AdminProtectedRoute><AdminPhotos /></AdminProtectedRoute>} />
               <Route path="/admin/products" element={<AdminProtectedRoute><AdminProducts /></AdminProtectedRoute>} />
@@ -93,13 +95,14 @@ function App() {
               <Route path="/admin/subscription" element={<AdminProtectedRoute><AdminSubscription /></AdminProtectedRoute>} />
               <Route path="/admin/subscription-gateway" element={<AdminProtectedRoute><AdminSubscriptionGateway /></AdminProtectedRoute>} />
               <Route path="/admin/stripe" element={<AdminProtectedRoute><AdminStripe /></AdminProtectedRoute>} />
+
             {/* Catch-all route to redirect to landing page */}
             <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Suspense>
         </CartProvider>
-      </AuthProvider>
-    </Layout>
+      </Layout>
+    </AuthProvider>
   );
 }
 

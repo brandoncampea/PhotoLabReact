@@ -1,13 +1,53 @@
-// Helper component for SAS-protected order items
+// Helper component for order items
 function OrderItemWithSas({ item }: { item: any }) {
-  const sasUrl = useSasUrl(item.photo.thumbnailUrl);
-  return <img src={sasUrl || ''} alt={item.photo.fileName} style={{ width: '56px', height: '56px', objectFit: 'cover', borderRadius: '6px', border: '1px solid var(--border-color)' }} />;
+  // thumbnailUrl is a backend API URL — use directly (not a blob name for useSasUrl)
+  const thumbnailUrl = item.photo?.thumbnailUrl || null;
+  const cropData = item.cropData
+    ? (typeof item.cropData === 'string' ? JSON.parse(item.cropData) : item.cropData)
+    : null;
+
+  // Compute crop box position as % of original photo dimensions
+  const photoW = item.photo?.width;
+  const photoH = item.photo?.height;
+  let cropStyle: React.CSSProperties | null = null;
+  if (cropData && photoW && photoH) {
+    cropStyle = {
+      left:   `${(cropData.x / photoW) * 100}%`,
+      top:    `${(cropData.y / photoH) * 100}%`,
+      width:  `${(cropData.width  / photoW) * 100}%`,
+      height: `${(cropData.height / photoH) * 100}%`,
+    };
+  }
+
+  return (
+    <div className="order-item">
+      <div className="item-image-container">
+        {thumbnailUrl ? (
+          <img src={thumbnailUrl} alt={item.photo?.fileName || 'Photo'} className="item-image" />
+        ) : (
+          <div className="item-image-placeholder">No Image</div>
+        )}
+        {cropStyle && <div className="crop-box-overlay" style={cropStyle} />}
+        {cropData && <div className="crop-indicator">Cropped</div>}
+      </div>
+      <div className="item-details">
+        <h4 className="item-product-name" title={item.productName}>
+          {item.productName || 'Unknown Product'}
+        </h4>
+        <p className="item-size-name">{item.productSizeName || 'Unknown Size'}</p>
+        <div>
+          <span className="item-quantity">Qty: {item.quantity}</span>
+        </div>
+        <p className="item-price">${(item.price * item.quantity).toFixed(2)}</p>
+      </div>
+    </div>
+  );
 }
 import React, { useEffect, useState } from 'react';
-import { useSasUrl } from '../hooks/useSasUrl';
 import { useLocation } from 'react-router-dom';
 import { Order } from '../types';
 import { orderService } from '../services/orderService';
+import './Orders.css';
 // import TopNavbar from '../components/TopNavbar';
 
 const Orders: React.FC = () => {
@@ -39,10 +79,10 @@ const Orders: React.FC = () => {
   return (
     <>
       {/* <TopNavbar /> */}
-      <div className="main-content dark-bg orders-full-height">
-        <div className="page-header">
-          <h1 className="gradient-text">Order History</h1>
-          <p className="orders-description text-secondary">View your past orders</p>
+      <div className="orders-container">
+        <div className="orders-header">
+          <h1>Order History</h1>
+          <p>View your past orders</p>
         </div>
 
         {successMessage && (
@@ -58,11 +98,11 @@ const Orders: React.FC = () => {
         ) : (
           <div className="orders-list">
             {orders.map((order) => (
-              <div key={order.id} className="order-card dark-card">
+              <div key={order.id} className="order-card">
                 <div className="order-header">
                   <div>
-                    <h3 className="gradient-text">Order #{order.id}</h3>
-                    <p className="order-date text-secondary">
+                    <h3>Order #{order.id}</h3>
+                    <p className="order-date">
                       {new Date(order.orderDate).toLocaleDateString()}
                     </p>
                   </div>
@@ -70,14 +110,37 @@ const Orders: React.FC = () => {
                     <span className={`status-badge status-${(order.status || 'pending').toLowerCase()}`}>
                       {order.status || 'Pending'}
                     </span>
-                    <p className="order-total">${order.totalAmount.toFixed(2)}</p>
+                    <p className="order-total">${Number(order.totalAmount || 0).toFixed(2)}</p>
                   </div>
                 </div>
                 <div className="order-items">
                   {order.items.map((item) => (
                     <OrderItemWithSas key={item.id} item={item} />
                   ))}
-
+                </div>
+                <div className="order-pricing-summary">
+                  {order.subtotal != null && (
+                    <div className="pricing-row">
+                      <span>Subtotal</span>
+                      <span>${Number(order.subtotal).toFixed(2)}</span>
+                    </div>
+                  )}
+                  {Number(order.shippingCost) > 0 && (
+                    <div className="pricing-row">
+                      <span>Shipping</span>
+                      <span>${Number(order.shippingCost).toFixed(2)}</span>
+                    </div>
+                  )}
+                  {Number(order.taxAmount) > 0 && (
+                    <div className="pricing-row">
+                      <span>Tax</span>
+                      <span>${Number(order.taxAmount).toFixed(2)}</span>
+                    </div>
+                  )}
+                  <div className="pricing-row pricing-total-row">
+                    <span>Total Charged</span>
+                    <span>${Number(order.totalAmount || 0).toFixed(2)}</span>
+                  </div>
                 </div>
               </div>
             ))}

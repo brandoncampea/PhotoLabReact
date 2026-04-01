@@ -8,13 +8,13 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
   useEffect(() => {
     const viewAsStudioId = localStorage.getItem('viewAsStudioId');
-    console.log('[AdminLayout] viewAsStudioId:', viewAsStudioId);
+    // ...existing code...
     if (viewAsStudioId) {
       studioService.getStudio(Number(viewAsStudioId)).then(studio => {
-        console.log('[AdminLayout] studioService.getStudio result:', studio);
+        // ...existing code...
         setStudioName(studio.name);
-      }).catch((err) => {
-        console.error('[AdminLayout] Failed to fetch studio:', err);
+      }).catch(() => {
+        // ...existing code...
         setStudioName(null);
       });
     } else {

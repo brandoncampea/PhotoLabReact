@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { formatCurrency } from './AdminProducts';
+
 
 interface Product {
   id: any;
@@ -156,7 +156,7 @@ const AdminPackages: React.FC<AdminPackagesProps> = ({ products }) => {
                           style={{ width: 60 }}
                         />
                       </td>
-                      <td>{formatCurrency((size.cost || 0) * quantity)}</td>
+                      <td>{((size.cost || 0) * quantity).toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</td>
                     </tr>
                   );
                 })
@@ -164,9 +164,9 @@ const AdminPackages: React.FC<AdminPackagesProps> = ({ products }) => {
           </tbody>
         </table>
         <div style={{ marginTop: 8 }}>
-          <strong>Package Cost:</strong> {formatCurrency(getPackageCost(form))}
+          <strong>Package Cost:</strong> {getPackageCost(form).toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
           <span style={{ marginLeft: 24, color: getPackageProfit(form) >= 0 ? 'green' : 'red' }}>
-            <strong>Package Profit:</strong> {formatCurrency(getPackageProfit(form))}
+            <strong>Package Profit:</strong> {getPackageProfit(form).toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
           </span>
         </div>
         <button onClick={handleSave} style={{ marginTop: 12 }}>{editingId ? 'Update Package' : 'Save Package'}</button>
@@ -207,9 +207,9 @@ const AdminPackages: React.FC<AdminPackagesProps> = ({ products }) => {
                   </ul>
                 )}
               </td>
-              <td>{formatCurrency(pkg.price)}</td>
-              <td>{formatCurrency(getPackageCost(pkg))}</td>
-              <td style={{ color: getPackageProfit(pkg) >= 0 ? 'green' : 'red' }}>{formatCurrency(getPackageProfit(pkg))}</td>
+              <td>{pkg.price.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</td>
+              <td>{getPackageCost(pkg).toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</td>
+              <td style={{ color: getPackageProfit(pkg) >= 0 ? 'green' : 'red' }}>{getPackageProfit(pkg).toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</td>
               <td>
                 <button onClick={() => handleEdit(pkg)}>Edit</button>
                 <button onClick={() => handleDelete(pkg.id)} style={{ marginLeft: 8 }}>Delete</button>

@@ -1,3 +1,9 @@
+// Minimal Lab type for admin lab management
+export interface Lab {
+  id: number;
+  name: string;
+  isActive?: boolean;
+}
 // Type definitions for the application
 
 export interface User {
@@ -63,6 +69,8 @@ export interface CartItem {
   cropData?: CropData;
   productId?: number;
   productSizeId?: number;
+  productName?: string;
+  productSizeName?: string;
 }
 
 export interface CropData {
@@ -100,6 +108,18 @@ export interface Order {
   paymentIntentId?: string;
   customerReceiptSentAt?: string;
   studioReceiptSentAt?: string;
+  whccConfirmationId?: string;
+  whccImportResponse?: any;
+  whccSubmitResponse?: any;
+  whccLastError?: any;
+  whccOrderNumber?: string;
+  whccWebhookStatus?: string;
+  whccWebhookEvent?: string;
+  shippingCarrier?: string;
+  trackingNumber?: string;
+  trackingUrl?: string;
+  shippedAt?: string;
+  excludedItemsNote?: string;
 }
 
 export interface ShippingAddress {
@@ -243,6 +263,30 @@ export interface ShippingConfig {
   batchDeadline: string;
   directShippingCharge: number;
   isActive: boolean;
+  batchShippingAddress?: ShippingAddress | null;
+}
+
+export interface BatchQueueOrder {
+  id: number;
+  userId: number;
+  totalAmount: number;
+  customerName: string;
+  customerEmail: string;
+  createdAt: string;
+  batchReadyDate?: string | null;
+  isEligible: boolean;
+  shippingAddress?: ShippingAddress | null;
+}
+
+export interface BatchQueueSummary {
+  totalQueued: number;
+  eligibleCount: number;
+  eligibleOrderIds: number[];
+  shouldPromptSubmission: boolean;
+  nextBatchDate?: string | null;
+  orders: BatchQueueOrder[];
+  batchShippingAddress?: ShippingAddress | null;
+  labOptions: string[];
 }
 
 export interface StripeConfig {
@@ -252,6 +296,7 @@ export interface StripeConfig {
   isLiveMode: boolean;
   isActive: boolean;
   webhookSecret?: string;
+  reason?: 'live_mode_requires_https' | string;
 }
 
 export interface ProfileConfig {
@@ -308,6 +353,7 @@ export interface PaymentIntent {
   amount: number;
   currency: string;
   status: string;
+  livemode?: boolean;
 }
 export interface Package {
   id: number;

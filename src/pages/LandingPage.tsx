@@ -1,4 +1,5 @@
 import React from 'react';
+import './LandingPage.css';
 // import { useSasUrl } from '../hooks/useSasUrl';
 import { Photo } from '../types';
 // AlbumSuggestionItem and PhotoSuggestionItem imports removed; components not found.

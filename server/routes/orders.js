@@ -15,7 +15,59 @@ const safeJsonParse = (value, fallback = null) => {
   }
 };
 
+const stringifyForDb = (value) => {
+  if (value === undefined || value === null) return null;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return JSON.stringify({ error: 'Failed to serialize value' });
+  }
+};
+
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
+
+const getOrderStudioIdFromItems = async (items) => {
+  let studioId = null;
+
+  for (const item of items || []) {
+    const photoIds = Array.isArray(item.photoIds)
+      ? item.photoIds
+      : item.photoId
+      ? [item.photoId]
+      : [];
+    const primaryPhotoId = photoIds[0];
+    if (!primaryPhotoId) continue;
+
+    const album = await queryRow(
+      `SELECT a.studio_id as studioId
+       FROM photos p
+       INNER JOIN albums a ON a.id = p.album_id
+       WHERE p.id = $1`,
+      [primaryPhotoId]
+    );
+
+    if (!album?.studioId) continue;
+
+    if (studioId && Number(album.studioId) !== Number(studioId)) {
+      throw new Error('Orders cannot span multiple studios');
+    }
+
+    studioId = Number(album.studioId);
+  }
+
+  return studioId;
+};
+
+const resolveOrderAccessStudioId = (req) => {
+  const headerStudioIdRaw = req.headers['x-acting-studio-id'];
+  const headerStudioId = Number(Array.isArray(headerStudioIdRaw) ? headerStudioIdRaw[0] : headerStudioIdRaw);
+
+  if (Number.isInteger(headerStudioId) && headerStudioId > 0) {
+    return headerStudioId;
+  }
+
+  return Number(req.user?.studio_id) || null;
+};
 
 const getSuperAdminReceiptBcc = async () => {
   const envEmails = String(process.env.ADMIN_EMAILS || '')
@@ -91,6 +143,391 @@ const fetchPaymentIntentAccounting = async (paymentIntentId) => {
   }
 };
 
+const submitOrderToWhcc = async (orderId) => {
+  let importResponseData = null;
+  let submitResponseData = null;
+  let confirmationId = null;
+
+  try {
+    // Get order details and items
+    const order = await queryRow(
+      `SELECT id,
+              studio_id,
+              is_batch,
+              shipping_address as shippingAddress,
+              created_at as createdAt
+       FROM orders
+       WHERE id = $1`,
+      [orderId]
+    );
+    if (!order || order.is_batch) {
+      return; // Don't submit batch orders to WHCC
+    }
+
+    const shippingAddress = safeJsonParse(order.shippingAddress, {}) || {};
+
+    const normalizePhone = (value) => String(value || '').replace(/[^0-9]/g, '').slice(0, 20);
+    const toAbsoluteAssetUrl = (value) => {
+      const raw = String(value || '').trim();
+      if (!raw) return null;
+      if (/^https?:\/\//i.test(raw)) return raw;
+      const appBase = String(process.env.APP_BASE_URL || '').trim().replace(/\/$/, '');
+      if (!appBase) return null;
+      return raw.startsWith('/') ? `${appBase}${raw}` : `${appBase}/${raw}`;
+    };
+
+    const defaultShipFromAddress = {
+      Name: process.env.WHCC_SHIP_FROM_NAME || 'Returns Department',
+      Addr1: process.env.WHCC_SHIP_FROM_ADDR1 || '3432 Denmark Ave',
+      Addr2: process.env.WHCC_SHIP_FROM_ADDR2 || 'Suite 390',
+      City: process.env.WHCC_SHIP_FROM_CITY || 'Eagan',
+      State: process.env.WHCC_SHIP_FROM_STATE || 'MN',
+      Zip: process.env.WHCC_SHIP_FROM_ZIP || '55123',
+      Country: process.env.WHCC_SHIP_FROM_COUNTRY || 'US',
+      Phone: normalizePhone(process.env.WHCC_SHIP_FROM_PHONE || '8002525234'),
+    };
+
+    const items = await queryRows(
+      `SELECT oi.id,
+              oi.photo_id,
+              oi.product_id,
+              oi.product_size_id,
+              oi.quantity,
+              oi.crop_data,
+              p.name as productName,
+              ps.size_name as sizeName,
+              p.options as productOptions,
+              ph.file_name as fileName,
+              ph.full_image_url as fullImageUrl,
+              ph.thumbnail_url as thumbnailUrl
+       FROM order_items oi
+       LEFT JOIN products p ON p.id = oi.product_id
+       LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id
+       LEFT JOIN photos ph ON ph.id = oi.photo_id
+       WHERE oi.order_id = $1`,
+      [orderId]
+    );
+
+    if (!items || items.length === 0) {
+      console.warn(`[WHCC] No items found for order ${orderId}`);
+      return;
+    }
+
+    // Get WHCC credentials from environment
+    const consumerKey = process.env.WHCC_CONSUMER_KEY;
+    const consumerSecret = process.env.WHCC_CONSUMER_SECRET;
+    const isSandbox = process.env.WHCC_SANDBOX === 'true';
+
+    if (!consumerKey || !consumerSecret) {
+      console.warn('[WHCC] WHCC_CONSUMER_KEY or WHCC_CONSUMER_SECRET not configured; skipping WHCC submission');
+      return;
+    }
+
+    const { createHash } = await import('node:crypto');
+
+    const parseProductOptions = (value) => safeJsonParse(value, {}) || {};
+    const extractWhccItemConfig = (productOptions) => {
+      const direct = productOptions || {};
+      const nested = direct.whcc || direct.whccConfig || {};
+      return {
+        productUID: Number(
+          direct.whccProductUID ??
+          direct.productUID ??
+          nested.productUID ??
+          nested.ProductUID
+        ) || null,
+        productNodeID: Number(
+          direct.whccProductNodeID ??
+          direct.productNodeID ??
+          nested.productNodeID ??
+          nested.ProductNodeID
+        ) || null,
+        itemAttributeUIDs: Array.isArray(direct.whccItemAttributeUIDs)
+          ? direct.whccItemAttributeUIDs
+          : Array.isArray(direct.itemAttributeUIDs)
+          ? direct.itemAttributeUIDs
+          : Array.isArray(nested.itemAttributeUIDs)
+          ? nested.itemAttributeUIDs
+          : Array.isArray(nested.ItemAttributeUIDs)
+          ? nested.ItemAttributeUIDs
+          : [],
+      };
+    };
+
+    const getCatalogProducts = (catalogPayload) => {
+      if (Array.isArray(catalogPayload?.Products)) return catalogPayload.Products;
+      if (Array.isArray(catalogPayload?.products)) return catalogPayload.products;
+      if (Array.isArray(catalogPayload)) return catalogPayload;
+      return [];
+    };
+
+    const getCatalogProductUID = (product) => Number(
+      product?.ProductUID ??
+      product?.productUID ??
+      product?.ProductId ??
+      product?.productId ??
+      product?.UID
+    ) || null;
+
+    const matchCatalogProduct = (catalogProducts, item) => {
+      const name = String(item.productName || '').toLowerCase();
+      const size = String(item.sizeName || '').toLowerCase();
+      const scored = [];
+      for (const product of catalogProducts) {
+        const uid = getCatalogProductUID(product);
+        if (!uid) continue;
+        const productName = String(product?.Name || product?.name || product?.ProductName || '').toLowerCase();
+        const description = String(product?.Description || product?.description || '').toLowerCase();
+        let score = 0;
+        if (name && (productName.includes(name) || description.includes(name))) score += 3;
+        if (size && (productName.includes(size) || description.includes(size))) score += 4;
+        if (score > 0) scored.push({ score, product });
+      }
+      scored.sort((a, b) => b.score - a.score);
+      return scored[0]?.product || null;
+    };
+
+    const getCatalogProductNodeID = (catalogProduct) => {
+      const raw =
+        catalogProduct?.ProductNodeID ??
+        catalogProduct?.productNodeID ??
+        catalogProduct?.DefaultProductNodeID ??
+        catalogProduct?.defaultProductNodeID ??
+        (Array.isArray(catalogProduct?.ProductNodes) ? catalogProduct.ProductNodes[0]?.ProductNodeID : null) ??
+        (Array.isArray(catalogProduct?.productNodes) ? catalogProduct.productNodes[0]?.productNodeID : null);
+      return Number(raw) || null;
+    };
+
+    const getCatalogItemAttributeUIDs = (catalogProduct) => {
+      const attrs =
+        catalogProduct?.DefaultItemAttributes ??
+        catalogProduct?.defaultItemAttributes ??
+        catalogProduct?.ItemAttributes ??
+        catalogProduct?.itemAttributes ??
+        [];
+      if (!Array.isArray(attrs)) return [];
+      return attrs
+        .map((a) => Number(a?.AttributeUID ?? a?.attributeUID ?? a?.uid ?? a))
+        .filter((v) => Number.isInteger(v) && v > 0);
+    };
+
+    // Call WHCC OrderImport API
+    const axios = (await import('axios')).default;
+    const baseUrl = isSandbox ? 'https://sandbox.apps.whcc.com' : 'https://apps.whcc.com';
+
+    // Get WHCC token
+    const tokenResponse = await axios.post(
+      'https://auth.whcc.com/oauth/token',
+      new URLSearchParams({
+        grant_type: 'client_credentials',
+        client_id: consumerKey,
+        client_secret: consumerSecret,
+      }),
+      {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json'
+        }
+      }
+    );
+
+    const token = tokenResponse.data.access_token;
+
+    // Fetch WHCC catalog to resolve per-product ProductUID/Node/Attributes
+    let catalogProducts = [];
+    try {
+      const catalogResponse = await axios.get(`${baseUrl}/api/catalog`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/json',
+        },
+      });
+      catalogProducts = getCatalogProducts(catalogResponse.data);
+    } catch (catalogError) {
+      console.warn('[WHCC] Unable to fetch catalog for product mapping, using fallback defaults:', catalogError?.response?.status || catalogError?.message);
+    }
+
+    // Prepare WHCC OrderImport payload according to docs
+    const whccOrderItems = items
+      .map((item, index) => {
+        const assetPath = toAbsoluteAssetUrl(item.fullImageUrl) || toAbsoluteAssetUrl(item.thumbnailUrl);
+        if (!assetPath) {
+          return null;
+        }
+
+        const imageHash = createHash('md5').update(assetPath).digest('hex');
+        const cropData = safeJsonParse(item.crop_data, null);
+
+        const productOptions = parseProductOptions(item.productOptions);
+        const optionsConfig = extractWhccItemConfig(productOptions);
+        const catalogMatch = matchCatalogProduct(catalogProducts, item);
+
+        const productUID =
+          optionsConfig.productUID ||
+          getCatalogProductUID(catalogMatch) ||
+          Number(item.product_size_id || item.product_id || 0);
+
+        if (!productUID) {
+          return null;
+        }
+
+        const productNodeID =
+          optionsConfig.productNodeID ||
+          getCatalogProductNodeID(catalogMatch) ||
+          10000;
+
+        const attributeUIDs = (optionsConfig.itemAttributeUIDs || []).length
+          ? optionsConfig.itemAttributeUIDs
+              .map((value) => Number(value))
+              .filter((value) => Number.isInteger(value) && value > 0)
+          : getCatalogItemAttributeUIDs(catalogMatch);
+
+        const finalAttributeUIDs = attributeUIDs.length ? attributeUIDs : [1, 5];
+
+        return {
+          ProductUID: productUID,
+          Quantity: Math.max(1, Number(item.quantity) || 1),
+          LineItemID: String(item.id || index + 1),
+          ItemAssets: [
+            {
+              ProductNodeID: productNodeID,
+              AssetPath: assetPath,
+              ImageHash: imageHash,
+              PrintedFileName: item.fileName || `order-${orderId}-item-${index + 1}.jpg`,
+              AutoRotate: true,
+              ...(cropData && typeof cropData === 'object'
+                ? {
+                    X: Number(cropData.x) || 0,
+                    Y: Number(cropData.y) || 0,
+                    ZoomX: Number(cropData.scaleX) ? Number(cropData.scaleX) * 100 : 100,
+                    ZoomY: Number(cropData.scaleY) ? Number(cropData.scaleY) * 100 : 100,
+                  }
+                : {}),
+            },
+          ],
+          ItemAttributes: finalAttributeUIDs.map((uid) => ({ AttributeUID: uid })),
+        };
+      })
+      .filter(Boolean);
+
+    if (!whccOrderItems.length) {
+      throw new Error('No valid WHCC order items with accessible image assets');
+    }
+
+    const whccOrderRequest = {
+      EntryId: String(orderId),
+      Orders: [
+        {
+          SequenceNumber: 1,
+          Reference: `Order #${orderId}`,
+          Instructions: null,
+          SendNotificationEmailAddress: String(shippingAddress.email || '').trim() || null,
+          SendNotificationEmailToAccount: true,
+          ShipToAddress: {
+            Name: String(shippingAddress.fullName || '').trim() || `Order ${orderId}`,
+            Attn: null,
+            Addr1: String(shippingAddress.addressLine1 || '').trim() || 'Address unavailable',
+            Addr2: String(shippingAddress.addressLine2 || '').trim() || null,
+            City: String(shippingAddress.city || '').trim() || 'Unknown',
+            State: String(shippingAddress.state || '').trim() || 'NA',
+            Zip: String(shippingAddress.zipCode || '').trim() || '00000',
+            Country: String(shippingAddress.country || '').trim() || 'US',
+            Phone: normalizePhone(shippingAddress.phone),
+          },
+          ShipFromAddress: defaultShipFromAddress,
+          OrderAttributes: [
+            { AttributeUID: 96 },
+            { AttributeUID: 545 },
+          ],
+          OrderItems: whccOrderItems,
+        },
+      ],
+    };
+
+    // Import order to WHCC
+    const importResponse = await axios.post(
+      `${baseUrl}/api/OrderImport`,
+      whccOrderRequest,
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    importResponseData = importResponse.data || null;
+    confirmationId = importResponseData?.confirmationId || importResponseData?.ConfirmationID || null;
+    if (!confirmationId) {
+      throw new Error('WHCC import succeeded but no confirmation ID was returned');
+    }
+
+    await query(
+      `UPDATE orders
+       SET whcc_confirmation_id = $1,
+           whcc_import_response = $2,
+           whcc_last_error = NULL
+       WHERE id = $3`,
+      [confirmationId, stringifyForDb(importResponseData), orderId]
+    );
+
+    console.log(`[WHCC] Order ${orderId} imported with confirmationId: ${confirmationId}`);
+
+    // Submit the imported order
+    const submitResponse = await axios.post(
+      `${baseUrl}/api/OrderImport/Submit/${confirmationId}`,
+      {},
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Content-Length': '0',
+        },
+      }
+    );
+
+    submitResponseData = submitResponse.data || null;
+
+    await query(
+      `UPDATE orders
+       SET lab_submitted = 1,
+           lab_submitted_at = CURRENT_TIMESTAMP,
+           whcc_confirmation_id = $1,
+           whcc_import_response = $2,
+           whcc_submit_response = $3,
+           whcc_last_error = NULL
+       WHERE id = $4`,
+      [
+        confirmationId,
+        stringifyForDb(importResponseData),
+        stringifyForDb(submitResponseData),
+        orderId,
+      ]
+    );
+
+    console.log(`[WHCC] Order ${orderId} submitted successfully`);
+  } catch (error) {
+    await query(
+      `UPDATE orders
+       SET whcc_confirmation_id = COALESCE($1, whcc_confirmation_id),
+           whcc_import_response = COALESCE($2, whcc_import_response),
+           whcc_submit_response = COALESCE($3, whcc_submit_response),
+           whcc_last_error = $4
+       WHERE id = $5`,
+      [
+        confirmationId,
+        stringifyForDb(importResponseData),
+        stringifyForDb(submitResponseData),
+        stringifyForDb(error?.response?.data || { message: error.message }),
+        orderId,
+      ]
+    );
+
+    console.error(`[WHCC] Failed to submit order ${orderId} to WHCC:`, error?.response?.data || error.message);
+    // Non-blocking error — don't fail the order creation
+  }
+};
+
 const sendOrderReceipts = async (orderId) => {
   if (!orderReceiptService.isConfigured()) {
     console.warn('SMTP is not configured; skipping order receipts for order', orderId);
@@ -146,6 +583,9 @@ const sendOrderReceipts = async (orderId) => {
     items,
   });
 
+  // Add delay to avoid Mailtrap rate limiting (free tier: too many emails per second)
+  await new Promise(resolve => setTimeout(resolve, 1500));
+
   const totalItemRevenue = items.reduce((sum, item) => sum + ((Number(item.unitPrice) || 0) * (Number(item.quantity) || 0)), 0);
   const studioGroups = new Map();
   for (const item of items) {
@@ -198,6 +638,8 @@ const sendOrderReceipts = async (orderId) => {
       items: studioGroup.items,
     });
     anyStudioSent = anyStudioSent || sent;
+    // Small delay between studio emails to avoid rate limits
+    await new Promise(resolve => setTimeout(resolve, 1000));
   }
 
   if (customerSent || anyStudioSent) {
@@ -278,9 +720,17 @@ router.post('/', requireActiveSubscription, async (req, res) => {
     const paymentAccounting = await fetchPaymentIntentAccounting(paymentIntentId);
 
     const batchOrder = !!isBatch;
+    const directOrder = !batchOrder && shippingOption === 'direct';
+    const orderStudioId = await getOrderStudioIdFromItems(items);
+    if (!orderStudioId) {
+      return res.status(400).json({ error: 'Unable to determine studio for this order' });
+    }
     let batchReadyDate = null;
-    if (batchOrder) {
-      const shippingConfig = await queryRow('SELECT batch_deadline as batchDeadline FROM shipping_config WHERE id = 1');
+    if (batchOrder && orderStudioId) {
+      const shippingConfig = await queryRow(
+        'SELECT batch_deadline as batchDeadline FROM shipping_config WHERE id = $1',
+        [orderStudioId]
+      );
       if (shippingConfig?.batchDeadline) {
         const parsedDate = new Date(shippingConfig.batchDeadline);
         if (!Number.isNaN(parsedDate.getTime())) {
@@ -289,10 +739,15 @@ router.post('/', requireActiveSubscription, async (req, res) => {
       }
     }
 
+    const nextStatus = directOrder ? 'processing' : 'pending';
+    const shouldMarkLabSubmitted = directOrder ? false : !!labSubmitted;
+
     // Insert order and get the returned id
     const orderResult = await queryRow(`
       INSERT INTO orders (
+        studio_id,
         user_id, 
+        status,
         total, 
         subtotal,
         tax_amount,
@@ -307,14 +762,17 @@ router.post('/', requireActiveSubscription, async (req, res) => {
         batch_queue_status,
         batch_lab_vendor,
         lab_submitted,
+        lab_submitted_at,
         payment_intent_id,
         stripe_charge_id,
         stripe_fee_amount
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, CASE WHEN $17 = 1 THEN CURRENT_TIMESTAMP ELSE NULL END, $18, $19, $20)
       RETURNING id
     `, [
+      orderStudioId,
       userId, 
+      nextStatus,
       total,
       subtotal || 0, 
       taxAmount || 0,
@@ -328,7 +786,7 @@ router.post('/', requireActiveSubscription, async (req, res) => {
       batchReadyDate,
       batchOrder ? 'queued' : null,
       batchLabVendor || null,
-      !!labSubmitted,
+      shouldMarkLabSubmitted,
       paymentAccounting.paymentIntentId,
       paymentAccounting.chargeId,
       paymentAccounting.stripeFeeAmount,
@@ -459,6 +917,15 @@ router.post('/', requireActiveSubscription, async (req, res) => {
       console.error('Invoice generation error (non-fatal):', invoiceErr);
     }
 
+    // Automatically submit direct shipping orders to WHCC
+    if (directOrder) {
+      try {
+        await submitOrderToWhcc(orderId);
+      } catch (whccErr) {
+        console.error('WHCC submission failed (non-fatal):', whccErr);
+      }
+    }
+
     // Return the created order
     try {
       await sendOrderReceipts(orderId);
@@ -574,34 +1041,46 @@ router.get('/', async (req, res) => {
       const itemsWithPhotos = [];
       for (const item of items) {
         const photo = await queryRow(
-          `SELECT id, album_id as albumId, file_name as fileName, thumbnail_url as thumbnailUrl, full_image_url as fullImageUrl
+          `SELECT id, album_id as albumId, file_name as fileName, thumbnail_url as thumbnailUrl, full_image_url as fullImageUrl, width, height
            FROM photos WHERE id = $1`,
           [item.photoId]
         );
         let unitCost = 0;
+        let productName = null;
+        let productSizeName = null;
         if (item.productSizeId) {
           const size = await queryRow(
-            `SELECT price FROM product_sizes WHERE id = $1`,
+            `SELECT ps.price, ps.size_name as sizeName, p.name as productName
+             FROM product_sizes ps
+             LEFT JOIN products p ON p.id = ps.product_id
+             WHERE ps.id = $1`,
             [item.productSizeId]
           );
           unitCost = Number(size?.price) || 0;
+          productSizeName = size?.sizeName || null;
+          productName = size?.productName || null;
         } else if (item.productId) {
           const product = await queryRow(
-            `SELECT price FROM products WHERE id = $1`,
+            `SELECT price, name FROM products WHERE id = $1`,
             [item.productId]
           );
           unitCost = Number(product?.price) || 0;
+          productName = product?.name || null;
         }
         itemsWithPhotos.push({
           ...item,
           price: item.price || 0,
           cost: unitCost,
+          productName,
+          productSizeName,
           cropData: item.cropData ? JSON.parse(item.cropData) : null,
           photoIds: item.photoIds ? JSON.parse(item.photoIds) : item.photoId ? [item.photoId] : [],
           photo: photo ? {
             id: photo.id,
             albumId: photo.albumId,
             fileName: photo.filename ?? photo.fileName,
+            width: photo.width || null,
+            height: photo.height || null,
             thumbnailUrl: `/api/photos/${photo.id}/asset?variant=thumbnail`,
             url: `/api/photos/${photo.id}/asset?variant=full`,
           } : {
@@ -636,6 +1115,8 @@ router.get('/', async (req, res) => {
 // Get all orders (admin view)
 router.get('/admin/all-orders', adminRequired, async (req, res) => {
   try {
+    const actingStudioId = req.headers['x-acting-studio-id'];
+    const canViewWhccFields = req.user.role === 'studio_admin' || (req.user.role === 'super_admin' && Boolean(actingStudioId));
     let queryText = `
       SELECT 
         o.id, 
@@ -659,11 +1140,21 @@ router.get('/admin/all-orders', adminRequired, async (req, res) => {
         o.payment_intent_id as paymentIntentId,
         o.customer_receipt_sent_at as customerReceiptSentAt,
         o.studio_receipt_sent_at as studioReceiptSentAt,
+        ${canViewWhccFields ? `o.whcc_confirmation_id as whccConfirmationId,
+        o.whcc_import_response as whccImportResponse,
+        o.whcc_submit_response as whccSubmitResponse,
+        o.whcc_last_error as whccLastError,
+        o.whcc_order_number as whccOrderNumber,
+        o.whcc_webhook_status as whccWebhookStatus,
+        o.whcc_webhook_event as whccWebhookEvent,
+        o.shipping_carrier as shippingCarrier,
+        o.tracking_number as trackingNumber,
+        o.tracking_url as trackingUrl,
+        o.shipped_at as shippedAt,` : ''}
         o.created_at as orderDate
       FROM orders o
     `;
     const params = [];
-    const actingStudioId = req.headers['x-acting-studio-id'];
     if (actingStudioId) {
       queryText += ` WHERE o.studio_id = $1`;
       params.push(actingStudioId);
@@ -705,7 +1196,7 @@ router.get('/admin/all-orders', adminRequired, async (req, res) => {
               continue;
             }
             const photo = await queryRow(
-              `SELECT id, file_name as fileName, thumbnail_url as thumbnailUrl, full_image_url as fullImageUrl
+              `SELECT id, album_id as albumId, file_name as fileName, thumbnail_url as thumbnailUrl, full_image_url as fullImageUrl, width, height
                FROM photos WHERE id = $1`,
               [item.photoId]
             );
@@ -720,14 +1211,20 @@ router.get('/admin/all-orders', adminRequired, async (req, res) => {
               photoIds: item.photoIds ? JSON.parse(item.photoIds) : item.photoId ? [item.photoId] : [],
               photo: photo ? {
                 id: photo.id,
+                albumId: photo.albumId,
                 fileName: photo.filename ?? photo.fileName,
+                width: photo.width || null,
+                height: photo.height || null,
                 thumbnailUrl: `/api/photos/${photo.id}/asset?variant=thumbnail`,
-                url: `/api/photos/${photo.id}/asset?variant=full`,
+                fullImageUrl: `/api/photos/${photo.id}/asset?variant=full`,
               } : {
                 id: item.photoId,
+                albumId: 0,
                 fileName: `Photo #${item.photoId}`,
+                width: null,
+                height: null,
                 thumbnailUrl: `https://picsum.photos/seed/photo${item.photoId}/300/300`,
-                url: `https://picsum.photos/seed/photo${item.photoId}/1200/900`,
+                fullImageUrl: `https://picsum.photos/seed/photo${item.photoId}/1200/900`,
               },
             });
           }
@@ -742,6 +1239,17 @@ router.get('/admin/all-orders', adminRequired, async (req, res) => {
         batchQueueStatus: order.batchQueueStatus,
         batchLabVendor: order.batchLabVendor,
         labSubmittedAt: order.labSubmittedAt,
+        whccConfirmationId: canViewWhccFields ? order.whccConfirmationId : undefined,
+        whccImportResponse: canViewWhccFields ? safeJsonParse(order.whccImportResponse) : undefined,
+        whccSubmitResponse: canViewWhccFields ? safeJsonParse(order.whccSubmitResponse) : undefined,
+        whccLastError: canViewWhccFields ? safeJsonParse(order.whccLastError) : undefined,
+        whccOrderNumber: canViewWhccFields ? order.whccOrderNumber : undefined,
+        whccWebhookStatus: canViewWhccFields ? order.whccWebhookStatus : undefined,
+        whccWebhookEvent: canViewWhccFields ? order.whccWebhookEvent : undefined,
+        shippingCarrier: canViewWhccFields ? order.shippingCarrier : undefined,
+        trackingNumber: canViewWhccFields ? order.trackingNumber : undefined,
+        trackingUrl: canViewWhccFields ? order.trackingUrl : undefined,
+        shippedAt: canViewWhccFields ? order.shippedAt : undefined,
         items: itemsWithPhotos,
         excludedItemsNote: excludedCount > 0 ? `${excludedCount} product(s) with amount were excluded from profit calculations because they are not linked to a valid product.` : undefined,
       });
@@ -868,7 +1376,7 @@ router.post('/admin/submit-batch', adminRequired, async (req, res) => {
 
       await query(
         `UPDATE orders
-         SET lab_submitted = true,
+         SET lab_submitted = 1,
              lab_submitted_at = CURRENT_TIMESTAMP,
              batch_shipping_address = $2,
              batch_lab_vendor = $3,
@@ -890,38 +1398,63 @@ router.post('/admin/submit-batch', adminRequired, async (req, res) => {
 // Get batch queue summary (admin)
 router.get('/admin/batch-queue', adminRequired, async (req, res) => {
   try {
+    const accessStudioId = resolveOrderAccessStudioId(req);
     let queryText = `
       SELECT
         o.id,
+        o.total as totalAmount,
+        o.shipping_address as shippingAddress,
         o.user_id as userId,
         o.batch_ready_date as batchReadyDate,
-        o.created_at as createdAt
+        o.created_at as createdAt,
+        u.name as customerName,
+        u.email as customerEmail
       FROM orders o
+      LEFT JOIN users u ON u.id = o.user_id
       WHERE o.is_batch = 1
         AND (o.lab_submitted = 0 OR o.lab_submitted IS NULL)
     `;
     const params = [];
-    if (req.user.role === 'studio_admin') {
-      queryText += ` AND o.user_id IN (SELECT u.id FROM users u WHERE u.studio_id = $1)`;
-      params.push(req.user.studio_id);
+    if (accessStudioId) {
+      queryText += ` AND o.studio_id = $1`;
+      params.push(accessStudioId);
     }
     queryText += ` ORDER BY o.created_at ASC`;
 
     const queuedOrders = await queryRows(queryText, params);
+    const shippingConfig = accessStudioId
+      ? await queryRow(
+          `SELECT batch_shipping_address as batchShippingAddress
+           FROM shipping_config
+           WHERE id = $1`,
+          [accessStudioId]
+        )
+      : null;
     const now = new Date();
     const eligibleOrderIds = [];
     let nextBatchDate = null;
+    const mappedOrders = [];
 
     for (const order of queuedOrders) {
       const readyDate = order.batchReadyDate ? new Date(order.batchReadyDate) : null;
+      const isEligible = !readyDate || Number.isNaN(readyDate.getTime()) || readyDate <= now;
       if (!readyDate || Number.isNaN(readyDate.getTime()) || readyDate <= now) {
         eligibleOrderIds.push(order.id);
-        continue;
-      }
-
-      if (!nextBatchDate || readyDate < new Date(nextBatchDate)) {
+      } else if (!nextBatchDate || readyDate < new Date(nextBatchDate)) {
         nextBatchDate = readyDate.toISOString();
       }
+
+      mappedOrders.push({
+        id: order.id,
+        userId: order.userId,
+        totalAmount: Number(order.totalAmount) || 0,
+        customerName: order.customerName || order.customerEmail || `Customer #${order.userId}`,
+        customerEmail: order.customerEmail || '',
+        createdAt: order.createdAt,
+        batchReadyDate: order.batchReadyDate,
+        isEligible,
+        shippingAddress: safeJsonParse(order.shippingAddress),
+      });
     }
 
     res.json({
@@ -930,6 +1463,8 @@ router.get('/admin/batch-queue', adminRequired, async (req, res) => {
       eligibleOrderIds,
       shouldPromptSubmission: eligibleOrderIds.length > 0,
       nextBatchDate,
+      orders: mappedOrders,
+      batchShippingAddress: safeJsonParse(shippingConfig?.batchShippingAddress),
       labOptions: ['roes', 'whcc', 'mpix'],
     });
   } catch (error) {

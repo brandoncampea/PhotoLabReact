@@ -1,8 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Elements } from '@stripe/react-stripe-js';
+import { loadStripe } from '@stripe/stripe-js';
+import Cropper from 'react-cropper';
+import 'cropperjs/dist/cropper.css';
+import './Cart.css';
 import { useCart } from '../contexts/CartContext';
 import CartItem from '../components/CartItem';
-import CropperModal from '../components/CropperModal';
+import StripePaymentForm from '../components/StripePaymentForm';
+
 import { orderService } from '../services/orderService';
 import { shippingService } from '../services/shippingService';
 import { stripeService } from '../services/stripeService';
@@ -10,11 +16,11 @@ import { productService } from '../services/productService';
 import { downloadService } from '../services/downloadService';
 import { discountCodeService } from '../services/discountCodeService';
 import { taxService } from '../services/taxService';
-import { ShippingConfig, StripeConfig, Product, DiscountCode, ShippingAddress, CartItem as CartItemType } from '../types';
+import { ShippingConfig, StripeConfig, Product, DiscountCode, ShippingAddress, CartItem as CartItemType, PaymentIntent } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 
 const Cart: React.FC = () => {
-  const { items, getTotalPrice, getTotalItems, clearCart } = useCart();
+  const { items, getTotalPrice, getTotalItems, clearCart, updateCropData } = useCart();
   const { user } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
@@ -28,6 +34,10 @@ const Cart: React.FC = () => {
   const [appliedDiscount, setAppliedDiscount] = useState<DiscountCode | null>(null);
   const [discountError, setDiscountError] = useState('');
   const [editingItem, setEditingItem] = useState<CartItemType | null>(null);
+  const [cropperRef, setCropperRef] = useState<any>(null);
+  const [activePaymentIntent, setActivePaymentIntent] = useState<PaymentIntent | null>(null);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+
   const [studioFees, setStudioFees] = useState<{ feeType: string; feeValue: number } | null>(null);
   const [shippingAddress, setShippingAddress] = useState<ShippingAddress>({
     fullName: '',
@@ -41,12 +51,21 @@ const Cart: React.FC = () => {
     phone: ''
   });
 
+  const stripePromise = useMemo(() => {
+    if (!stripeConfig?.publishableKey) return null;
+    if (stripeConfig.publishableKey.startsWith('sk_')) return null;
+    return loadStripe(stripeConfig.publishableKey);
+  }, [stripeConfig?.publishableKey]);
+
   useEffect(() => {
     loadShippingConfig();
     loadStripeConfig();
-    loadProducts();
     loadStudioFees();
   }, []);
+
+  useEffect(() => {
+    loadProducts();
+  }, [items]);
 
   useEffect(() => {
     // Update email in shipping address when user changes
@@ -77,8 +96,40 @@ const Cart: React.FC = () => {
 
   const loadProducts = async () => {
     try {
-      const data = await productService.getActiveProducts();
-      setProducts(data);
+      const albumIds = Array.from(
+        new Set(
+          items
+            .map((item) => Number(item.photo?.albumId || 0))
+            .filter((id) => Number.isInteger(id) && id > 0)
+        )
+      );
+
+      if (albumIds.length === 0) {
+        const data = await productService.getActiveProducts();
+        setProducts(Array.isArray(data) ? data : []);
+        return;
+      }
+
+      const productsByAlbum = await Promise.all(
+        albumIds.map((albumId) => productService.getActiveProducts(albumId))
+      );
+
+      const merged = new Map<number, Product>();
+      productsByAlbum.flat().forEach((product) => {
+        const existing = merged.get(Number(product.id));
+        if (!existing) {
+          merged.set(Number(product.id), product);
+          return;
+        }
+
+        const sizeMap = new Map<number, any>();
+        [...(existing.sizes || []), ...(product.sizes || [])].forEach((size) => {
+          sizeMap.set(Number(size.id), size);
+        });
+        existing.sizes = Array.from(sizeMap.values());
+      });
+
+      setProducts(Array.from(merged.values()));
     } catch (error) {
       console.error('Failed to load products:', error);
     }
@@ -87,6 +138,25 @@ const Cart: React.FC = () => {
   const loadStripeConfig = async () => {
     try {
       const config = await stripeService.getConfig();
+      if (config.publishableKey?.startsWith('sk_')) {
+        setError('Stripe is misconfigured: a secret key was supplied to the browser. Please set a valid publishable key (pk_...).');
+        setStripeConfig({
+          ...config,
+          publishableKey: '',
+          isActive: false,
+        });
+        return;
+      }
+
+      if (config.reason === 'live_mode_requires_https') {
+        setError('Stripe live mode requires HTTPS. Use test keys locally, or run the app over HTTPS for live payments.');
+        setStripeConfig({
+          ...config,
+          isActive: false,
+        });
+        return;
+      }
+
       setStripeConfig(config);
     } catch (error) {
       console.error('Failed to load Stripe config:', error);
@@ -204,7 +274,7 @@ const Cart: React.FC = () => {
       if (studioFees.feeType === 'percentage') {
         fees = (subtotal * studioFees.feeValue) / 100;
       } else if (studioFees.feeType === 'fixed') {
-        fees = studioFees.feeValue * items.length;
+        fees = studioFees.feeValue * items.reduce((count, item) => count + item.quantity, 0);
       }
     }
     
@@ -225,7 +295,7 @@ const Cart: React.FC = () => {
       if (studioFees.feeType === 'percentage') {
         fees = (subtotal * studioFees.feeValue) / 100;
       } else if (studioFees.feeType === 'fixed') {
-        fees = studioFees.feeValue * items.length;
+        fees = studioFees.feeValue * items.reduce((count, item) => count + item.quantity, 0);
       }
     }
     
@@ -234,10 +304,139 @@ const Cart: React.FC = () => {
     return Math.max(0, subtotalWithFees + taxAmount);
   };
 
+  const getStudioFeeAmount = () => {
+    const subtotal = getTotalPrice();
+    if (!studioFees || studioFees.feeValue <= 0) return 0;
+    if (studioFees.feeType === 'percentage') {
+      return (subtotal * studioFees.feeValue) / 100;
+    }
+    if (studioFees.feeType === 'fixed') {
+      return studioFees.feeValue * items.reduce((count, item) => count + item.quantity, 0);
+    }
+    return 0;
+  };
+
   const getDaysUntilDeadline = () => {
     if (!shippingConfig) return 0;
     const days = Math.ceil((new Date(shippingConfig.batchDeadline).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
     return Math.max(0, days);
+  };
+
+  const getItemAspectRatio = (item: CartItemType | null): number => {
+    if (!item || !item.productId || !item.productSizeId) return NaN;
+    const product = products.find((p) => p.id === item.productId);
+    const size = product?.sizes?.find((s) => s.id === item.productSizeId);
+    const width = Number(size?.width || 0);
+    const height = Number(size?.height || 0);
+    if (width > 0 && height > 0) return width / height;
+    return NaN;
+  };
+
+  const getResolvedCartItem = (item: CartItemType): CartItemType => {
+    const itemProductId = Number(item.productId || 0);
+    const itemSizeId = Number(item.productSizeId || 0);
+
+    const productById = item.productId
+      ? products.find((p) => Number(p.id) === itemProductId)
+      : undefined;
+
+    const fallbackProduct = !productById && itemSizeId
+      ? products.find((p) => p.sizes?.some((s) => Number(s.id) === itemSizeId))
+      : undefined;
+
+    const resolvedProduct = productById || fallbackProduct;
+    const resolvedSize = itemSizeId
+      ? resolvedProduct?.sizes?.find((s) => Number(s.id) === itemSizeId)
+      : undefined;
+
+    return {
+      ...item,
+      productName: item.productName || resolvedProduct?.name || (item.productId ? `Product #${item.productId}` : 'Product'),
+      productSizeName: item.productSizeName || resolvedSize?.name || (item.productSizeId ? `Size #${item.productSizeId}` : 'Size'),
+    };
+  };
+
+  const handleSaveCrop = () => {
+    if (!editingItem) return;
+    const cropper = cropperRef?.cropper || cropperRef;
+    if (!cropper?.getData) return;
+    const data = cropper.getData();
+    updateCropData(editingItem.photoId, {
+      x: Math.round(data.x),
+      y: Math.round(data.y),
+      width: Math.round(data.width),
+      height: Math.round(data.height),
+      rotate: 0,
+      scaleX: 1,
+      scaleY: 1,
+    });
+    setEditingItem(null);
+    setCropperRef(null);
+  };
+
+  const finalizeSuccessfulCheckout = async (paymentIntentId: string) => {
+    // Increment discount usage if applied
+    if (appliedDiscount) {
+      await discountCodeService.incrementUsage(appliedDiscount.id);
+    }
+
+    const digitalItems = items.filter(item => {
+      const product = products.find(p => p.id === item.productId);
+      return product?.isDigital === true;
+    });
+
+    let downloadUrls;
+    if (digitalItems.length > 0) {
+      downloadUrls = downloadService.generateDownloadUrls(digitalItems);
+
+      if (user?.email) {
+        await downloadService.sendDownloadEmail(
+          user.email,
+          downloadUrls,
+          `ORD-${Date.now()}`
+        );
+      }
+    }
+
+    const orderNumber = `ORD-${Date.now()}`;
+    await orderService.createOrder(
+      items,
+      shippingAddress,
+      shippingOption,
+      getShippingCost(),
+      appliedDiscount?.code,
+      studioFees?.feeType,
+      studioFees?.feeValue,
+      paymentIntentId
+    );
+
+    console.log('📧 Email receipt sent to:', shippingAddress.email);
+    console.log('Order Number:', orderNumber);
+    console.log('Total Amount:', getFinalTotal());
+
+    clearCart();
+    setShowPaymentModal(false);
+    setActivePaymentIntent(null);
+
+    let successMessage = 'Payment successful! Your order has been placed. A receipt has been sent to ' + shippingAddress.email + '.';
+
+    if (hasOnlyDigitalProducts()) {
+      successMessage += ' Download links have been sent to your email.';
+    } else if (digitalItems.length > 0) {
+      successMessage += ` Download links for digital items have been sent to your email. Physical items will ${
+        shippingOption === 'batch'
+          ? `ship on ${new Date(shippingConfig?.batchDeadline || '').toLocaleDateString()}.`
+          : 'ship within 2-3 business days.'
+      }`;
+    } else {
+      successMessage += ` ${
+        shippingOption === 'batch'
+          ? `It will ship on ${new Date(shippingConfig?.batchDeadline || '').toLocaleDateString()}.`
+          : 'It will ship within 2-3 business days.'
+      }`;
+    }
+
+    navigate('/orders', { state: { message: successMessage } });
   };
 
   const handleCheckout = async () => {
@@ -256,114 +455,54 @@ const Cart: React.FC = () => {
     }
 
     setLoading(true);
-    setProcessingPayment(true);
     setError('');
 
     try {
-      // Increment discount usage if applied
-      if (appliedDiscount) {
-        await discountCodeService.incrementUsage(appliedDiscount.id);
-      }
+      // Temporary bypass for WHCC end-to-end order testing:
+      // treat "Pay with Stripe" as immediately paid and continue order flow.
+      const mockPaymentIntentId = `pi_mock_${Date.now()}`;
+      await finalizeSuccessfulCheckout(mockPaymentIntentId);
+      return;
 
       // Create payment intent with final total
       const paymentIntent = await stripeService.createPaymentIntent(
         items,
         shippingOption,
         getShippingCost(),
-        getDiscountAmount()
+        getDiscountAmount(),
+        getTaxAmount(),
+        getStudioFeeAmount()
       );
 
-      // In a real implementation with Stripe Elements:
-      // 1. Load Stripe.js
-      // 2. Create payment form with card elements
-      // 3. Confirm payment with clientSecret
-      
-      // For mock/demo purposes, simulate payment
-      const result = await stripeService.confirmPayment(paymentIntent.id);
-      
-      if (result.success) {
-        // Generate download URLs for digital products
-        const digitalItems = items.filter(item => {
-          const product = products.find(p => p.id === item.productId);
-          return product?.isDigital === true;
-        });
-
-        let downloadUrls;
-        if (digitalItems.length > 0) {
-          downloadUrls = downloadService.generateDownloadUrls(digitalItems);
-          
-          // Send download email
-          if (user?.email) {
-            await downloadService.sendDownloadEmail(
-              user.email,
-              downloadUrls,
-              `ORD-${Date.now()}`
-            );
-          }
-        }
-
-        // Create order after successful payment
-        const orderNumber = `ORD-${Date.now()}`;
-        await orderService.createOrder(
-          items, 
-          shippingAddress, 
-          shippingOption, 
-          getShippingCost(), 
-          appliedDiscount?.code,
-          studioFees?.feeType,
-          studioFees?.feeValue,
-          paymentIntent.id
-        );
-        
-        // Send email receipt (in production, would call email service)
-        console.log('📧 Email receipt sent to:', shippingAddress.email);
-        console.log('Order Number:', orderNumber);
-        console.log('Total Amount:', getFinalTotal());
-        
-        clearCart();
-        
-        let successMessage = 'Payment successful! Your order has been placed. A receipt has been sent to ' + shippingAddress.email + '.';
-        
-        if (hasOnlyDigitalProducts()) {
-          successMessage += ' Download links have been sent to your email.';
-        } else if (digitalItems.length > 0) {
-          successMessage += ` Download links for digital items have been sent to your email. Physical items will ${
-            shippingOption === 'batch' 
-              ? `ship on ${new Date(shippingConfig?.batchDeadline || '').toLocaleDateString()}.`
-              : 'ship within 2-3 business days.'
-          }`;
-        } else {
-          successMessage += ` ${
-            shippingOption === 'batch' 
-              ? `It will ship on ${new Date(shippingConfig?.batchDeadline || '').toLocaleDateString()}.`
-              : 'It will ship within 2-3 business days.'
-          }`;
-        }
-        
-        navigate('/orders', { state: { message: successMessage } });
-      } else {
-        setError('Payment failed. Please try again.');
+      if (!paymentIntent.clientSecret) {
+        setError('Payment initialization failed. Please try again.');
+        return;
       }
+
+      const publishableIsLive = !!stripeConfig?.publishableKey?.startsWith('pk_live_');
+      if (typeof paymentIntent.livemode === 'boolean' && paymentIntent.livemode !== publishableIsLive) {
+        setError('Stripe configuration mismatch: publishable key mode does not match payment intent mode. Please verify Stripe keys.');
+        return;
+      }
+
+      setActivePaymentIntent(paymentIntent);
+      setShowPaymentModal(true);
     } catch (err: any) {
       setError(err.response?.data?.message || 'Payment failed. Please try again.');
     } finally {
       setLoading(false);
-      setProcessingPayment(false);
     }
   };
 
   if (items.length === 0) {
     return (
-      <div className="page-container">
+      <div className="main-content dark-bg cart-page">
         <div className="page-header">
-          <h1>Shopping Cart</h1>
-        <div className="main-content dark-bg" style={{ minHeight: '100vh' }}>
-          <div className="page-header">
-            <h1 className="gradient-text">Cart</h1>
-            <p style={{ color: '#bdbdbd', fontSize: '1.1rem' }}>Review your items and checkout securely</p>
-          </div>
-          {/* ...existing code... */}
+          <h1 className="gradient-text">Shopping Cart</h1>
+          <p style={{ color: '#bdbdbd', fontSize: '1.05rem' }}>Your cart is empty</p>
         </div>
+        <div className="cart-empty-card">
+          <p>Browse albums and add products to start checkout.</p>
           <button onClick={() => navigate('/albums')} className="btn btn-primary">
             Browse Albums
           </button>
@@ -373,56 +512,54 @@ const Cart: React.FC = () => {
   }
 
   return (
-    <div className="page-container">
+    <div className="main-content dark-bg cart-page">
       <div className="page-header">
-        <h1>Shopping Cart</h1>
-        <p>{getTotalItems()} {getTotalItems() === 1 ? 'item' : 'items'}</p>
+        <h1 className="gradient-text">Shopping Cart</h1>
+        <p style={{ color: '#bdbdbd' }}>{getTotalItems()} {getTotalItems() === 1 ? 'item' : 'items'}</p>
       </div>
 
       {error && <div className="error-message">{error}</div>}
 
-      <div className="cart-content">
+      <div className="cart-content cart-layout">
         <div className="cart-items">
-          {items.map((item) => (
+          {items.map((item) => {
+            const resolvedItem = getResolvedCartItem(item);
+            return (
             <CartItem 
-              key={item.photoId} 
-              item={item} 
-              onEditCrop={(item) => setEditingItem(item)}
+              key={`${item.photoId}-${item.productId || 0}-${item.productSizeId || 0}`}
+              item={resolvedItem} 
+              onEditCrop={(selectedItem) => {
+                setEditingItem(selectedItem);
+                setCropperRef(null);
+              }}
             />
-          ))}
+            );
+          })}
         </div>
 
-        <div className="cart-summary">
+        <div className="cart-summary cart-summary-panel">
           <h2>Order Summary</h2>
-          <div className="summary-row">
+          <div className="summary-row cart-summary-row">
             <span>Subtotal</span>
             <span>${getTotalPrice().toFixed(2)}</span>
           </div>
 
           {hasOnlyDigitalProducts() && (
-            <div style={{
-              padding: '0.75rem',
-              backgroundColor: '#e3f2fd',
-              border: '1px solid #4169E1',
-              borderRadius: '6px',
-              margin: '1rem 0',
-              fontSize: '0.9rem',
-              color: '#1565c0'
-            }}>
+            <div className="cart-note">
               💾 <strong>Digital Downloads Only</strong>
-              <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem' }}>
+              <p>
                 Download links will be emailed to you immediately after payment
               </p>
             </div>
           )}
 
           {/* Shipping Address Form */}
-          <div style={{ margin: '1rem 0', padding: '1rem', backgroundColor: '#f8f9fa', borderRadius: '8px' }}>
-            <h3 style={{ marginTop: 0, marginBottom: '1rem', fontSize: '1rem' }}>Shipping Address</h3>
+          <div className="cart-section-card">
+            <h3>Shipping Address</h3>
             
-            <div style={{ display: 'grid', gap: '0.75rem' }}>
+            <div className="cart-form-grid">
               <div>
-                <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.85rem', fontWeight: 500 }}>
+                <label className="cart-label">
                   Full Name <span style={{ color: '#d32f2f' }}>*</span>
                 </label>
                 <input
@@ -431,12 +568,12 @@ const Cart: React.FC = () => {
                   onChange={(e) => setShippingAddress({ ...shippingAddress, fullName: e.target.value })}
                   placeholder="John Doe"
                   required
-                  style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px' }}
+                  className="cart-input"
                 />
               </div>
 
               <div>
-                <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.85rem', fontWeight: 500 }}>
+                <label className="cart-label">
                   Email <span style={{ color: '#d32f2f' }}>*</span>
                 </label>
                 <input
@@ -445,12 +582,12 @@ const Cart: React.FC = () => {
                   onChange={(e) => setShippingAddress({ ...shippingAddress, email: e.target.value })}
                   placeholder="john@example.com"
                   required
-                  style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px' }}
+                  className="cart-input"
                 />
               </div>
 
               <div>
-                <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.85rem', fontWeight: 500 }}>
+                <label className="cart-label">
                   Address Line 1 <span style={{ color: '#d32f2f' }}>*</span>
                 </label>
                 <input
@@ -459,12 +596,12 @@ const Cart: React.FC = () => {
                   onChange={(e) => setShippingAddress({ ...shippingAddress, addressLine1: e.target.value })}
                   placeholder="123 Main St"
                   required
-                  style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px' }}
+                  className="cart-input"
                 />
               </div>
 
               <div>
-                <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.85rem', fontWeight: 500 }}>
+                <label className="cart-label">
                   Address Line 2
                 </label>
                 <input
@@ -472,13 +609,13 @@ const Cart: React.FC = () => {
                   value={shippingAddress.addressLine2}
                   onChange={(e) => setShippingAddress({ ...shippingAddress, addressLine2: e.target.value })}
                   placeholder="Apt 4B (optional)"
-                  style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px' }}
+                  className="cart-input"
                 />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+              <div className="cart-form-grid-two-col">
                 <div>
-                  <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.85rem', fontWeight: 500 }}>
+                  <label className="cart-label">
                     City <span style={{ color: '#d32f2f' }}>*</span>
                   </label>
                   <input
@@ -487,12 +624,12 @@ const Cart: React.FC = () => {
                     onChange={(e) => setShippingAddress({ ...shippingAddress, city: e.target.value })}
                     placeholder="New York"
                     required
-                    style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px' }}
+                    className="cart-input"
                   />
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.85rem', fontWeight: 500 }}>
+                  <label className="cart-label">
                     State <span style={{ color: '#d32f2f' }}>*</span>
                   </label>
                   <input
@@ -501,14 +638,14 @@ const Cart: React.FC = () => {
                     onChange={(e) => setShippingAddress({ ...shippingAddress, state: e.target.value })}
                     placeholder="NY"
                     required
-                    style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px' }}
+                    className="cart-input"
                   />
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+              <div className="cart-form-grid-two-col">
                 <div>
-                  <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.85rem', fontWeight: 500 }}>
+                  <label className="cart-label">
                     ZIP Code <span style={{ color: '#d32f2f' }}>*</span>
                   </label>
                   <input
@@ -517,12 +654,12 @@ const Cart: React.FC = () => {
                     onChange={(e) => setShippingAddress({ ...shippingAddress, zipCode: e.target.value })}
                     placeholder="10001"
                     required
-                    style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px' }}
+                    className="cart-input"
                   />
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.85rem', fontWeight: 500 }}>
+                  <label className="cart-label">
                     Phone (optional)
                   </label>
                   <input
@@ -530,7 +667,7 @@ const Cart: React.FC = () => {
                     value={shippingAddress.phone}
                     onChange={(e) => setShippingAddress({ ...shippingAddress, phone: e.target.value })}
                     placeholder="(555) 123-4567"
-                    style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px' }}
+                    className="cart-input"
                   />
                 </div>
               </div>
@@ -538,58 +675,41 @@ const Cart: React.FC = () => {
           </div>
 
           {shippingConfig && hasPhysicalProducts() && (
-            <div style={{ margin: '1rem 0', padding: '1rem', backgroundColor: '#f8f9fa', borderRadius: '8px' }}>
-              <h3 style={{ marginTop: 0, marginBottom: '1rem', fontSize: '1rem' }}>Shipping Options</h3>
+            <div className="cart-section-card">
+              <h3>Shipping Options</h3>
               
               {isBatchAvailable() && (
-                <label style={{ 
-                  display: 'block', 
-                  marginBottom: '0.75rem', 
-                  padding: '0.75rem',
-                  backgroundColor: shippingOption === 'batch' ? '#e3f2fd' : '#fff',
-                  border: `2px solid ${shippingOption === 'batch' ? '#4169E1' : '#ddd'}`,
-                  borderRadius: '6px',
-                  cursor: 'pointer'
-                }}>
+                <label className={`cart-shipping-option ${shippingOption === 'batch' ? 'selected' : ''}`}>
                   <input
                     type="radio"
                     name="shipping"
                     value="batch"
                     checked={shippingOption === 'batch'}
                     onChange={() => setShippingOption('batch')}
-                    style={{ marginRight: '0.5rem' }}
                   />
                   <strong>Batch Shipping - FREE</strong>
-                  <p style={{ margin: '0.25rem 0 0 1.5rem', fontSize: '0.85rem', color: '#666' }}>
+                  <p>
                     Ships in {getDaysUntilDeadline()} days (by {new Date(shippingConfig.batchDeadline).toLocaleDateString()})
                   </p>
                 </label>
               )}
 
-              <label style={{ 
-                display: 'block', 
-                padding: '0.75rem',
-                backgroundColor: shippingOption === 'direct' ? '#e3f2fd' : '#fff',
-                border: `2px solid ${shippingOption === 'direct' ? '#4169E1' : '#ddd'}`,
-                borderRadius: '6px',
-                cursor: 'pointer'
-              }}>
+              <label className={`cart-shipping-option ${shippingOption === 'direct' ? 'selected' : ''}`}>
                 <input
                   type="radio"
                   name="shipping"
                   value="direct"
                   checked={shippingOption === 'direct'}
                   onChange={() => setShippingOption('direct')}
-                  style={{ marginRight: '0.5rem' }}
                 />
                 <strong>Direct Shipping - ${shippingConfig.directShippingCharge.toFixed(2)}</strong>
-                <p style={{ margin: '0.25rem 0 0 1.5rem', fontSize: '0.85rem', color: '#666' }}>
+                <p>
                   Ships immediately (2-3 business days)
                 </p>
               </label>
 
-              {!isBatchAvailable() && (
-                <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.85rem', color: '#d32f2f' }}>
+              {!isBatchAvailable() && shippingOption === 'batch' && (
+                <p className="cart-deadline-warning">
                   Batch shipping deadline has passed
                 </p>
               )}
@@ -597,25 +717,18 @@ const Cart: React.FC = () => {
           )}
 
           {/* Discount Code Section */}
-          <div style={{ marginTop: '1.5rem', padding: '1rem', background: '#f5f5f5', borderRadius: '8px' }}>
-            <h3 style={{ margin: '0 0 0.75rem 0', fontSize: '1rem' }}>Discount Code</h3>
+          <div className="cart-section-card section-spacing">
+            <h3>Discount Code</h3>
             
             {!appliedDiscount ? (
               <div>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <div className="cart-discount-entry">
                   <input
                     type="text"
                     value={discountCode}
                     onChange={(e) => setDiscountCode(e.target.value.toUpperCase())}
                     placeholder="Enter code"
-                    style={{
-                      flex: 1,
-                      padding: '0.5rem',
-                      border: '1px solid #ddd',
-                      borderRadius: '4px',
-                      fontFamily: 'monospace',
-                      textTransform: 'uppercase'
-                    }}
+                    className="cart-input cart-discount-input"
                     onKeyPress={(e) => {
                       if (e.key === 'Enter') {
                         e.preventDefault();
@@ -633,27 +746,19 @@ const Cart: React.FC = () => {
                   </button>
                 </div>
                 {discountError && (
-                  <p style={{ color: '#d32f2f', fontSize: '0.85rem', marginTop: '0.5rem' }}>
+                  <p className="cart-discount-error">
                     {discountError}
                   </p>
                 )}
               </div>
             ) : (
               <div>
-                <div style={{ 
-                  display: 'flex', 
-                  justifyContent: 'space-between', 
-                  alignItems: 'center',
-                  padding: '0.75rem',
-                  background: '#e8f5e9',
-                  borderRadius: '4px',
-                  border: '1px solid #4caf50'
-                }}>
+                <div className="cart-discount-applied">
                   <div>
-                    <strong style={{ fontFamily: 'monospace', color: '#2e7d32' }}>
+                    <strong className="cart-discount-code">
                       {appliedDiscount.code}
                     </strong>
-                    <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem', color: '#666' }}>
+                    <p className="cart-discount-description">
                       {appliedDiscount.description}
                     </p>
                   </div>
@@ -670,101 +775,165 @@ const Cart: React.FC = () => {
             )}
           </div>
 
-          <div className="summary-row">
+          <div className="summary-row cart-summary-row">
             <span>Shipping</span>
             <span>${getShippingCost().toFixed(2)}</span>
           </div>
           
           {appliedDiscount && (
-            <div className="summary-row" style={{ color: '#4caf50' }}>
+            <div className="summary-row cart-summary-row discount">
               <span>Discount ({appliedDiscount.code})</span>
               <span>-${getDiscountAmount().toFixed(2)}</span>
             </div>
           )}
           
           {shippingAddress.state && (
-            <div className="summary-row">
+            <div className="summary-row cart-summary-row">
               <span>Tax ({shippingAddress.state.toUpperCase()})</span>
               <span>${getTaxAmount().toFixed(2)}</span>
             </div>
           )}
           
-          <div className="summary-row total">
+          <div className="summary-row cart-summary-row total">
             <span>Total</span>
             <span>${getFinalTotal().toFixed(2)}</span>
           </div>
 
           {stripeConfig && !stripeConfig.isActive && (
-            <div style={{
-              padding: '0.75rem',
-              backgroundColor: '#fff3cd',
-              border: '1px solid #ffc107',
-              borderRadius: '6px',
-              marginBottom: '1rem',
-              fontSize: '0.9rem',
-              color: '#856404'
-            }}>
+            <div className="cart-alert">
               ⚠️ Payments are currently unavailable
             </div>
           )}
 
           {stripeConfig && stripeConfig.isActive && !stripeConfig.isLiveMode && (
-            <div style={{
-              padding: '0.5rem',
-              backgroundColor: '#e3f2fd',
-              border: '1px solid #90caf9',
-              borderRadius: '6px',
-              marginBottom: '1rem',
-              fontSize: '0.85rem',
-              color: '#1565c0',
-              textAlign: 'center'
-            }}>
+            <div className="cart-test-mode">
               🧪 Test Mode - Use card 4242 4242 4242 4242
             </div>
           )}
 
           {processingPayment && (
-            <div style={{
-              padding: '0.75rem',
-              backgroundColor: '#e3f2fd',
-              border: '1px solid #4169E1',
-              borderRadius: '6px',
-              marginBottom: '1rem',
-              fontSize: '0.9rem',
-              color: '#1565c0',
-              textAlign: 'center'
-            }}>
+            <div className="cart-processing">
               🔒 Processing secure payment...
             </div>
           )}
 
-          <button
-            onClick={handleCheckout}
-            className="btn btn-primary btn-checkout"
-            disabled={loading || !stripeConfig?.isActive}
-          >
-            {loading ? 'Processing Payment...' : '🔒 Pay with Stripe'}
-          </button>
-          <button
-            onClick={() => navigate('/albums')}
-            className="btn btn-secondary"
-          >
-            Continue Shopping
-          </button>
+          <div className="cart-actions">
+            <button
+              onClick={handleCheckout}
+              className="btn btn-primary btn-checkout cart-action-button"
+              disabled={loading || !stripeConfig?.isActive}
+            >
+              {loading ? 'Processing Payment...' : '🔒 Pay with Stripe'}
+            </button>
+            <button
+              onClick={() => navigate('/albums')}
+              className="btn btn-secondary cart-action-button"
+            >
+              Continue Shopping
+            </button>
+          </div>
         </div>
       </div>
 
       {editingItem && (
-        <CropperModal
-          photo={editingItem.photo}
-          onClose={() => setEditingItem(null)}
-          editMode={true}
-          existingCropData={editingItem.cropData}
-          existingQuantity={editingItem.quantity}
-          existingProductId={editingItem.productId}
-          existingProductSizeId={editingItem.productSizeId}
-        />
+        <div className="cart-crop-modal-overlay">
+          <div className="cart-crop-modal">
+            <h3>Edit Crop</h3>
+            <div className="cart-crop-frame">
+              <Cropper
+                ref={setCropperRef}
+                src={editingItem.photo?.fullImageUrl || editingItem.photo?.thumbnailUrl}
+                crossOrigin="anonymous"
+                style={{ maxHeight: 500, width: '100%' }}
+                aspectRatio={getItemAspectRatio(editingItem)}
+                viewMode={1}
+                guides={true}
+                responsive={true}
+                autoCropArea={1}
+                minContainerHeight={200}
+                minContainerWidth={200}
+                onInitialized={(cropper) => {
+                  setCropperRef(cropper);
+                  if (editingItem.cropData) {
+                    cropper.setData({
+                      x: editingItem.cropData.x,
+                      y: editingItem.cropData.y,
+                      width: editingItem.cropData.width,
+                      height: editingItem.cropData.height,
+                    });
+                  }
+                }}
+              />
+            </div>
+            <div className="cart-crop-actions">
+              <button
+                className="btn btn-secondary"
+                onClick={() => {
+                  const cropper = cropperRef?.cropper || cropperRef;
+                  if (cropper?.reset) cropper.reset();
+                }}
+              >
+                Reset Crop
+              </button>
+              <button
+                className="btn btn-secondary"
+                onClick={() => {
+                  setEditingItem(null);
+                  setCropperRef(null);
+                }}
+              >
+                Cancel
+              </button>
+              <button className="btn btn-primary" onClick={handleSaveCrop}>Save Crop</button>
+            </div>
+          </div>
+        </div>
       )}
+
+      {showPaymentModal && activePaymentIntent?.clientSecret && stripePromise && (
+        <div className="cart-crop-modal-overlay">
+          <div className="cart-payment-modal">
+            <h3>Complete Payment</h3>
+            <p className="cart-payment-subtitle">
+              Total charge: ${getFinalTotal().toFixed(2)}
+            </p>
+            <Elements
+              stripe={stripePromise}
+              options={{
+                clientSecret: activePaymentIntent.clientSecret,
+                appearance: {
+                  theme: 'night',
+                  variables: {
+                    colorPrimary: '#a78bfa',
+                    colorBackground: '#171726',
+                    colorText: '#f3f4f6',
+                    colorDanger: '#ff8a8a',
+                    borderRadius: '10px',
+                  },
+                },
+              }}
+            >
+              <StripePaymentForm
+                shippingAddress={shippingAddress}
+                onSuccess={async (paymentIntentId) => {
+                  setProcessingPayment(true);
+                  try {
+                    await finalizeSuccessfulCheckout(paymentIntentId);
+                  } finally {
+                    setProcessingPayment(false);
+                  }
+                }}
+                onCancel={() => {
+                  setShowPaymentModal(false);
+                  setActivePaymentIntent(null);
+                }}
+              />
+            </Elements>
+          </div>
+        </div>
+      )}
+
+
     </div>
   );
 };

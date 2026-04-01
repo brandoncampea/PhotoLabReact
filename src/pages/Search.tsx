@@ -6,7 +6,7 @@ import { albumService } from '../services/albumService';
 import { exifService } from '../services/exifService';
 import { analyticsService } from '../services/analyticsService';
 import PhotoCard from '../components/PhotoCard';
-import CropperModal from '../components/CropperModal';
+
 
 const Search: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -16,7 +16,7 @@ const Search: React.FC = () => {
   const [allPhotos, setAllPhotos] = useState<Photo[]>([]);
   const [albums, setAlbums] = useState<Album[]>([]);
   const [filteredPhotos, setFilteredPhotos] = useState<Photo[]>([]);
-  const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
+
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState<'name' | 'date' | 'album'>('name');
   const [metadataFilter, setMetadataFilter] = useState<'all' | 'camera' | 'iso' | 'aperture' | 'shutterSpeed' | 'focalLength'>('all');
@@ -113,7 +113,7 @@ const Search: React.FC = () => {
     if (album) {
       analyticsService.trackPhotoView(photo.id, photo.fileName, album.id, album.name);
     }
-    setSelectedPhoto(photo);
+    // setSelectedPhoto(photo);
   };
 
   const getAlbumName = (albumId: number) => {
@@ -292,12 +292,7 @@ const Search: React.FC = () => {
         )}
       </div>
 
-      {selectedPhoto && (
-        <CropperModal
-          photo={selectedPhoto}
-          onClose={() => setSelectedPhoto(null)}
-        />
-      )}
+
     </div>
   );
 };

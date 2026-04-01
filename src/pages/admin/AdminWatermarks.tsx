@@ -1,10 +1,3 @@
-// Helper component for SAS-protected watermark images
-function WatermarkSasImage({ src, alt }: { src: string, alt: string }) {
-  const sasUrl = useSasUrl(src);
-  return <img src={sasUrl || ''} alt={alt} style={{ width: '56px', height: '56px', objectFit: 'cover', borderRadius: '6px', border: '1px solid var(--border-color)' }} />;
-}
-// Stub for missing handleFileUpload
-const handleFileUpload = () => {};
 import React, { useEffect, useState } from 'react';
 import { useSasUrl } from '../../hooks/useSasUrl';
 import { Watermark } from '../../types';
@@ -13,12 +6,30 @@ import { watermarkService } from '../../services/watermarkService';
 
 import AdminLayout from '../../components/AdminLayout';
 
+// Helper component for SAS-protected watermark images
+function WatermarkSasImage({ src, alt }: { src: string, alt: string }) {
+  const sasUrl = useSasUrl(src);
+  return <img src={sasUrl || ''} alt={alt} style={{ width: '56px', height: '56px', objectFit: 'cover', borderRadius: '6px', border: '1px solid var(--border-color)' }} />;
+}
+
+type WatermarkFormData = {
+  name: string;
+  image: File | null;
+  position: Watermark['position'];
+  opacity: number;
+  isDefault: boolean;
+  tiled: boolean;
+};
+
 const AdminWatermarks: React.FC = () => {
   const [watermarks, setWatermarks] = useState<Watermark[]>([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editingWatermark, setEditingWatermark] = useState<Watermark | null>(null);
-  const [formData, setFormData] = useState<any>({
+  const [formData, setFormData] = useState<WatermarkFormData>({
     name: '',
     image: null,
     position: 'bottom-right',
@@ -28,15 +39,30 @@ const AdminWatermarks: React.FC = () => {
   });
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
+  const loadWatermarks = async () => {
+    setLoading(true);
+    try {
+      const data = await watermarkService.getAll();
+      setWatermarks(data || []);
+    } catch (e) {
+      setError('Failed to load watermarks.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    // Fetch watermarks here
-    watermarkService.getAll().then(setWatermarks).finally(() => setLoading(false));
+    loadWatermarks();
   }, []);
 
-  const handleCreate = () => {
+  const resetModalState = () => {
     setEditingWatermark(null);
     setFormData({ name: '', image: null, position: 'bottom-right', opacity: 1, isDefault: false, tiled: false });
     setPreviewUrl(null);
+  };
+
+  const handleCreate = () => {
+    resetModalState();
     setShowModal(true);
   };
 
@@ -56,20 +82,73 @@ const AdminWatermarks: React.FC = () => {
 
   const handleDelete = async (id: number) => {
     try {
+      setError('');
+      setMessage('');
       await watermarkService.delete(id);
       setWatermarks(watermarks.filter(w => w.id !== id));
+      setMessage('Watermark deleted.');
     } catch (error) {
       console.error('Failed to delete watermark:', error);
-      alert('Failed to delete watermark. Please try again.');
+      setError('Failed to delete watermark. Please try again.');
     }
   };
 
-  // Removed unused handleFileChange
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null;
+    setFormData((prev) => ({ ...prev, image: file }));
+
+    if (previewUrl && previewUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(previewUrl);
+    }
+
+    if (file) {
+      setPreviewUrl(URL.createObjectURL(file));
+    } else if (editingWatermark?.imageUrl) {
+      setPreviewUrl(editingWatermark.imageUrl);
+    } else {
+      setPreviewUrl(null);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Save watermark logic here
-    setShowModal(false);
+
+    setSaving(true);
+    setError('');
+    setMessage('');
+
+    try {
+      const payload = {
+        name: formData.name,
+        imageUrl: editingWatermark?.imageUrl || '',
+        position: formData.position,
+        opacity: formData.opacity,
+        isDefault: formData.isDefault,
+        tiled: formData.tiled,
+      };
+
+      if (editingWatermark) {
+        const updated = await watermarkService.update(editingWatermark.id, payload, formData.image || undefined);
+        setWatermarks((prev) => prev.map((w) => (w.id === updated.id ? updated : w)));
+        setMessage('Watermark updated.');
+      } else {
+        if (!formData.image) {
+          setError('Please select an image file.');
+          return;
+        }
+        const created = await watermarkService.create(payload as any, formData.image);
+        setWatermarks((prev) => [created, ...prev]);
+        setMessage('Watermark created.');
+      }
+
+      setShowModal(false);
+      resetModalState();
+    } catch (err) {
+      console.error('Failed to save watermark:', err);
+      setError('Failed to save watermark. Please try again.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (loading) {
@@ -83,6 +162,8 @@ const AdminWatermarks: React.FC = () => {
   return (
     <AdminLayout>
       <>
+      {message && <div className="success-message">{message}</div>}
+      {error && <div className="error-message">{error}</div>}
       <div className="page-header">
         <h1>Manage Watermarks</h1>
         <button onClick={handleCreate} className="btn btn-primary">
@@ -219,8 +300,8 @@ const AdminWatermarks: React.FC = () => {
                 <button type="button" onClick={() => setShowModal(false)} className="btn btn-secondary">
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-primary">
-                  {editingWatermark ? 'Update' : 'Create'}
+                <button type="submit" className="btn btn-primary" disabled={saving}>
+                  {saving ? 'Saving...' : editingWatermark ? 'Update' : 'Create'}
                 </button>
               </div>
             </form>

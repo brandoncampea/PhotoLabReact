@@ -130,10 +130,11 @@ const MultiPhotoSelector: React.FC<MultiPhotoSelectorProps> = ({
             <Cropper
               ref={cropperRef}
               src={activeSlot.photo.fullImageUrl}
+              crossOrigin="anonymous"
               className="multi-photo-selector-cropper"
               aspectRatio={selectedSize.width / selectedSize.height}
-              guides={true}
               viewMode={1}
+              guides={true}
               minCropBoxHeight={10}
               minCropBoxWidth={10}
               background={false}

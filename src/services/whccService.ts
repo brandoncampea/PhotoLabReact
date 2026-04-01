@@ -6,6 +6,7 @@ export interface WhccConfig {
   consumerSecret: string;
   isSandbox: boolean;
   enabled: boolean;
+  webhookCallbackUri?: string;
   shipFromAddress?: {
     name: string;
     addr1: string;
@@ -105,6 +106,18 @@ export interface WhccOrderResponse {
   Received: string;
 }
 
+export interface WhccWebhookStatus {
+  studioId: number;
+  callbackUri: string | null;
+  lastVerifier: string | null;
+  verifiedAt: string | null;
+  lastRegistrationResponse: any;
+  lastVerificationResponse: any;
+  lastPayload: any;
+  lastReceivedAt: string | null;
+  updatedAt: string | null;
+}
+
 class WhccService {
   private baseUrl = 'https://apps.whcc.com';
   private sandboxUrl = 'https://sandbox.apps.whcc.com';
@@ -125,6 +138,17 @@ class WhccService {
       console.error('Failed to parse WHCC config:', error);
       return null;
     }
+  }
+
+  getDefaultWebhookCallbackUri(): string {
+    const envBase = String(import.meta.env.VITE_API_URL || '').trim();
+    if (envBase.startsWith('http://') || envBase.startsWith('https://')) {
+      return envBase.replace(/\/api\/?$/, '') + '/api/webhooks/whcc';
+    }
+
+    const current = new URL(window.location.origin);
+    if (current.port === '3004') current.port = '3000';
+    return `${current.toString().replace(/\/$/, '')}/api/webhooks/whcc`;
   }
 
   /**
@@ -375,19 +399,13 @@ class WhccService {
    * For production, you may need to manually fetch and cache the catalog
    */
   async getProductCatalog(): Promise<any> {
-    const config = this.getConfig();
     try {
-      const response = await api.get('/whcc/products', {
-        params: {
-          consumerKey: config?.consumerKey,
-          consumerSecret: config?.consumerSecret,
-          isSandbox: config?.isSandbox,
-        },
-      });
+      const response = await api.get('/whcc/products');
       return response.data;
     } catch (error) {
       console.error('Failed to fetch WHCC product catalog:', error);
       // Fallback to default WHCC product data (can be cached manually)
+      console.warn('Using fallback getDefaultProductCatalog for WHCC products');
       return this.getDefaultProductCatalog();
     }
   }
@@ -726,6 +744,33 @@ class WhccService {
   logEvent(eventName: string, data: any): void {
     const timestamp = new Date().toISOString();
     console.log(`[WHCC ${timestamp}] ${eventName}:`, data);
+  }
+
+  async getWebhookStatus(): Promise<WhccWebhookStatus> {
+    const response = await api.get('/whcc/webhook/status');
+    return response.data as WhccWebhookStatus;
+  }
+
+  async registerWebhook(callbackUri: string): Promise<any> {
+    const config = this.getConfig();
+    const response = await api.post('/whcc/webhook/register', {
+      callbackUri,
+      consumerKey: config?.consumerKey,
+      consumerSecret: config?.consumerSecret,
+      isSandbox: config?.isSandbox,
+    });
+    return response.data;
+  }
+
+  async verifyWebhook(verifier?: string): Promise<any> {
+    const config = this.getConfig();
+    const response = await api.post('/whcc/webhook/verify', {
+      verifier,
+      consumerKey: config?.consumerKey,
+      consumerSecret: config?.consumerSecret,
+      isSandbox: config?.isSandbox,
+    });
+    return response.data;
   }
 }
 

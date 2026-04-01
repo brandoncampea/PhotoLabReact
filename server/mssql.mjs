@@ -682,6 +682,116 @@ throw new Error('Do not import mssql.mjs. Use mssql.cjs instead.');
     `);
 
     await query(`
+      IF COL_LENGTH('orders', 'whcc_confirmation_id') IS NULL
+      BEGIN
+        ALTER TABLE orders ADD whcc_confirmation_id NVARCHAR(255) NULL
+      END
+    `);
+
+    await query(`
+      IF COL_LENGTH('orders', 'whcc_import_response') IS NULL
+      BEGIN
+        ALTER TABLE orders ADD whcc_import_response NVARCHAR(MAX) NULL
+      END
+    `);
+
+    await query(`
+      IF COL_LENGTH('orders', 'whcc_submit_response') IS NULL
+      BEGIN
+        ALTER TABLE orders ADD whcc_submit_response NVARCHAR(MAX) NULL
+      END
+    `);
+
+    await query(`
+      IF COL_LENGTH('orders', 'whcc_last_error') IS NULL
+      BEGIN
+        ALTER TABLE orders ADD whcc_last_error NVARCHAR(MAX) NULL
+      END
+    `);
+
+    await query(`
+      IF COL_LENGTH('orders', 'whcc_order_number') IS NULL
+      BEGIN
+        ALTER TABLE orders ADD whcc_order_number NVARCHAR(255) NULL
+      END
+    `);
+
+    await query(`
+      IF COL_LENGTH('orders', 'whcc_webhook_status') IS NULL
+      BEGIN
+        ALTER TABLE orders ADD whcc_webhook_status NVARCHAR(100) NULL
+      END
+    `);
+
+    await query(`
+      IF COL_LENGTH('orders', 'whcc_webhook_event') IS NULL
+      BEGIN
+        ALTER TABLE orders ADD whcc_webhook_event NVARCHAR(100) NULL
+      END
+    `);
+
+    await query(`
+      IF COL_LENGTH('orders', 'whcc_webhook_payload') IS NULL
+      BEGIN
+        ALTER TABLE orders ADD whcc_webhook_payload NVARCHAR(MAX) NULL
+      END
+    `);
+
+    await query(`
+      IF COL_LENGTH('orders', 'whcc_webhook_received_at') IS NULL
+      BEGIN
+        ALTER TABLE orders ADD whcc_webhook_received_at DATETIME2 NULL
+      END
+    `);
+
+    await query(`
+      IF COL_LENGTH('orders', 'shipping_carrier') IS NULL
+      BEGIN
+        ALTER TABLE orders ADD shipping_carrier NVARCHAR(100) NULL
+      END
+    `);
+
+    await query(`
+      IF COL_LENGTH('orders', 'tracking_number') IS NULL
+      BEGIN
+        ALTER TABLE orders ADD tracking_number NVARCHAR(255) NULL
+      END
+    `);
+
+    await query(`
+      IF COL_LENGTH('orders', 'tracking_url') IS NULL
+      BEGIN
+        ALTER TABLE orders ADD tracking_url NVARCHAR(MAX) NULL
+      END
+    `);
+
+    await query(`
+      IF COL_LENGTH('orders', 'shipped_at') IS NULL
+      BEGIN
+        ALTER TABLE orders ADD shipped_at DATETIME2 NULL
+      END
+    `);
+
+    await query(`
+      IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'whcc_webhook_config')
+      BEGIN
+        CREATE TABLE whcc_webhook_config (
+          studio_id INT PRIMARY KEY,
+          callback_uri NVARCHAR(MAX) NULL,
+          last_verifier NVARCHAR(255) NULL,
+          verified_at DATETIME2 NULL,
+          last_registration_response NVARCHAR(MAX) NULL,
+          last_verification_response NVARCHAR(MAX) NULL,
+          last_payload NVARCHAR(MAX) NULL,
+          last_received_at DATETIME2 NULL,
+          created_at DATETIME2 DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME2 DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT fk_whcc_webhook_config_studio FOREIGN KEY (studio_id) REFERENCES studios(id) ON DELETE CASCADE
+        )
+      END
+    `);
+
+    await query(`
       IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'studio_price_list_offerings')
       BEGIN
         CREATE TABLE studio_price_list_offerings (

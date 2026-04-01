@@ -1,6 +1,9 @@
 import express from 'express';
 import axios from 'axios';
 import { adminRequired } from '../middleware/auth.js';
+import mssql from '../mssql.cjs';
+
+const { queryRow, query } = mssql;
 
 const router = express.Router();
 
@@ -12,6 +15,39 @@ const tokenCache = new Map();
 
 function getBaseUrl(isSandbox) {
   return isSandbox ? WHCC_SANDBOX_URL : WHCC_PROD_URL;
+}
+
+function stringifyForDb(value) {
+  if (value === undefined || value === null) return null;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return JSON.stringify({ error: 'Failed to serialize value' });
+  }
+}
+
+function resolveTargetStudioId(req) {
+  const actingStudioId = Number(req.headers['x-acting-studio-id']);
+  if (Number.isInteger(actingStudioId) && actingStudioId > 0) return actingStudioId;
+  const studioId = Number(req.user?.studio_id);
+  return Number.isInteger(studioId) && studioId > 0 ? studioId : null;
+}
+
+async function ensureWebhookConfigRow(studioId) {
+  await query(
+    `IF NOT EXISTS (SELECT 1 FROM whcc_webhook_config WHERE studio_id = $1)
+     BEGIN
+       INSERT INTO whcc_webhook_config (studio_id, created_at, updated_at)
+       VALUES ($1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+     END`,
+    [studioId]
+  );
+}
+
+function appendStudioIdToCallbackUri(callbackUri, studioId) {
+  const url = new URL(callbackUri);
+  url.searchParams.set('studioId', String(studioId));
+  return url.toString();
 }
 
 function getDefaultProductCatalog() {
@@ -54,6 +90,7 @@ function getDefaultProductCatalog() {
  * Priority: server env vars → request body → request query params
  */
 function getCredentials(req) {
+  // Only use Order Submit API credentials
   const consumerKey =
     process.env.WHCC_CONSUMER_KEY ||
     req.body?.consumerKey ||
@@ -80,18 +117,28 @@ async function fetchToken(consumerKey, consumerSecret, isSandbox) {
     return cached.token;
   }
 
-  const response = await axios.get(`${getBaseUrl(isSandbox)}/api/AccessToken`, {
-    params: {
-      grant_type: 'consumer_credentials',
-      consumer_key: consumerKey,
-      consumer_secret: consumerSecret,
-    },
+  // Use the WHCC Order Submit API authentication endpoint
+  const params = new URLSearchParams({
+    grant_type: 'client_credentials',
+    client_id: consumerKey,
+    client_secret: consumerSecret
   });
+  const response = await axios.post(
+    'https://auth.whcc.com/oauth/token',
+    params,
+    {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json'
+      }
+    }
+  );
 
   const data = response.data;
-  const expiresAt = new Date(data.ExpirationDate).getTime();
-  tokenCache.set(cacheKey, { token: data.Token, expiresAt });
-  return data.Token;
+  // expires_in is in seconds
+  const expiresAt = data.expires_in ? Date.now() + data.expires_in * 1000 : Date.now() + 60 * 60 * 1000;
+  tokenCache.set(cacheKey, { token: data.access_token, expiresAt });
+  return data.access_token;
 }
 
 // ---------------------------------------------------------------------------
@@ -129,44 +176,70 @@ router.get('/whcc/token', adminRequired, async (req, res) => {
 import { authRequired } from '../middleware/auth.js';
 router.get('/whcc/products', authRequired, async (req, res) => {
   try {
-    // Use local DB logic similar to super admin price list
-    const products = await queryRows(`
-      SELECT DISTINCT p.id, p.name, p.category, p.price, p.description, p.cost, p.options
-      FROM products p
-      JOIN price_list_products plp ON p.id = plp.product_id
-    `);
-    const productSizes = await queryRows(`
-      SELECT
-        ps.id,
-        ps.product_id as productId,
-        ps.size_name as sizeName,
-        ps.price as price,
-        ps.price as basePrice,
-        ps.cost as cost
-      FROM product_sizes ps
-    `);
-    // Attach sizes to each product
-    const productsWithSizes = products.map((product) => {
-      return {
-        ...product,
-        sizes: productSizes
-          .filter((size) => size.productId === product.id)
-          .map((size) => ({
-            ...size,
-            name: size.sizeName
-          }))
-      };
-    });
-    // For Playwright compatibility, return just the array if user-agent includes 'playwright'
-    if (req.headers['user-agent'] && req.headers['user-agent'].toLowerCase().includes('playwright')) {
-      return res.json(productsWithSizes);
+    const { consumerKey, consumerSecret, isSandbox } = getCredentials(req);
+    if (!consumerKey || !consumerSecret) {
+      return res.status(400).json({ error: 'Missing WHCC_CONSUMER_KEY or WHCC_CONSUMER_SECRET.' });
     }
-    res.json({ products: productsWithSizes });
+    // Get access token for Order Submit API (Order Submit flow, not OAuth)
+    const tokenUrl = `${getBaseUrl(isSandbox)}/api/AccessToken`;
+    const params = new URLSearchParams({
+      grant_type: 'consumer_credentials',
+      consumer_key: consumerKey,
+      consumer_secret: consumerSecret
+    });
+    let tokenResp;
+    try {
+      tokenResp = await axios.get(
+        tokenUrl + '?' + params.toString(),
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          }
+        }
+      );
+    } catch (tokenErr) {
+      console.error('[WHCCProxy] Token request error:', tokenErr?.response?.status, tokenErr?.response?.data || tokenErr.message);
+      throw tokenErr;
+    }
+    const accessToken = tokenResp.data.Token;
+    // Fetch product catalog from Order Submit API (sandbox/production)
+    const catalogUrl = `${getBaseUrl(isSandbox)}/api/catalog`;
+    let productsResp;
+    try {
+      productsResp = await axios.get(catalogUrl, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Accept': 'application/json',
+        },
+      });
+    } catch (catErr) {
+      console.error('[WHCCProxy] Catalog request error:', catErr?.response?.status, catErr?.response?.data || catErr.message);
+      throw catErr;
+    }
+    res.json(productsResp.data);
   } catch (err) {
-    console.error('[WHCCProxy] Products error:', err);
+    let whccError = {};
+    if (err.response) {
+      whccError = {
+        status: err.response.status,
+        headers: err.response.headers,
+        data: err.response.data,
+        request: {
+          url: err.config?.url,
+          method: err.config?.method,
+          data: err.config?.data,
+          params: err.config?.params,
+        },
+      };
+    }
+    // Print the full error object for debugging
+    console.error('[WHCCProxy] Products error (full):', JSON.stringify(err, Object.getOwnPropertyNames(err), 2));
+    console.error('[WHCCProxy] Products error (summary):', whccError, err.message);
     res.status(502).json({
-      error: 'Failed to fetch product catalog.',
-      details: err?.message
+      error: 'Failed to fetch product catalog from WHCC Order Submit API.',
+      details: whccError,
+      message: err.message,
     });
   }
 });
@@ -177,9 +250,8 @@ router.get('/whcc/products', authRequired, async (req, res) => {
 // Body: { consumerKey?, consumerSecret?, isSandbox?, ...WhccOrderRequest }
 // ---------------------------------------------------------------------------
 router.post('/whcc/order/import', adminRequired, async (req, res) => {
-    console.log('[WHCCProxy] /whcc/order/import called', { key, sandbox, orderRequest });
-  const { consumerKey: bodyKey, consumerSecret: bodySecret, isSandbox: bodySandbox, ...orderRequest } =
-    req.body;
+  console.log('[WHCCProxy] /whcc/order/import called');
+  const { consumerKey: bodyKey, consumerSecret: bodySecret, isSandbox: bodySandbox, ...orderRequest } = req.body;
   const creds = getCredentials(req);
   const key = bodyKey || creds.consumerKey;
   const secret = bodySecret || creds.consumerSecret;
@@ -188,23 +260,30 @@ router.post('/whcc/order/import', adminRequired, async (req, res) => {
   if (!key || !secret) {
     return res.status(400).json({ error: 'WHCC credentials not configured' });
   }
+
+  // If validation passes, proceed with order import
   try {
     const token = await fetchToken(key, secret, sandbox);
     const response = await axios.post(
       `${getBaseUrl(sandbox)}/api/OrderImport`,
       orderRequest,
-      { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      }
     );
     res.json(response.data);
   } catch (err) {
     console.error(
-      '[WHCCProxy] Order import error:',
+      '[WHCCProxy] Order submit error:',
       err?.response?.status,
       err?.response?.data || err.message
     );
     res
       .status(502)
-      .json({ error: 'Failed to import WHCC order', details: err?.response?.data || err.message });
+      .json({ error: 'Failed to submit WHCC order', details: err?.response?.data || err.message });
   }
 });
 
@@ -248,6 +327,141 @@ router.post('/whcc/order/submit/:confirmationId', adminRequired, async (req, res
     res
       .status(502)
       .json({ error: 'Failed to submit WHCC order', details: err?.response?.data || err.message });
+  }
+});
+
+router.get('/whcc/webhook/status', adminRequired, async (req, res) => {
+  const studioId = resolveTargetStudioId(req);
+  if (!studioId) {
+    return res.status(400).json({ error: 'Studio context is required' });
+  }
+
+  const row = await queryRow(
+    `SELECT studio_id as studioId,
+            callback_uri as callbackUri,
+            last_verifier as lastVerifier,
+            verified_at as verifiedAt,
+            last_registration_response as lastRegistrationResponse,
+            last_verification_response as lastVerificationResponse,
+            last_payload as lastPayload,
+            last_received_at as lastReceivedAt,
+            updated_at as updatedAt
+     FROM whcc_webhook_config
+     WHERE studio_id = $1`,
+    [studioId]
+  );
+
+  const safeParse = (value) => {
+    if (!value) return null;
+    try { return JSON.parse(value); } catch { return value; }
+  };
+
+  res.json({
+    studioId,
+    callbackUri: row?.callbackUri || null,
+    lastVerifier: row?.lastVerifier || null,
+    verifiedAt: row?.verifiedAt || null,
+    lastRegistrationResponse: safeParse(row?.lastRegistrationResponse),
+    lastVerificationResponse: safeParse(row?.lastVerificationResponse),
+    lastPayload: safeParse(row?.lastPayload),
+    lastReceivedAt: row?.lastReceivedAt || null,
+    updatedAt: row?.updatedAt || null,
+  });
+});
+
+router.post('/whcc/webhook/register', adminRequired, async (req, res) => {
+  const studioId = resolveTargetStudioId(req);
+  if (!studioId) {
+    return res.status(400).json({ error: 'Studio context is required' });
+  }
+
+  const { callbackUri } = req.body || {};
+  if (!callbackUri) {
+    return res.status(400).json({ error: 'callbackUri is required' });
+  }
+
+  const creds = getCredentials(req);
+  if (!creds.consumerKey || !creds.consumerSecret) {
+    return res.status(400).json({ error: 'WHCC credentials not configured' });
+  }
+
+  let studioCallbackUri;
+  try {
+    studioCallbackUri = appendStudioIdToCallbackUri(callbackUri, studioId);
+  } catch {
+    return res.status(400).json({ error: 'callbackUri must be a valid absolute URL' });
+  }
+
+  try {
+    const token = await fetchToken(creds.consumerKey, creds.consumerSecret, creds.isSandbox);
+    const form = new URLSearchParams({ callbackUri: studioCallbackUri });
+    const response = await axios.post(`${getBaseUrl(creds.isSandbox)}/api/callback/create`, form, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+    });
+
+    await ensureWebhookConfigRow(studioId);
+    await query(
+      `UPDATE whcc_webhook_config
+       SET callback_uri = $1,
+           verified_at = NULL,
+           last_registration_response = $2,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE studio_id = $3`,
+      [studioCallbackUri, stringifyForDb(response.data), studioId]
+    );
+
+    res.json({ studioId, callbackUri: studioCallbackUri, response: response.data });
+  } catch (err) {
+    res.status(502).json({ error: 'Failed to register WHCC webhook', details: err?.response?.data || err.message });
+  }
+});
+
+router.post('/whcc/webhook/verify', adminRequired, async (req, res) => {
+  const studioId = resolveTargetStudioId(req);
+  if (!studioId) {
+    return res.status(400).json({ error: 'Studio context is required' });
+  }
+
+  const creds = getCredentials(req);
+  if (!creds.consumerKey || !creds.consumerSecret) {
+    return res.status(400).json({ error: 'WHCC credentials not configured' });
+  }
+
+  const stored = await queryRow(
+    'SELECT last_verifier as lastVerifier FROM whcc_webhook_config WHERE studio_id = $1',
+    [studioId]
+  );
+  const verifier = req.body?.verifier || stored?.lastVerifier;
+  if (!verifier) {
+    return res.status(400).json({ error: 'No verifier available yet. Register the webhook first and wait for WHCC callback.' });
+  }
+
+  try {
+    const token = await fetchToken(creds.consumerKey, creds.consumerSecret, creds.isSandbox);
+    const form = new URLSearchParams({ verifier: String(verifier) });
+    const response = await axios.post(`${getBaseUrl(creds.isSandbox)}/api/callback/verify`, form, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+    });
+
+    await ensureWebhookConfigRow(studioId);
+    await query(
+      `UPDATE whcc_webhook_config
+       SET verified_at = CURRENT_TIMESTAMP,
+           last_verification_response = $1,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE studio_id = $2`,
+      [stringifyForDb(response.data), studioId]
+    );
+
+    res.json({ studioId, verifier, response: response.data, verified: true });
+  } catch (err) {
+    res.status(502).json({ error: 'Failed to verify WHCC webhook', details: err?.response?.data || err.message });
   }
 });
 

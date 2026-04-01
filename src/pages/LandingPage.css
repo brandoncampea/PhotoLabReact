@@ -1,0 +1,278 @@
+.landing-main {
+  min-height: 100vh;
+  padding: 2rem 1rem 4rem;
+  background:
+    radial-gradient(1200px 500px at 15% -10%, rgba(124, 92, 255, 0.18), transparent 60%),
+    radial-gradient(900px 450px at 85% 5%, rgba(59, 130, 246, 0.16), transparent 60%);
+}
+
+.landing-hero-section {
+  max-width: 1080px;
+  margin: 0 auto 3rem;
+  text-align: center;
+}
+
+.landing-title {
+  font-size: clamp(2rem, 5vw, 3.4rem);
+  line-height: 1.1;
+  margin-bottom: 1.25rem;
+}
+
+.landing-desc {
+  max-width: 800px;
+  margin: 0 auto 2rem;
+  color: #bdbdbd;
+  font-size: clamp(1rem, 2.5vw, 1.25rem);
+  line-height: 1.7;
+}
+
+.landing-search-form {
+  justify-content: center;
+  margin: 2rem 0;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.landing-search-box {
+  min-width: 250px;
+  width: min(680px, 100%);
+  max-width: 680px;
+}
+
+.landing-search-input {
+  width: 100%;
+  padding: 0.95rem 1rem;
+  border-radius: 0.75rem;
+  font-size: 1rem;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.landing-search-input:focus {
+  outline: none;
+  border-color: rgba(124, 92, 255, 0.7);
+  box-shadow: 0 0 0 3px rgba(124, 92, 255, 0.2);
+}
+
+.landing-search-btn {
+  min-width: 120px;
+  height: 46px;
+}
+
+.landing-btn-row {
+  display: flex;
+  gap: 1.5rem;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-bottom: 2.5rem;
+}
+
+.landing-features-section {
+  margin: 2rem auto;
+  max-width: 1200px;
+}
+
+.features-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.25rem;
+  margin-top: 2rem;
+}
+
+.landing-main .feature-card {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.03));
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  padding: 1.4rem;
+  text-align: center;
+  transition: all 0.3s ease;
+  backdrop-filter: blur(2px);
+}
+
+.landing-main .feature-card:hover {
+  background: rgba(124, 92, 255, 0.12);
+  border-color: rgba(124, 92, 255, 0.3);
+  transform: translateY(-4px);
+}
+
+.feature-card-icon {
+  font-size: 2.1rem;
+  margin-bottom: 1rem;
+}
+
+.feature-card-title {
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  color: #fff;
+}
+
+.feature-card-desc {
+  color: #a0a0a0;
+  line-height: 1.6;
+  font-size: 0.95rem;
+}
+
+.landing-pricing-section {
+  text-align: center;
+  margin: 3rem auto;
+  max-width: 1200px;
+}
+
+.landing-pricing-title {
+  font-size: clamp(1.8rem, 4vw, 2.5rem);
+  font-weight: 700;
+  margin-bottom: 1rem;
+}
+
+.landing-pricing-desc {
+  font-size: 1.1rem;
+  color: #bdbdbd;
+  margin-bottom: 2rem;
+}
+
+.pricing-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1.25rem;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.pricing-loading,
+.pricing-error,
+.pricing-empty {
+  grid-column: 1 / -1;
+  font-size: 1.1rem;
+}
+
+.pricing-loading { color: #a78bfa; }
+.pricing-error { color: #ff6b35; }
+.pricing-empty { color: #bdbdbd; }
+
+.landing-pricing-btn {
+  margin-top: 2rem;
+}
+
+.landing-main .pricing-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  padding: 1.5rem;
+  text-align: center;
+  position: relative;
+  transition: all 0.3s ease;
+}
+
+.landing-main .pricing-card:hover {
+  transform: translateY(-4px);
+}
+
+.pricing-card-highlighted {
+  background: #7c5cff1a !important;
+  border: 2px solid #7c5cff !important;
+}
+
+.pricing-card-popular {
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #7c5cff;
+  color: #fff;
+  padding: 0.3rem 1rem;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.pricing-card-title {
+  font-size: 1.4rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  color: #fff;
+}
+
+.pricing-card-price {
+  font-size: 2.35rem;
+  font-weight: 700;
+  color: #a78bfa;
+  margin-bottom: 0.5rem;
+}
+
+.pricing-card-price-unit {
+  font-size: 1rem;
+  color: #a0a0a0;
+}
+
+.pricing-card-yearly {
+  color: #cfd3da;
+  font-size: 0.95rem;
+  margin-bottom: 0.7rem;
+}
+
+.pricing-card-yearly-label,
+.pricing-card-yearly-unit {
+  color: #9ea3aa;
+}
+
+.pricing-card-yearly-discount {
+  display: block;
+  margin-top: 0.2rem;
+  color: #86efac;
+  font-size: 0.85rem;
+}
+
+.pricing-card-features {
+  list-style: none;
+  padding: 1rem 0 0;
+  margin: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  text-align: left;
+}
+
+.pricing-card-feature {
+  padding: 0.35rem 0;
+  color: #d0d0d0;
+  font-size: 0.95rem;
+}
+
+.landing-footer-cta {
+  background: linear-gradient(180deg, rgba(124, 92, 255, 0.16), rgba(124, 92, 255, 0.07));
+  border-top: 1px solid rgba(124, 92, 255, 0.2);
+  border-radius: 16px;
+  padding: 2.5rem 2rem;
+  margin: 3rem auto 0;
+  text-align: center;
+  max-width: 1000px;
+}
+
+.landing-footer-title {
+  font-size: clamp(1.5rem, 3.5vw, 2rem);
+  font-weight: 700;
+  margin: 0 0 0.75rem;
+}
+
+.landing-footer-desc {
+  color: #d2d2d2;
+  font-size: 1.05rem;
+  margin-bottom: 1.25rem;
+}
+
+@media (max-width: 768px) {
+  .landing-main {
+    padding: 1.25rem 0.75rem 3rem;
+  }
+
+  .landing-search-btn {
+    width: 100%;
+  }
+
+  .landing-search-box {
+    max-width: 100%;
+  }
+}

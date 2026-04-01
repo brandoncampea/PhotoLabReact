@@ -4,6 +4,11 @@ import adminDashboardRoutes from './routes/adminDashboard.js';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const blobSasRoutes = require('./routes/blobSas.cjs');
+import labsRouter from './routes/labs.js';
+import superPriceListsRouter from './routes/superPriceLists.js';
+import studioPriceListsRouter from './routes/studioPriceLists.js';
+import albumProductsRouter from './routes/albumProducts.js';
+
 // ...existing code...
 import express from 'express';
 import cors from 'cors';
@@ -70,11 +75,16 @@ app.use('/api/admin', adminDashboardRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/albums', albumRoutes);
 app.use('/api/photos', photoRoutes);
-app.use('/api/orders', orderRoutes);
 app.use('/api/products', productRoutes);
+app.use('/api/orders', orderRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/price-lists', priceListRoutes);
-app.use('/api/price-lists', priceListItemsRoutes);
+app.use('/api/price-list-items', priceListItemsRoutes);
+// New price list/product system
+app.use('/api/labs', labsRouter);
+app.use('/api/super-price-lists', superPriceListsRouter);
+app.use('/api/studio-price-lists', studioPriceListsRouter);
+app.use('/api/album-products', albumProductsRouter);
 app.use('/api', mpixProxyRoutes);
 app.use('/api', whccProxyRoutes);
 app.use('/api/packages', packageRoutes);

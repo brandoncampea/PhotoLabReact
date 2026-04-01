@@ -105,9 +105,9 @@ const AdminProfile: React.FC = () => {
       setUpgrading(true);
       const token = localStorage.getItem('authToken');
       const response = await fetch(
-        `/api/studios/${user?.studioId}/checkout`,
+        `/api/studios/${user?.studioId}/subscription/self-service`,
         {
-          method: 'POST',
+          method: 'PATCH',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`
@@ -123,9 +123,13 @@ const AdminProfile: React.FC = () => {
         const data = await response.json();
         if (data.checkoutUrl) {
           window.location.href = data.checkoutUrl;
+          return;
         }
+        setShowUpgradeModal(false);
+        await fetchSubscriptionInfo();
       } else {
-        alert('Failed to create checkout session');
+        const errorData = await response.json().catch(() => null);
+        alert(errorData?.error || 'Failed to update subscription');
       }
     } catch (err: any) {
       alert('Error: ' + err.message);
@@ -154,6 +158,25 @@ const AdminProfile: React.FC = () => {
     } finally {
       setSaving(false);
     }
+  };
+
+  const openEditSubscriptionModal = () => {
+    const currentPlan = subscription?.studio?.subscription_plan;
+    const currentCycle = subscription?.studio?.billing_cycle;
+
+    if (currentPlan && SUBSCRIPTION_PLANS[currentPlan as keyof typeof SUBSCRIPTION_PLANS]) {
+      setSelectedUpgradePlan(currentPlan);
+    } else {
+      setSelectedUpgradePlan('');
+    }
+
+    if (currentCycle === 'monthly' || currentCycle === 'yearly') {
+      setSelectedBillingCycle(currentCycle);
+    } else {
+      setSelectedBillingCycle('monthly');
+    }
+
+    setShowUpgradeModal(true);
   };
 
   if (loading) {
@@ -425,11 +448,11 @@ const AdminProfile: React.FC = () => {
                 {user?.role === 'studio_admin' ? (
                   <>
                     <button
-                      onClick={() => setShowUpgradeModal(true)}
+                      onClick={openEditSubscriptionModal}
                       className="btn btn-primary"
                       style={{ fontSize: '14px', fontWeight: 'bold' }}
                     >
-                      {subscription.studio.subscription_status === 'active' && !subscription.studio.is_free_subscription ? 'Change Plan' : 'Subscribe'}
+                      {subscription.studio.subscription_status === 'active' && !subscription.studio.is_free_subscription ? 'Edit Subscription' : 'Subscribe'}
                     </button>
                     {subscription.studio.subscription_status === 'active' && !subscription.studio.is_free_subscription && !subscription.studio.cancellation_requested ? (
                       <button
@@ -459,7 +482,7 @@ const AdminProfile: React.FC = () => {
           <div className="modal-content admin-modal-content" style={{ padding: '30px', maxWidth: '500px' }}>
             <h2>Select Your Plan</h2>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '20px' }}>
-              Choose a plan to upgrade or downgrade your subscription
+              Choose a plan and billing cycle for your subscription
             </p>
 
             <div style={{ marginBottom: '20px', display: 'grid', gap: '15px' }}>
@@ -545,7 +568,7 @@ const AdminProfile: React.FC = () => {
                 className="btn btn-primary"
                 style={{ flex: 1, fontWeight: 'bold', opacity: upgrading ? 0.7 : 1 }}
               >
-                {upgrading ? 'Processing...' : 'Continue to Payment'}
+                {upgrading ? 'Saving...' : 'Save Subscription'}
               </button>
               <button
                 onClick={() => setShowUpgradeModal(false)}

@@ -1,563 +1,78 @@
-import React, { useState, useEffect } from 'react';
-import { mpixService } from '../../services/mpixService';
-import { siteConfigService } from '../../services/siteConfigService';
-import { useAuth } from '../../contexts/AuthContext';
-import { studioFeatureService } from '../../services/studioFeatureService';
-import AdminLayout from '../../components/AdminLayout';
 
-interface RoesConfig {
-  apiKey: string;
-  configId: string;
-  enabled: boolean;
-}
 
-interface WhccConfig {
-  enabled: boolean;
-  consumerKey: string;
-  consumerSecret: string;
-  isSandbox: boolean;
-  shipFromName: string;
-  shipFromAddr1: string;
-  shipFromAddr2: string;
-  shipFromCity: string;
-  shipFromState: string;
-  shipFromZip: string;
-  shipFromPhone: string;
-}
 
-interface MpixConfigState {
-  enabled: boolean;
-  apiKey: string;
-  apiSecret: string;
-  environment: 'sandbox' | 'production';
-  shipFromName: string;
-  shipFromPhone: string;
-  shipFromEmail: string;
-}
+import { useState } from 'react';
+import AdminWhccConfig from './AdminWhccConfig';
+import AdminRoesConfig from './AdminRoesConfig';
+import AdminMpixConfig from './AdminMpixConfig';
 
-const AdminLabs: React.FC = () => {
-  const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'roes' | 'whcc' | 'mpix'>('roes');
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [availableLabs, setAvailableLabs] = useState<Array<'roes' | 'whcc' | 'mpix'>>(['roes', 'whcc', 'mpix']);
 
-  // ROES State
-  const [roesConfig, setRoesConfig] = useState<RoesConfig>({
-    apiKey: '',
-    configId: '',
-    enabled: false,
-  });
-
-  // WHCC State
-  const [whccConfig, setWhccConfig] = useState<WhccConfig>({
-    enabled: false,
-    consumerKey: '',
-    consumerSecret: '',
-    isSandbox: true,
-    shipFromName: '',
-    shipFromAddr1: '',
-    shipFromAddr2: '',
-    shipFromCity: '',
-    shipFromState: '',
-    shipFromZip: '',
-    shipFromPhone: '',
-  });
-
-  // Mpix State
-  const [mpixConfig, setMpixConfig] = useState<MpixConfigState>({
-    enabled: false,
-    apiKey: '',
-    apiSecret: '',
-    environment: 'sandbox',
-    shipFromName: '',
-    shipFromPhone: '',
-    shipFromEmail: '',
-  });
-
-  useEffect(() => {
-    loadConfigs();
-  }, []);
-
-  useEffect(() => {
-    const loadFeatureSettings = async () => {
-      const effectiveStudioId = studioFeatureService.getEffectiveStudioId(user);
-      if (!effectiveStudioId) {
-        setAvailableLabs(['roes', 'whcc', 'mpix']);
-        return;
-      }
-
-      const settings = await studioFeatureService.getStudioSettings(effectiveStudioId);
-      const labs = (settings.labVendors || []).filter((lab): lab is 'roes' | 'whcc' | 'mpix' =>
-        ['roes', 'whcc', 'mpix'].includes(lab)
-      );
-      setAvailableLabs(labs.length > 0 ? labs : []);
-    };
-
-    loadFeatureSettings();
-  }, [user?.id, user?.role, user?.studioId]);
-
-  const allowedTabs = (['roes', 'whcc', 'mpix'] as const).filter((lab) =>
-    availableLabs.includes(lab)
-  );
-
-  useEffect(() => {
-    if (allowedTabs.length === 0) return;
-    if (!allowedTabs.includes(activeTab)) {
-      setActiveTab(allowedTabs[0]);
-    }
-  }, [allowedTabs, activeTab]);
-
-  const loadConfigs = () => {
-    // Load ROES
-    const storedRoes = localStorage.getItem('roesConfig');
-    if (storedRoes) {
-      setRoesConfig(JSON.parse(storedRoes));
-    }
-
-    // Load WHCC
-    const storedWhcc = localStorage.getItem('whccConfig');
-    if (storedWhcc) {
-      const parsed = JSON.parse(storedWhcc);
-      setWhccConfig({
-        enabled: parsed.enabled || false,
-        consumerKey: parsed.consumerKey || '',
-        consumerSecret: parsed.consumerSecret || '',
-        isSandbox: parsed.isSandbox ?? true,
-        shipFromName: parsed.shipFromAddress?.name || '',
-        shipFromAddr1: parsed.shipFromAddress?.addr1 || '',
-        shipFromAddr2: parsed.shipFromAddress?.addr2 || '',
-        shipFromCity: parsed.shipFromAddress?.city || '',
-        shipFromState: parsed.shipFromAddress?.state || '',
-        shipFromZip: parsed.shipFromAddress?.zip || '',
-        shipFromPhone: parsed.shipFromAddress?.phone || '',
-      });
-    }
-
-    // Load Mpix
-    const savedMpixConfig = mpixService.getConfig();
-    setMpixConfig({
-      enabled: savedMpixConfig.enabled,
-      apiKey: savedMpixConfig.apiKey,
-      apiSecret: savedMpixConfig.apiSecret,
-      environment: savedMpixConfig.environment,
-      shipFromName: savedMpixConfig.shipFromName || '',
-      shipFromPhone: savedMpixConfig.shipFromPhone || '',
-      shipFromEmail: savedMpixConfig.shipFromEmail || '',
-    });
-  };
-
-  const handleRoesSave = () => {
-    try {
-      localStorage.setItem('roesConfig', JSON.stringify(roesConfig));
-      siteConfigService.setSiteEnabled('roes', roesConfig.enabled);
-      setMessage({ type: 'success', text: 'ROES configuration saved successfully.' });
-      setTimeout(() => setMessage(null), 3000);
-    } catch (error) {
-      setMessage({ type: 'error', text: 'Failed to save ROES configuration.' });
-    }
-  };
-
-  const handleWhccSave = () => {
-    try {
-      const config = {
-        enabled: whccConfig.enabled,
-        consumerKey: whccConfig.consumerKey,
-        consumerSecret: whccConfig.consumerSecret,
-        isSandbox: whccConfig.isSandbox,
-        shipFromAddress: {
-          name: whccConfig.shipFromName,
-          addr1: whccConfig.shipFromAddr1,
-          addr2: whccConfig.shipFromAddr2,
-          city: whccConfig.shipFromCity,
-          state: whccConfig.shipFromState,
-          zip: whccConfig.shipFromZip,
-          phone: whccConfig.shipFromPhone,
-        },
-      };
-      localStorage.setItem('whccConfig', JSON.stringify(config));
-      siteConfigService.setSiteEnabled('whcc', whccConfig.enabled);
-      setMessage({ type: 'success', text: 'WHCC configuration saved successfully.' });
-      setTimeout(() => setMessage(null), 3000);
-    } catch (error) {
-      setMessage({ type: 'error', text: 'Failed to save WHCC configuration.' });
-    }
-  };
-
-  const handleMpixSave = () => {
-    try {
-      mpixService.saveConfig(mpixConfig);
-      siteConfigService.setSiteEnabled('mpix', mpixConfig.enabled);
-      setMessage({ type: 'success', text: 'Mpix configuration saved successfully.' });
-      setTimeout(() => setMessage(null), 3000);
-    } catch (error) {
-      setMessage({
-        type: 'error',
-        text: `Failed to save Mpix configuration: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      });
-    }
-  };
-
-  if (user?.role !== 'super_admin') {
-    return (
-      <div className="admin-page">
-        <div className="info-box" style={{ border: '1px solid var(--border-color)' }}>
-          Lab configuration is available to super admins only.
-        </div>
-      </div>
-    );
-  }
+export default function AdminLabs() {
+  const [tab, setTab] = useState<'whcc' | 'roes' | 'mpix'>('whcc');
 
   return (
-    <AdminLayout>
-      <div className="page-header">
-        <div>
-          <h1>Lab Configuration</h1>
-          <p className="muted-text" style={{ marginTop: '0.5rem' }}>
-            Configure your printing lab integrations (ROES, WHCC, Mpix)
-          </p>
-        </div>
+    <div style={{ maxWidth: 900, margin: '2rem auto', padding: '2rem', background: '#191929', borderRadius: 12, boxShadow: '0 4px 24px rgba(0,0,0,0.25)' }}>
+      <div style={{ display: 'flex', gap: 12, marginBottom: 32 }}>
+        <button
+          onClick={() => setTab('whcc')}
+          style={{
+            background: tab === 'whcc' ? '#232336' : 'transparent',
+            color: tab === 'whcc' ? '#fff' : '#b3b8d1',
+            border: '1px solid #39395a',
+            borderRadius: 6,
+            padding: '6px 18px',
+            fontWeight: 700,
+            fontSize: '1rem',
+            cursor: 'pointer',
+            letterSpacing: '0.02em',
+            outline: 'none',
+            transition: 'background 0.15s, color 0.15s',
+          }}
+        >
+          WHCC
+        </button>
+        <button
+          onClick={() => setTab('roes')}
+          style={{
+            background: tab === 'roes' ? '#232336' : 'transparent',
+            color: tab === 'roes' ? '#fff' : '#b3b8d1',
+            border: '1px solid #39395a',
+            borderRadius: 6,
+            padding: '6px 18px',
+            fontWeight: 700,
+            fontSize: '1rem',
+            cursor: 'pointer',
+            letterSpacing: '0.02em',
+            outline: 'none',
+            transition: 'background 0.15s, color 0.15s',
+          }}
+        >
+          ROES
+        </button>
+        <button
+          onClick={() => setTab('mpix')}
+          style={{
+            background: tab === 'mpix' ? '#232336' : 'transparent',
+            color: tab === 'mpix' ? '#fff' : '#b3b8d1',
+            border: '1px solid #39395a',
+            borderRadius: 6,
+            padding: '6px 18px',
+            fontWeight: 700,
+            fontSize: '1rem',
+            cursor: 'pointer',
+            letterSpacing: '0.02em',
+            outline: 'none',
+            transition: 'background 0.15s, color 0.15s',
+          }}
+        >
+          Mpix
+        </button>
       </div>
-
-      {message && (
-        <div className={message.type === 'success' ? 'info-box-success' : 'info-box-error'}>
-          {message.text}
-        </div>
-      )}
-
-      <div style={{ marginTop: '2rem' }}>
-        {allowedTabs.length === 0 ? (
-          <div className="info-box" style={{ border: '1px solid var(--border-color)' }}>
-            No lab configurations are enabled for your studio. Contact your super admin.
-          </div>
-        ) : (
-        <div className="admin-tab-strip">
-          {allowedTabs.includes('roes') && (
-            <button
-              className={`admin-tab-button ${activeTab === 'roes' ? 'active' : ''}`}
-              onClick={() => setActiveTab('roes')}
-            >
-              ⚙️ ROES
-            </button>
-          )}
-          {allowedTabs.includes('whcc') && (
-            <button
-              className={`admin-tab-button ${activeTab === 'whcc' ? 'active' : ''}`}
-              onClick={() => setActiveTab('whcc')}
-            >
-              📦 WHCC
-            </button>
-          )}
-          {allowedTabs.includes('mpix') && (
-            <button
-              className={`admin-tab-button ${activeTab === 'mpix' ? 'active' : ''}`}
-              onClick={() => setActiveTab('mpix')}
-            >
-              📸 Mpix
-            </button>
-          )}
-        </div>
-        )}
-
-        {allowedTabs.length > 0 && <div className="tab-content">
-          {/* ROES Configuration */}
-          {activeTab === 'roes' && allowedTabs.includes('roes') && (
-            <div className="admin-config-section">
-              <h2>ROES Web Components Configuration</h2>
-              <div className="form-group">
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={roesConfig.enabled}
-                    onChange={(e) =>
-                      setRoesConfig({ ...roesConfig, enabled: e.target.checked })
-                    }
-                  />
-                  Enable ROES
-                </label>
-              </div>
-
-              <div className="form-group">
-                <label>API Key</label>
-                <input
-                  type="password"
-                  value={roesConfig.apiKey}
-                  onChange={(e) =>
-                    setRoesConfig({ ...roesConfig, apiKey: e.target.value })
-                  }
-                  placeholder="Enter ROES API Key"
-                />
-              </div>
-
-              <div className="form-group">
-                <label>Config ID</label>
-                <input
-                  type="text"
-                  value={roesConfig.configId}
-                  onChange={(e) =>
-                    setRoesConfig({ ...roesConfig, configId: e.target.value })
-                  }
-                  placeholder="Enter ROES Config ID"
-                />
-              </div>
-
-              <button onClick={handleRoesSave} className="btn btn-primary">
-                Save ROES Configuration
-              </button>
-            </div>
-          )}
-
-          {/* WHCC Configuration */}
-          {activeTab === 'whcc' && allowedTabs.includes('whcc') && (
-            <div className="admin-config-section">
-              <h2>WHCC Configuration</h2>
-              <div className="form-group">
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={whccConfig.enabled}
-                    onChange={(e) =>
-                      setWhccConfig({ ...whccConfig, enabled: e.target.checked })
-                    }
-                  />
-                  Enable WHCC
-                </label>
-              </div>
-
-              <div className="form-group">
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={whccConfig.isSandbox}
-                    onChange={(e) =>
-                      setWhccConfig({ ...whccConfig, isSandbox: e.target.checked })
-                    }
-                  />
-                  Use Sandbox Environment
-                </label>
-              </div>
-
-              <div className="form-group">
-                <label>Consumer Key</label>
-                <input
-                  type="password"
-                  value={whccConfig.consumerKey}
-                  onChange={(e) =>
-                    setWhccConfig({ ...whccConfig, consumerKey: e.target.value })
-                  }
-                  placeholder="Enter Consumer Key"
-                />
-              </div>
-
-              <div className="form-group">
-                <label>Consumer Secret</label>
-                <input
-                  type="password"
-                  value={whccConfig.consumerSecret}
-                  onChange={(e) =>
-                    setWhccConfig({ ...whccConfig, consumerSecret: e.target.value })
-                  }
-                  placeholder="Enter Consumer Secret"
-                />
-              </div>
-
-              <h3>Ship From Address</h3>
-              <div className="form-group">
-                <label>Name</label>
-                <input
-                  type="text"
-                  value={whccConfig.shipFromName}
-                  onChange={(e) =>
-                    setWhccConfig({ ...whccConfig, shipFromName: e.target.value })
-                  }
-                  placeholder="Name"
-                />
-              </div>
-
-              <div className="form-group">
-                <label>Address Line 1</label>
-                <input
-                  type="text"
-                  value={whccConfig.shipFromAddr1}
-                  onChange={(e) =>
-                    setWhccConfig({ ...whccConfig, shipFromAddr1: e.target.value })
-                  }
-                  placeholder="Address"
-                />
-              </div>
-
-              <div className="form-group">
-                <label>Address Line 2 (Optional)</label>
-                <input
-                  type="text"
-                  value={whccConfig.shipFromAddr2}
-                  onChange={(e) =>
-                    setWhccConfig({ ...whccConfig, shipFromAddr2: e.target.value })
-                  }
-                  placeholder="Address 2"
-                />
-              </div>
-
-              <div className="form-row">
-                <div className="form-group">
-                  <label>City</label>
-                  <input
-                    type="text"
-                    value={whccConfig.shipFromCity}
-                    onChange={(e) =>
-                      setWhccConfig({ ...whccConfig, shipFromCity: e.target.value })
-                    }
-                    placeholder="City"
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>State</label>
-                  <input
-                    type="text"
-                    value={whccConfig.shipFromState}
-                    onChange={(e) =>
-                      setWhccConfig({ ...whccConfig, shipFromState: e.target.value })
-                    }
-                    placeholder="State"
-                    maxLength={2}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>ZIP</label>
-                  <input
-                    type="text"
-                    value={whccConfig.shipFromZip}
-                    onChange={(e) =>
-                      setWhccConfig({ ...whccConfig, shipFromZip: e.target.value })
-                    }
-                    placeholder="ZIP"
-                  />
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label>Phone</label>
-                <input
-                  type="tel"
-                  value={whccConfig.shipFromPhone}
-                  onChange={(e) =>
-                    setWhccConfig({ ...whccConfig, shipFromPhone: e.target.value })
-                  }
-                  placeholder="Phone"
-                />
-              </div>
-
-              <button onClick={handleWhccSave} className="btn btn-primary">
-                Save WHCC Configuration
-              </button>
-            </div>
-          )}
-
-          {/* Mpix Configuration */}
-          {activeTab === 'mpix' && allowedTabs.includes('mpix') && (
-            <div className="admin-config-section">
-              <h2>Mpix Configuration</h2>
-              <div className="form-group">
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={mpixConfig.enabled}
-                    onChange={(e) =>
-                      setMpixConfig({ ...mpixConfig, enabled: e.target.checked })
-                    }
-                  />
-                  Enable Mpix
-                </label>
-              </div>
-
-              <div className="form-group">
-                <label>Environment</label>
-                <select
-                  value={mpixConfig.environment}
-                  onChange={(e) =>
-                    setMpixConfig({
-                      ...mpixConfig,
-                      environment: e.target.value as 'sandbox' | 'production',
-                    })
-                  }
-                >
-                  <option value="sandbox">Sandbox</option>
-                  <option value="production">Production</option>
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label>API Key</label>
-                <input
-                  type="password"
-                  value={mpixConfig.apiKey}
-                  onChange={(e) =>
-                    setMpixConfig({ ...mpixConfig, apiKey: e.target.value })
-                  }
-                  placeholder="Enter API Key"
-                />
-              </div>
-
-              <div className="form-group">
-                <label>API Secret</label>
-                <input
-                  type="password"
-                  value={mpixConfig.apiSecret}
-                  onChange={(e) =>
-                    setMpixConfig({ ...mpixConfig, apiSecret: e.target.value })
-                  }
-                  placeholder="Enter API Secret"
-                />
-              </div>
-
-              <h3>Ship From Information</h3>
-              <div className="form-group">
-                <label>Name</label>
-                <input
-                  type="text"
-                  value={mpixConfig.shipFromName}
-                  onChange={(e) =>
-                    setMpixConfig({ ...mpixConfig, shipFromName: e.target.value })
-                  }
-                  placeholder="Sender Name"
-                />
-              </div>
-
-              <div className="form-group">
-                <label>Phone</label>
-                <input
-                  type="tel"
-                  value={mpixConfig.shipFromPhone}
-                  onChange={(e) =>
-                    setMpixConfig({ ...mpixConfig, shipFromPhone: e.target.value })
-                  }
-                  placeholder="Phone"
-                />
-              </div>
-
-              <div className="form-group">
-                <label>Email</label>
-                <input
-                  type="email"
-                  value={mpixConfig.shipFromEmail}
-                  onChange={(e) =>
-                    setMpixConfig({ ...mpixConfig, shipFromEmail: e.target.value })
-                  }
-                  placeholder="Email"
-                />
-              </div>
-
-              <button onClick={handleMpixSave} className="btn btn-primary">
-                Save Mpix Configuration
-              </button>
-            </div>
-          )}
-        </div>}
+      <div>
+        {tab === 'whcc' && <AdminWhccConfig />}
+        {tab === 'roes' && <AdminRoesConfig />}
+        {tab === 'mpix' && <AdminMpixConfig />}
       </div>
-
-    </AdminLayout>
+    </div>
   );
-};
-
-export default AdminLabs;
+}

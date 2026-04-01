@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { CartItem as CartItemType } from '../types';
 import { useCart } from '../contexts/CartContext';
 import WatermarkedImage from './WatermarkedImage';
@@ -10,6 +10,7 @@ interface CartItemProps {
 
 const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop }) => {
   const { updateQuantity, removeFromCart } = useCart();
+  const [expanded, setExpanded] = useState(true);
 
   const handleQuantityChange = (newQuantity: number) => {
     if (newQuantity > 0) {
@@ -22,117 +23,132 @@ const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop }) => {
   // Calculate crop preview overlay position (as percentage of image)
   const getCropStyle = () => {
     if (!item.cropData) return null;
-    
-    const { x, y, width, height } = item.cropData;
+
+    let { x, y, width, height } = item.cropData;
+    const naturalWidth = Number(item.photo?.width || item.photo?.metadata?.width || 0);
+    const naturalHeight = Number(item.photo?.height || item.photo?.metadata?.height || 0);
+
+    const looksPixelBased = x > 100 || y > 100 || width > 100 || height > 100;
+    if (looksPixelBased && naturalWidth > 0 && naturalHeight > 0) {
+      x = (x / naturalWidth) * 100;
+      y = (y / naturalHeight) * 100;
+      width = (width / naturalWidth) * 100;
+      height = (height / naturalHeight) * 100;
+    }
+
+    const clamp = (value: number) => Math.max(0, Math.min(100, value));
+    const left = clamp(x);
+    const top = clamp(y);
+    const boxWidth = clamp(width);
+    const boxHeight = clamp(height);
     
     return {
       position: 'absolute' as const,
-      left: `${x}%`,
-      top: `${y}%`,
-      width: `${width}%`,
-      height: `${height}%`,
-      border: '2px solid #3b82f6',
+      left: `${left}%`,
+      top: `${top}%`,
+      width: `${boxWidth}%`,
+      height: `${boxHeight}%`,
+      border: '2px solid #7b61ff',
       boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.5)',
       pointerEvents: 'none' as const,
     };
   };
 
   return (
-    <div className="cart-item dark-card">
-      <div className="cart-item-image cart-img-abs">
-        {item.photos && item.photos.length > 1 ? (
-          // Multi-photo grid display
-          <div className={`cart-multi-photo-grid grid-cols-${item.photos.length}`}>
-            {item.photos.slice(0, 4).map((photoItem, idx) => (
-              <div key={idx} className="cart-photo-img-container">
-                <WatermarkedImage 
-                  src={photoItem.photo.thumbnailUrl} 
-                  alt={`Photo ${photoItem.position}`}
-                  className="cart-photo-img"
-                />
-                <div className="cart-photo-pos-badge">#{photoItem.position}</div>
+    <div style={{ border: '1px solid #2a2740', borderRadius: 8, marginBottom: 16, overflow: 'hidden', background: '#0f0f16' }}>
+      {/* Header with Item Number and actions */}
+      <div style={{ display: 'flex', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid #2a2740', background: '#1a1a24' }}>
+        <input type="checkbox" style={{ marginRight: 12 }} defaultChecked />
+        <span style={{ fontWeight: 600, marginRight: 'auto' }}>Item {item.photoId}</span>
+        <div style={{ display: 'flex', gap: 12, fontSize: 12 }}>
+          <button onClick={() => setExpanded(!expanded)} style={{ background: 'none', border: 'none', color: '#7b61ff', cursor: 'pointer' }}>
+            {expanded ? 'Collapse' : 'Expand'}
+          </button>
+          <button onClick={() => removeFromCart(item.photoId)} style={{ background: 'none', border: 'none', color: '#ff6b6b', cursor: 'pointer' }}>Remove</button>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      {expanded && (
+        <div style={{ padding: 16, display: 'grid', gridTemplateColumns: '240px 1fr', gap: 24 }}>
+          {/* Photo Preview Section */}
+          <div>
+            <div style={{ marginBottom: 12, borderRadius: 6, overflow: 'hidden', background: '#000', height: 280, position: 'relative' }}>
+              {item.photo ? (
+                <>
+                  <WatermarkedImage 
+                    src={item.photo.fullImageUrl || item.photo.thumbnailUrl} 
+                    alt={item.photo.fileName}
+                    style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                  />
+                  {item.cropData && <div style={getCropStyle()!} />}
+                </>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#666' }}>
+                  Loading...
+                </div>
+              )}
+            </div>
+            <div style={{ textAlign: 'center', fontSize: 12, color: '#aaa', marginBottom: 12 }}>
+              {item.photo?.fileName || `Photo ${item.photoId}`}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {onEditCrop && (
+                <button 
+                  onClick={() => onEditCrop(item)}
+                  style={{ 
+                    padding: '8px 10px', 
+                    background: '#7b61ff', 
+                    border: 'none', 
+                    borderRadius: 4, 
+                    color: '#fff', 
+                    fontSize: 12, 
+                    fontWeight: 600, 
+                    cursor: 'pointer',
+                    textAlign: 'center'
+                  }}
+                >
+                  ✏️ Edit Crop
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Product Summary Section */}
+          <div>
+            <div style={{ marginBottom: 12, paddingBottom: 12, borderBottom: '1px solid #2a2740' }}>
+              <div style={{ fontWeight: 700, marginBottom: 4 }}>{item.productName || 'Selected Product'}</div>
+              <div style={{ fontSize: 12, color: '#aaa' }}>{item.productSizeName || 'Selected Size'}</div>
+            </div>
+
+            {/* Pricing and Quantity */}
+            <div style={{ borderTop: '1px solid #2a2740', paddingTop: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto', gap: 12, alignItems: 'center' }}>
+                <div style={{ color: '#aaa', fontSize: 13 }}>Item Total</div>
+                <div style={{ textAlign: 'right', fontWeight: 600 }}>${item.price.toFixed(2)}</div>
+                <div style={{ textAlign: 'right', width: 40 }}>
+                  <input 
+                    type="number" 
+                    min="1" 
+                    value={item.quantity}
+                    onChange={(e) => handleQuantityChange(parseInt(e.target.value) || 1)}
+                    style={{
+                      width: '100%',
+                      padding: '4px 6px',
+                      background: '#0f0f16',
+                      border: '1px solid #2a2740',
+                      borderRadius: 3,
+                      color: '#fff',
+                      textAlign: 'center'
+                    }}
+                  />
+                </div>
+                <div style={{ textAlign: 'right', fontWeight: 700, fontSize: 14 }}>${subtotal.toFixed(2)}</div>
               </div>
-            ))}
-            {item.photos.length > 4 && (
-              <div className="cart-photo-more-badge">+{item.photos.length - 4}</div>
-            )}
+            </div>
           </div>
-        ) : item.photo ? (
-          // Single photo display
-          <>
-            <WatermarkedImage 
-              src={item.photo.thumbnailUrl} 
-              alt={item.photo.fileName}
-              className="cart-photo-img"
-            />
-            {item.cropData && <div className="cart-photo-crop-overlay" style={getCropStyle()!} />}
-          </>
-        ) : (
-          <div className="cart-photo-loading">
-            <span className="cart-photo-loading-text">Loading...</span>
-          </div>
-        )}
-      </div>
-      
-      <div className="cart-item-details">
-        {item.photos && item.photos.length > 1 ? (
-          <>
-            <h3>Multi-Photo Product</h3>
-            <p className="cart-photo-count">📸 {item.photos.length} photos included</p>
-          </>
-        ) : item.photo ? (
-          <>
-            <h3>{item.photo.fileName}</h3>
-            {item.photo.description && <p>{item.photo.description}</p>}
-          </>
-        ) : (
-          <h3>Photo {item.photoId}</h3>
-        )}
-        {item.cropData && (
-          <div className="cart-crop-row">
-            <span className="badge">Custom Crop</span>
-            {onEditCrop && (
-              <button 
-                onClick={() => onEditCrop(item)}
-                className="btn-edit-crop btn-crop-action"
-              >
-                Edit Crop
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-      
-      <div className="cart-item-quantity">
-        <button
-          onClick={() => handleQuantityChange(item.quantity - 1)}
-          className="quantity-btn"
-        >
-          -
-        </button>
-        <span className="quantity-value">{item.quantity}</span>
-        <button
-          onClick={() => handleQuantityChange(item.quantity + 1)}
-          className="quantity-btn"
-        >
-          +
-        </button>
-      </div>
-      
-      <div className="cart-item-price">
-        <p className="price-label">
-          ${item.price.toFixed(2)} × {item.quantity}
-        </p>
-        <p className="price-total">${subtotal.toFixed(2)}</p>
-      </div>
-      
-      <button
-        onClick={() => removeFromCart(item.photoId)}
-        className="btn-remove"
-        aria-label="Remove item"
-      >
-        ×
-      </button>
+        </div>
+      )}
     </div>
   );
 };

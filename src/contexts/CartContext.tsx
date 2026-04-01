@@ -169,7 +169,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (existingItem) {
         return prevItems.map((item) =>
           item.photoId === photo.id && item.productId === product.id && item.productSizeId === size.id
-            ? { ...item, quantity: item.quantity + quantity, cropData, price, photoIds: allPhotoIds, photos: allPhotos }
+            ? { ...item, quantity: item.quantity + quantity, cropData, price, photoIds: allPhotoIds, photos: allPhotos, productName: product.name, productSizeName: size.name }
             : item
         );
       }
@@ -182,6 +182,8 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         cropData, 
         productId: product.id, 
         productSizeId: size.id, 
+        productName: product.name,
+        productSizeName: size.name,
         price 
       }];
     });
@@ -214,6 +216,8 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         cropData,
         productId: pkgItem.productId,
         productSizeId: pkgItem.productSizeId,
+        productName: pkgItem.product?.name,
+        productSizeName: pkgItem.productSize?.name,
         price,
       });
     }

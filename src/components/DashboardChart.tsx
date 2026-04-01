@@ -40,8 +40,8 @@ const DashboardChart: React.FC<DashboardChartProps> = ({ data, labels, label }) 
             {
               label,
               data,
-              borderColor: '#7c5cff',
-              backgroundColor: 'rgba(124,92,255,0.15)',
+              borderColor: '#79c0ff',
+              backgroundColor: 'rgba(121,192,255,0.18)',
               tension: 0.35,
               pointRadius: 2.5,
               borderWidth: 2,
@@ -58,11 +58,11 @@ const DashboardChart: React.FC<DashboardChartProps> = ({ data, labels, label }) 
           scales: {
             x: {
               grid: { display: false },
-              ticks: { color: '#bcbcff' },
+              ticks: { color: '#9ba4c3' },
             },
             y: {
-              grid: { color: 'rgba(124,92,255,0.08)' },
-              ticks: { color: '#bcbcff' },
+              grid: { color: 'rgba(121,192,255,0.12)' },
+              ticks: { color: '#9ba4c3' },
             },
           },
         }}

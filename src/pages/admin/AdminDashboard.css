@@ -1,0 +1,214 @@
+.admin-dashboard-subtitle {
+  font-size: 0.95rem;
+  color: #9ba4c3;
+  margin-top: 0.35rem;
+}
+
+.admin-dashboard-metrics {
+  margin-top: 1rem;
+}
+
+.admin-dashboard-card {
+  cursor: pointer;
+  border: 1px solid rgba(126, 231, 135, 0.18) !important;
+  background: linear-gradient(180deg, rgba(26, 29, 46, 0.92), rgba(18, 21, 42, 0.98)) !important;
+}
+
+.admin-dashboard-card .dashboard-card-value.revenue {
+  color: #7ee787 !important;
+}
+
+.admin-dashboard-card .dashboard-card-value.orders {
+  color: #79c0ff !important;
+}
+
+.admin-dashboard-card .dashboard-card-value.customers {
+  color: #d2a8ff !important;
+}
+
+.admin-dashboard-card .dashboard-card-value.pending {
+  color: #ffa657 !important;
+}
+
+.admin-dashboard-card .dashboard-card-value.batch {
+  color: #f2cc60 !important;
+}
+
+.dashboard-range-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.55rem;
+  margin-bottom: 0.35rem;
+}
+
+.admin-dashboard-card .dashboard-pill {
+  padding: 3px 12px !important;
+  font-size: 0.88rem !important;
+}
+
+.admin-dashboard-widget {
+  margin-top: 1rem;
+  padding-bottom: 1rem !important;
+  border: 1px solid rgba(121, 192, 255, 0.16) !important;
+  background: linear-gradient(180deg, rgba(26, 29, 46, 0.92), rgba(18, 21, 42, 0.98)) !important;
+}
+
+.admin-dashboard-section-title {
+  font-weight: 700;
+  font-size: 1.1rem;
+  margin: 0 0 0.75rem;
+  color: #fff;
+}
+
+.admin-dashboard-empty {
+  color: #9ba4c3;
+  margin: 0.4rem 0;
+}
+
+.admin-dashboard-analytics-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.admin-dashboard-analytics-stat {
+  background: rgba(9, 11, 20, 0.55);
+  border: 1px solid rgba(121, 192, 255, 0.18);
+  border-radius: 10px;
+  padding: 0.75rem;
+}
+
+.admin-dashboard-analytics-value {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #79c0ff;
+}
+
+.admin-dashboard-analytics-label {
+  font-size: 0.78rem;
+  color: #9ba4c3;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-top: 0.15rem;
+}
+
+.admin-dashboard-analytics-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.9rem;
+}
+
+.admin-dashboard-analytics-panel {
+  background: rgba(9, 11, 20, 0.55);
+  border: 1px solid rgba(121, 192, 255, 0.18);
+  border-radius: 10px;
+  padding: 0.75rem;
+}
+
+.admin-dashboard-analytics-title {
+  margin: 0 0 0.55rem;
+  color: #e6edf3;
+  font-size: 0.95rem;
+}
+
+.admin-dashboard-analytics-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.admin-dashboard-analytics-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.42rem 0;
+  border-bottom: 1px solid rgba(121, 192, 255, 0.14);
+  color: #c9d1d9;
+  font-size: 0.88rem;
+  gap: 0.5rem;
+}
+
+.admin-dashboard-analytics-list li strong {
+  color: #7ee787;
+}
+
+.admin-dashboard-analytics-list li:last-child {
+  border-bottom: none;
+}
+
+.admin-dashboard-analytics-list li.empty {
+  color: #9ba4c3;
+}
+
+.admin-dashboard-table-wrap {
+  overflow-x: auto;
+}
+
+.admin-dashboard-table {
+  width: 100%;
+  border-collapse: collapse;
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(9, 11, 20, 0.6);
+}
+
+.admin-dashboard-table th,
+.admin-dashboard-table td {
+  text-align: left;
+  padding: 0.72rem 0.8rem;
+  border-bottom: 1px solid rgba(121, 192, 255, 0.14);
+  color: #e6edf3;
+  font-size: 0.92rem;
+}
+
+.admin-dashboard-table th {
+  color: #9ba4c3;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-size: 0.76rem;
+  background: rgba(22, 27, 51, 0.7);
+}
+
+.admin-dashboard-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.58rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.admin-dashboard-status.pending {
+  color: #ffa657;
+  border-color: rgba(255, 166, 87, 0.45);
+  background: rgba(255, 166, 87, 0.14);
+}
+
+.admin-dashboard-status.completed,
+.admin-dashboard-status.complete {
+  color: #7ee787;
+  border-color: rgba(126, 231, 135, 0.45);
+  background: rgba(126, 231, 135, 0.14);
+}
+
+.admin-dashboard-status.cancelled,
+.admin-dashboard-status.canceled {
+  color: #f85149;
+  border-color: rgba(248, 81, 73, 0.45);
+  background: rgba(248, 81, 73, 0.14);
+}
+
+@media (max-width: 900px) {
+  .admin-dashboard-analytics-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-dashboard-analytics-grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -182,8 +182,8 @@ export const requireActiveSubscription = async (req, res, next) => {
       return res.status(403).json({ error: 'Studio not found' });
     }
 
-    // Check if subscription is active and not free
-    if (studio.subscription_status !== 'active' || studio.is_free_subscription === true) {
+    // Check if subscription is active (both paid and free subscriptions allowed)
+    if (studio.subscription_status !== 'active') {
       return res.status(403).json({ 
         error: 'Active subscription required. Please subscribe to use this feature.',
         requiresSubscription: true,

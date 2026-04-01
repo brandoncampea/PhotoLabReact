@@ -49,7 +49,16 @@ const AdminAlbums: React.FC = () => {
     const loadPriceLists = async () => {
       try {
         const res = await api.get('/price-lists');
-        setPriceLists(res.data.priceLists || []);
+        const allPriceLists = Array.isArray(res.data) ? res.data : (res.data?.priceLists || []);
+        const selectablePriceLists = allPriceLists.filter((pl: any) => {
+          const name = String(pl?.name || '').trim().toLowerCase();
+          const description = String(pl?.description || '').trim().toLowerCase();
+          // Hide internal/system bridge price lists from album assignment UI.
+          if (name === 'whcc import bridge') return false;
+          if (description.includes('system bridge price list')) return false;
+          return true;
+        });
+        setPriceLists(selectablePriceLists);
       } catch (error) {
         console.error('Failed to load price lists:', error);
       }

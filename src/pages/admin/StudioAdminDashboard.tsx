@@ -66,18 +66,6 @@ const StudioAdminDashboard: React.FC = () => {
           <div className="dashboard-card-sub">{profitData.margin}% margin</div>
         </div>
       </div>
-      <div style={{ marginTop: '2.5rem' }}>
-        <div className="dashboard-section-header">Quick Actions</div>
-        <div className="dashboard-actions-grid tallydark-actions-grid">
-          <a className="tallydark-sidenav-btn" href="/admin/orders">Manage Orders</a>
-          <a className="tallydark-sidenav-btn" href="/admin/albums">Manage Albums</a>
-          <a className="tallydark-sidenav-btn" href="/admin/products">Manage Products</a>
-          <a className="tallydark-sidenav-btn" href="/admin/customers">View Customers</a>
-          <a className="tallydark-sidenav-btn" href="/admin/analytics">View Analytics</a>
-          <a className="tallydark-sidenav-btn" href="/admin/shipping">Shipping</a>
-          <a className="tallydark-sidenav-btn" href="/admin/settings">Settings</a>
-        </div>
-      </div>
     </div>
   </AdminLayout>
 );

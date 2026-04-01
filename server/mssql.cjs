@@ -302,6 +302,139 @@ async function initializeDatabase() {
 			)
 		END
 	`);
+	await query(`
+		IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'shipping_config')
+		BEGIN
+			CREATE TABLE shipping_config (
+				id INT PRIMARY KEY,
+				batch_deadline NVARCHAR(255) DEFAULT '2099-12-31T23:59:59Z',
+				direct_shipping_charge FLOAT DEFAULT 10.00,
+				is_active BIT DEFAULT 1,
+				batch_shipping_address NVARCHAR(MAX),
+				updated_at DATETIME2 DEFAULT GETDATE()
+			)
+		END
+	`);
+	await query(`
+		IF COL_LENGTH('orders', 'studio_id') IS NULL
+		BEGIN
+			ALTER TABLE orders ADD studio_id INT NULL
+		END
+	`);
+	await query(`
+		IF COL_LENGTH('shipping_config', 'batch_shipping_address') IS NULL
+		BEGIN
+			ALTER TABLE shipping_config ADD batch_shipping_address NVARCHAR(MAX) NULL
+		END
+	`);
+	await query(`
+		IF COL_LENGTH('shipping_config', 'updated_at') IS NULL
+		BEGIN
+			ALTER TABLE shipping_config ADD updated_at DATETIME2 DEFAULT GETDATE()
+		END
+	`);
+	await query(`
+		IF COL_LENGTH('orders', 'whcc_confirmation_id') IS NULL
+		BEGIN
+			ALTER TABLE orders ADD whcc_confirmation_id NVARCHAR(255) NULL
+		END
+	`);
+	await query(`
+		IF COL_LENGTH('orders', 'whcc_import_response') IS NULL
+		BEGIN
+			ALTER TABLE orders ADD whcc_import_response NVARCHAR(MAX) NULL
+		END
+	`);
+	await query(`
+		IF COL_LENGTH('orders', 'whcc_submit_response') IS NULL
+		BEGIN
+			ALTER TABLE orders ADD whcc_submit_response NVARCHAR(MAX) NULL
+		END
+	`);
+	await query(`
+		IF COL_LENGTH('orders', 'whcc_last_error') IS NULL
+		BEGIN
+			ALTER TABLE orders ADD whcc_last_error NVARCHAR(MAX) NULL
+		END
+	`);
+	await query(`
+		IF COL_LENGTH('orders', 'whcc_order_number') IS NULL
+		BEGIN
+			ALTER TABLE orders ADD whcc_order_number NVARCHAR(255) NULL
+		END
+	`);
+	await query(`
+		IF COL_LENGTH('orders', 'whcc_webhook_status') IS NULL
+		BEGIN
+			ALTER TABLE orders ADD whcc_webhook_status NVARCHAR(100) NULL
+		END
+	`);
+	await query(`
+		IF COL_LENGTH('orders', 'whcc_webhook_event') IS NULL
+		BEGIN
+			ALTER TABLE orders ADD whcc_webhook_event NVARCHAR(100) NULL
+		END
+	`);
+	await query(`
+		IF COL_LENGTH('orders', 'whcc_webhook_payload') IS NULL
+		BEGIN
+			ALTER TABLE orders ADD whcc_webhook_payload NVARCHAR(MAX) NULL
+		END
+	`);
+	await query(`
+		IF COL_LENGTH('orders', 'whcc_webhook_received_at') IS NULL
+		BEGIN
+			ALTER TABLE orders ADD whcc_webhook_received_at DATETIME2 NULL
+		END
+	`);
+	await query(`
+		IF COL_LENGTH('orders', 'shipping_carrier') IS NULL
+		BEGIN
+			ALTER TABLE orders ADD shipping_carrier NVARCHAR(100) NULL
+		END
+	`);
+	await query(`
+		IF COL_LENGTH('orders', 'tracking_number') IS NULL
+		BEGIN
+			ALTER TABLE orders ADD tracking_number NVARCHAR(255) NULL
+		END
+	`);
+	await query(`
+		IF COL_LENGTH('orders', 'tracking_url') IS NULL
+		BEGIN
+			ALTER TABLE orders ADD tracking_url NVARCHAR(MAX) NULL
+		END
+	`);
+	await query(`
+		IF COL_LENGTH('orders', 'shipped_at') IS NULL
+		BEGIN
+			ALTER TABLE orders ADD shipped_at DATETIME2 NULL
+		END
+	`);
+	await query(`
+		IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'whcc_webhook_config')
+		BEGIN
+			CREATE TABLE whcc_webhook_config (
+				studio_id INT PRIMARY KEY,
+				callback_uri NVARCHAR(MAX) NULL,
+				last_verifier NVARCHAR(255) NULL,
+				verified_at DATETIME2 NULL,
+				last_registration_response NVARCHAR(MAX) NULL,
+				last_verification_response NVARCHAR(MAX) NULL,
+				last_payload NVARCHAR(MAX) NULL,
+				last_received_at DATETIME2 NULL,
+				created_at DATETIME2 DEFAULT GETDATE(),
+				updated_at DATETIME2 DEFAULT GETDATE(),
+				CONSTRAINT fk_whcc_webhook_config_studio FOREIGN KEY (studio_id) REFERENCES studios(id) ON DELETE CASCADE
+			)
+		END
+	`);
+	await query(`
+		IF EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'ck_shipping_config_id')
+		BEGIN
+			ALTER TABLE shipping_config DROP CONSTRAINT ck_shipping_config_id
+		END
+	`);
 	// Add more tables as needed for your app...
 	// (price_list_products, product_sizes, packages, etc.)
 }
