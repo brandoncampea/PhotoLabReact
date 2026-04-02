@@ -2679,6 +2679,11 @@ tbody tr:hover {
 .btn-save:hover {
 	background-color: #0056b3;
 }
+/* Player hover overlay for album photo grid */
+.album-card:hover .player-hover-overlay {
+	display: flex !important;
+}
+
 @media (max-width: 768px) {
 	.studios-header {
 		flex-direction: column;

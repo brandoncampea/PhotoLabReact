@@ -666,20 +666,72 @@ const AlbumDetails: React.FC = () => {
         <div className="empty-state">No photos match your filter.</div>
       ) : (
         <div className="albums-grid">
-          {filteredPhotos.map((photo) => (
-            <Link
-              key={photo.id}
-              to={`?photo=${photo.id}`}
-              className="album-card"
-              style={{ padding: 0, overflow: 'hidden', border: selectedPhotoId === photo.id ? '2px solid #7b61ff' : undefined }}
-            >
-              <img
-                src={photo.thumbnailUrl || photo.fullImageUrl}
-                alt={photo.fileName}
-                style={{ width: '100%', height: 220, objectFit: 'cover', display: 'block' }}
-              />
-            </Link>
-          ))}
+          {filteredPhotos.map((photo) => {
+            const playerNames = (photo.playerNames || '').split(',').filter((p) => p.trim());
+            const playerNumbers = (photo.playerNumbers || '').split(',').filter((p) => p.trim());
+            const hasPlayers = playerNames.length > 0 || playerNumbers.length > 0;
+
+            return (
+              <Link
+                key={photo.id}
+                to={`?photo=${photo.id}`}
+                className="album-card"
+                style={{
+                  padding: 0,
+                  overflow: 'hidden',
+                  border: selectedPhotoId === photo.id ? '2px solid #7b61ff' : undefined,
+                  position: 'relative',
+                }}
+              >
+                <img
+                  src={photo.thumbnailUrl || photo.fullImageUrl}
+                  alt={photo.fileName}
+                  style={{ width: '100%', height: 220, objectFit: 'cover', display: 'block' }}
+                />
+                {hasPlayers && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      background: 'rgba(20, 19, 32, 0.9)',
+                      display: 'none',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: '12px',
+                      borderRadius: 0,
+                    }}
+                    className="player-hover-overlay"
+                  >
+                    <div style={{ textAlign: 'center', color: '#fff' }}>
+                      {playerNames.length > 0 && (
+                        <div style={{ marginBottom: playerNumbers.length > 0 ? 8 : 0 }}>
+                          <div style={{ fontSize: '0.85rem', color: '#a8a8b8', marginBottom: 4 }}>Players</div>
+                          <div style={{ fontSize: '1rem', fontWeight: 600, lineHeight: 1.4 }}>
+                            {playerNames.map((name, idx) => (
+                              <div key={idx}>{name.trim()}</div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {playerNumbers.length > 0 && (
+                        <div>
+                          <div style={{ fontSize: '0.85rem', color: '#a8a8b8', marginBottom: 4 }}>Numbers</div>
+                          <div style={{ fontSize: '1rem', fontWeight: 600, lineHeight: 1.4 }}>
+                            {playerNumbers.map((num, idx) => (
+                              <div key={idx}>#{num.trim()}</div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </Link>
+            );
+          })}
         </div>
       )}
 
