@@ -5,8 +5,14 @@ import {
   generateBlobSASQueryParameters,
 } from '@azure/storage-blob';
 
-const STORAGE_CONNECTION_STRING = process.env.AZURE_STORAGE_CONNECTION_STRING;
-const STORAGE_CONTAINER = process.env.AZURE_STORAGE_CONTAINER || 'photos';
+const STORAGE_ACCOUNT = process.env.AZURE_STORAGE_ACCOUNT;
+const STORAGE_KEY = process.env.AZURE_STORAGE_KEY;
+const STORAGE_CONNECTION_STRING =
+  process.env.AZURE_STORAGE_CONNECTION_STRING
+  || (STORAGE_ACCOUNT && STORAGE_KEY
+    ? `DefaultEndpointsProtocol=https;AccountName=${STORAGE_ACCOUNT};AccountKey=${STORAGE_KEY};EndpointSuffix=core.windows.net`
+    : null);
+const STORAGE_CONTAINER = process.env.AZURE_STORAGE_CONTAINER || process.env.AZURE_CONTAINER_NAME || 'photos';
 
 let containerClient;
 
@@ -28,7 +34,7 @@ function parseConnectionString(connectionString) {
 
 function getContainerClient() {
   if (!STORAGE_CONNECTION_STRING) {
-    throw new Error('AZURE_STORAGE_CONNECTION_STRING is not configured');
+    throw new Error('Azure Storage is not configured. Set AZURE_STORAGE_CONNECTION_STRING or AZURE_STORAGE_ACCOUNT + AZURE_STORAGE_KEY');
   }
 
   if (!containerClient) {

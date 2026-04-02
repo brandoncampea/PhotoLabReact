@@ -6,29 +6,33 @@ import { SUBSCRIPTION_PLANS } from '../constants/subscriptions.js';
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 const BYTES_PER_GB = 1024 * 1024 * 1024;
 
-const getStudioPlanLimits = async (subscriptionPlan) => {
+const getStudioPlanLimits = async (subscriptionPlan, paymentFrequency = 'monthly') => {
   if (!subscriptionPlan) {
     return { maxAlbums: null, maxStorageGb: null };
   }
 
   let dbPlan = null;
-  // Lookup by Stripe price ID based on payment frequency
-  if (paymentFrequency === 'monthly') {
+  const cycle = String(paymentFrequency || 'monthly').toLowerCase();
+  const stripeLookupColumn = cycle === 'yearly' ? 'stripe_yearly_price_id' : 'stripe_monthly_price_id';
+
+  // Lookup by Stripe price ID for the active billing cycle.
+  dbPlan = await queryRow(
+    `SELECT TOP 1
+        max_albums as maxAlbums,
+        max_storage_gb as maxStorageGb
+     FROM subscription_plans
+     WHERE ${stripeLookupColumn} = $1`,
+    [String(subscriptionPlan)]
+  );
+
+  // Fallback: if stored value doesn't match selected cycle column, try the other cycle too.
+  if (!dbPlan) {
     dbPlan = await queryRow(
       `SELECT TOP 1
           max_albums as maxAlbums,
           max_storage_gb as maxStorageGb
        FROM subscription_plans
-       WHERE stripe_monthly_price_id = $1`,
-      [String(subscriptionPlan)]
-    );
-  } else if (paymentFrequency === 'yearly') {
-    dbPlan = await queryRow(
-      `SELECT TOP 1
-          max_albums as maxAlbums,
-          max_storage_gb as maxStorageGb
-       FROM subscription_plans
-       WHERE stripe_yearly_price_id = $1`,
+       WHERE stripe_monthly_price_id = $1 OR stripe_yearly_price_id = $1`,
       [String(subscriptionPlan)]
     );
   }
@@ -63,6 +67,7 @@ export const getStudioQuotaSnapshot = async (studioId) => {
   const studio = await queryRow(
     `SELECT id,
             subscription_plan as subscriptionPlan,
+            billing_cycle as billingCycle,
             subscription_status as subscriptionStatus,
             is_free_subscription as isFreeSubscription
      FROM studios
@@ -74,7 +79,7 @@ export const getStudioQuotaSnapshot = async (studioId) => {
     throw new Error('Studio not found');
   }
 
-  const limits = await getStudioPlanLimits(studio.subscriptionPlan);
+  const limits = await getStudioPlanLimits(studio.subscriptionPlan, studio.billingCycle || 'monthly');
 
   const usage = await queryRow(
     `SELECT

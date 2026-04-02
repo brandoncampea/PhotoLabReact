@@ -135,37 +135,103 @@ const ensurePlayerRecognitionSchema = async () => {
   `);
 };
 
+const ensurePhotoUploadColumns = async () => {
+  await query(`
+    IF COL_LENGTH('photos', 'width') IS NULL
+      ALTER TABLE photos ADD width INT NULL;
+
+    IF COL_LENGTH('photos', 'height') IS NULL
+      ALTER TABLE photos ADD height INT NULL;
+
+    IF COL_LENGTH('photos', 'file_size_bytes') IS NULL
+      ALTER TABLE photos ADD file_size_bytes BIGINT NULL;
+
+    IF COL_LENGTH('photos', 'player_names') IS NULL
+      ALTER TABLE photos ADD player_names NVARCHAR(MAX) NULL;
+
+    IF COL_LENGTH('photos', 'player_numbers') IS NULL
+      ALTER TABLE photos ADD player_numbers NVARCHAR(255) NULL;
+  `);
+};
+
 const normalizeToken = (value) => String(value || '').trim().toLowerCase();
+
+const normalizeHeaderKey = (value) =>
+  String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+
+const getFieldFromRow = (row, aliases = []) => {
+  if (!row || typeof row !== 'object') return '';
+  const normalizedAliases = aliases.map(normalizeHeaderKey);
+  for (const [key, value] of Object.entries(row)) {
+    if (!normalizedAliases.includes(normalizeHeaderKey(key))) continue;
+    const text = String(value || '').trim();
+    if (text) return text;
+  }
+  return '';
+};
 
 const parsePlayerRosterRows = (rows = []) => {
   const parsed = [];
   for (const row of rows) {
-    const fileName = (
-      row.file_name ||
-      row.fileName ||
-      row.filename ||
-      row['File Name'] ||
-      row['file name'] ||
-      ''
-    ).toString().trim();
+    const fileName = getFieldFromRow(row, [
+      'file_name',
+      'fileName',
+      'filename',
+      'File Name',
+      'file name',
+    ]);
 
-    const playerName = (
-      row.player_name ||
-      row.playerName ||
-      row['Player Name'] ||
-      row.name ||
-      row.player ||
-      ''
-    ).toString().trim();
+    const directPlayerName = getFieldFromRow(row, [
+      'player_name',
+      'playerName',
+      'Player Name',
+      'name',
+      'player',
+      'full_name',
+      'fullname',
+    ]);
 
-    const playerNumber = (
-      row.player_number ||
-      row.playerNumber ||
-      row.number ||
-      row['Player Number'] ||
-      row.jersey ||
-      ''
-    ).toString().trim();
+    const firstName = getFieldFromRow(row, [
+      'first_name',
+      'firstName',
+      'firstname',
+      'first',
+      'given_name',
+      'givenname',
+      'First Name',
+      'Firstname',
+    ]);
+
+    const lastName = getFieldFromRow(row, [
+      'last_name',
+      'lastName',
+      'lastname',
+      'last',
+      'surname',
+      'family_name',
+      'familyname',
+      'Last Name',
+      'Lastname',
+    ]);
+
+    const playerName =
+      directPlayerName
+      || [firstName, lastName].filter(Boolean).join(' ').trim()
+      || [lastName, firstName].filter(Boolean).join(' ').trim();
+
+    const playerNumber = getFieldFromRow(row, [
+      'player_number',
+      'playerNumber',
+      'number',
+      'Player Number',
+      'jersey',
+      'jerseynumber',
+      'uniformnumber',
+      'bib',
+    ]);
 
     if (!fileName && !playerName && !playerNumber) continue;
     parsed.push({ fileName, playerName, playerNumber });
@@ -351,6 +417,18 @@ const resolvePlayerTagBySignature = ({ signatureHash, signatures }) => {
   };
 };
 
+const toCsvValue = (value) => {
+  if (Array.isArray(value)) {
+    const normalized = value
+      .map((entry) => String(entry || '').trim())
+      .filter(Boolean);
+    return normalized.length ? normalized.join(', ') : null;
+  }
+  if (value === undefined) return undefined;
+  const text = String(value || '').trim();
+  return text ? text : null;
+};
+
 function makeBlobName(albumId, originalName) {
   const extension = path.extname(originalName).toLowerCase();
   const safeBaseName = path.basename(originalName, extension).replace(/[^a-zA-Z0-9-_]/g, '-');
@@ -366,7 +444,7 @@ router.get('/album/:albumId', async (req, res) => {
       SELECT 
         id, album_id as albumId, file_name as fileName, 
         thumbnail_url as thumbnailUrl, full_image_url as fullImageUrl,
-        description, metadata, player_names as playerNames, 
+        description, metadata, player_names as playerNames, player_numbers as playerNumbers,
         width, height, created_at as createdDate
       FROM photos 
       WHERE album_id = $1
@@ -384,6 +462,37 @@ router.get('/album/:albumId', async (req, res) => {
     
     const photos = await queryRows(query, params);
     res.json(photos.map(signPhotoForResponse));
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/album/:albumId/roster', async (req, res) => {
+  try {
+    const albumId = Number(req.params.albumId);
+    if (!Number.isInteger(albumId) || albumId <= 0) {
+      return res.status(400).json({ error: 'Invalid album id' });
+    }
+
+    const album = await queryRow(
+      `SELECT id, studio_id as studioId
+       FROM albums
+       WHERE id = $1`,
+      [albumId]
+    );
+
+    if (!album) {
+      return res.status(404).json({ error: 'Album not found' });
+    }
+
+    const studioId = Number(album.studioId || 0) || null;
+    if (!studioId) {
+      return res.json([]);
+    }
+
+    await ensurePlayerRecognitionSchema();
+    const roster = await fetchStudioRoster(studioId);
+    res.json(roster || []);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -444,6 +553,7 @@ router.post('/upload', requireActiveSubscription, upload.fields([
 ]), async (req, res) => {
   try {
     await ensurePlayerRecognitionSchema();
+    await ensurePhotoUploadColumns();
     const files = req.files?.photos || [];
     const csvFile = req.files?.csv?.[0];
     if (!files.length) {
@@ -609,18 +719,38 @@ router.post('/upload', requireActiveSubscription, upload.fields([
 // Update photo
 router.put('/:id', async (req, res) => {
   try {
-    const { description, metadata } = req.body;
+    await ensurePhotoUploadColumns();
+
+    const { description, metadata, playerNames, playerNumbers } = req.body;
+    const currentPhoto = await queryRow(
+      `SELECT id, description, metadata, player_names as playerNames, player_numbers as playerNumbers
+       FROM photos
+       WHERE id = $1`,
+      [req.params.id]
+    );
+
+    if (!currentPhoto) {
+      return res.status(404).json({ error: 'Photo not found' });
+    }
+
+    const nextDescription = description !== undefined ? description : currentPhoto.description;
+    const nextMetadata = metadata !== undefined
+      ? (metadata ? JSON.stringify(metadata) : null)
+      : currentPhoto.metadata;
+    const nextPlayerNames = playerNames !== undefined ? toCsvValue(playerNames) : currentPhoto.playerNames;
+    const nextPlayerNumbers = playerNumbers !== undefined ? toCsvValue(playerNumbers) : currentPhoto.playerNumbers;
+
     await query(`
       UPDATE photos 
-      SET description = $1, metadata = $2
-      WHERE id = $3
-    `, [description, metadata ? JSON.stringify(metadata) : null, req.params.id]);
+      SET description = $1, metadata = $2, player_names = $3, player_numbers = $4
+      WHERE id = $5
+    `, [nextDescription, nextMetadata, nextPlayerNames, nextPlayerNumbers, req.params.id]);
     
     const photo = await queryRow(`
       SELECT 
         id, album_id as albumId, file_name as fileName, 
         thumbnail_url as thumbnailUrl, full_image_url as fullImageUrl,
-        description, metadata, player_names as playerNames, created_at as createdDate
+        description, metadata, player_names as playerNames, player_numbers as playerNumbers, created_at as createdDate
       FROM photos 
       WHERE id = $1
     `, [req.params.id]);
@@ -820,6 +950,12 @@ router.post('/album/:albumId/upload-players', csvUpload.single('csv'), async (re
     const studioId = Number(album.studioId || 0) || null;
     const csvRows = await parseCsvRowsFromBuffer(req.file.buffer);
     const rowCount = csvRows.length;
+
+    if (rowCount === 0) {
+      return res.status(400).json({
+        error: 'No player names could be extracted from CSV. Expected columns like player_name or Firstname/Lastname. Please map columns and try again.',
+      });
+    }
 
     let rosterPlayersSaved = 0;
     if (studioId) {

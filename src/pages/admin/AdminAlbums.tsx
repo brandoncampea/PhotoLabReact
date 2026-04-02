@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useSasUrl } from '../../hooks/useSasUrl';
+import { useAuth } from '../../contexts/AuthContext';
 import api from '../../services/api';
 import { Album, PriceList } from '../../types';
 import { categoryService } from '../../services/categoryService';
@@ -23,6 +24,21 @@ function AlbumSasCover({ src, alt }: { src: string, alt: string }) {
 }
 
 const AdminAlbums: React.FC = () => {
+  const { user } = useAuth();
+
+    const emptyFormData = {
+      name: '',
+      description: '',
+      category: '',
+      priceListId: undefined as number | undefined,
+      isPasswordProtected: false,
+      password: '',
+      passwordHint: '',
+      coverType: '',
+      paperType: '',
+      albumSize: '',
+    };
+
     // Load albums from API
     const loadAlbums = async () => {
       try {
@@ -49,8 +65,22 @@ const AdminAlbums: React.FC = () => {
     // Load price lists from API
     const loadPriceLists = async () => {
       try {
-        const res = await api.get('/price-lists');
-        const allPriceLists = Array.isArray(res.data) ? res.data : (res.data?.priceLists || []);
+        const viewAsStudioId = Number(localStorage.getItem('viewAsStudioId'));
+        const effectiveStudioId = Number.isInteger(viewAsStudioId) && viewAsStudioId > 0
+          ? viewAsStudioId
+          : Number(user?.studioId || 0);
+
+        let allPriceLists: any[] = [];
+        if (effectiveStudioId > 0) {
+          const res = await api.get('/studio-price-lists', {
+            params: { studio_id: effectiveStudioId }
+          });
+          allPriceLists = Array.isArray(res.data) ? res.data : [];
+        } else {
+          const res = await api.get('/price-lists');
+          allPriceLists = Array.isArray(res.data) ? res.data : (res.data?.priceLists || []);
+        }
+
         const selectablePriceLists = allPriceLists.filter((pl: any) => {
           const name = String(pl?.name || '').trim().toLowerCase();
           const description = String(pl?.description || '').trim().toLowerCase();
@@ -59,15 +89,33 @@ const AdminAlbums: React.FC = () => {
           if (description.includes('system bridge price list')) return false;
           return true;
         });
+
         setPriceLists(selectablePriceLists);
       } catch (error) {
         console.error('Failed to load price lists:', error);
       }
     };
-    const handleCreate = () => {};
-    const handleAddCategory = () => {};
+    const handleCreate = () => {
+      setEditingAlbum(null);
+      setFormData(emptyFormData);
+      setNewModalCategory('');
+      setShowModal(true);
+    };
+    const handleAddCategory = async () => {
+      const category = newCategory.trim();
+      if (!category) return;
+      try {
+        const updatedCategories = await categoryService.addCategory(category);
+        setCategories(updatedCategories || []);
+        setNewCategory('');
+      } catch (error) {
+        console.error('Failed to add category:', error);
+        alert('Failed to add category. Please try again.');
+      }
+    };
     const handleEdit = (album: Album) => {
       setEditingAlbum(album);
+      setNewModalCategory('');
       setFormData({
         name: album.name || '',
         description: album.description || '',
@@ -82,7 +130,42 @@ const AdminAlbums: React.FC = () => {
       });
       setShowModal(true);
     };
-    const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); };
+    const handleSubmit = async (e: React.FormEvent) => {
+      e.preventDefault();
+
+      const payload = {
+        name: formData.name.trim(),
+        description: formData.description?.trim() || '',
+        category: formData.category || undefined,
+        priceListId: formData.priceListId,
+        isPasswordProtected: !!formData.isPasswordProtected,
+        password: formData.isPasswordProtected ? formData.password : undefined,
+        passwordHint: formData.isPasswordProtected ? formData.passwordHint : undefined,
+      };
+
+      if (!payload.name) {
+        alert('Album name is required.');
+        return;
+      }
+
+      try {
+        if (editingAlbum) {
+          await albumAdminService.updateAlbum(editingAlbum.id, payload);
+        } else {
+          await albumAdminService.createAlbum(payload);
+        }
+
+        setShowModal(false);
+        setEditingAlbum(null);
+        setNewModalCategory('');
+        setFormData(emptyFormData);
+        await loadAlbums();
+      } catch (error: any) {
+        console.error('Failed to save album:', error);
+        const message = error?.response?.data?.error || 'Failed to save album. Please try again.';
+        alert(message);
+      }
+    };
   const [albums, setAlbums] = useState<Album[]>([]);
   const [priceLists, setPriceLists] = useState<PriceList[]>([]);
   const [loading, setLoading] = useState(true);
@@ -91,18 +174,8 @@ const AdminAlbums: React.FC = () => {
   const [categories, setCategories] = useState<string[]>([]);
   // const [showNewCategory, setShowNewCategory] = useState(false);
   const [newCategory, setNewCategory] = useState('');
-  const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    category: '',
-    priceListId: undefined as number | undefined,
-    isPasswordProtected: false,
-    password: '',
-    passwordHint: '',
-    coverType: '',
-    paperType: '',
-    albumSize: '',
-  });
+  const [newModalCategory, setNewModalCategory] = useState('');
+  const [formData, setFormData] = useState(emptyFormData);
 
   // const [albumStyles, setAlbumStyles] = useState<{coverTypes: string[], paperTypes: string[], albumSizes: string[]} | null>(null);
   // Minimal stub for setShowModal to avoid errors if not present
@@ -114,7 +187,7 @@ const AdminAlbums: React.FC = () => {
     loadCategories();
     loadPriceLists();
     loadAlbumStyles();
-  }, []);
+  }, [user?.studioId]);
 
   const loadAlbumStyles = async () => {
     try {
@@ -155,6 +228,21 @@ const AdminAlbums: React.FC = () => {
       } catch (error) {
         console.error('Failed to delete category:', error);
       }
+    }
+  };
+
+  const handleAddCategoryFromModal = async () => {
+    const category = newModalCategory.trim();
+    if (!category) return;
+
+    try {
+      const updatedCategories = await categoryService.addCategory(category);
+      setCategories(updatedCategories || []);
+      setFormData((f) => ({ ...f, category }));
+      setNewModalCategory('');
+    } catch (error) {
+      console.error('Failed to add category from modal:', error);
+      alert('Failed to add category. Please try again.');
     }
   };
 
@@ -292,6 +380,21 @@ const AdminAlbums: React.FC = () => {
                   <option value="">Select category</option>
                   {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
                 </select>
+                <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                  <input
+                    type="text"
+                    placeholder="Add new category"
+                    value={newModalCategory}
+                    onChange={e => setNewModalCategory(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddCategoryFromModal();
+                      }
+                    }}
+                  />
+                  <button type="button" className="btn" onClick={handleAddCategoryFromModal}>Add</button>
+                </div>
               </div>
               <div className="form-group">
                 <label>Price List</label>
@@ -316,18 +419,6 @@ const AdminAlbums: React.FC = () => {
                   </div>
                 </>
               )}
-              <div className="form-group">
-                <label>Cover Type</label>
-                <input type="text" value={formData.coverType} onChange={e => setFormData(f => ({ ...f, coverType: e.target.value }))} />
-              </div>
-              <div className="form-group">
-                <label>Paper Type</label>
-                <input type="text" value={formData.paperType} onChange={e => setFormData(f => ({ ...f, paperType: e.target.value }))} />
-              </div>
-              <div className="form-group">
-                <label>Album Size</label>
-                <input type="text" value={formData.albumSize} onChange={e => setFormData(f => ({ ...f, albumSize: e.target.value }))} />
-              </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24 }}>
                 <button type="button" className="btn" onClick={() => setShowModal(false)}>Cancel</button>
                 <button type="submit" className="btn btn-primary">Save</button>

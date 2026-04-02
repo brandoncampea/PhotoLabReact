@@ -32,6 +32,11 @@ const normalizeRecommendations = (data: any) => {
 
 
 export const photoService = {
+  async getAlbumRoster(albumId: number): Promise<Array<{ playerName: string; playerNumber?: string }>> {
+    const response = await api.get<Array<{ playerName: string; playerNumber?: string }>>(`/photos/album/${albumId}/roster`);
+    return response.data;
+  },
+
   async getPhotosByAlbum(albumId: number, playerName?: string): Promise<Photo[]> {
     const url = playerName 
       ? `/photos/album/${albumId}?playerName=${encodeURIComponent(playerName)}`
@@ -42,6 +47,24 @@ export const photoService = {
 
   async getPhoto(id: number): Promise<Photo> {
     const response = await api.get<Photo>(`/photos/${id}`);
+    return response.data;
+  },
+
+  async updatePhotoTag(id: number, playerName: string | null, playerNumber?: string | null): Promise<Photo> {
+    const response = await api.put<Photo>(`/photos/${id}`, {
+      playerNames: playerName,
+      playerNumbers: playerNumber || null,
+    });
+    return response.data;
+  },
+
+  async updatePhotoPlayers(id: number, players: Array<{ playerName: string; playerNumber?: string | null }>): Promise<Photo> {
+    const names = players.map((p) => p.playerName).filter(Boolean);
+    const numbers = players.map((p) => p.playerNumber || '').filter(Boolean);
+    const response = await api.put<Photo>(`/photos/${id}`, {
+      playerNames: names,
+      playerNumbers: numbers,
+    });
     return response.data;
   },
 
@@ -61,7 +84,12 @@ export const photoService = {
     return response.data;
   },
 
-  async uploadPhotos(albumId: number, files: File[], descriptions?: string[]): Promise<Photo[]> {
+  async uploadPhotos(
+    albumId: number,
+    files: File[],
+    descriptions?: string[],
+    onProgress?: (percent: number) => void
+  ): Promise<Photo[]> {
     const formData = new FormData();
     formData.append('albumId', String(albumId));
     files.forEach((file) => formData.append('photos', file));
@@ -70,6 +98,13 @@ export const photoService = {
     }
     const response = await api.post<Photo[]>(`/photos/upload`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
+      onUploadProgress: (event) => {
+        if (!onProgress) return;
+        const total = event.total || 0;
+        if (!total) return;
+        const percent = Math.min(100, Math.max(0, Math.round((event.loaded / total) * 100)));
+        onProgress(percent);
+      },
     });
     return response.data;
   },

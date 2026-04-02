@@ -33,3 +33,124 @@
 .admin-albums-page .btn-icon:hover {
   background: rgba(102, 102, 204, 0.3);
 }
+
+.admin-albums-page .dashboard-card {
+  background: rgba(20, 20, 35, 0.82) !important;
+  border: 1px solid rgba(102, 102, 204, 0.3) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.22) !important;
+  backdrop-filter: blur(10px);
+}
+
+.admin-albums-page .admin-table table {
+  background: rgba(30, 30, 45, 0.6);
+  border: 1px solid rgba(102, 102, 204, 0.2);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.admin-albums-page .admin-table thead tr {
+  background: rgba(40, 40, 60, 0.82) !important;
+  border-bottom: 2px solid rgba(102, 102, 204, 0.3);
+}
+
+.admin-albums-page .admin-table tbody tr {
+  border-bottom: 1px solid rgba(102, 102, 204, 0.15);
+  transition: background 0.2s ease;
+}
+
+.admin-albums-page .admin-table tbody tr:hover {
+  background: rgba(102, 102, 204, 0.1);
+}
+
+.admin-albums-page .modal-overlay {
+  position: fixed !important;
+  inset: 0;
+  z-index: 1200;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(9, 12, 25, 0.86) !important;
+}
+
+.admin-albums-page .admin-modal-content {
+  width: min(760px, 96vw) !important;
+  max-width: 760px !important;
+  max-height: 90vh !important;
+  overflow: auto;
+  background: rgba(20, 20, 35, 0.98) !important;
+  border: 1px solid rgba(102, 102, 204, 0.35) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.45) !important;
+  padding: 0 !important;
+}
+
+.admin-albums-page .admin-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid rgba(102, 102, 204, 0.3);
+  background: rgba(40, 40, 60, 0.75);
+}
+
+.admin-albums-page .admin-modal-header h2 {
+  margin: 0;
+  color: #fff;
+  font-size: 1.2rem;
+}
+
+.admin-albums-page .admin-modal-header .btn-close {
+  color: #c8c8ea;
+}
+
+.admin-albums-page .admin-modal-header .btn-close:hover {
+  color: #fff;
+}
+
+.admin-albums-page .admin-modal-body {
+  background: transparent !important;
+  padding: 1.1rem 1.25rem 1.25rem !important;
+}
+
+.admin-albums-page .admin-modal-body .form-group {
+  margin-bottom: 0.9rem;
+}
+
+.admin-albums-page .admin-modal-body label {
+  display: block;
+  margin-bottom: 0.4rem;
+  color: #d6d6ef;
+  font-weight: 500;
+}
+
+.admin-albums-page .admin-modal-body input[type='text'],
+.admin-albums-page .admin-modal-body select,
+.admin-albums-page .admin-modal-body textarea {
+  width: 100%;
+  background: rgba(40, 40, 60, 0.7);
+  border: 1px solid rgba(102, 102, 204, 0.4);
+  border-radius: 8px;
+  color: #fff;
+  padding: 0.65rem 0.75rem;
+}
+
+.admin-albums-page .admin-modal-body textarea {
+  min-height: 84px;
+  resize: vertical;
+}
+
+.admin-albums-page .admin-modal-body input[type='text']:focus,
+.admin-albums-page .admin-modal-body select:focus,
+.admin-albums-page .admin-modal-body textarea:focus {
+  outline: none;
+  border-color: #7f7ff0;
+  box-shadow: 0 0 0 3px rgba(127, 127, 240, 0.18);
+}
+
+.admin-albums-page .admin-modal-body input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  accent-color: #7b61ff;
+}

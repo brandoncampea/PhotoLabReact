@@ -65,6 +65,16 @@ const getStudioIdFromRequest = (req) => {
 // Get all price lists
 router.get('/', adminRequired, async (req, res) => {
   try {
+    const studioId = getStudioIdFromRequest(req);
+    const hasStudioScope = Number.isInteger(Number(studioId)) && Number(studioId) > 0;
+
+    const params = [];
+    let whereClause = '';
+    if (hasStudioScope) {
+      whereClause = 'WHERE pl.studio_id = $1';
+      params.push(studioId);
+    }
+
     const priceLists = await queryRows(`
       SELECT
         pl.id,
@@ -72,12 +82,14 @@ router.get('/', adminRequired, async (req, res) => {
         pl.description,
         pl.is_default as isDefault,
         pl.created_at as createdDate,
+        pl.studio_id as studioId,
         COUNT(DISTINCT plp.product_id) as productCount
       FROM price_lists pl
       LEFT JOIN price_list_products plp ON pl.id = plp.price_list_id
-      GROUP BY pl.id, pl.name, pl.description, pl.is_default, pl.created_at
+      ${whereClause}
+      GROUP BY pl.id, pl.name, pl.description, pl.is_default, pl.created_at, pl.studio_id
       ORDER BY name ASC
-    `);
+    `, params);
     res.json(priceLists);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -88,16 +100,21 @@ router.get('/', adminRequired, async (req, res) => {
 router.get('/:id', adminRequired, async (req, res) => {
   try {
     const studioId = getStudioIdFromRequest(req);
-    const isStudioPricingView = req.user?.role === 'studio_admin' || (req.user?.role === 'super_admin' && Number(req.user?.acting_studio_id) > 0);
+    const hasStudioScope = Number.isInteger(Number(studioId)) && Number(studioId) > 0;
+    const isStudioPricingView = hasStudioScope;
     const effectiveCostSelect = isStudioPricingView ? 'ps.price' : 'ps.cost';
 
     const priceList = await queryRow(`
-      SELECT id, name, description, is_default as isDefault, created_at as createdDate
+      SELECT id, name, description, is_default as isDefault, created_at as createdDate, studio_id as studioId
       FROM price_lists
       WHERE id = $1
     `, [req.params.id]);
 
     if (!priceList) {
+      return res.status(404).json({ error: 'Price list not found' });
+    }
+
+    if (hasStudioScope && Number(priceList.studioId) !== Number(studioId)) {
       return res.status(404).json({ error: 'Price list not found' });
     }
 

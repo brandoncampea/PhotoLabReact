@@ -42,6 +42,7 @@ export interface Photo {
   description?: string;
   metadata?: PhotoMetadata;
   playerNames?: string;
+  playerNumbers?: string;
   width?: number;
   height?: number;
 }

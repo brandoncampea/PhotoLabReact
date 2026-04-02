@@ -17,6 +17,7 @@ const AdminPhotos: React.FC = () => {
     previewUrl: string;
     progress: number;
     status: 'queued' | 'uploading' | 'done' | 'error';
+    attempts?: number;
     metadata?: PhotoMetadata;
     error?: string;
   };
@@ -39,6 +40,9 @@ const AdminPhotos: React.FC = () => {
   const [isDragging, setIsDragging] = useState(false);
   const [rosterUploading, setRosterUploading] = useState(false);
   const [rosterMessage, setRosterMessage] = useState<string | null>(null);
+  const [rosterPlayers, setRosterPlayers] = useState<Array<{ playerName: string; playerNumber?: string }>>([]);
+
+  const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
   useEffect(() => {
     loadAlbums();
@@ -50,16 +54,11 @@ const AdminPhotos: React.FC = () => {
       const urlAlbumParam = searchParams.get('album');
       const urlAlbumId = urlAlbumParam ? parseInt(urlAlbumParam) : null;
       
-      console.log('AdminPhotos: URL album param:', urlAlbumParam, 'parsed:', urlAlbumId);
-      console.log('AdminPhotos: Available albums:', albums.map(a => ({ id: a.id, name: a.name })));
-      
       if (urlAlbumId && !isNaN(urlAlbumId) && albums.find(a => a.id === urlAlbumId)) {
-        console.log('AdminPhotos: Setting albumId to URL param:', urlAlbumId);
         setAlbumId(urlAlbumId);
       } else {
         // Default to first album if URL param is invalid or missing
         const firstAlbumId = albums[0].id;
-        console.log('AdminPhotos: Defaulting to first album:', firstAlbumId);
         setAlbumId(firstAlbumId);
         navigate(`/admin/photos?album=${firstAlbumId}`, { replace: true });
       }
@@ -69,13 +68,13 @@ const AdminPhotos: React.FC = () => {
   useEffect(() => {
     if (albumId) {
       loadPhotos();
+      loadRoster();
     }
   }, [albumId]);
 
   const loadAlbums = async () => {
     try {
       const data = await albumService.getAlbums();
-      console.log('AdminPhotos: Loaded albums:', data);
       setAlbums(data);
     } catch (error) {
       console.error('Failed to load albums:', error);
@@ -96,8 +95,21 @@ const AdminPhotos: React.FC = () => {
     }
   };
 
+  const loadRoster = async () => {
+    if (!albumId) return;
+    try {
+      const roster = await photoService.getAlbumRoster(albumId);
+      setRosterPlayers(Array.isArray(roster) ? roster : []);
+    } catch (error) {
+      console.error('Failed to load roster:', error);
+      setRosterPlayers([]);
+    }
+  };
+
   // Upload files handler (moved from loadPhotos)
   const uploadFiles = async (files: File[]) => {
+    if (!files.length) return;
+
     // Clean up previous previews
     uploadItems.forEach((item) => URL.revokeObjectURL(item.previewUrl));
 
@@ -107,21 +119,179 @@ const AdminPhotos: React.FC = () => {
       previewUrl: URL.createObjectURL(file),
       progress: 0,
       status: 'queued',
+      attempts: 0,
     }));
 
     setUploadItems(items);
     setUploading(true);
+    setUploadMessage(null);
+    setUploadProgress({ completed: 0, total: files.length });
+
+    const uploadSingleItem = async (item: UploadItem, autoRetries = 2): Promise<boolean> => {
+      let attempt = 0;
+      const maxAttempts = autoRetries + 1;
+
+      while (attempt < maxAttempts) {
+        attempt += 1;
+        setUploadItems((prev) =>
+          prev.map((entry) =>
+            entry.id === item.id
+              ? {
+                  ...entry,
+                  status: 'uploading',
+                  progress: 0,
+                  attempts: attempt,
+                  error: attempt > 1 ? `Retry ${attempt - 1}/${autoRetries}...` : undefined,
+                }
+              : entry
+          )
+        );
+
+        try {
+          await photoService.uploadPhotos(albumId ?? 0, [item.file], undefined, (percent) => {
+            setUploadItems((prev) =>
+              prev.map((entry) =>
+                entry.id === item.id
+                  ? { ...entry, status: 'uploading', progress: percent, attempts: attempt }
+                  : entry
+              )
+            );
+          });
+
+          setUploadItems((prev) =>
+            prev.map((entry) =>
+              entry.id === item.id
+                ? { ...entry, status: 'done', progress: 100, attempts: attempt, error: undefined }
+                : entry
+            )
+          );
+          return true;
+        } catch (error) {
+          const hasMoreRetries = attempt < maxAttempts;
+          if (hasMoreRetries) {
+            await wait(600);
+            continue;
+          }
+
+          console.error(`Failed to upload photo ${item.file.name}:`, error);
+          setUploadItems((prev) =>
+            prev.map((entry) =>
+              entry.id === item.id
+                ? {
+                    ...entry,
+                    status: 'error',
+                    attempts: attempt,
+                    error: `Upload failed after ${attempt} attempt${attempt === 1 ? '' : 's'}.`,
+                  }
+                : entry
+            )
+          );
+          return false;
+        }
+      }
+
+      return false;
+    };
+
     try {
-      // Extract metadata from each file (currently unused)
-      await photoService.uploadPhotos(albumId ?? 0, files);
-      loadPhotos();
-      loadAlbums(); // Reload albums to update photo count
-    } catch (error) {
-      console.error('Failed to upload photos:', error);
-      setUploadMessage({ type: 'error', text: 'Upload failed. Please try again.' });
+      let completed = 0;
+      let failed = 0;
+
+      for (let i = 0; i < items.length; i += 1) {
+        const current = items[i];
+        const ok = await uploadSingleItem(current, 2);
+        if (ok) {
+          completed += 1;
+        } else {
+          failed += 1;
+        }
+        setUploadProgress({ completed: completed + failed, total: files.length });
+      }
+
+      if (failed === 0) {
+        setUploadMessage({ type: 'success', text: `Uploaded ${completed} photo${completed === 1 ? '' : 's'} successfully.` });
+      } else if (completed > 0) {
+        setUploadMessage({ type: 'error', text: `Uploaded ${completed} photo${completed === 1 ? '' : 's'}, ${failed} failed.` });
+      } else {
+        setUploadMessage({ type: 'error', text: 'Upload failed. Please try again.' });
+      }
+
+      await loadPhotos();
+      await loadAlbums();
+
+      // When all uploads finish successfully, clear progress UI and show gallery state.
+      if (failed === 0 && completed === files.length) {
+        items.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+        setUploadItems([]);
+        setUploadProgress({ completed: 0, total: 0 });
+        setShowUploadPanel(false);
+      }
     } finally {
       setUploading(false);
-      setUploadProgress({ completed: 0, total: 0 });
+    }
+  };
+
+  const handleRetryUploadItem = async (itemId: string) => {
+    const item = uploadItems.find((entry) => entry.id === itemId);
+    if (!item) return;
+
+    setUploading(true);
+    try {
+      let attempt = 0;
+      const autoRetries = 2;
+      const maxAttempts = autoRetries + 1;
+
+      while (attempt < maxAttempts) {
+        attempt += 1;
+        setUploadItems((prev) =>
+          prev.map((entry) =>
+            entry.id === itemId
+              ? { ...entry, status: 'uploading', progress: 0, attempts: attempt, error: undefined }
+              : entry
+          )
+        );
+
+        try {
+          await photoService.uploadPhotos(albumId ?? 0, [item.file], undefined, (percent) => {
+            setUploadItems((prev) =>
+              prev.map((entry) =>
+                entry.id === itemId
+                  ? { ...entry, status: 'uploading', progress: percent, attempts: attempt }
+                  : entry
+              )
+            );
+          });
+
+          setUploadItems((prev) =>
+            prev.map((entry) =>
+              entry.id === itemId
+                ? { ...entry, status: 'done', progress: 100, attempts: attempt, error: undefined }
+                : entry
+            )
+          );
+          setUploadMessage({ type: 'success', text: `Retried and uploaded ${item.file.name}.` });
+          await loadPhotos();
+          await loadAlbums();
+          return;
+        } catch (error) {
+          const hasMoreRetries = attempt < maxAttempts;
+          if (hasMoreRetries) {
+            await wait(600);
+            continue;
+          }
+
+          setUploadItems((prev) =>
+            prev.map((entry) =>
+              entry.id === itemId
+                ? { ...entry, status: 'error', attempts: attempt, error: `Upload failed after ${attempt} attempt${attempt === 1 ? '' : 's'}.` }
+                : entry
+            )
+          );
+          setUploadMessage({ type: 'error', text: `Retry failed for ${item.file.name}.` });
+        }
+      }
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -198,40 +368,70 @@ const AdminPhotos: React.FC = () => {
     }
   };
 
-  const handleAlbumChange = () => {
-    let parsedMetadata: Record<string, any> = {};
+  const handleAlbumChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const nextAlbumId = Number(event.target.value);
+    if (!Number.isInteger(nextAlbumId) || nextAlbumId <= 0) return;
+    setAlbumId(nextAlbumId);
+    navigate(`/admin/photos?album=${nextAlbumId}`, { replace: true });
+  };
 
-    let rawMetadata: any = null;
-    let photo: any = null;
-    if (typeof rawMetadata === 'string') {
-      try {
-        parsedMetadata = JSON.parse(rawMetadata);
-      } catch {
-        parsedMetadata = { raw: rawMetadata };
-      }
-    } else if (rawMetadata && typeof rawMetadata === 'object') {
-      parsedMetadata = rawMetadata as Record<string, any>;
+  const getSelectedPlayersForPhoto = (photo: Photo) => {
+    const selectedNames = String((photo as any).playerNames || '')
+      .split(',')
+      .map((name) => name.trim())
+      .filter(Boolean);
+    return new Set(selectedNames);
+  };
+
+  const handleTogglePlayerTag = async (photo: Photo, player: { playerName: string; playerNumber?: string }) => {
+    const selected = getSelectedPlayersForPhoto(photo);
+    if (selected.has(player.playerName)) {
+      selected.delete(player.playerName);
+    } else {
+      selected.add(player.playerName);
     }
 
-    const metadata: Record<string, string> = {
-      'File Name': photo.fileName || 'N/A',
-      'Photo ID': String(photo.id),
-    };
-
-    if (photo.width && photo.height) {
-      metadata.Dimensions = `${photo.width} × ${photo.height}`;
-    }
-
-    Object.entries(parsedMetadata).forEach(([key, value]) => {
-      if (value === undefined || value === null || value === '') return;
-      const label = key
-        .replace(/([A-Z])/g, ' $1')
-        .replace(/^./, (s) => s.toUpperCase())
-        .trim();
-      metadata[label] = String(value);
+    const selectedPlayers = Array.from(selected).map((name) => {
+      const match = rosterPlayers.find((p) => p.playerName === name);
+      return {
+        playerName: name,
+        playerNumber: match?.playerNumber || null,
+      };
     });
 
-    return metadata;
+    try {
+      await photoService.updatePhotoPlayers(photo.id, selectedPlayers);
+      setPhotos((prev) => prev.map((p) => (
+        p.id === photo.id
+          ? {
+              ...p,
+              playerNames: selectedPlayers.map((sp) => sp.playerName).join(', ') || undefined,
+              playerNumbers: selectedPlayers.map((sp) => sp.playerNumber).filter(Boolean).join(', ') || undefined,
+            }
+          : p
+      )));
+    } catch (error) {
+      console.error('Failed to update photo player tags:', error);
+      setUploadMessage({ type: 'error', text: 'Failed to update player tag.' });
+    }
+  };
+
+  const handleClearPhotoTags = async (photo: Photo) => {
+    try {
+      await photoService.updatePhotoPlayers(photo.id, []);
+      setPhotos((prev) => prev.map((p) => (
+        p.id === photo.id
+          ? {
+              ...p,
+              playerNames: undefined,
+              playerNumbers: undefined,
+            }
+          : p
+      )));
+    } catch (error) {
+      console.error('Failed to clear photo player tags:', error);
+      setUploadMessage({ type: 'error', text: 'Failed to clear player tags.' });
+    }
   };
 
   const handleRosterCsvUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -243,11 +443,13 @@ const AdminPhotos: React.FC = () => {
     try {
       const result = await photoService.uploadPlayerNamesCsv(albumId, file);
       await loadPhotos();
+      await loadRoster();
       const rosterSaved = Number((result as any).rosterPlayersSaved || 0);
       const trained = Number((result as any).facialRecognitionTrained || 0);
       setRosterMessage(`Roster uploaded: ${result.photosUpdated} photo(s) tagged, ${rosterSaved} roster player(s) saved, ${trained} training sample(s) captured.`);
-    } catch {
-      setRosterMessage('Failed to upload roster CSV.');
+    } catch (error: any) {
+      const backendMessage = error?.response?.data?.error;
+      setRosterMessage(backendMessage || 'Failed to upload roster CSV.');
     } finally {
       setRosterUploading(false);
       event.target.value = '';
@@ -397,7 +599,22 @@ const AdminPhotos: React.FC = () => {
                       {item.metadata.cameraMake || 'Camera'} • {item.metadata.width || '?'}x{item.metadata.height || '?'}
                     </div>
                   )}
-                  {item.error && <div className="danger-text" style={{ fontSize: '0.75rem' }}>{item.error}</div>}
+                  {item.error && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', marginTop: '0.2rem' }}>
+                      <div className="danger-text" style={{ fontSize: '0.75rem' }}>{item.error}</div>
+                      {item.status === 'error' && (
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          style={{ padding: '0.1rem 0.45rem', fontSize: '0.72rem', lineHeight: 1.2 }}
+                          onClick={() => handleRetryUploadItem(item.id)}
+                          disabled={uploading}
+                        >
+                          Retry
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -480,6 +697,47 @@ const AdminPhotos: React.FC = () => {
                   👤 {(photo as any).playerNames}
                 </p>
               )}
+              <div style={{ marginTop: '0.5rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                  <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: 0 }}>
+                    Player Tags (click to toggle)
+                  </label>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => handleClearPhotoTags(photo)}
+                    disabled={!((photo as any).playerNames || '').trim()}
+                    style={{ padding: '0.12rem 0.45rem', fontSize: '0.72rem', lineHeight: 1.2 }}
+                    title="Clear all tags for this photo"
+                  >
+                    Clear all
+                  </button>
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+                  {rosterPlayers.map((player, idx) => {
+                    const selected = getSelectedPlayersForPhoto(photo).has(player.playerName);
+                    return (
+                      <button
+                        key={`${player.playerName}-${player.playerNumber || ''}-${idx}`}
+                        type="button"
+                        onClick={() => handleTogglePlayerTag(photo, player)}
+                        style={{
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '999px',
+                          padding: '0.2rem 0.55rem',
+                          fontSize: '0.78rem',
+                          cursor: 'pointer',
+                          background: selected ? 'var(--primary-color)' : 'var(--bg-tertiary)',
+                          color: selected ? '#fff' : 'var(--text-primary)',
+                        }}
+                        title={selected ? 'Click to untag' : 'Click to tag'}
+                      >
+                        {player.playerNumber ? `${player.playerName} #${player.playerNumber}` : player.playerName}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
             {currentAlbum && currentAlbum.coverPhotoId === photo.id && (
               <div className="cover-photo-badge">
