@@ -463,6 +463,103 @@ const AlbumDetails: React.FC = () => {
       )}
 
       {selectedPhoto && (
+        <div style={{ marginBottom: 14, border: '1px solid #2a2740', borderRadius: 8 }}>
+          <details style={{ padding: 12 }}>
+            <summary style={{ cursor: 'pointer', fontWeight: 600, color: '#7b61ff', fontSize: 14 }}>
+              📋 Photo Details
+            </summary>
+            <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #3a3656', display: 'grid', gap: 10 }}>
+              {/* Player Names */}
+              {(selectedPhoto.playerNames || '').split(',').filter((p) => p.trim()).length > 0 && (
+                <div>
+                  <div style={{ fontSize: '0.85rem', color: '#a8a8b8', marginBottom: 4 }}>Players</div>
+                  <div style={{ fontSize: '0.95rem', fontWeight: 500 }}>
+                    {(selectedPhoto.playerNames || '')
+                      .split(',')
+                      .filter((p) => p.trim())
+                      .map((name, idx) => (
+                        <div key={idx}>{name.trim()}</div>
+                      ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Player Numbers */}
+              {(selectedPhoto.playerNumbers || '').split(',').filter((p) => p.trim()).length > 0 && (
+                <div>
+                  <div style={{ fontSize: '0.85rem', color: '#a8a8b8', marginBottom: 4 }}>Player Numbers</div>
+                  <div style={{ fontSize: '0.95rem', fontWeight: 500 }}>
+                    {(selectedPhoto.playerNumbers || '')
+                      .split(',')
+                      .filter((p) => p.trim())
+                      .map((num, idx) => (
+                        <div key={idx}>#{num.trim()}</div>
+                      ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Camera Metadata */}
+              {selectedPhoto.metadata && (
+                <>
+                  {(selectedPhoto.metadata as any).cameraMake && (
+                    <div>
+                      <div style={{ fontSize: '0.85rem', color: '#a8a8b8', marginBottom: 2 }}>Camera</div>
+                      <div style={{ fontSize: '0.95rem', color: '#ccc' }}>
+                        {(selectedPhoto.metadata as any).cameraMake}
+                        {(selectedPhoto.metadata as any).cameraModel ? ` ${(selectedPhoto.metadata as any).cameraModel}` : ''}
+                      </div>
+                    </div>
+                  )}
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
+                    {(selectedPhoto.metadata as any).dateTaken && (
+                      <div>
+                        <div style={{ fontSize: '0.75rem', color: '#a8a8b8', marginBottom: 2 }}>Date Taken</div>
+                        <div style={{ fontSize: '0.9rem', color: '#ccc' }}>{(selectedPhoto.metadata as any).dateTaken}</div>
+                      </div>
+                    )}
+
+                    {(selectedPhoto.metadata as any).iso && (
+                      <div>
+                        <div style={{ fontSize: '0.75rem', color: '#a8a8b8', marginBottom: 2 }}>ISO</div>
+                        <div style={{ fontSize: '0.9rem', color: '#ccc' }}>{(selectedPhoto.metadata as any).iso}</div>
+                      </div>
+                    )}
+
+                    {(selectedPhoto.metadata as any).aperture && (
+                      <div>
+                        <div style={{ fontSize: '0.75rem', color: '#a8a8b8', marginBottom: 2 }}>Aperture</div>
+                        <div style={{ fontSize: '0.9rem', color: '#ccc' }}>{(selectedPhoto.metadata as any).aperture}</div>
+                      </div>
+                    )}
+
+                    {(selectedPhoto.metadata as any).shutterSpeed && (
+                      <div>
+                        <div style={{ fontSize: '0.75rem', color: '#a8a8b8', marginBottom: 2 }}>Shutter Speed</div>
+                        <div style={{ fontSize: '0.9rem', color: '#ccc' }}>{(selectedPhoto.metadata as any).shutterSpeed}</div>
+                      </div>
+                    )}
+
+                    {(selectedPhoto.metadata as any).focalLength && (
+                      <div>
+                        <div style={{ fontSize: '0.75rem', color: '#a8a8b8', marginBottom: 2 }}>Focal Length</div>
+                        <div style={{ fontSize: '0.9rem', color: '#ccc' }}>{(selectedPhoto.metadata as any).focalLength}</div>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {!selectedPhoto.playerNames && !selectedPhoto.playerNumbers && !selectedPhoto.metadata && (
+                <div style={{ color: '#888' }}>No additional details available for this photo.</div>
+              )}
+            </div>
+          </details>
+        </div>
+      )}
+
+      {selectedPhoto && (
         <div style={{ marginBottom: 16, border: '1px solid #2a2740', borderRadius: 8, padding: 12 }}>
           <h3 style={{ marginTop: 0, marginBottom: 8 }}>Order this photo</h3>
           {addMessage && <div style={{ marginBottom: 8, color: addMessage.includes('Failed') ? '#ff9a9a' : '#79d279' }}>{addMessage}</div>}
