@@ -1,0 +1,41 @@
+.admin-orders-container {
+  padding: 2rem;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+}
+
+.admin-orders-header {
+  margin-bottom: 1.25rem;
+}
+
+.admin-orders-header h1 {
+  color: #fff;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.admin-vendor-integrations-page {
+  min-height: 100vh;
+}
+
+.admin-vendor-integrations-page .admin-orders-header h1 {
+  font-size: 2.25rem;
+  margin: 0;
+}
+
+.admin-vendor-card {
+  background: rgba(20, 20, 35, 0.82);
+  border: 1px solid rgba(102, 102, 204, 0.3);
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+
+.admin-vendor-integrations-page .admin-tab-strip {
+  margin-bottom: 0;
+}
+
+.admin-vendor-integrations-page .admin-tab-button.active {
+  background: linear-gradient(135deg, #6666cc 0%, #5555bb 100%);
+  color: #fff;
+  border-color: rgba(102, 102, 204, 0.6);
+}

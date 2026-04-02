@@ -111,6 +111,7 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
       const batchSize = 50;
       const totalBatches = Math.ceil(items.length / batchSize);
       let importedTotal = 0;
+      let updatedTotal = 0;
       let skippedTotal = 0;
       const errorSamples: any[] = [];
       for (let i = 0; i < items.length; i += batchSize) {
@@ -119,21 +120,25 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
         setInfo(`Importing batch ${batchIndex}/${totalBatches}...`);
         const result = await superPriceListService.importItems(Number(selectedPriceListId), batch) as any;
         importedTotal += Number(result?.importedCount || 0);
+        updatedTotal += Number(result?.updatedCount || 0);
         skippedTotal += Number(result?.skippedCount || 0);
         if (Array.isArray(result?.errorSamples)) {
           errorSamples.push(...result.errorSamples);
         }
-        setInfo(`Imported ${importedTotal}/${items.length} so far...`);
+        setInfo(`Imported ${importedTotal}, updated ${updatedTotal} of ${items.length} selected so far...`);
       }
 
-      if (importedTotal === 0 && items.length > 0) {
+      if (importedTotal === 0 && updatedTotal === 0 && items.length > 0) {
         const firstErr = errorSamples[0]?.error ? ` First error: ${errorSamples[0].error}` : '';
-        setError(`No products were imported.${firstErr}`);
+        setError(`No products were imported or updated.${firstErr}`);
       } else {
-        const skippedMsg = skippedTotal > 0 ? ` (${skippedTotal} skipped)` : '';
-        setInfo(`${importedTotal} products imported successfully${skippedMsg}.`);
+        const parts = [];
+        if (importedTotal > 0) parts.push(`${importedTotal} imported`);
+        if (updatedTotal > 0) parts.push(`${updatedTotal} enriched`);
+        if (skippedTotal > 0) parts.push(`${skippedTotal} unchanged`);
+        setInfo(`${parts.join(', ')}.`);
       }
-      if (importedTotal > 0) {
+      if (importedTotal > 0 || updatedTotal > 0) {
         setSelectedProducts(new Map());
       }
     } catch (err: any) {
@@ -157,6 +162,9 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
   const [priceLists, setPriceLists] = useState<any[]>([]);
   const [selectedPriceListId, setSelectedPriceListId] = useState<string | undefined>();
   const [missingPrices, setMissingPrices] = useState(0);
+  type PreviewRow = { name: string; size: string; cat: string; status: 'new' | 'enrich' | 'unchanged' };
+  const [previewRows, setPreviewRows] = useState<PreviewRow[]>([]);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   // Load price lists on mount
   React.useEffect(() => {
@@ -330,8 +338,61 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
     fetchPriceLists();
   }, []);
 
+  // Build import preview when entering confirm step
+  React.useEffect(() => {
+    if (step !== 'confirm' || !selectedPriceListId) return;
+    const norm = (s: string) => String(s || '').toLowerCase().trim();
+    const buildPreview = async () => {
+      setPreviewLoading(true);
+      try {
+        const existingItems: any[] = await superPriceListService.getItems(Number(selectedPriceListId));
+        const existingMap = new Map<string, any>();
+        for (const it of existingItems) {
+          const k = `${norm(it.product_name)}|${norm(it.size_name)}|${norm(it.product_category)}`;
+          existingMap.set(k, it);
+        }
+        // Build selectionKey → location map
+        const locByKey = new Map<string, { cat: string; prod: string; size: string }>();
+        Object.keys(groupedProducts).forEach(cat => {
+          Object.keys(groupedProducts[cat] || {}).forEach(prod => {
+            Object.keys(groupedProducts[cat][prod] || {}).forEach(size => {
+              const row = groupedProducts[cat][prod][size];
+              const key = String(row?.selectionKey || '');
+              if (key) locByKey.set(key, { cat, prod, size });
+            });
+          });
+        });
+        const rows: PreviewRow[] = [];
+        for (const [selKey, _] of Array.from(selectedProducts.entries())) {
+          const loc = locByKey.get(String(selKey));
+          if (!loc) continue;
+          const { cat, prod, size } = loc;
+          const productObj = groupedProducts[cat][prod][size];
+          const productName = String(productObj?.name || productObj?.Name || prod || '');
+          const lookupKey = `${norm(productName)}|${norm(size)}|${norm(cat)}`;
+          const hit = existingMap.get(lookupKey);
+          let status: PreviewRow['status'];
+          if (!hit) {
+            status = 'new';
+          } else if (!hit.whccProductUID && !hit.whccProductNodeID) {
+            status = 'enrich';
+          } else {
+            status = 'unchanged';
+          }
+          rows.push({ name: productName, size, cat, status });
+        }
+        setPreviewRows(rows);
+      } catch (_) {
+        setPreviewRows([]);
+      } finally {
+        setPreviewLoading(false);
+      }
+    };
+    buildPreview();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, selectedPriceListId]);
 
-  // --- Enhanced Product Selection Handlers ---
+
 
   // Select all products
   const handleSelectAll = () => {
@@ -628,37 +689,72 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
           {/* Step 3: Confirm Import */}
           {step === 'confirm' && (
             <>
-              <p className="admin-whcc-desc">Confirm your import selections and settings below.</p>
-              <ul>
-                {Array.from(selectedProducts.values()).map((mapping: any, idx) => {
-                  // Find the product in groupedProducts
-                  let found = null;
-                  let foundSize = '';
-                  outer: for (const cat of Object.keys(groupedProducts)) {
-                    for (const prod of Object.keys(groupedProducts[cat])) {
-                      for (const size of Object.keys(groupedProducts[cat][prod])) {
-                        const p = groupedProducts[cat][prod][size];
-                        if (String(p.selectionKey) === String(mapping.selectionKey)) {
-                          found = p;
-                          foundSize = size;
-                          break outer;
-                        }
-                      }
-                    }
-                  }
-                  // Use a composite key: productUID-size (or fallback to idx)
-                  const key = found ? `${mapping.selectionKey}-${foundSize}` : `${mapping.selectionKey || idx}`;
-                  return (
-                    <li key={key}>{found ? `${found.name || found.Name} (${found.price})` : (mapping.selectionKey || idx)}</li>
-                  );
-                })}
-              </ul>
-
+              <p className="admin-whcc-desc">Review what will happen when you import, then click <strong>Import to Price List</strong>.</p>
+              {previewLoading ? (
+                <div style={{ padding: '1rem', color: 'var(--text-secondary)' }}>Analysing existing list…</div>
+              ) : (
+                <>
+                  {/* Summary badges */}
+                  {previewRows.length > 0 && (() => {
+                    const newCount = previewRows.filter(r => r.status === 'new').length;
+                    const enrichCount = previewRows.filter(r => r.status === 'enrich').length;
+                    const unchangedCount = previewRows.filter(r => r.status === 'unchanged').length;
+                    return (
+                      <div style={{ display: 'flex', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+                        {newCount > 0 && (
+                          <span style={{ background: '#d1fae5', color: '#065f46', borderRadius: 6, padding: '3px 10px', fontWeight: 600, fontSize: 13 }}>
+                            🟢 {newCount} new
+                          </span>
+                        )}
+                        {enrichCount > 0 && (
+                          <span style={{ background: '#fef9c3', color: '#713f12', borderRadius: 6, padding: '3px 10px', fontWeight: 600, fontSize: 13 }}>
+                            🟡 {enrichCount} enrich (WHCC mapping missing)
+                          </span>
+                        )}
+                        {unchangedCount > 0 && (
+                          <span style={{ background: 'var(--bg-card)', color: 'var(--text-secondary)', borderRadius: 6, padding: '3px 10px', fontWeight: 600, fontSize: 13, border: '1px solid var(--border-color)' }}>
+                            ⚫ {unchangedCount} already up-to-date
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
+                  {/* Preview table */}
+                  {previewRows.length > 0 && (
+                    <div style={{ maxHeight: 340, overflowY: 'auto', marginBottom: 12 }}>
+                      <table className="data-table" style={{ fontSize: 13 }}>
+                        <thead>
+                          <tr>
+                            <th>Product</th>
+                            <th>Size</th>
+                            <th>Category</th>
+                            <th>Action</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {previewRows.map((row, i) => (
+                            <tr key={i} style={{ opacity: row.status === 'unchanged' ? 0.5 : 1 }}>
+                              <td>{row.name}</td>
+                              <td>{row.size}</td>
+                              <td style={{ color: 'var(--text-secondary)' }}>{row.cat}</td>
+                              <td>
+                                {row.status === 'new' && <span style={{ color: '#065f46', fontWeight: 600 }}>Add new</span>}
+                                {row.status === 'enrich' && <span style={{ color: '#92400e', fontWeight: 600 }}>Enrich (fill WHCC)</span>}
+                                {row.status === 'unchanged' && <span style={{ color: 'var(--text-secondary)' }}>No change</span>}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </>
+              )}
 
               <div className="admin-whcc-modal-footer">
                 <button onClick={() => setStep('select-products')} className="btn btn-secondary">Back</button>
-                <button onClick={handleImport} disabled={importing} className="btn btn-success">{importing ? 'Importing...' : 'Import to Price List'}</button>
-                <button onClick={onImportComplete} disabled={importing} className="btn btn-primary">Done & Refresh</button>
+                <button onClick={handleImport} disabled={importing || previewLoading} className="btn btn-success">{importing ? 'Importing...' : 'Import to Price List'}</button>
+                <button onClick={onImportComplete} disabled={importing} className="btn btn-primary">Done &amp; Refresh</button>
                 <button onClick={onClose} className="btn btn-secondary admin-whcc-btn-margin">Cancel</button>
               </div>
             </>

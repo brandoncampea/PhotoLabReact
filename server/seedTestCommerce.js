@@ -1,5 +1,7 @@
+import { createRequire } from 'module';
 import bcrypt from 'bcryptjs';
 import Stripe from 'stripe';
+const require = createRequire(import.meta.url);
 const { queryRow, query, queryRows, columnExists, tableExists } = require('./mssql.cjs');
 import orderReceiptService from './services/orderReceiptService.js';
 
@@ -130,12 +132,29 @@ const ensureSeedProductAndSize = async (priceListId) => {
   // Ensure product with id=1 exists for Playwright test
   let product = await queryRow('SELECT TOP 1 id FROM products WHERE id = 1');
   if (!product) {
-    product = await queryRow(
-      `INSERT INTO products (id, name, category, price, description, cost, options)
-       VALUES (1, 'Playwright Test Product', 'Prints', $1, $2, $3, $4)
-       RETURNING id`,
-      [seedPrice, 'Product for Playwright test', seedCost, JSON.stringify({ isActive: true })]
+    const identityMeta = await queryRow(
+      `SELECT COLUMNPROPERTY(OBJECT_ID('products'), 'id', 'IsIdentity') as isIdentity`,
+      []
     );
+    const isIdentity = Number(identityMeta?.isIdentity || 0) === 1;
+
+    if (isIdentity) {
+      product = await queryRow(
+        `SET IDENTITY_INSERT products ON;
+         INSERT INTO products (id, name, category, price, description, cost, options)
+         OUTPUT INSERTED.id as id
+         VALUES (1, 'Playwright Test Product', 'Prints', $1, $2, $3, $4);
+         SET IDENTITY_INSERT products OFF;`,
+        [seedPrice, 'Product for Playwright test', seedCost, JSON.stringify({ isActive: true })]
+      );
+    } else {
+      product = await queryRow(
+        `INSERT INTO products (id, name, category, price, description, cost, options)
+         VALUES (1, 'Playwright Test Product', 'Prints', $1, $2, $3, $4)
+         RETURNING id`,
+        [seedPrice, 'Product for Playwright test', seedCost, JSON.stringify({ isActive: true })]
+      );
+    }
   }
 
   let size = await queryRow(
@@ -800,14 +819,27 @@ const main = async () => {
     const studioPlan = subscriptionPlans[(i - 1) % subscriptionPlans.length];
     const studio = await ensureStudio(i, studioPlan);
     studios.push(studio);
-    const studioPriceList = await queryRow(
-      `INSERT INTO price_lists (name, description, is_default, created_at, studio_id)
-       VALUES ($1, $2, $3, CURRENT_TIMESTAMP, $4)
-       RETURNING id`,
-      [`Studio ${i} Price List`, `Auto-created for studio ${studio.name}`, 1, studio.id]
+    const studioPriceListName = `Studio ${i} Price List`;
+    let studioPriceList = await queryRow(
+      `SELECT TOP 1 id
+       FROM price_lists
+       WHERE name = $1 AND studio_id = $2
+       ORDER BY id`,
+      [studioPriceListName, studio.id]
     );
-    studioPriceListIds.push(Number(studioPriceList.id));
-    allPriceListIds.push(Number(studioPriceList.id));
+
+    if (!studioPriceList?.id) {
+      studioPriceList = await queryRow(
+        `INSERT INTO price_lists (name, description, is_default, created_at, studio_id)
+         VALUES ($1, $2, $3, CURRENT_TIMESTAMP, $4)
+         RETURNING id`,
+        [studioPriceListName, `Auto-created for studio ${studio.name}`, 1, studio.id]
+      );
+    }
+
+    const studioPriceListId = Number(studioPriceList.id);
+    studioPriceListIds.push(studioPriceListId);
+    allPriceListIds.push(studioPriceListId);
   }
   const markupResults = [];
   for (const listId of allPriceListIds) {

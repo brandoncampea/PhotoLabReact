@@ -1,7 +1,7 @@
 import express from 'express';
 import mssql from '../mssql.cjs';
 const { queryRow, queryRows, query } = mssql;
-import { authRequired, adminRequired } from '../middleware/auth.js';
+import { authRequired, adminRequired, superAdminRequired } from '../middleware/auth.js';
 import { requireActiveSubscription } from '../middleware/subscription.js';
 import orderReceiptService from '../services/orderReceiptService.js';
 const router = express.Router();
@@ -22,6 +22,13 @@ const stringifyForDb = (value) => {
   } catch {
     return JSON.stringify({ error: 'Failed to serialize value' });
   }
+};
+
+const previewSecret = (value) => {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  if (raw.length <= 8) return `${raw.slice(0, 2)}…${raw.slice(-2)}`;
+  return `${raw.slice(0, 4)}…${raw.slice(-4)}`;
 };
 
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
@@ -147,6 +154,11 @@ const submitOrderToWhcc = async (orderId) => {
   let importResponseData = null;
   let submitResponseData = null;
   let confirmationId = null;
+  let currentStage = 'initializing';
+  let currentRequestUrl = null;
+  let sandboxMode = false;
+  let requestLog = null;
+  const nowIso = () => new Date().toISOString();
 
   try {
     // Get order details and items
@@ -195,6 +207,7 @@ const submitOrderToWhcc = async (orderId) => {
               oi.quantity,
               oi.crop_data,
               p.name as productName,
+              p.category as productCategory,
               ps.size_name as sizeName,
               p.options as productOptions,
               ph.file_name as fileName,
@@ -217,6 +230,7 @@ const submitOrderToWhcc = async (orderId) => {
     const consumerKey = process.env.WHCC_CONSUMER_KEY;
     const consumerSecret = process.env.WHCC_CONSUMER_SECRET;
     const isSandbox = process.env.WHCC_SANDBOX === 'true';
+    sandboxMode = isSandbox;
 
     if (!consumerKey || !consumerSecret) {
       console.warn('[WHCC] WHCC_CONSUMER_KEY or WHCC_CONSUMER_SECRET not configured; skipping WHCC submission');
@@ -257,6 +271,12 @@ const submitOrderToWhcc = async (orderId) => {
     const getCatalogProducts = (catalogPayload) => {
       if (Array.isArray(catalogPayload?.Products)) return catalogPayload.Products;
       if (Array.isArray(catalogPayload?.products)) return catalogPayload.products;
+      if (Array.isArray(catalogPayload?.Categories)) {
+        return catalogPayload.Categories.flatMap((c) => Array.isArray(c?.ProductList) ? c.ProductList : []);
+      }
+      if (Array.isArray(catalogPayload?.categories)) {
+        return catalogPayload.categories.flatMap((c) => Array.isArray(c?.productList) ? c.productList : []);
+      }
       if (Array.isArray(catalogPayload)) return catalogPayload;
       return [];
     };
@@ -266,23 +286,127 @@ const submitOrderToWhcc = async (orderId) => {
       product?.productUID ??
       product?.ProductId ??
       product?.productId ??
+      product?.Id ??
+      product?.id ??
       product?.UID
     ) || null;
 
+    const getStaticWhccFallbackProductUID = (item) => {
+      // Intentionally disabled: previous blanket fallback IDs were not valid in this catalog
+      // and caused invalid business-rule errors.
+      return null;
+    };
+
     const matchCatalogProduct = (catalogProducts, item) => {
-      const name = String(item.productName || '').toLowerCase();
-      const size = String(item.sizeName || '').toLowerCase();
+      const normalize = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9x.\s]/g, ' ').replace(/\s+/g, ' ').trim();
+      const hasWordToken = (text, token) => {
+        if (!text || !token) return false;
+        const escaped = String(token).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return new RegExp(`(^|\\s)${escaped}(?=\\s|$)`, 'i').test(text);
+      };
+      const extractDimensionTokens = (text) => {
+        const matches = String(text || '').match(/\b\d+(?:\.\d+)?x\d+(?:\.\d+)?\b/gi) || [];
+        return matches.map((m) => m.toLowerCase());
+      };
+
+      const name = normalize(item.productName || '');
+      const size = normalize(item.sizeName || '');
+      const category = normalize(item.productCategory || '');
+      const combinedLocal = `${name} ${size}`.trim();
+      const isPlainPrintItem = (category.includes('print') && (name === 'print' || name === 'photo print'));
+
+      const stopWords = new Set(['photo', 'item', 'product', 'print', 'the', 'and', 'for', 'with']);
+      const nameTokens = name
+        .split(' ')
+        .map((t) => t.trim())
+        .filter((t) => t.length >= 3 && !stopWords.has(t));
+
+      const sizeToken = (() => {
+        const match = combinedLocal.match(/\b\d+(?:\.\d+)?x\d+(?:\.\d+)?\b/i);
+        return match ? match[0].toLowerCase() : '';
+      })();
+      const localDimensionTokens = extractDimensionTokens(combinedLocal);
+      const ozToken = (() => {
+        const match = combinedLocal.match(/\b\d+(?:\.\d+)?\s?oz\b/i);
+        return match ? match[0].replace(/\s+/g, '').toLowerCase() : '';
+      })();
+
+      const categoryHints = (() => {
+        if (category.includes('drink')) return ['mug', 'drink', 'tumbler', 'cup', 'oz'];
+        if (category.includes('frame')) return ['frame', 'framed'];
+        if (category.includes('textile') || category.includes('blanket') || category.includes('pillow')) return ['blanket', 'pillow', 'textile', 'fabric'];
+        if (category.includes('acrylic')) return ['acrylic'];
+        if (category.includes('metal')) return ['metal'];
+        if (category.includes('wood')) return ['wood'];
+        if (category.includes('digital')) return ['digital', 'download'];
+        if (category.includes('book')) return ['book'];
+        if (category.includes('print')) return ['print'];
+        return [];
+      })();
+
       const scored = [];
       for (const product of catalogProducts) {
         const uid = getCatalogProductUID(product);
         if (!uid) continue;
-        const productName = String(product?.Name || product?.name || product?.ProductName || '').toLowerCase();
-        const description = String(product?.Description || product?.description || '').toLowerCase();
+
+        const productName = normalize(product?.Name || product?.name || product?.ProductName || '');
+        const description = normalize(product?.Description || product?.description || '');
+        const haystack = `${productName} ${description}`.trim();
+        if (!haystack) continue;
+        const productDimensionTokens = extractDimensionTokens(haystack);
+
         let score = 0;
-        if (name && (productName.includes(name) || description.includes(name))) score += 3;
-        if (size && (productName.includes(size) || description.includes(size))) score += 4;
+
+        if (name && haystack.includes(name)) score += 10;
+        if (size && haystack.includes(size)) score += 8;
+
+        if (sizeToken) {
+          if (hasWordToken(haystack, sizeToken)) score += 12;
+          else if (productDimensionTokens.length > 0) score -= 14;
+        }
+
+        if (localDimensionTokens.length > 0 && productDimensionTokens.length > 0) {
+          const hasExactDimension = localDimensionTokens.some((dim) => productDimensionTokens.includes(dim));
+          if (hasExactDimension) score += 12;
+          else score -= 16;
+        }
+
+        if (ozToken && haystack.includes(ozToken)) score += 9;
+
+        for (const token of nameTokens) {
+          if (haystack.includes(token)) score += 2;
+        }
+
+        if (categoryHints.length > 0) {
+          const hasCategoryHint = categoryHints.some((hint) => haystack.includes(hint));
+          if (hasCategoryHint) score += 6;
+          else score -= 8;
+        }
+
+        // Plain local "Print" items should prefer standard photo print products,
+        // not specialty acrylic/canvas/metal/framed products.
+        if (isPlainPrintItem) {
+          if (haystack.includes('photo print')) score += 10;
+          if (
+            haystack.includes('acrylic') ||
+            haystack.includes('canvas') ||
+            haystack.includes('metal print') ||
+            haystack.includes('framed') ||
+            haystack.includes('frame') ||
+            haystack.includes('wood')
+          ) {
+            score -= 18;
+          }
+        }
+
+        // Avoid mapping drinkware items to acrylic products (known WHCC rule mismatch source)
+        if (category.includes('drink') && haystack.includes('acrylic')) {
+          score -= 20;
+        }
+
         if (score > 0) scored.push({ score, product });
       }
+
       scored.sort((a, b) => b.score - a.score);
       return scored[0]?.product || null;
     };
@@ -293,8 +417,12 @@ const submitOrderToWhcc = async (orderId) => {
         catalogProduct?.productNodeID ??
         catalogProduct?.DefaultProductNodeID ??
         catalogProduct?.defaultProductNodeID ??
-        (Array.isArray(catalogProduct?.ProductNodes) ? catalogProduct.ProductNodes[0]?.ProductNodeID : null) ??
-        (Array.isArray(catalogProduct?.productNodes) ? catalogProduct.productNodes[0]?.productNodeID : null);
+        (Array.isArray(catalogProduct?.ProductNodes)
+          ? (catalogProduct.ProductNodes[0]?.DP2NodeID ?? catalogProduct.ProductNodes[0]?.ProductNodeID)
+          : null) ??
+        (Array.isArray(catalogProduct?.productNodes)
+          ? (catalogProduct.productNodes[0]?.dp2NodeID ?? catalogProduct.productNodes[0]?.productNodeID)
+          : null);
       return Number(raw) || null;
     };
 
@@ -305,33 +433,133 @@ const submitOrderToWhcc = async (orderId) => {
         catalogProduct?.ItemAttributes ??
         catalogProduct?.itemAttributes ??
         [];
-      if (!Array.isArray(attrs)) return [];
-      return attrs
-        .map((a) => Number(a?.AttributeUID ?? a?.attributeUID ?? a?.uid ?? a))
-        .filter((v) => Number.isInteger(v) && v > 0);
+      if (Array.isArray(attrs) && attrs.length > 0) {
+        return attrs
+          .map((a) => Number(a?.AttributeUID ?? a?.attributeUID ?? a?.uid ?? a?.Id ?? a?.id ?? a))
+          .filter((v) => Number.isInteger(v) && v > 0);
+      }
+
+      const attributeCategories =
+        catalogProduct?.AttributeCategories ??
+        catalogProduct?.attributeCategories ??
+        [];
+
+      if (!Array.isArray(attributeCategories) || attributeCategories.length === 0) {
+        return [];
+      }
+
+      const selected = [];
+      const requiredParents = new Set(
+        attributeCategories
+          .map((c) => Number(c?.RequiredLevel ?? c?.requiredLevel ?? 0))
+          .filter((v) => Number.isInteger(v) && v > 0)
+      );
+
+      const addUid = (value) => {
+        const uid = Number(value);
+        if (Number.isInteger(uid) && uid > 0 && !selected.includes(uid)) {
+          selected.push(uid);
+        }
+        return uid;
+      };
+
+      const getOptions = (category) =>
+        Array.isArray(category?.Attributes)
+          ? category.Attributes
+          : Array.isArray(category?.attributes)
+          ? category.attributes
+          : [];
+
+      const getAttrUid = (attr) => Number(attr?.Id ?? attr?.AttributeUID ?? attr?.attributeUID ?? attr?.id ?? 0) || null;
+      const getParentUid = (attr) => Number(attr?.ParentAttributeUID ?? attr?.parentAttributeUID ?? 0) || null;
+
+      // Pass 1: choose base required categories (RequiredLevel = 0)
+      for (const category of attributeCategories) {
+        const requiredLevel = Number(category?.RequiredLevel ?? category?.requiredLevel ?? 0);
+        if (requiredLevel !== 0) continue;
+
+        const options = getOptions(category);
+        if (!options.length) continue;
+
+        const preferred = options.find((opt) => {
+          const uid = getAttrUid(opt);
+          return Number.isInteger(uid) && requiredParents.has(uid);
+        });
+
+        const chosen = preferred || options[0] || null;
+        if (!chosen) continue;
+
+        const uid = getAttrUid(chosen);
+        if (Number.isInteger(uid) && uid > 0) addUid(uid);
+      }
+
+      // Pass 2: include dependent categories only when their parent is selected
+      for (const category of attributeCategories) {
+        const options = getOptions(category);
+        if (!options.length) continue;
+
+        const requiredLevel = Number(category?.RequiredLevel ?? category?.requiredLevel ?? 0);
+
+        if (requiredLevel === 0) continue;
+        if (requiredLevel < 0) continue;
+        if (requiredLevel > 0 && !selected.includes(requiredLevel)) continue;
+
+        const chosen = options[0] || null;
+        const uid = getAttrUid(chosen);
+        if (Number.isInteger(uid) && uid > 0) {
+          addUid(uid);
+          const parentUid = getParentUid(chosen);
+          if (Number.isInteger(parentUid) && parentUid > 0) {
+            addUid(parentUid);
+          }
+        }
+      }
+
+      return selected;
     };
+
+    const parseUidList = (value) => String(value || '')
+      .split(',')
+      .map((part) => Number(part.trim()))
+      .filter((uid) => Number.isInteger(uid) && uid > 0);
+
+    const orderAttributeUIDs = (() => {
+      const envConfigured = parseUidList(process.env.WHCC_ORDER_ATTRIBUTE_UIDS);
+      const base = envConfigured.length ? [...envConfigured] : [96, 545];
+
+      // If Drop Ship is selected, ensure at least one shipping option exists.
+      const hasDropShip = base.includes(96);
+      const knownShippingOptions = [100, 101, 104, 105, 545];
+      const hasShipping = base.some((uid) => knownShippingOptions.includes(uid));
+      if (hasDropShip && !hasShipping) {
+        base.push(545);
+      }
+
+      return Array.from(new Set(base));
+    })();
 
     // Call WHCC OrderImport API
     const axios = (await import('axios')).default;
     const baseUrl = isSandbox ? 'https://sandbox.apps.whcc.com' : 'https://apps.whcc.com';
 
-    // Get WHCC token
-    const tokenResponse = await axios.post(
-      'https://auth.whcc.com/oauth/token',
-      new URLSearchParams({
-        grant_type: 'client_credentials',
-        client_id: consumerKey,
-        client_secret: consumerSecret,
-      }),
-      {
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Accept': 'application/json'
-        }
-      }
-    );
+    // Get WHCC token using the Order Submit API access-token endpoint
+    currentStage = 'token';
+    currentRequestUrl = `${baseUrl}/api/AccessToken`;
+    const tokenResponse = await axios.get(currentRequestUrl, {
+      params: {
+        grant_type: 'consumer_credentials',
+        consumer_key: consumerKey,
+        consumer_secret: consumerSecret,
+      },
+      headers: {
+        'Accept': 'application/json',
+      },
+    });
 
-    const token = tokenResponse.data.access_token;
+    const token = tokenResponse.data?.Token || tokenResponse.data?.token || null;
+    if (!token) {
+      throw new Error('WHCC token response did not include a token');
+    }
 
     // Fetch WHCC catalog to resolve per-product ProductUID/Node/Attributes
     let catalogProducts = [];
@@ -348,7 +576,7 @@ const submitOrderToWhcc = async (orderId) => {
     }
 
     // Prepare WHCC OrderImport payload according to docs
-    const whccOrderItems = items
+    const resolvedWhccItems = items
       .map((item, index) => {
         const assetPath = toAbsoluteAssetUrl(item.fullImageUrl) || toAbsoluteAssetUrl(item.thumbnailUrl);
         if (!assetPath) {
@@ -365,10 +593,10 @@ const submitOrderToWhcc = async (orderId) => {
         const productUID =
           optionsConfig.productUID ||
           getCatalogProductUID(catalogMatch) ||
-          Number(item.product_size_id || item.product_id || 0);
+          getStaticWhccFallbackProductUID(item);
 
         if (!productUID) {
-          return null;
+          throw new Error(`No WHCC product mapping found for ${item.productName || 'Unknown Product'}${item.sizeName ? ` (${item.sizeName})` : ''}. Add WHCC mapping data before retrying.`);
         }
 
         const productNodeID =
@@ -376,39 +604,61 @@ const submitOrderToWhcc = async (orderId) => {
           getCatalogProductNodeID(catalogMatch) ||
           10000;
 
-        const attributeUIDs = (optionsConfig.itemAttributeUIDs || []).length
-          ? optionsConfig.itemAttributeUIDs
-              .map((value) => Number(value))
-              .filter((value) => Number.isInteger(value) && value > 0)
-          : getCatalogItemAttributeUIDs(catalogMatch);
+        const optionAttributeUIDs = (optionsConfig.itemAttributeUIDs || [])
+          .map((value) => Number(value))
+          .filter((value) => Number.isInteger(value) && value > 0);
+        const catalogAttributeUIDs = getCatalogItemAttributeUIDs(catalogMatch);
 
-        const finalAttributeUIDs = attributeUIDs.length ? attributeUIDs : [1, 5];
+        // Prefer WHCC catalog defaults (source of truth). Fall back to stored options if catalog has none.
+        const finalAttributeUIDs = catalogAttributeUIDs.length
+          ? catalogAttributeUIDs
+          : optionAttributeUIDs;
 
         return {
-          ProductUID: productUID,
-          Quantity: Math.max(1, Number(item.quantity) || 1),
-          LineItemID: String(item.id || index + 1),
-          ItemAssets: [
-            {
-              ProductNodeID: productNodeID,
-              AssetPath: assetPath,
-              ImageHash: imageHash,
-              PrintedFileName: item.fileName || `order-${orderId}-item-${index + 1}.jpg`,
-              AutoRotate: true,
-              ...(cropData && typeof cropData === 'object'
-                ? {
-                    X: Number(cropData.x) || 0,
-                    Y: Number(cropData.y) || 0,
-                    ZoomX: Number(cropData.scaleX) ? Number(cropData.scaleX) * 100 : 100,
-                    ZoomY: Number(cropData.scaleY) ? Number(cropData.scaleY) * 100 : 100,
-                  }
-                : {}),
-            },
-          ],
-          ItemAttributes: finalAttributeUIDs.map((uid) => ({ AttributeUID: uid })),
+          localItemId: Number(item.id || index + 1),
+          localProductId: Number(item.product_id || item.productId || 0) || null,
+          localProductSizeId: Number(item.product_size_id || item.productSizeId || 0) || null,
+          productName: item.productName || null,
+          productCategory: item.productCategory || null,
+          sizeName: item.sizeName || null,
+          mappingSource: optionsConfig.productUID
+            ? 'product-options'
+            : getCatalogProductUID(catalogMatch)
+            ? 'catalog-match'
+            : getStaticWhccFallbackProductUID(item)
+            ? 'static-fallback'
+            : 'unresolved',
+          catalogProductName: catalogMatch?.Name || catalogMatch?.name || null,
+          payload: {
+            ProductUID: productUID,
+            Quantity: Math.max(1, Number(item.quantity) || 1),
+            LineItemID: String(item.id || index + 1),
+            ItemAssets: [
+              {
+                ProductNodeID: productNodeID,
+                AssetPath: assetPath,
+                ImageHash: imageHash,
+                PrintedFileName: item.fileName || `order-${orderId}-item-${index + 1}.jpg`,
+                AutoRotate: true,
+                ...(cropData && typeof cropData === 'object'
+                  ? {
+                      X: Number(cropData.x) || 0,
+                      Y: Number(cropData.y) || 0,
+                      ZoomX: Number(cropData.scaleX) ? Number(cropData.scaleX) * 100 : 100,
+                      ZoomY: Number(cropData.scaleY) ? Number(cropData.scaleY) * 100 : 100,
+                    }
+                  : {}),
+              },
+            ],
+            ...(finalAttributeUIDs.length
+              ? { ItemAttributes: finalAttributeUIDs.map((uid) => ({ AttributeUID: uid })) }
+              : {}),
+          },
         };
       })
       .filter(Boolean);
+
+    const whccOrderItems = resolvedWhccItems.map((item) => item.payload);
 
     if (!whccOrderItems.length) {
       throw new Error('No valid WHCC order items with accessible image assets');
@@ -435,18 +685,36 @@ const submitOrderToWhcc = async (orderId) => {
             Phone: normalizePhone(shippingAddress.phone),
           },
           ShipFromAddress: defaultShipFromAddress,
-          OrderAttributes: [
-            { AttributeUID: 96 },
-            { AttributeUID: 545 },
-          ],
+          OrderAttributes: orderAttributeUIDs.map((uid) => ({ AttributeUID: uid })),
           OrderItems: whccOrderItems,
         },
       ],
     };
 
+    requestLog = {
+      sandbox: isSandbox,
+      tokenRequest: {
+        url: `${baseUrl}/api/AccessToken`,
+        runAt: nowIso(),
+        params: {
+          grant_type: 'consumer_credentials',
+          consumerKeyPreview: previewSecret(consumerKey),
+        },
+      },
+      importRequest: {
+        url: `${baseUrl}/api/OrderImport`,
+        runAt: nowIso(),
+        body: whccOrderRequest,
+      },
+      resolvedItems: resolvedWhccItems,
+      submitRequest: null,
+    };
+
     // Import order to WHCC
+    currentStage = 'import';
+    currentRequestUrl = `${baseUrl}/api/OrderImport`;
     const importResponse = await axios.post(
-      `${baseUrl}/api/OrderImport`,
+      currentRequestUrl,
       whccOrderRequest,
       {
         headers: {
@@ -457,6 +725,13 @@ const submitOrderToWhcc = async (orderId) => {
     );
 
     importResponseData = importResponse.data || null;
+    requestLog = {
+      ...requestLog,
+      importResponseMeta: {
+        runAt: nowIso(),
+        status: importResponse?.status || null,
+      },
+    };
     confirmationId = importResponseData?.confirmationId || importResponseData?.ConfirmationID || null;
     if (!confirmationId) {
       throw new Error('WHCC import succeeded but no confirmation ID was returned');
@@ -466,16 +741,27 @@ const submitOrderToWhcc = async (orderId) => {
       `UPDATE orders
        SET whcc_confirmation_id = $1,
            whcc_import_response = $2,
+           whcc_request_log = $3,
            whcc_last_error = NULL
-       WHERE id = $3`,
-      [confirmationId, stringifyForDb(importResponseData), orderId]
+       WHERE id = $4`,
+      [confirmationId, stringifyForDb(importResponseData), stringifyForDb(requestLog), orderId]
     );
 
     console.log(`[WHCC] Order ${orderId} imported with confirmationId: ${confirmationId}`);
 
     // Submit the imported order
+    currentStage = 'submit';
+    currentRequestUrl = `${baseUrl}/api/OrderImport/Submit/${confirmationId}`;
+    requestLog = {
+      ...requestLog,
+      submitRequest: {
+        url: currentRequestUrl,
+        runAt: nowIso(),
+        body: {},
+      },
+    };
     const submitResponse = await axios.post(
-      `${baseUrl}/api/OrderImport/Submit/${confirmationId}`,
+      currentRequestUrl,
       {},
       {
         headers: {
@@ -487,6 +773,13 @@ const submitOrderToWhcc = async (orderId) => {
     );
 
     submitResponseData = submitResponse.data || null;
+    requestLog = {
+      ...requestLog,
+      submitResponseMeta: {
+        runAt: nowIso(),
+        status: submitResponse?.status || null,
+      },
+    };
 
     await query(
       `UPDATE orders
@@ -495,35 +788,59 @@ const submitOrderToWhcc = async (orderId) => {
            whcc_confirmation_id = $1,
            whcc_import_response = $2,
            whcc_submit_response = $3,
+           whcc_request_log = $4,
            whcc_last_error = NULL
-       WHERE id = $4`,
+       WHERE id = $5`,
       [
         confirmationId,
         stringifyForDb(importResponseData),
         stringifyForDb(submitResponseData),
+        stringifyForDb(requestLog),
         orderId,
       ]
     );
 
     console.log(`[WHCC] Order ${orderId} submitted successfully`);
   } catch (error) {
+    const errorPayload = {
+      stage: currentStage,
+      runAt: nowIso(),
+      url: currentRequestUrl || error?.config?.url || null,
+      status: error?.response?.status || null,
+      statusText: error?.response?.statusText || null,
+      message: error?.message || 'WHCC request failed',
+      sandbox: sandboxMode,
+      confirmationId,
+      responseData: error?.response?.data || null,
+    };
+
+    requestLog = {
+      ...(requestLog || {}),
+      lastErrorMeta: {
+        stage: currentStage,
+        runAt: errorPayload.runAt,
+      },
+    };
+
     await query(
       `UPDATE orders
        SET whcc_confirmation_id = COALESCE($1, whcc_confirmation_id),
            whcc_import_response = COALESCE($2, whcc_import_response),
            whcc_submit_response = COALESCE($3, whcc_submit_response),
-           whcc_last_error = $4
-       WHERE id = $5`,
+           whcc_request_log = COALESCE($4, whcc_request_log),
+           whcc_last_error = $5
+       WHERE id = $6`,
       [
         confirmationId,
         stringifyForDb(importResponseData),
         stringifyForDb(submitResponseData),
-        stringifyForDb(error?.response?.data || { message: error.message }),
+        stringifyForDb(requestLog),
+        stringifyForDb(errorPayload),
         orderId,
       ]
     );
 
-    console.error(`[WHCC] Failed to submit order ${orderId} to WHCC:`, error?.response?.data || error.message);
+    console.error(`[WHCC] Failed to submit order ${orderId} to WHCC:`, errorPayload);
     // Non-blocking error — don't fail the order creation
   }
 };
@@ -655,6 +972,40 @@ const sendOrderReceipts = async (orderId) => {
 
 // Protect all order routes
 router.use(authRequired);
+
+const handleWhccRetryRequest = async (req, res) => {
+  try {
+    const orderId = Number(req.params.orderId);
+    if (!orderId) return res.status(400).json({ error: 'Invalid orderId' });
+
+    const order = await queryRow(
+      `SELECT id, lab_submitted, is_batch FROM orders WHERE id = $1`,
+      [orderId]
+    );
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (order.is_batch) return res.status(400).json({ error: 'Cannot retry WHCC submission for batch orders' });
+    if (order.lab_submitted) return res.status(400).json({ error: 'Order has already been successfully submitted to WHCC' });
+
+    await query(
+      `UPDATE orders
+       SET whcc_last_error = NULL,
+           whcc_confirmation_id = NULL,
+           whcc_import_response = NULL,
+           whcc_submit_response = NULL,
+           whcc_request_log = NULL
+       WHERE id = $1`,
+      [orderId]
+    );
+
+    submitOrderToWhcc(orderId).catch((err) => {
+      console.error(`[WHCC retry] Unhandled error for order ${orderId}:`, err?.message || err);
+    });
+
+    res.json({ success: true, message: `WHCC retry started for order ${orderId}` });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
 
 // Get current user's orders
 router.get('/user/:userId', async (req, res) => {
@@ -1116,7 +1467,7 @@ router.get('/', async (req, res) => {
 router.get('/admin/all-orders', adminRequired, async (req, res) => {
   try {
     const actingStudioId = req.headers['x-acting-studio-id'];
-    const canViewWhccFields = req.user.role === 'studio_admin' || (req.user.role === 'super_admin' && Boolean(actingStudioId));
+    const canViewWhccFields = req.user.role === 'super_admin';
     let queryText = `
       SELECT 
         o.id, 
@@ -1143,6 +1494,7 @@ router.get('/admin/all-orders', adminRequired, async (req, res) => {
         ${canViewWhccFields ? `o.whcc_confirmation_id as whccConfirmationId,
         o.whcc_import_response as whccImportResponse,
         o.whcc_submit_response as whccSubmitResponse,
+        o.whcc_request_log as whccRequestLog,
         o.whcc_last_error as whccLastError,
         o.whcc_order_number as whccOrderNumber,
         o.whcc_webhook_status as whccWebhookStatus,
@@ -1242,6 +1594,7 @@ router.get('/admin/all-orders', adminRequired, async (req, res) => {
         whccConfirmationId: canViewWhccFields ? order.whccConfirmationId : undefined,
         whccImportResponse: canViewWhccFields ? safeJsonParse(order.whccImportResponse) : undefined,
         whccSubmitResponse: canViewWhccFields ? safeJsonParse(order.whccSubmitResponse) : undefined,
+        whccRequestLog: canViewWhccFields ? safeJsonParse(order.whccRequestLog) : undefined,
         whccLastError: canViewWhccFields ? safeJsonParse(order.whccLastError) : undefined,
         whccOrderNumber: canViewWhccFields ? order.whccOrderNumber : undefined,
         whccWebhookStatus: canViewWhccFields ? order.whccWebhookStatus : undefined,
@@ -1259,6 +1612,10 @@ router.get('/admin/all-orders', adminRequired, async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
+// Retry WHCC submission for a failed order
+router.post('/admin/whcc-retry/:orderId', superAdminRequired, handleWhccRetryRequest);
+router.post('/admin/:orderId/whcc-retry', superAdminRequired, handleWhccRetryRequest);
 
 // Update order status (admin)
 router.patch('/admin/:orderId/status', adminRequired, async (req, res) => {

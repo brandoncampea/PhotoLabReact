@@ -458,12 +458,6 @@ const Cart: React.FC = () => {
     setError('');
 
     try {
-      // Temporary bypass for WHCC end-to-end order testing:
-      // treat "Pay with Stripe" as immediately paid and continue order flow.
-      const mockPaymentIntentId = `pi_mock_${Date.now()}`;
-      await finalizeSuccessfulCheckout(mockPaymentIntentId);
-      return;
-
       // Create payment intent with final total
       const paymentIntent = await stripeService.createPaymentIntent(
         items,

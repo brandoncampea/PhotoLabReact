@@ -1,5 +1,7 @@
+import { createRequire } from 'module';
 import bcryptjs from 'bcryptjs';
-import { transaction } from './mssql.js';
+const require = createRequire(import.meta.url);
+const { transaction } = require('./mssql.cjs');
 
 const main = async () => {
   const { studioId, userId } = await transaction(async (client) => {

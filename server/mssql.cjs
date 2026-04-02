@@ -352,6 +352,12 @@ async function initializeDatabase() {
 		END
 	`);
 	await query(`
+		IF COL_LENGTH('orders', 'whcc_request_log') IS NULL
+		BEGIN
+			ALTER TABLE orders ADD whcc_request_log NVARCHAR(MAX) NULL
+		END
+	`);
+	await query(`
 		IF COL_LENGTH('orders', 'whcc_last_error') IS NULL
 		BEGIN
 			ALTER TABLE orders ADD whcc_last_error NVARCHAR(MAX) NULL

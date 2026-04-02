@@ -37,7 +37,7 @@
   },
   "directOrder": {
     "status": 201,
-    "id": 99,
+    "id": 117,
     "shippingOption": "direct",
     "orderStatus": "processing",
     "labSubmitted": true,
@@ -46,7 +46,7 @@
   },
   "futureBatchOrder": {
     "status": 201,
-    "id": 100,
+    "id": 118,
     "shippingOption": "batch",
     "orderStatus": "pending",
     "labSubmitted": false,
@@ -55,7 +55,7 @@
   },
   "queueFuture": {
     "status": 200,
-    "totalQueued": 1,
+    "totalQueued": 6,
     "eligibleCount": 0,
     "nextBatchDate": "2099-12-31T23:59:59.000Z"
   },
@@ -82,7 +82,7 @@
   },
   "eligibleBatchOrder": {
     "status": 201,
-    "id": 101,
+    "id": 119,
     "shippingOption": "batch",
     "orderStatus": "pending",
     "labSubmitted": false,
@@ -91,10 +91,10 @@
   },
   "queueEligible": {
     "status": 200,
-    "totalQueued": 2,
+    "totalQueued": 7,
     "eligibleCount": 1,
     "eligibleOrderIds": [
-      101
+      119
     ]
   },
   "submitBatch": {

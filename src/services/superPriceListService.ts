@@ -9,6 +9,10 @@ export const superPriceListService = {
     const res = await api.post('/super-price-lists', { name, description });
     return res.data;
   },
+  async deleteList(listId: number) {
+    const res = await api.delete(`/super-price-lists/${listId}`);
+    return res.data;
+  },
   async getItems(listId: number) {
     const res = await api.get(`/super-price-lists/${listId}/items`);
     return res.data;
@@ -40,6 +44,14 @@ export const superPriceListService = {
   },
   async importItems(listId: number, items: any[]) {
     const res = await api.post(`/super-price-lists/${listId}/import-items`, { items });
+    return res.data;
+  },
+  async syncWhccCosts(listId: number) {
+    const res = await api.post(`/super-price-lists/${listId}/sync-whcc-costs`);
+    return res.data;
+  },
+  async fillMissingWhccNodeIds(listId: number) {
+    const res = await api.post(`/super-price-lists/${listId}/fill-missing-whcc-node-ids`);
     return res.data;
   },
   async bulkSetActive(listId: number, item_ids: number[], is_active: boolean) {

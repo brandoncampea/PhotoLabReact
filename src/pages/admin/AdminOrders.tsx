@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Order, BatchQueueSummary, ShippingAddress } from '../../types';
+import { useAuth } from '../../contexts/AuthContext';
 import { orderService } from '../../services/orderService';
 import { shippingService } from '../../services/shippingService';
 import AdminLayout from '../../components/AdminLayout';
@@ -48,6 +49,7 @@ function AdminOrderItemCard({ item }: { item: any }) {
 }
 
 const AdminOrders: React.FC = () => {
+  const { user } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [batchQueue, setBatchQueue] = useState<BatchQueueSummary | null>(null);
   const [selectedLab, setSelectedLab] = useState('roes');
@@ -66,6 +68,8 @@ const AdminOrders: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [whccRetrying, setWhccRetrying] = useState<number | null>(null);
+  const [whccRetryMessageByOrder, setWhccRetryMessageByOrder] = useState<Record<number, { tone: 'info' | 'error'; text: string }>>({});
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -127,9 +131,41 @@ const AdminOrders: React.FC = () => {
     }
   };
 
+  const handleWhccRetry = async (orderId: number) => {
+    setWhccRetrying(orderId);
+    const startedAt = new Date().toLocaleString();
+    setWhccRetryMessageByOrder((prev) => ({
+      ...prev,
+      [orderId]: { tone: 'info', text: `Retry started at ${startedAt}…` },
+    }));
+    try {
+      const result = await orderService.whccRetry(orderId);
+      setWhccRetryMessageByOrder((prev) => ({
+        ...prev,
+        [orderId]: {
+          tone: 'info',
+          text: `${result.message || `WHCC retry started for order #${orderId}.`} (${new Date().toLocaleString()})`,
+        },
+      }));
+      // Reload after a short delay to pick up new status
+      setTimeout(() => loadData(), 3500);
+    } catch (err: any) {
+      setWhccRetryMessageByOrder((prev) => ({
+        ...prev,
+        [orderId]: {
+          tone: 'error',
+          text: `${err?.response?.data?.error || `Failed to retry WHCC submission for order #${orderId}`} (${new Date().toLocaleString()})`,
+        },
+      }));
+    } finally {
+      setWhccRetrying(null);
+    }
+  };
+
   const queuedBatchOrders = orders.filter((order) => order.isBatch && !order.labSubmitted);
   const recentDirectOrders = orders.filter((order) => !order.isBatch || order.labSubmitted);
   const visibleOrders = [...queuedBatchOrders, ...recentDirectOrders];
+  const canViewWhccDetails = user?.role === 'super_admin';
   const normalizedQuery = searchQuery.trim().toLowerCase();
   const filteredOrders = normalizedQuery
     ? visibleOrders.filter((order) => {
@@ -150,10 +186,49 @@ const AdminOrders: React.FC = () => {
         return searchableText.includes(normalizedQuery);
       })
     : visibleOrders;
-  const showWhccColumn = visibleOrders.some(
+  const showWhccColumn = canViewWhccDetails && visibleOrders.some(
     (order) => order.whccConfirmationId || order.whccImportResponse || order.whccSubmitResponse || order.whccLastError || order.trackingNumber || order.whccWebhookEvent
   );
   const tableColumnCount = showWhccColumn ? 7 : 6;
+
+  const formatWhccPayload = (value: unknown) => {
+    if (value == null) return null;
+    if (typeof value === 'string') {
+      try {
+        return JSON.stringify(JSON.parse(value), null, 2);
+      } catch {
+        return value;
+      }
+    }
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch {
+      return String(value);
+    }
+  };
+
+  const formatDateTime = (value: unknown) => {
+    if (!value) return null;
+    const date = new Date(String(value));
+    if (Number.isNaN(date.getTime())) return String(value);
+    return date.toLocaleString();
+  };
+
+  const renderWhccLogBlock = (title: string, value: unknown, defaultOpen = false, runAt?: unknown) => {
+    const formatted = formatWhccPayload(value);
+    if (!formatted) return null;
+    const runAtText = formatDateTime(runAt);
+
+    return (
+      <details className="whcc-log-panel" open={defaultOpen}>
+        <summary className="whcc-log-summary">
+          <span>{title}</span>
+          {runAtText && <span className="whcc-log-run-at">Last run: {runAtText}</span>}
+        </summary>
+        <pre className="whcc-log-content">{formatted}</pre>
+      </details>
+    );
+  };
 
   useEffect(() => {
     const queryOrderId = Number(new URLSearchParams(location.search).get('orderId'));
@@ -187,6 +262,16 @@ const AdminOrders: React.FC = () => {
   const renderOrderDetails = (order: Order) => (
     <div className="admin-order-detail-panel">
       {(() => {
+        const hasWhccData = Boolean(
+          order.whccConfirmationId ||
+          order.whccOrderNumber ||
+          order.whccWebhookEvent ||
+          order.whccWebhookStatus ||
+          order.whccLastError ||
+          order.whccRequestLog ||
+          order.whccImportResponse ||
+          order.whccSubmitResponse
+        );
         const studioRevenue = (order.items || []).reduce(
           (sum, item) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 0),
           0
@@ -195,9 +280,37 @@ const AdminOrders: React.FC = () => {
           (sum, item) => sum + (Number(item.basePrice) || 0) * (Number(item.quantity) || 0),
           0
         );
+        const shippingCost = Number(order.shippingCost) || 0;
+        const taxAmount = Number(order.taxAmount) || 0;
         const stripeFeeAmount = Number(order.stripeFeeAmount) || 0;
-        const grossStudioMarkup = studioRevenue - baseRevenue;
-        const estimatedStudioProfit = grossStudioMarkup - stripeFeeAmount;
+        const otherOrderCosts = shippingCost + taxAmount + stripeFeeAmount;
+        const grossMargin = studioRevenue - baseRevenue - otherOrderCosts;
+        const importRunAt =
+          order.whccRequestLog?.importResponseMeta?.runAt ||
+          order.whccImportResponse?.Received ||
+          order.whccImportResponse?.received ||
+          order.whccImportResponse?.Timestamp ||
+          null;
+        const submitRunAt =
+          order.whccRequestLog?.submitResponseMeta?.runAt ||
+          order.whccSubmitResponse?.Received ||
+          order.whccSubmitResponse?.received ||
+          order.whccSubmitResponse?.Timestamp ||
+          order.labSubmittedAt ||
+          null;
+        const errorRunAt =
+          order.whccLastError?.runAt ||
+          order.whccLastError?.timestamp ||
+          order.whccLastError?.createdAt ||
+          null;
+        const lastWhccAttemptAt =
+          order.whccRequestLog?.submitRequest?.runAt ||
+          order.whccRequestLog?.importRequest?.runAt ||
+          order.whccRequestLog?.tokenRequest?.runAt ||
+          submitRunAt ||
+          importRunAt ||
+          errorRunAt ||
+          null;
 
         return (
           <>
@@ -228,18 +341,138 @@ const AdminOrders: React.FC = () => {
           <span>{order.shippingAddress?.country || 'US'}</span>
         </div>
         <div className="admin-order-detail-box">
-          <strong>Shipping & WHCC</strong>
+          <strong>Shipping</strong>
           <span>{order.shippingOption || 'direct'}</span>
-          <span>{order.shippingCarrier || 'Carrier pending'}</span>
-          {order.trackingNumber ? <span>Tracking: {order.trackingNumber}</span> : <span>Tracking pending</span>}
+          {order.shippingCarrier ? (
+            <span><strong>Carrier:</strong> {order.shippingCarrier}</span>
+          ) : (
+            <span className="whcc-meta">Carrier pending</span>
+          )}
+          {order.trackingNumber ? (
+            <span><strong>Tracking:</strong> {order.trackingNumber}</span>
+          ) : (
+            <span className="whcc-meta">Tracking pending</span>
+          )}
+          {order.shippedAt ? (
+            <span><strong>Shipped:</strong> {new Date(order.shippedAt).toLocaleString()}</span>
+          ) : null}
           {order.trackingUrl ? (
             <a className="whcc-link" href={order.trackingUrl} target="_blank" rel="noopener noreferrer">
-              Track package
+              Track package ↗
             </a>
           ) : null}
-          <span>{order.whccWebhookEvent || order.whccWebhookStatus || 'No webhook yet'}</span>
         </div>
       </div>
+
+      {canViewWhccDetails && (hasWhccData || !order.labSubmitted) && (
+        <div className="whcc-detail-section">
+          <div className="whcc-detail-header">
+            <span className="whcc-detail-title">WHCC Lab Details</span>
+          </div>
+          <div className="whcc-detail-grid">
+            {order.whccConfirmationId && (
+              <div className="whcc-detail-field">
+                <span className="whcc-detail-label">Confirmation ID</span>
+                <span className="whcc-confirmation-id">{order.whccConfirmationId}</span>
+              </div>
+            )}
+            {order.whccOrderNumber && (
+              <div className="whcc-detail-field">
+                <span className="whcc-detail-label">WHCC Order #</span>
+                <span className="whcc-detail-value">{order.whccOrderNumber}</span>
+              </div>
+            )}
+            {order.whccWebhookEvent && (
+              <div className="whcc-detail-field">
+                <span className="whcc-detail-label">Webhook Event</span>
+                <span className="whcc-detail-value">{order.whccWebhookEvent}</span>
+              </div>
+            )}
+            {order.whccWebhookStatus && (
+              <div className="whcc-detail-field">
+                <span className="whcc-detail-label">Webhook Status</span>
+                <span className="whcc-detail-value">{order.whccWebhookStatus}</span>
+              </div>
+            )}
+            {order.whccSubmitResponse?.Received && (
+              <div className="whcc-detail-field">
+                <span className="whcc-detail-label">Submitted</span>
+                <span className="whcc-detail-value">{String(order.whccSubmitResponse.Received)}</span>
+              </div>
+            )}
+            {order.whccSubmitResponse?.Confirmation && (
+              <div className="whcc-detail-field">
+                <span className="whcc-detail-label">Confirmation Msg</span>
+                <span className="whcc-detail-value">{String(order.whccSubmitResponse.Confirmation)}</span>
+              </div>
+            )}
+            {importRunAt && (
+              <div className="whcc-detail-field">
+                <span className="whcc-detail-label">Import Response Run</span>
+                <span className="whcc-detail-value">{formatDateTime(importRunAt)}</span>
+              </div>
+            )}
+            {submitRunAt && (
+              <div className="whcc-detail-field">
+                <span className="whcc-detail-label">Submit Response Run</span>
+                <span className="whcc-detail-value">{formatDateTime(submitRunAt)}</span>
+              </div>
+            )}
+            {errorRunAt && (
+              <div className="whcc-detail-field">
+                <span className="whcc-detail-label">Last Error Run</span>
+                <span className="whcc-detail-value">{formatDateTime(errorRunAt)}</span>
+              </div>
+            )}
+            {lastWhccAttemptAt && (
+              <div className="whcc-detail-field">
+                <span className="whcc-detail-label">Last WHCC Attempt</span>
+                <span className="whcc-detail-value">{formatDateTime(lastWhccAttemptAt)}</span>
+              </div>
+            )}
+          </div>
+          {order.whccLastError && (
+            <div className="whcc-error-box">
+              <span className="whcc-error-label">⚠ Last Error</span>
+              <pre className="whcc-error-content">
+                {formatWhccPayload(order.whccLastError)}
+              </pre>
+            </div>
+          )}
+          <div className="whcc-log-list">
+            {renderWhccLogBlock('Full OrderImport Payload Sent to WHCC', order.whccRequestLog?.importRequest?.body, true, order.whccRequestLog?.importRequest?.runAt)}
+            {renderWhccLogBlock('WHCC Token Request Metadata', order.whccRequestLog?.tokenRequest, false, order.whccRequestLog?.tokenRequest?.runAt)}
+            {renderWhccLogBlock('WHCC Import Request Envelope', order.whccRequestLog?.importRequest, false, order.whccRequestLog?.importRequest?.runAt)}
+            {renderWhccLogBlock('WHCC Submit Request', order.whccRequestLog?.submitRequest, false, order.whccRequestLog?.submitRequest?.runAt)}
+            {renderWhccLogBlock('WHCC Import Response', order.whccImportResponse, false, importRunAt)}
+            {renderWhccLogBlock('WHCC Submit Response', order.whccSubmitResponse, false, submitRunAt)}
+            {!order.whccRequestLog && (
+              <div className="whcc-log-hint">
+                Retry the WHCC submission to capture the full payload sent to WHCC for this order.
+              </div>
+            )}
+          </div>
+          {!order.labSubmitted && (
+            <div className="whcc-retry-row">
+              <div className="whcc-retry-inline">
+              <button
+                type="button"
+                className="whcc-retry-btn"
+                disabled={whccRetrying === order.id}
+                onClick={() => handleWhccRetry(order.id)}
+              >
+                {whccRetrying === order.id ? '⏳ Retrying…' : '↺ Retry WHCC Submission'}
+              </button>
+                {whccRetryMessageByOrder[order.id]?.text && (
+                  <span className={`whcc-retry-message ${whccRetryMessageByOrder[order.id].tone === 'error' ? 'is-error' : 'is-info'}`}>
+                    {whccRetryMessageByOrder[order.id].text}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="admin-order-items-grid">
         {order.items.map((item) => (
@@ -258,9 +491,11 @@ const AdminOrders: React.FC = () => {
           <div className="admin-order-pricing-row"><span>Tax</span><span>${Number(order.taxAmount).toFixed(2)}</span></div>
         )}
         <div className="admin-order-pricing-row admin-order-pricing-total"><span>Total Charged</span><span>${Number(order.totalAmount).toFixed(2)}</span></div>
+        <div className="admin-order-pricing-row"><span>Studio Price Total</span><span>${studioRevenue.toFixed(2)}</span></div>
+        <div className="admin-order-pricing-row"><span>Base Cost Total</span><span>${baseRevenue.toFixed(2)}</span></div>
+        <div className="admin-order-pricing-row"><span>Other Order Costs</span><span>${otherOrderCosts.toFixed(2)}</span></div>
         <div className="admin-order-pricing-row"><span>Stripe Fees</span><span>${stripeFeeAmount.toFixed(2)}</span></div>
-        <div className="admin-order-pricing-row"><span>Gross Markup</span><span>${grossStudioMarkup.toFixed(2)}</span></div>
-        <div className="admin-order-pricing-row admin-order-profit-row"><span>Estimated Profit</span><span>${estimatedStudioProfit.toFixed(2)}</span></div>
+        <div className="admin-order-pricing-row admin-order-profit-row"><span>Gross Margin</span><span>${grossMargin.toFixed(2)}</span></div>
       </div>
 
       {order.excludedItemsNote ? <p className="admin-order-profit-note">{order.excludedItemsNote}</p> : null}

@@ -4,6 +4,7 @@ import { studioPriceListService } from '../../services/studioPriceListService';
 import { packageService } from '../../services/packageService';
 import { superPriceListService } from '../../services/superPriceListService';
 import { useAuth } from '../../contexts/AuthContext';
+import './AdminPriceLists.css';
 
 const baseProductName = (name: string) => {
 	return String(name || 'Unknown Product')
@@ -47,6 +48,7 @@ const AdminPriceLists: React.FC = () => {
 	const [savingPackage, setSavingPackage] = useState(false);
 	const [catCollapsed, setCatCollapsed] = useState<Record<string, boolean>>({});
 	const [prodCollapsed, setProdCollapsed] = useState<Record<string, boolean>>({});
+	const [itemFilterText, setItemFilterText] = useState('');
 
 	const groupedItems = useMemo(() => {
 		const grouped: Record<string, Record<string, any[]>> = {};
@@ -67,6 +69,33 @@ const AdminPriceLists: React.FC = () => {
 		});
 		return grouped;
 	}, [items]);
+
+	const normalizedFilterText = useMemo(() => String(itemFilterText || '').trim().toLowerCase(), [itemFilterText]);
+
+	const filteredGroupedItems = useMemo(() => {
+		const next: Record<string, Record<string, any[]>> = {};
+		Object.keys(groupedItems).forEach((cat) => {
+			Object.keys(groupedItems[cat] || {}).forEach((product) => {
+				const filteredSizes = (groupedItems[cat][product] || []).filter((item: any) => {
+					if (!normalizedFilterText) return true;
+					const sizeLabel = String(item._sizeLabel || item.size_name || '—');
+					const searchable = `${cat} ${product} ${sizeLabel}`.toLowerCase();
+					return searchable.includes(normalizedFilterText);
+				});
+				if (!filteredSizes.length) return;
+				if (!next[cat]) next[cat] = {};
+				next[cat][product] = filteredSizes;
+			});
+		});
+		return next;
+	}, [groupedItems, normalizedFilterText]);
+
+	const filteredItemIds = useMemo(
+		() => Object.values(filteredGroupedItems).flatMap((productsByName: any) =>
+			Object.values(productsByName || {}).flatMap((rows: any) => rows.map((item: any) => Number(item.id)).filter((id: number) => Number.isInteger(id)))
+		),
+		[filteredGroupedItems]
+	);
 
 	useEffect(() => {
 		if (!effectiveStudioId) return;
@@ -102,6 +131,7 @@ const AdminPriceLists: React.FC = () => {
 
 	const handleSelectList = async (list: any) => {
 		setSelectedPriceList(list);
+		setItemFilterText('');
 		setLoading(true);
 		try {
 			const items = await studioPriceListService.getItems(list.id);
@@ -173,11 +203,11 @@ const AdminPriceLists: React.FC = () => {
 	};
 
 	const getCategoryItemIds = (category: string) => {
-		return Object.values(groupedItems[category] || {}).flat().map((i: any) => i.id as number);
+		return Object.values(filteredGroupedItems[category] || {}).flat().map((i: any) => i.id as number);
 	};
 
 	const getProductItemIds = (category: string, product: string) => {
-		return (groupedItems[category]?.[product] || []).map((i: any) => i.id as number);
+		return (filteredGroupedItems[category]?.[product] || []).map((i: any) => i.id as number);
 	};
 
 	const isAllOffered = (ids: number[]) => ids.length > 0 && ids.every(id => !!items.find((i: any) => i.id === id)?.is_offered);
@@ -224,9 +254,9 @@ const AdminPriceLists: React.FC = () => {
 	const handleExpandAll = () => {
 		const nextCats: Record<string, boolean> = {};
 		const nextProds: Record<string, boolean> = {};
-		Object.keys(groupedItems).forEach((cat) => {
+		Object.keys(filteredGroupedItems).forEach((cat) => {
 			nextCats[cat] = false;
-			Object.keys(groupedItems[cat] || {}).forEach((product) => {
+			Object.keys(filteredGroupedItems[cat] || {}).forEach((product) => {
 				nextProds[`${cat}||${product}`] = false;
 			});
 		});
@@ -237,9 +267,9 @@ const AdminPriceLists: React.FC = () => {
 	const handleContractAll = () => {
 		const nextCats: Record<string, boolean> = {};
 		const nextProds: Record<string, boolean> = {};
-		Object.keys(groupedItems).forEach((cat) => {
+		Object.keys(filteredGroupedItems).forEach((cat) => {
 			nextCats[cat] = true;
-			Object.keys(groupedItems[cat] || {}).forEach((product) => {
+			Object.keys(filteredGroupedItems[cat] || {}).forEach((product) => {
 				nextProds[`${cat}||${product}`] = true;
 			});
 		});
@@ -329,16 +359,20 @@ const AdminPriceLists: React.FC = () => {
 	};
 
 	return (
-		<div>
-			<h2>Studio Price Lists</h2>
-			{!effectiveStudioId && <div style={{ color: 'red' }}>No studio context found. Cannot manage studio price lists.</div>}
-			{loading && <div>Loading...</div>}
-			{error && <div style={{ color: 'red' }}>{error}</div>}
+		<div className="admin-orders-container admin-price-lists-page">
+			<div className="admin-orders-header">
+				<h1>Studio Price Lists</h1>
+			</div>
+			{!effectiveStudioId && <div className="admin-price-lists-alert">No studio context found. Cannot manage studio price lists.</div>}
+			{loading && <div className="admin-price-lists-muted">Loading...</div>}
+			{error && <div className="admin-price-lists-alert">{error}</div>}
 
-			<button onClick={() => setShowCreateForm(true)} disabled={!effectiveStudioId} className="btn btn-primary" style={{ marginBottom: 16 }}>+ Create Price List</button>
+			<div className="admin-price-lists-toolbar">
+				<button onClick={() => setShowCreateForm(true)} disabled={!effectiveStudioId} className="btn btn-primary" style={{ marginBottom: 16 }}>+ Create Price List</button>
+			</div>
 
 			{showCreateForm && (
-				<form onSubmit={handleCreatePriceList} style={{ marginBottom: 24 }}>
+				<form onSubmit={handleCreatePriceList} className="admin-price-lists-create-form" style={{ marginBottom: 24 }}>
 					<input
 						type="text"
 						value={newListName}
@@ -370,9 +404,9 @@ const AdminPriceLists: React.FC = () => {
 				</form>
 			)}
 
-			<ul>
+			<ul className="admin-price-lists-list">
 				{priceLists.map(list => (
-					<li key={list.id} style={{ marginBottom: 8 }}>
+					<li key={list.id} className="admin-price-lists-list-item" style={{ marginBottom: 8 }}>
 						<button onClick={() => handleSelectList(list)} className="btn btn-link">{list.name}</button>
 						{list.super_price_list_name && <span style={{ marginLeft: 8, color: '#aaa' }}>from {list.super_price_list_name}</span>}
 						{list.description && <span style={{ marginLeft: 8, color: '#888' }}>{list.description}</span>}
@@ -381,18 +415,34 @@ const AdminPriceLists: React.FC = () => {
 			</ul>
 
 			{selectedPriceList && (
-				<div style={{ marginTop: 20 }}>
+				<div className="admin-orders-card" style={{ marginTop: 20 }}>
 					<h3>Items for {selectedPriceList.name}</h3>
+					<div className="admin-price-lists-filters-row" style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+						<label style={{ color: '#aaa' }}>Filter:</label>
+						<input
+							type="text"
+							value={itemFilterText}
+							onChange={(e) => setItemFilterText(e.target.value)}
+							placeholder="Type category, product, or size"
+							style={{ minWidth: 280 }}
+						/>
+						<button
+							className="btn btn-secondary btn-sm"
+							onClick={() => setItemFilterText('')}
+						>
+							Clear Filters
+						</button>
+					</div>
 					<div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
 						<button
 							className="btn btn-secondary btn-sm"
-							onClick={() => handleToggleOfferedBulk(items.map((i: any) => i.id), true)}
+							onClick={() => handleToggleOfferedBulk(filteredItemIds, true)}
 						>
 							Offer All
 						</button>
 						<button
 							className="btn btn-secondary btn-sm"
-							onClick={() => handleToggleOfferedBulk(items.map((i: any) => i.id), false)}
+							onClick={() => handleToggleOfferedBulk(filteredItemIds, false)}
 						>
 							Unoffer All
 						</button>
@@ -412,14 +462,14 @@ const AdminPriceLists: React.FC = () => {
 						</button>
 					</div>
 					<div>
-						{Object.keys(groupedItems).length === 0 && (
-							<div style={{ color: '#999' }}>No active items available from selected super-admin list.</div>
+						{Object.keys(filteredGroupedItems).length === 0 && (
+							<div style={{ color: '#999' }}>No items match the current filters.</div>
 						)}
-						{Object.keys(groupedItems).map((cat) => (
+						{Object.keys(filteredGroupedItems).map((cat) => (
 							<div key={cat} style={{ border: '1px solid #2c2c3a', borderRadius: 8, marginBottom: 6, overflow: 'hidden' }}>
 								{(() => {
-									const firstProduct = Object.keys(groupedItems[cat] || {})[0];
-									const firstItem = firstProduct ? groupedItems[cat][firstProduct]?.[0] : null;
+									const firstProduct = Object.keys(filteredGroupedItems[cat] || {})[0];
+									const firstItem = firstProduct ? filteredGroupedItems[cat][firstProduct]?.[0] : null;
 									const categoryImageUrl = firstItem?.category_image_url;
 									return (
 								<div
@@ -450,7 +500,7 @@ const AdminPriceLists: React.FC = () => {
 								})()}
 								{!catCollapsed[cat] && (
 									<div style={{ padding: '4px 6px' }}>
-										{Object.keys(groupedItems[cat]).map((product) => {
+										{Object.keys(filteredGroupedItems[cat]).map((product) => {
 											const productKey = `${cat}||${product}`;
 											return (
 												<div key={productKey} style={{ border: '1px solid #2a2740', borderRadius: 6, marginBottom: 6, overflow: 'hidden' }}>
@@ -471,7 +521,7 @@ const AdminPriceLists: React.FC = () => {
 													</div>
 													{!prodCollapsed[productKey] && (
 														<div>
-															{groupedItems[cat][product].map((item: any) => (
+															{filteredGroupedItems[cat][product].map((item: any) => (
 																<div key={item.id} style={{ display: 'grid', gridTemplateColumns: '74px 1fr 100px 120px', gap: 6, alignItems: 'center', padding: '4px 8px', borderTop: '1px solid #232036' }}>
 																	<label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
 																		<input

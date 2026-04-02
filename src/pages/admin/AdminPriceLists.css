@@ -1,0 +1,77 @@
+.admin-orders-container {
+  padding: 2rem;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+}
+
+.admin-orders-header {
+  margin-bottom: 1.25rem;
+}
+
+.admin-orders-header h1 {
+  color: #fff;
+  margin: 0;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.admin-price-lists-page {
+  min-height: 100vh;
+}
+
+.admin-price-lists-page .admin-orders-header h1 {
+  font-size: 2.25rem;
+}
+
+.admin-price-lists-alert {
+  margin: 0.5rem 0 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: #fecaca;
+}
+
+.admin-price-lists-muted {
+  color: #cbd5e1;
+  margin-bottom: 0.75rem;
+}
+
+.admin-price-lists-toolbar {
+  margin-bottom: 0.25rem;
+}
+
+.admin-price-lists-create-form,
+.admin-price-lists-list,
+.admin-price-lists-page .admin-orders-card {
+  background: rgba(20, 20, 35, 0.82);
+  border: 1px solid rgba(102, 102, 204, 0.3);
+  border-radius: 12px;
+  padding: 1rem;
+  backdrop-filter: blur(8px);
+}
+
+.admin-price-lists-list {
+  list-style: none;
+  margin: 0;
+}
+
+.admin-price-lists-list-item {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid rgba(102, 102, 204, 0.2);
+}
+
+.admin-price-lists-list-item:last-child {
+  border-bottom: none;
+}
+
+.admin-price-lists-page input,
+.admin-price-lists-page select {
+  background: rgba(40, 40, 60, 0.7);
+  border: 1px solid rgba(102, 102, 204, 0.4);
+  border-radius: 6px;
+  color: #fff;
+  padding: 0.45rem 0.6rem;
+}
+
+.admin-price-lists-page h3 {
+  color: #fff;
+}

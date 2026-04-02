@@ -13,7 +13,10 @@ const AdminConfiguration: React.FC = () => {
   const [activeTab, setActiveTab] = useState('whcc');
 
   return (
-    <>
+    <div className="admin-page">
+      <div className="page-header">
+        <h1>Lab Configuration</h1>
+      </div>
       <div className="admin-tab-strip">
         {TABS.map(tab => (
           <button
@@ -30,7 +33,7 @@ const AdminConfiguration: React.FC = () => {
         {activeTab === 'roes' && <AdminRoesConfig />}
         {activeTab === 'mpix' && <AdminMpixConfig />}
       </div>
-    </>
+    </div>
   );
 };
 

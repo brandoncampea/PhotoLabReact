@@ -102,6 +102,7 @@ router.put('/order', adminRequired, requireActiveSubscription, async (req, res) 
 router.get('/active', async (req, res) => {
   try {
     const user = req.user;
+    const isSuperAdmin = user?.role === 'super_admin';
     let studioId = user?.studio_id;
     const albumId = Number(req.query.albumId);
     if (Number.isInteger(albumId) && albumId > 0) {
@@ -112,30 +113,88 @@ router.get('/active', async (req, res) => {
           : `SELECT id, price_list_id as priceListId, studio_id as studioId FROM albums WHERE id = $1 AND studio_id = $2`,
         user?.role === 'super_admin' || !studioId ? [albumId] : [albumId, studioId]
       );
-      let priceListId = album?.priceListId;
-      // If no priceListId, use studio's default price list
-      if ((!priceListId || priceListId === null) && album?.studioId) {
-        // Find studio's default price list
-        const defaultPL = await queryRow(
-          `SELECT id FROM price_lists WHERE studio_id = $1 AND is_default = 1 LIMIT 1`,
-          [album.studioId]
+      const effectiveStudioId = Number(studioId || album?.studioId || 0) || null;
+
+      // ── NEW SYSTEM: studio_price_list_items (preferred) ──────────────────
+      // Check if the album's studio has configured offerings in the new system
+      if (effectiveStudioId) {
+        const studioPriceList = await queryRow(
+          `SELECT TOP 1 id FROM studio_price_lists WHERE studio_id = $1 ORDER BY is_default DESC, id ASC`,
+          [effectiveStudioId]
         );
-        if (defaultPL && defaultPL.id) {
+        if (studioPriceList?.id) {
+          const rows = await queryRows(
+            `SELECT
+               p.id as productId, p.name as productName, p.category, p.description, p.options,
+               ps.id as sizeId, ps.size_name as sizeName, ps.cost as sizeCost,
+               COALESCE(spi.price, ps.price) as sizePrice
+             FROM studio_price_list_items spi
+             JOIN product_sizes ps ON ps.id = spi.product_size_id
+             JOIN products p ON p.id = ps.product_id
+             WHERE spi.studio_price_list_id = $1
+               AND spi.is_offered = 1
+             ORDER BY p.category, p.name, ps.size_name`,
+            [studioPriceList.id]
+          );
+          // Group rows by product
+          const productMap = new Map();
+          for (const row of rows) {
+            const pid = Number(row.productId);
+            if (!productMap.has(pid)) {
+              const options = row.options ? JSON.parse(row.options) : null;
+              productMap.set(pid, {
+                id: pid,
+                name: row.productName,
+                category: row.category,
+                description: row.description,
+                price: 0,
+                sizes: [],
+                isActive: options?.isActive !== undefined ? !!options.isActive : true,
+                popularity: Number(options?.popularity) || 0,
+                isDigital: !!(options?.isDigital || String(row.productName || '').toLowerCase().includes('digital')),
+              });
+            }
+            const decoded = decodeSizeName(row.sizeName);
+            const sizePrice = Number(row.sizePrice) || 0;
+            const entry = productMap.get(pid);
+            entry.sizes.push({
+              id: Number(row.sizeId),
+              name: decoded.name,
+              width: decoded.width,
+              height: decoded.height,
+              price: sizePrice,
+              cost: Number(row.sizeCost) || 0,
+            });
+            // Product price = lowest offered size price
+            if (entry.price === 0 || sizePrice < entry.price) {
+              entry.price = sizePrice;
+            }
+          }
+          const parsedProducts = Array.from(productMap.values()).filter((p) => p.isActive !== false);
+          return res.json(parsedProducts);
+        }
+      }
+
+      // ── OLD SYSTEM fallback: price_list_products + studio_product_offerings ─
+      let priceListId = album?.priceListId;
+      if ((!priceListId || priceListId === null) && effectiveStudioId) {
+        const defaultPL = await queryRow(
+          `SELECT TOP 1 id FROM price_lists WHERE studio_id = $1 AND is_default = 1`,
+          [effectiveStudioId]
+        );
+        if (defaultPL?.id) {
           priceListId = defaultPL.id;
         } else {
-          // Fallback: use any price list for the studio
           const anyPL = await queryRow(
-            `SELECT id FROM price_lists WHERE studio_id = $1 ORDER BY id ASC LIMIT 1`,
-            [album.studioId]
+            `SELECT TOP 1 id FROM price_lists WHERE studio_id = $1 ORDER BY id ASC`,
+            [effectiveStudioId]
           );
-          if (anyPL && anyPL.id) {
-            priceListId = anyPL.id;
-          }
+          if (anyPL?.id) priceListId = anyPL.id;
         }
       }
       if (priceListId) {
         const products = await queryRows(
-          user?.role === 'super_admin' || !studioId
+          isSuperAdmin || !effectiveStudioId
             ? `SELECT DISTINCT p.id, p.name, p.category, p.price, p.description, p.options
                  FROM products p
                  INNER JOIN price_list_products plp ON plp.product_id = p.id
@@ -145,47 +204,22 @@ router.get('/active', async (req, res) => {
                         COALESCE(spo.price, p.price) as studio_price
                  FROM products p
                  INNER JOIN price_list_products plp ON plp.product_id = p.id
-                 LEFT JOIN studio_product_offerings spo
+                 INNER JOIN studio_product_offerings spo
                    ON spo.product_id = p.id
                   AND spo.studio_id = $2
-                  AND (spo.price_list_id = $1 OR spo.price_list_id IS NULL)
+                  AND spo.price_list_id = $1
+                  AND spo.is_offered = 1
                  WHERE plp.price_list_id = $1
-                   AND (
-                     (spo.price_list_id = $1 AND spo.is_offered = 1)
-                     OR (
-                       NOT EXISTS (
-                         SELECT 1 FROM studio_product_offerings spo2
-                         WHERE spo2.product_id = p.id
-                           AND spo2.studio_id = $2
-                           AND spo2.price_list_id = $1
-                       )
-                       AND spo.price_list_id IS NULL AND spo.is_offered = 1
-                     )
-                   )
                  ORDER BY p.category, p.name`,
-          user?.role === 'super_admin' || !studioId
-            ? [priceListId]
-            : [priceListId, studioId]
+          isSuperAdmin || !effectiveStudioId ? [priceListId] : [priceListId, effectiveStudioId]
         );
         const productSizes = await queryRows(
-          user?.role === 'super_admin' || !studioId
+          isSuperAdmin || !effectiveStudioId
             ? `SELECT ps.id, ps.product_id as productId, ps.size_name as sizeName, ps.price, ps.cost
-                 FROM product_sizes ps
-                 WHERE ps.price_list_id = $1`
-            : `SELECT ps.id, ps.product_id as productId, ps.size_name as sizeName, COALESCE(spsso.price, ps.price) as price, ps.cost
-                 FROM product_sizes ps
-                 LEFT JOIN studio_price_list_size_overrides spsso
-                   ON spsso.product_size_id = ps.id
-                  AND spsso.price_list_id = ps.price_list_id
-                  AND spsso.studio_id = $2
-                 WHERE ps.price_list_id = $1
-                   AND (
-                     $2 IS NULL
-                     OR COALESCE(spsso.is_offered, 1) = 1
-                   )`,
-          user?.role === 'super_admin' || !studioId
-            ? [priceListId]
-            : [priceListId, studioId]
+                 FROM product_sizes ps WHERE ps.price_list_id = $1`
+            : `SELECT ps.id, ps.product_id as productId, ps.size_name as sizeName, ps.price, ps.cost
+                 FROM product_sizes ps WHERE ps.price_list_id = $1`,
+          [priceListId]
         );
         const parsedProducts = products.map((product) => {
           const options = product.options ? JSON.parse(product.options) : null;

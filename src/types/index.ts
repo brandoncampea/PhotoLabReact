@@ -111,6 +111,7 @@ export interface Order {
   whccConfirmationId?: string;
   whccImportResponse?: any;
   whccSubmitResponse?: any;
+  whccRequestLog?: any;
   whccLastError?: any;
   whccOrderNumber?: string;
   whccWebhookStatus?: string;
@@ -197,6 +198,8 @@ export interface Product {
   id: number;
   name: string;
   description: string;
+  category?: string;
+  price?: number;
   sizes: ProductSize[];
   isActive: boolean;
   popularity: number;

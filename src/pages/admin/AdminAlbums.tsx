@@ -5,6 +5,7 @@ import { Album, PriceList } from '../../types';
 import { categoryService } from '../../services/categoryService';
 import { albumAdminService } from '../../services/albumAdminService';
 import AdminLayout from '../../components/AdminLayout';
+import './AdminAlbums.css';
 
 // Helper component for SAS-protected album covers
 function AlbumSasCover({ src, alt }: { src: string, alt: string }) {
@@ -167,8 +168,8 @@ const AdminAlbums: React.FC = () => {
 
   return (
     <AdminLayout>
-      <div>
-      <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+      <div className="admin-orders-container admin-albums-page">
+      <div className="page-header admin-orders-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
         <h1 className="gradient-text" style={{ margin: 0 }}>Manage Albums</h1>
         <button onClick={handleCreate} className="btn btn-primary" style={{ fontSize: 18, padding: '8px 24px' }}>
           + Create Album
@@ -176,7 +177,7 @@ const AdminAlbums: React.FC = () => {
       </div>
 
       {/* Categories Card */}
-      <div className="dashboard-card tallydark-card" style={{ maxWidth: 480, margin: '0 auto 32px auto', padding: 24, background: 'var(--card-bg, #23233a)', boxShadow: '0 2px 12px #0002', borderRadius: 16 }}>
+      <div className="dashboard-card tallydark-card admin-orders-card" style={{ maxWidth: 480, margin: '0 auto 32px auto', padding: 24, background: 'var(--card-bg, #23233a)', boxShadow: '0 2px 12px #0002', borderRadius: 16 }}>
         <div className="categories-section">
           <h3 style={{ marginTop: 0, marginBottom: 16 }}>Categories ({categories.length})</h3>
           <div className="add-category-row" style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
@@ -212,7 +213,7 @@ const AdminAlbums: React.FC = () => {
       </div>
 
       {/* Albums Table Card */}
-      <div className="dashboard-card tallydark-card" style={{ width: '100%', maxWidth: 1200, margin: '0 auto', padding: 24, background: 'var(--card-bg, #23233a)', boxShadow: '0 2px 12px #0002', borderRadius: 16 }}>
+      <div className="dashboard-card tallydark-card admin-orders-card" style={{ width: '100%', maxWidth: 1200, margin: '0 auto', padding: 24, background: 'var(--card-bg, #23233a)', boxShadow: '0 2px 12px #0002', borderRadius: 16 }}>
         <div className="admin-table" style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0 }}>
             <thead>

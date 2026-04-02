@@ -30,6 +30,7 @@ const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard'));
 const AdminSmugMug = lazy(() => import('./pages/admin/AdminSmugMug'));
 const AdminPriceLists = lazy(() => import('./pages/admin/AdminPriceLists'));
 const AdminConfiguration = lazy(() => import('./pages/admin/AdminConfiguration'));
+const AdminVendorIntegrations = lazy(() => import('./pages/admin/AdminVendorIntegrations'));
 const StudioAdminDashboard = lazy(() => import('./pages/admin/StudioAdminDashboard'));
 const AdminAlbums = lazy(() => import('./pages/admin/AdminAlbums'));
 const AdminPhotos = lazy(() => import('./pages/admin/AdminPhotos'));
@@ -90,6 +91,7 @@ function App() {
               <Route path="/admin/smugmug" element={<AdminProtectedRoute><AdminSmugMug /></AdminProtectedRoute>} />
               <Route path="/admin/price-lists" element={<AdminProtectedRoute><AdminPriceLists /></AdminProtectedRoute>} />
               <Route path="/admin/configuration" element={<AdminProtectedRoute><AdminConfiguration /></AdminProtectedRoute>} />
+              <Route path="/admin/vendor-integrations" element={<AdminProtectedRoute><AdminVendorIntegrations /></AdminProtectedRoute>} />
               <Route path="/admin/users" element={<AdminProtectedRoute><AdminUsers /></AdminProtectedRoute>} />
               <Route path="/admin/studio-admins" element={<AdminProtectedRoute><AdminStudioAdmins /></AdminProtectedRoute>} />
               <Route path="/admin/subscription" element={<AdminProtectedRoute><AdminSubscription /></AdminProtectedRoute>} />

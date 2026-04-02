@@ -27,7 +27,12 @@ const Sidebar: React.FC = () => {
 	const isStudioAdmin = user?.role === 'studio_admin';
 	const viewAsStudioId = Number(localStorage.getItem('viewAsStudioId'));
 	const isActingAsStudio = isSuperAdmin && Number.isInteger(viewAsStudioId) && viewAsStudioId > 0;
+	const inStudioAdminMenu = isStudioAdmin || isActingAsStudio;
 	const dashboardPath = isSuperAdmin && !isActingAsStudio ? '/super-admin' : '/admin/dashboard';
+
+	if (!isSuperAdmin && !isStudioAdmin) {
+		return null;
+	}
 
 	return (
 		<aside className={styles.sidebar}>
@@ -37,6 +42,11 @@ const Sidebar: React.FC = () => {
 				<li><Link to="/admin/orders" className={styles.sidebarLink}>Orders</Link></li>
 				<li><Link to="/admin/watermarks" className={styles.sidebarLink}>Watermarks</Link></li>
 				<li><Link to="/admin/shipping" className={styles.sidebarLink}>Shipping</Link></li>
+				<li>
+					<Link to={inStudioAdminMenu ? '/admin/vendor-integrations' : '/admin/configuration'} className={styles.sidebarLink}>
+						{inStudioAdminMenu ? 'Vendor Integrations' : 'Lab Configuration'}
+					</Link>
+				</li>
 				{isStudioAdmin && (
 					<li><Link to="/admin/profile" className={styles.sidebarLink}>Subscription</Link></li>
 				)}

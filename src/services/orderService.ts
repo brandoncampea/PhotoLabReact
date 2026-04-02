@@ -101,4 +101,18 @@ export const orderService = {
     });
     return response.data;
   },
+
+  async whccRetry(orderId: number): Promise<{ success: boolean; message: string }> {
+    try {
+      const response = await api.post(`/orders/admin/whcc-retry/${orderId}`);
+      return response.data;
+    } catch (error: any) {
+      if (error?.response?.status !== 404) {
+        throw error;
+      }
+
+      const fallbackResponse = await api.post(`/orders/admin/${orderId}/whcc-retry`);
+      return fallbackResponse.data;
+    }
+  },
 };

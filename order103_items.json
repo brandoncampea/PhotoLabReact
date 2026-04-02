@@ -1,0 +1,29 @@
+[
+  {
+    "id": 103,
+    "product_id": 136,
+    "product_size_id": 909,
+    "product_name": "Print",
+    "category": "prints",
+    "product_options": null,
+    "size_name": "5x7"
+  },
+  {
+    "id": 104,
+    "product_id": 144,
+    "product_size_id": 931,
+    "product_name": "Fleece Blanket",
+    "category": "textiles",
+    "product_options": null,
+    "size_name": "60x80"
+  },
+  {
+    "id": 105,
+    "product_id": 139,
+    "product_size_id": 920,
+    "product_name": "Wood Frame",
+    "category": "framed",
+    "product_options": null,
+    "size_name": "5x7"
+  }
+]

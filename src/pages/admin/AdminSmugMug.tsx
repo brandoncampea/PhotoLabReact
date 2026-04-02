@@ -53,7 +53,7 @@ interface SmugMugImportProgress {
   error?: string | null;
 }
 
-const AdminSmugMug: React.FC = () => {
+const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) => {
   const { user } = useAuth();
   const effectiveStudioId = Number(localStorage.getItem('viewAsStudioId')) || user?.studioId;
 
@@ -221,12 +221,13 @@ const AdminSmugMug: React.FC = () => {
       }
     };
 
-    await pollProgress();
-    const pollInterval = window.setInterval(() => {
-      pollProgress();
-    }, 800);
+    let pollInterval: number | null = null;
 
     try {
+      pollInterval = window.setInterval(() => {
+        pollProgress();
+      }, 800);
+
       const response = await fetch('/api/smugmug/import', {
         method: 'POST',
         headers: {
@@ -258,7 +259,9 @@ const AdminSmugMug: React.FC = () => {
     } catch (err: any) {
       setSmugmugNotice(err.message || 'SmugMug import failed');
     } finally {
-      window.clearInterval(pollInterval);
+      if (pollInterval !== null) {
+        window.clearInterval(pollInterval);
+      }
       await pollProgress();
       setSmugmugImporting(false);
     }
@@ -303,8 +306,8 @@ const AdminSmugMug: React.FC = () => {
     );
   }
 
-  return (
-    <AdminLayout>
+  const content = (
+    <>
       <h1>SmugMug Import</h1>
       <p style={{ color: 'var(--text-secondary)', marginBottom: '16px' }}>
         Connect your SmugMug account, load albums, then choose exactly which albums to import.
@@ -538,8 +541,14 @@ const AdminSmugMug: React.FC = () => {
           </>
         )}
       </div>
-    </AdminLayout>
+    </>
   );
+
+  if (embedded) {
+    return <div className="admin-page">{content}</div>;
+  }
+
+  return <AdminLayout>{content}</AdminLayout>;
 };
 
 export default AdminSmugMug;

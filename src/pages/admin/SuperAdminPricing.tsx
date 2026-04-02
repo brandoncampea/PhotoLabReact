@@ -6,6 +6,9 @@ import AdminMpixImport from '../../components/AdminMpixImport';
 import Modal from '../../components/Modal/Modal';
 import { PriceList } from '../../types/index';
 import { superPriceListService } from '../../services/superPriceListService';
+import { whccService } from '../../services/whccService';
+
+type SuperPriceListRow = PriceList & { linkedStudioCount?: number };
 
 // Indeterminate checkbox helper
 const IndeterminateCheckbox: React.FC<{
@@ -65,15 +68,138 @@ function groupItems(items: any[]): Record<string, Record<string, any[]>> {
   return grouped;
 }
 
+type ItemDraft = {
+  base_cost: string;
+  markup_percent: string;
+  whccProductUID: string;
+  whccProductNodeID: string;
+  whccItemAttributeUIDs: string;
+};
+
+type WhccCatalogEntry = {
+  key: string;
+  category: string;
+  name: string;
+  description: string;
+  productUID: number;
+  productNodeID: number | null;
+  itemAttributeUIDs: number[];
+  searchText: string;
+};
+
+type WhccMatchCandidate = {
+  entry: WhccCatalogEntry;
+  score: number;
+};
+
+type WhccAutoMatchReportRow = {
+  itemId: number;
+  productName: string;
+  sizeName: string;
+  status: 'ready' | 'review' | 'mapped';
+  score: number;
+  suggestion: WhccCatalogEntry | null;
+};
+
+function getWhccProductUID(prod: any): number {
+  const raw = prod?.productUID ?? prod?.ProductUID ?? prod?.productUid ?? prod?.ProductUid ?? prod?.Id ?? prod?.id;
+  const value = Number(raw);
+  return Number.isInteger(value) && value > 0 ? value : 0;
+}
+
+function getWhccProductNodeID(prod: any): number | null {
+  const raw =
+    prod?.ProductNodeID ??
+    prod?.productNodeID ??
+    prod?.DefaultProductNodeID ??
+    prod?.defaultProductNodeID ??
+    (Array.isArray(prod?.ProductNodes)
+      ? (prod.ProductNodes[0]?.DP2NodeID ?? prod.ProductNodes[0]?.ProductNodeID)
+      : null) ??
+    (Array.isArray(prod?.productNodes)
+      ? (prod.productNodes[0]?.dp2NodeID ?? prod.productNodes[0]?.productNodeID)
+      : null);
+  const value = Number(raw);
+  return Number.isInteger(value) && value > 0 ? value : null;
+}
+
+function getWhccItemAttributeUIDs(prod: any): number[] {
+  const attrs =
+    prod?.DefaultItemAttributes ??
+    prod?.defaultItemAttributes ??
+    prod?.ItemAttributes ??
+    prod?.itemAttributes ??
+    [];
+
+  if (!Array.isArray(attrs)) return [];
+
+  return attrs
+    .map((attr: any) => Number(attr?.AttributeUID ?? attr?.attributeUID ?? attr?.uid ?? attr))
+    .filter((value: number) => Number.isInteger(value) && value > 0);
+}
+
+function normalizeWhccCatalog(rawCatalog: any): WhccCatalogEntry[] {
+  const categories = Array.isArray(rawCatalog?.Categories)
+    ? rawCatalog.Categories
+    : Array.isArray(rawCatalog?.products)
+    ? [{ Name: 'Fallback', ProductList: rawCatalog.products }]
+    : Array.isArray(rawCatalog)
+    ? [{ Name: 'Fallback', ProductList: rawCatalog }]
+    : [];
+
+  return categories.flatMap((category: any, categoryIndex: number) => {
+    const categoryName = String(category?.Name || category?.name || 'Uncategorized');
+    const productList = Array.isArray(category?.ProductList) ? category.ProductList : [];
+
+    return productList
+      .map((product: any, productIndex: number) => {
+        const productUID = getWhccProductUID(product);
+        if (!productUID) return null;
+
+        const name = String(product?.Name || product?.name || product?.Description || product?.description || `WHCC Product ${productUID}`);
+        const description = String(product?.Description || product?.description || '');
+        const itemAttributeUIDs = getWhccItemAttributeUIDs(product);
+        const productNodeID = getWhccProductNodeID(product);
+
+        return {
+          key: `${categoryIndex}-${productIndex}-${productUID}`,
+          category: categoryName,
+          name,
+          description,
+          productUID,
+          productNodeID,
+          itemAttributeUIDs,
+          searchText: `${categoryName} ${name} ${description} ${itemAttributeUIDs.join(' ')}`.toLowerCase(),
+        } as WhccCatalogEntry;
+      })
+      .filter(Boolean) as WhccCatalogEntry[];
+  });
+}
+
+function buildItemDrafts(items: any[]): Record<number, ItemDraft> {
+  const drafts: Record<number, ItemDraft> = {};
+  items.forEach(item => {
+    drafts[item.id] = {
+      base_cost: String(item.base_cost ?? ''),
+      markup_percent: String(item.markup_percent ?? ''),
+      whccProductUID: String(item.whccProductUID ?? ''),
+      whccProductNodeID: String(item.whccProductNodeID ?? ''),
+      whccItemAttributeUIDs: Array.isArray(item.whccItemAttributeUIDs) ? item.whccItemAttributeUIDs.join(', ') : '',
+    };
+  });
+  return drafts;
+}
+
 const SuperAdminPricing: React.FC = () => {
   const [importType, setImportType] = useState<null | 'whcc' | 'csv' | 'mpix'>(null);
-  const [priceLists, setPriceLists] = useState<PriceList[]>([]);
+  const [priceLists, setPriceLists] = useState<SuperPriceListRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newListName, setNewListName] = useState('');
   const [newListDescription, setNewListDescription] = useState('');
   const [creating, setCreating] = useState(false);
+  const [deletingListId, setDeletingListId] = useState<number | null>(null);
 
   // ── View/Edit modal state ──────────────────────────────────────────────────
   const [viewList, setViewList] = useState<PriceList | null>(null);
@@ -82,7 +208,7 @@ const SuperAdminPricing: React.FC = () => {
   const [viewError, setViewError] = useState('');
   const [viewSearch, setViewSearch] = useState('');
   // item drafts: local editable values (auto-saved on blur)
-  const [itemDrafts, setItemDrafts] = useState<Record<number, { base_cost: string; markup_percent: string }>>({});
+  const [itemDrafts, setItemDrafts] = useState<Record<number, ItemDraft>>({});
   const [autoSaving, setAutoSaving] = useState<Record<number, boolean>>({});
   const [togglingActive, setTogglingActive] = useState(false);
   // collapse state
@@ -102,6 +228,16 @@ const SuperAdminPricing: React.FC = () => {
   const [manualBaseCost, setManualBaseCost] = useState('');
   const [manualMarkup, setManualMarkup] = useState('');
   const [addingManual, setAddingManual] = useState(false);
+  const [whccCatalog, setWhccCatalog] = useState<WhccCatalogEntry[]>([]);
+  const [whccCatalogLoading, setWhccCatalogLoading] = useState(false);
+  const [whccCatalogError, setWhccCatalogError] = useState('');
+  const [pickerItemId, setPickerItemId] = useState<number | null>(null);
+  const [pickerQuery, setPickerQuery] = useState('');
+  const [autoMatchingWhcc, setAutoMatchingWhcc] = useState(false);
+  const [syncingWhccCosts, setSyncingWhccCosts] = useState(false);
+  const [fillingWhccNodes, setFillingWhccNodes] = useState(false);
+  const [whccReportRows, setWhccReportRows] = useState<WhccAutoMatchReportRow[]>([]);
+  const [whccReportVisible, setWhccReportVisible] = useState(false);
 
   // derive grouped structure from viewItems
   const viewGrouped = useMemo(() => groupItems(viewItems), [viewItems]);
@@ -134,7 +270,7 @@ const SuperAdminPricing: React.FC = () => {
 
   useEffect(() => { loadPriceLists(); }, []);
 
-  const openViewEdit = async (list: PriceList) => {
+  const openViewEdit = async (list: SuperPriceListRow) => {
     setViewList(list);
     setViewItems([]);
     setViewError('');
@@ -145,6 +281,8 @@ const SuperAdminPricing: React.FC = () => {
     setCategoryImages({});
     setCatCollapsed({});
     setProdCollapsed({});
+    setWhccReportRows([]);
+    setWhccReportVisible(false);
     try {
       const [items, images] = await Promise.all([
         superPriceListService.getItems(list.id),
@@ -153,9 +291,7 @@ const SuperAdminPricing: React.FC = () => {
       const arr: any[] = Array.isArray(items) ? items : [];
       setViewItems(arr);
       // init drafts
-      const drafts: Record<number, { base_cost: string; markup_percent: string }> = {};
-      arr.forEach(i => { drafts[i.id] = { base_cost: String(i.base_cost ?? ''), markup_percent: String(i.markup_percent ?? '') }; });
-      setItemDrafts(drafts);
+      setItemDrafts(buildItemDrafts(arr));
       // init category images
       const imgMap: Record<string, string> = {};
       if (Array.isArray(images)) images.forEach((img: any) => { imgMap[img.category_name] = img.image_url; });
@@ -171,7 +307,70 @@ const SuperAdminPricing: React.FC = () => {
     }
   };
 
-  const closeViewEdit = () => { setViewList(null); setViewItems([]); setItemDrafts({}); };
+  const closeViewEdit = () => {
+    setViewList(null);
+    setViewItems([]);
+    setItemDrafts({});
+    setWhccReportRows([]);
+    setWhccReportVisible(false);
+  };
+
+  const handleDeleteList = async (list: SuperPriceListRow) => {
+    const linkedCount = Number(list.linkedStudioCount || 0);
+    const confirmed = window.confirm(
+      linkedCount > 0
+        ? `Delete "${list.name}"? This will also delete ${linkedCount} linked studio price list${linkedCount === 1 ? '' : 's'}.`
+        : `Delete "${list.name}"? This cannot be undone.`
+    );
+
+    if (!confirmed) return;
+
+    setDeletingListId(list.id);
+    setError('');
+    try {
+      await superPriceListService.deleteList(list.id);
+      if (viewList?.id === list.id) {
+        closeViewEdit();
+      }
+      await loadPriceLists();
+    } catch (err: any) {
+      const details = err?.response?.data?.error || err?.message || 'Failed to delete price list';
+      setError(String(details));
+    } finally {
+      setDeletingListId(null);
+    }
+  };
+
+  const ensureWhccCatalogLoaded = useCallback(async () => {
+    if (whccCatalog.length || whccCatalogLoading) return;
+    setWhccCatalogLoading(true);
+    setWhccCatalogError('');
+    try {
+      const rawCatalog = await whccService.getProductCatalog();
+      const normalized = normalizeWhccCatalog(rawCatalog);
+      setWhccCatalog(normalized);
+      if (!normalized.length) {
+        setWhccCatalogError('No WHCC catalog products were returned.');
+      }
+    } catch {
+      setWhccCatalogError('Failed to load WHCC catalog.');
+    } finally {
+      setWhccCatalogLoading(false);
+    }
+  }, [whccCatalog, whccCatalogLoading]);
+
+  const openWhccPicker = async (item: any) => {
+    setPickerItemId(item.id);
+    setPickerQuery(`${item.product_name || ''} ${item.size_name || ''}`.trim());
+    await ensureWhccCatalogLoaded();
+  };
+
+  const itemNeedsWhccMapping = useCallback((item: any) => {
+    const productUID = Number(item.whccProductUID || 0);
+    const productNodeID = Number(item.whccProductNodeID || 0);
+    const attributes = Array.isArray(item.whccItemAttributeUIDs) ? item.whccItemAttributeUIDs : [];
+    return !(productUID > 0 && (productNodeID > 0 || attributes.length > 0));
+  }, []);
 
   const handleManualAdd = async () => {
     if (!viewList) return;
@@ -199,9 +398,7 @@ const SuperAdminPricing: React.FC = () => {
       const items = await superPriceListService.getItems(viewList.id);
       const arr: any[] = Array.isArray(items) ? items : [];
       setViewItems(arr);
-      const drafts: Record<number, { base_cost: string; markup_percent: string }> = {};
-      arr.forEach(i => { drafts[i.id] = { base_cost: String(i.base_cost ?? ''), markup_percent: String(i.markup_percent ?? '') }; });
-      setItemDrafts(drafts);
+      setItemDrafts(buildItemDrafts(arr));
 
       setManualProductName('');
       setManualSizeName('');
@@ -217,21 +414,217 @@ const SuperAdminPricing: React.FC = () => {
   };
 
   // ── Auto-save on blur ──────────────────────────────────────────────────────
-  const autoSaveItem = async (itemId: number) => {
-    const draft = itemDrafts[itemId];
+  const autoSaveItem = async (itemId: number, draftOverride?: ItemDraft) => {
+    const draft = draftOverride || itemDrafts[itemId];
     const original = viewItems.find(i => i.id === itemId);
     if (!draft || !original) return;
     const newCost = draft.base_cost !== '' ? Number(draft.base_cost) : null;
     const newMarkup = draft.markup_percent !== '' ? Number(draft.markup_percent) : null;
-    if (newCost === original.base_cost && newMarkup === original.markup_percent) return;
+    const originalAttributes = Array.isArray(original.whccItemAttributeUIDs) ? original.whccItemAttributeUIDs.join(',') : '';
+    const newAttributes = draft.whccItemAttributeUIDs
+      .split(',')
+      .map(value => Number(value.trim()))
+      .filter(value => Number.isInteger(value) && value > 0);
+    const newWhccProductUID = draft.whccProductUID !== '' ? Number(draft.whccProductUID) : null;
+    const newWhccProductNodeID = draft.whccProductNodeID !== '' ? Number(draft.whccProductNodeID) : null;
+    if (
+      newCost === original.base_cost &&
+      newMarkup === original.markup_percent &&
+      String(newWhccProductUID ?? '') === String(original.whccProductUID ?? '') &&
+      String(newWhccProductNodeID ?? '') === String(original.whccProductNodeID ?? '') &&
+      newAttributes.join(',') === originalAttributes
+    ) return;
     setAutoSaving(prev => ({ ...prev, [itemId]: true }));
     try {
-      await superPriceListService.updateItem(viewList!.id, itemId, { base_cost: newCost, markup_percent: newMarkup });
-      setViewItems(prev => prev.map(i => i.id === itemId ? { ...i, base_cost: newCost, markup_percent: newMarkup } : i));
+      await superPriceListService.updateItem(viewList!.id, itemId, {
+        base_cost: newCost,
+        markup_percent: newMarkup,
+        whccProductUID: newWhccProductUID,
+        whccProductNodeID: newWhccProductNodeID,
+        whccItemAttributeUIDs: newAttributes,
+      });
+      setViewItems(prev => prev.map(i => i.id === itemId ? {
+        ...i,
+        base_cost: newCost,
+        markup_percent: newMarkup,
+        whccProductUID: newWhccProductUID,
+        whccProductNodeID: newWhccProductNodeID,
+        whccItemAttributeUIDs: newAttributes,
+      } : i));
     } catch {
       setViewError('Failed to save item.');
     } finally {
       setAutoSaving(prev => { const n = { ...prev }; delete n[itemId]; return n; });
+    }
+  };
+
+  const rankWhccSuggestions = useCallback((item: any, queryOverride?: string): WhccMatchCandidate[] => {
+    const size = String(item.size_name || item._sizeLabel || '').toLowerCase();
+    const productName = String(item.product_name || '').toLowerCase();
+    const query = (queryOverride || `${item.product_name || ''} ${item.size_name || ''}`).toLowerCase().trim();
+    const terms = query.split(/\s+/).filter(Boolean);
+
+    return whccCatalog
+      .map(entry => {
+        let score = 0;
+        if (!terms.length) score += 1;
+        for (const term of terms) {
+          if (entry.searchText.includes(term)) score += 10;
+        }
+        if (size && entry.searchText.includes(size)) score += 25;
+        if (productName && entry.searchText.includes(productName)) score += 15;
+        if (entry.name.toLowerCase() === `${productName} ${size}`.trim()) score += 50;
+        return { entry, score };
+      })
+      .filter(result => result.score > 0)
+      .sort((a, b) => b.score - a.score || a.entry.name.localeCompare(b.entry.name));
+  }, [whccCatalog]);
+
+  const getWhccSuggestions = useCallback((item: any) =>
+    rankWhccSuggestions(item, pickerQuery || `${item.product_name || ''} ${item.size_name || ''}`)
+      .slice(0, 8)
+      .map(result => result.entry),
+  [pickerQuery, rankWhccSuggestions]);
+
+  const getBestWhccSuggestion = useCallback((item: any): WhccMatchCandidate | null => {
+    const ranked = rankWhccSuggestions(item).filter(result => result.score >= 20);
+    return ranked[0] || null;
+  }, [rankWhccSuggestions]);
+
+  const buildWhccReport = useCallback((): WhccAutoMatchReportRow[] =>
+    viewItems.map(item => {
+      const bestMatch = getBestWhccSuggestion(item);
+      const currentlyMapped = !itemNeedsWhccMapping(item);
+      return {
+        itemId: item.id,
+        productName: String(item.product_name || 'Unknown Product'),
+        sizeName: String(item._sizeLabel || item.size_name || '—'),
+        status: currentlyMapped ? 'mapped' : bestMatch ? 'ready' : 'review',
+        score: bestMatch?.score || 0,
+        suggestion: bestMatch?.entry || null,
+      };
+    }),
+  [getBestWhccSuggestion, itemNeedsWhccMapping, viewItems]);
+
+  const handlePreviewWhccMatches = async () => {
+    setViewError('');
+    setPickerItemId(null);
+    setPickerQuery('');
+
+    try {
+      await ensureWhccCatalogLoaded();
+      const report = buildWhccReport();
+      setWhccReportRows(report);
+      setWhccReportVisible(true);
+      const readyCount = report.filter(row => row.status === 'ready').length;
+      const reviewCount = report.filter(row => row.status === 'review').length;
+      if (!report.length) setViewError('No items available for WHCC preview.');
+      else setViewError(`Preview ready: ${readyCount} can be auto-matched, ${reviewCount} need manual review.`);
+    } catch {
+      setViewError('Failed to preview WHCC matches.');
+    }
+  };
+
+  const buildDraftWithWhccEntry = useCallback((item: any, entry: WhccCatalogEntry): ItemDraft => ({
+    ...(itemDrafts[item.id] || buildItemDrafts([item])[item.id]),
+    whccProductUID: String(entry.productUID || ''),
+    whccProductNodeID: String(entry.productNodeID || ''),
+    whccItemAttributeUIDs: entry.itemAttributeUIDs.join(', '),
+  }), [itemDrafts]);
+
+  const applyWhccCatalogEntry = async (item: any, entry: WhccCatalogEntry) => {
+    const nextDraft = buildDraftWithWhccEntry(item, entry);
+
+    setItemDrafts(prev => ({ ...prev, [item.id]: nextDraft }));
+    setPickerItemId(null);
+    setPickerQuery('');
+    await autoSaveItem(item.id, nextDraft);
+  };
+
+  const handleAutoMatchWhcc = async () => {
+    if (!viewList || autoMatchingWhcc) return;
+    setAutoMatchingWhcc(true);
+    setViewError('');
+    setPickerItemId(null);
+    setPickerQuery('');
+
+    try {
+      await ensureWhccCatalogLoaded();
+
+      const pendingItems = viewItems.filter(itemNeedsWhccMapping);
+      const report = buildWhccReport();
+      setWhccReportRows(report);
+      setWhccReportVisible(true);
+      let matchedCount = 0;
+
+      for (const item of pendingItems) {
+        const match = getBestWhccSuggestion(item);
+        if (!match?.entry) continue;
+
+        const nextDraft = buildDraftWithWhccEntry(item, match.entry);
+        setItemDrafts(prev => ({ ...prev, [item.id]: nextDraft }));
+        await autoSaveItem(item.id, nextDraft);
+        matchedCount += 1;
+      }
+
+      if (!pendingItems.length) {
+        setViewError('All visible items already have WHCC mappings.');
+      } else if (!matchedCount) {
+        setViewError('No strong WHCC matches were found for the unmapped items.');
+      } else {
+        setViewError(`Auto-matched ${matchedCount} of ${pendingItems.length} unmapped items.`);
+      }
+      setWhccReportRows(buildWhccReport());
+    } catch {
+      setViewError('Failed to auto-match WHCC mappings.');
+    } finally {
+      setAutoMatchingWhcc(false);
+    }
+  };
+
+  const handleSyncWhccCosts = async () => {
+    if (!viewList) return;
+    setSyncingWhccCosts(true);
+    setViewError('');
+    try {
+      const result: any = await superPriceListService.syncWhccCosts(viewList.id);
+      const updated = Number(result?.updatedCount || 0);
+      const unchanged = Number(result?.unchangedCount || 0);
+      const unmatched = Number(result?.unmatchedCount || 0);
+      const skippedNonZero = Number(result?.skippedNonZeroCount || 0);
+      const items = await superPriceListService.getItems(viewList.id);
+      const arr: any[] = Array.isArray(items) ? items : [];
+      setViewItems(arr);
+      setItemDrafts(buildItemDrafts(arr));
+      setViewError(`WHCC cost sync complete: ${updated} updated, ${unchanged} unchanged, ${unmatched} unmatched, ${skippedNonZero} non-zero skipped.`);
+    } catch (err: any) {
+      setViewError(err?.response?.data?.error || err?.response?.data?.details || err?.message || 'Failed to sync WHCC costs.');
+    } finally {
+      setSyncingWhccCosts(false);
+    }
+  };
+
+  const handleFillMissingWhccNodeIds = async () => {
+    if (!viewList) return;
+    setFillingWhccNodes(true);
+    setViewError('');
+    try {
+      const result: any = await superPriceListService.fillMissingWhccNodeIds(viewList.id);
+      const updated = Number(result?.updatedCount || 0);
+      const alreadySet = Number(result?.alreadySetCount || 0);
+      const missingUid = Number(result?.missingUidCount || 0);
+      const noCatalogNode = Number(result?.noCatalogNodeCount || 0);
+
+      const items = await superPriceListService.getItems(viewList.id);
+      const arr: any[] = Array.isArray(items) ? items : [];
+      setViewItems(arr);
+      setItemDrafts(buildItemDrafts(arr));
+
+      setViewError(`WHCC node fill complete: ${updated} updated, ${alreadySet} already set, ${missingUid} missing UID, ${noCatalogNode} no catalog node.`);
+    } catch (err: any) {
+      setViewError(err?.response?.data?.error || err?.response?.data?.details || err?.message || 'Failed to fill missing WHCC node IDs.');
+    } finally {
+      setFillingWhccNodes(false);
     }
   };
 
@@ -372,18 +765,30 @@ const SuperAdminPricing: React.FC = () => {
             )}
             {priceLists.length > 0 && (
               <table className="data-table">
-                <thead><tr><th>Price List</th><th>Products</th><th>Status</th><th></th></tr></thead>
+                <thead><tr><th>Price List</th><th>Products</th><th>Studios</th><th>Status</th><th></th></tr></thead>
                 <tbody>
                   {priceLists.map(list => (
                     <tr key={list.id}>
                       <td>{list.name}</td>
                       <td>{list.productCount}</td>
+                      <td>{Number(list.linkedStudioCount ?? 0)}</td>
                       <td>{list.isActive
                         ? <span style={{ color: '#10b981', fontWeight: 600 }}>Active</span>
                         : <span style={{ color: 'var(--error-color)', fontWeight: 600 }}>Inactive</span>}
                       </td>
                       <td>
-                        <button className="btn btn-secondary btn-sm" onClick={() => openViewEdit(list)}>View/Edit</button>
+                        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                          <button className="btn btn-secondary btn-sm" onClick={() => openViewEdit(list)}>View/Edit</button>
+                          <button
+                            className="btn btn-secondary btn-sm"
+                            style={{ background: '#7f1d1d', borderColor: '#991b1b', color: '#fff' }}
+                            onClick={() => handleDeleteList(list)}
+                            disabled={deletingListId === list.id}
+                            title={Number(list.linkedStudioCount || 0) > 0 ? `${list.linkedStudioCount} studio price lists will also be deleted` : 'Delete this price list'}
+                          >
+                            {deletingListId === list.id ? 'Deleting…' : 'Delete'}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -422,8 +827,63 @@ const SuperAdminPricing: React.FC = () => {
                     {applyingMarkup ? 'Applying…' : 'Apply to Active'}
                   </button>
                 </div>
+                <div className="spl-markup-group">
+                  <label>WHCC mappings:</label>
+                  <button className="btn btn-secondary btn-sm" disabled={whccCatalogLoading || viewItems.length === 0}
+                    onClick={handlePreviewWhccMatches}>
+                    Preview Report
+                  </button>
+                  <button className="btn btn-secondary btn-sm" disabled={autoMatchingWhcc || viewItems.length === 0}
+                    onClick={handleAutoMatchWhcc}>
+                    {autoMatchingWhcc ? 'Matching…' : 'Auto-Match Missing'}
+                  </button>
+                  <button className="btn btn-secondary btn-sm" disabled={syncingWhccCosts || viewItems.length === 0}
+                    onClick={handleSyncWhccCosts}>
+                    {syncingWhccCosts ? 'Syncing…' : 'Fill Zero Costs from CSV'}
+                  </button>
+                  <button className="btn btn-secondary btn-sm" disabled={fillingWhccNodes || viewItems.length === 0}
+                    onClick={handleFillMissingWhccNodeIds}>
+                    {fillingWhccNodes ? 'Filling…' : 'Fill Missing Node IDs'}
+                  </button>
+                </div>
                 <span className="spl-item-count">{viewItems.length} sizes total</span>
               </div>
+
+              {whccReportVisible && (
+                <div style={{ marginBottom: 12, padding: 12, borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.04)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+                    <div>
+                      <strong>WHCC Auto-Match Report</strong>
+                      <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                        {whccReportRows.filter(row => row.status === 'ready').length} ready · {whccReportRows.filter(row => row.status === 'review').length} need review · {whccReportRows.filter(row => row.status === 'mapped').length} already mapped
+                      </div>
+                    </div>
+                    <button className="btn btn-secondary btn-sm" type="button" onClick={() => setWhccReportVisible(false)}>Hide Report</button>
+                  </div>
+                  <div style={{ display: 'grid', gap: 8, maxHeight: 220, overflowY: 'auto' }}>
+                    {whccReportRows.map(row => (
+                      <div key={row.itemId} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '8px 10px', borderRadius: 8, background: row.status === 'review' ? 'rgba(239, 68, 68, 0.12)' : row.status === 'ready' ? 'rgba(16, 185, 129, 0.10)' : 'rgba(255,255,255,0.03)' }}>
+                        <div>
+                          <div style={{ fontWeight: 600 }}>{row.productName} · {row.sizeName}</div>
+                          {row.suggestion ? (
+                            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                              Suggested: {row.suggestion.name} · UID {row.suggestion.productUID}{row.suggestion.productNodeID ? ` · Node ${row.suggestion.productNodeID}` : ''}
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>No strong catalog suggestion found.</div>
+                          )}
+                        </div>
+                        <div style={{ textAlign: 'right', minWidth: 120 }}>
+                          <div style={{ fontWeight: 600, color: row.status === 'review' ? '#fca5a5' : row.status === 'ready' ? '#6ee7b7' : 'var(--text-secondary)' }}>
+                            {row.status === 'ready' ? 'Auto-match ready' : row.status === 'review' ? 'Manual review' : 'Already mapped'}
+                          </div>
+                          {row.score > 0 && <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Score {row.score}</div>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="spl-toolbar" style={{ marginTop: -6 }}>
                 <input
@@ -567,6 +1027,84 @@ const SuperAdminPricing: React.FC = () => {
                                             onBlur={() => autoSaveItem(item.id)}
                                           />
                                         </div>
+                                        <div className="spl-field-group">
+                                          <label>WHCC Product UID</label>
+                                          <input
+                                            className={`spl-num-input${autoSaving[item.id] ? ' spl-saving' : ''}`}
+                                            type="number" min={1} step="1"
+                                            value={itemDrafts[item.id]?.whccProductUID ?? ''}
+                                            onChange={e => setItemDrafts(p => ({ ...p, [item.id]: { ...p[item.id], whccProductUID: e.target.value } }))}
+                                            onBlur={() => autoSaveItem(item.id)}
+                                          />
+                                        </div>
+                                        <div className="spl-field-group">
+                                          <label>WHCC Node ID</label>
+                                          <input
+                                            className={`spl-num-input${autoSaving[item.id] ? ' spl-saving' : ''}`}
+                                            type="number" min={1} step="1"
+                                            value={itemDrafts[item.id]?.whccProductNodeID ?? ''}
+                                            onChange={e => setItemDrafts(p => ({ ...p, [item.id]: { ...p[item.id], whccProductNodeID: e.target.value } }))}
+                                            onBlur={() => autoSaveItem(item.id)}
+                                          />
+                                        </div>
+                                        <div className="spl-field-group" style={{ minWidth: 220 }}>
+                                          <label>WHCC Attribute UIDs</label>
+                                          <input
+                                            className={`spl-num-input${autoSaving[item.id] ? ' spl-saving' : ''}`}
+                                            type="text"
+                                            placeholder="e.g. 1, 5, 42"
+                                            value={itemDrafts[item.id]?.whccItemAttributeUIDs ?? ''}
+                                            onChange={e => setItemDrafts(p => ({ ...p, [item.id]: { ...p[item.id], whccItemAttributeUIDs: e.target.value } }))}
+                                            onBlur={() => autoSaveItem(item.id)}
+                                          />
+                                        </div>
+                                        <div className="spl-field-group" style={{ minWidth: 190 }}>
+                                          <label>WHCC Match</label>
+                                          <button
+                                            className="btn btn-secondary btn-sm"
+                                            type="button"
+                                            onClick={() => openWhccPicker(item)}
+                                            disabled={whccCatalogLoading}
+                                          >
+                                            {whccCatalogLoading && pickerItemId === item.id ? 'Loading…' : 'Find Catalog Match'}
+                                          </button>
+                                        </div>
+                                        {pickerItemId === item.id && (
+                                          <div className="spl-field-group" style={{ minWidth: 420, flex: '1 1 420px' }}>
+                                            <label>Catalog Search</label>
+                                            <input
+                                              className="spl-num-input"
+                                              type="text"
+                                              placeholder="Search WHCC catalog by name, size, or category"
+                                              value={pickerQuery}
+                                              onChange={e => setPickerQuery(e.target.value)}
+                                            />
+                                            <div style={{ marginTop: 8, padding: 10, border: '1px solid rgba(255,255,255,0.12)', borderRadius: 8, background: 'rgba(0,0,0,0.15)' }}>
+                                              {whccCatalogError && <div style={{ color: '#fca5a5', marginBottom: 8 }}>{whccCatalogError}</div>}
+                                              {!whccCatalogError && getWhccSuggestions(item).length === 0 && (
+                                                <div style={{ color: 'var(--text-secondary)' }}>No catalog matches found.</div>
+                                              )}
+                                              {getWhccSuggestions(item).map(entry => (
+                                                <div key={entry.key} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                                                  <div>
+                                                    <div style={{ fontWeight: 600 }}>{entry.name}</div>
+                                                    <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                                                      {entry.category} · UID {entry.productUID}{entry.productNodeID ? ` · Node ${entry.productNodeID}` : ''}
+                                                    </div>
+                                                    {entry.itemAttributeUIDs.length > 0 && (
+                                                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                                                        Attrs: {entry.itemAttributeUIDs.join(', ')}
+                                                      </div>
+                                                    )}
+                                                  </div>
+                                                  <button className="btn btn-primary btn-sm" type="button" onClick={() => applyWhccCatalogEntry(item, entry)}>
+                                                    Use Match
+                                                  </button>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        )}
                                       </div>
                                     ))}
                                   </div>

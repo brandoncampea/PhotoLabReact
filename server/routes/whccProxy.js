@@ -117,28 +117,25 @@ async function fetchToken(consumerKey, consumerSecret, isSandbox) {
     return cached.token;
   }
 
-  // Use the WHCC Order Submit API authentication endpoint
-  const params = new URLSearchParams({
-    grant_type: 'client_credentials',
-    client_id: consumerKey,
-    client_secret: consumerSecret
+  const response = await axios.get(`${getBaseUrl(isSandbox)}/api/AccessToken`, {
+    params: {
+      grant_type: 'consumer_credentials',
+      consumer_key: consumerKey,
+      consumer_secret: consumerSecret,
+    },
+    headers: {
+      Accept: 'application/json',
+    },
   });
-  const response = await axios.post(
-    'https://auth.whcc.com/oauth/token',
-    params,
-    {
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Accept': 'application/json'
-      }
-    }
-  );
 
-  const data = response.data;
-  // expires_in is in seconds
-  const expiresAt = data.expires_in ? Date.now() + data.expires_in * 1000 : Date.now() + 60 * 60 * 1000;
-  tokenCache.set(cacheKey, { token: data.access_token, expiresAt });
-  return data.access_token;
+  const token = response.data?.Token || response.data?.token || null;
+  if (!token) {
+    throw new Error('WHCC token response did not include a token');
+  }
+
+  const expiresAt = Date.now() + 60 * 60 * 1000;
+  tokenCache.set(cacheKey, { token, expiresAt });
+  return token;
 }
 
 // ---------------------------------------------------------------------------

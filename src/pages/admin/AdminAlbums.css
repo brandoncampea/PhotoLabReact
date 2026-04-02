@@ -1,0 +1,35 @@
+.admin-orders-container {
+  padding: 2rem;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+}
+
+.admin-orders-header {
+  margin-bottom: 1.25rem;
+}
+
+.admin-albums-page {
+  min-height: 100vh;
+}
+
+.admin-albums-page .admin-orders-header h1 {
+  color: #fff;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.admin-albums-page .admin-orders-card {
+  border: 1px solid rgba(102, 102, 204, 0.3);
+  backdrop-filter: blur(8px);
+}
+
+.admin-albums-page .btn-icon {
+  background: rgba(102, 102, 204, 0.15);
+  border: 1px solid rgba(102, 102, 204, 0.4);
+  color: #fff;
+  border-radius: 8px;
+  padding: 0.35rem 0.45rem;
+  cursor: pointer;
+}
+
+.admin-albums-page .btn-icon:hover {
+  background: rgba(102, 102, 204, 0.3);
+}

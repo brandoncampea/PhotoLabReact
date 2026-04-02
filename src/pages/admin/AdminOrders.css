@@ -269,6 +269,205 @@
   min-width: 220px;
 }
 
+/* WHCC detail panel section (inside order detail row) */
+.whcc-detail-section {
+  margin: 1rem 0;
+  border: 1px solid rgba(102, 102, 204, 0.3);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.whcc-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.65rem 1rem;
+  background: rgba(102, 102, 204, 0.12);
+  border-bottom: 1px solid rgba(102, 102, 204, 0.2);
+}
+
+.whcc-detail-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #9bb6ff;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.whcc-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0.75rem 1.5rem;
+  padding: 0.9rem 1rem;
+}
+
+.whcc-detail-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.whcc-detail-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #8892b0;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.whcc-detail-value {
+  font-size: 0.88rem;
+  color: #cdd6f4;
+}
+
+.whcc-confirmation-id {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #7ee787;
+  font-family: 'Courier New', monospace;
+  letter-spacing: 0.03em;
+}
+
+.whcc-error-box {
+  margin: 0 1rem 0.9rem;
+  padding: 0.75rem 0.9rem;
+  background: rgba(244, 67, 54, 0.08);
+  border: 1px solid rgba(255, 138, 128, 0.3);
+  border-radius: 8px;
+}
+
+.whcc-error-label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #ff8a80;
+  margin-bottom: 0.4rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.whcc-error-content {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #ffb3ae;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 120px;
+  overflow-y: auto;
+  font-family: 'Courier New', monospace;
+  line-height: 1.4;
+}
+
+.whcc-retry-row {
+  padding: 0.6rem 1rem 0.9rem;
+}
+
+.whcc-retry-inline {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.whcc-retry-message {
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.whcc-retry-message.is-info {
+  color: #9bb6ff;
+}
+
+.whcc-retry-message.is-error {
+  color: #ff8a80;
+}
+
+.whcc-log-list {
+  padding: 0 1rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.whcc-log-panel {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  overflow: hidden;
+}
+
+.whcc-log-summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 0.9rem;
+  color: #cdd6f4;
+  font-size: 0.82rem;
+  font-weight: 700;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.whcc-log-run-at {
+  font-size: 0.73rem;
+  font-weight: 500;
+  color: #9fb0d9;
+}
+
+.whcc-log-summary::-webkit-details-marker {
+  display: none;
+}
+
+.whcc-log-content {
+  margin: 0;
+  padding: 0.85rem 0.9rem;
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: #d7def5;
+  font-family: 'Courier New', monospace;
+}
+
+.whcc-log-hint {
+  padding: 0.8rem 0.9rem;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #b8bfd6;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.whcc-retry-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 1rem;
+  border-radius: 8px;
+  border: 1px solid rgba(102, 102, 204, 0.5);
+  background: rgba(102, 102, 204, 0.15);
+  color: #9bb6ff;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.whcc-retry-btn:hover:not(:disabled) {
+  background: rgba(102, 102, 204, 0.28);
+  border-color: rgba(102, 102, 204, 0.75);
+}
+
+.whcc-retry-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .whcc-pill {
   display: inline-block;
   width: fit-content;

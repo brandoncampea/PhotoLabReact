@@ -27,6 +27,7 @@ const AlbumDetails: React.FC = () => {
   const [showCropModal, setShowCropModal] = useState(false);
   const [cropperRef, setCropperRef] = useState<any>(null);
   const [productToCrop, setProductToCrop] = useState<ProductWithMatch | null>(null);
+  const [sizeToCrop, setSizeToCrop] = useState<ProductSize | null>(null);
   const { addToCart } = useCart();
 
   const selectedPhotoId = Number(searchParams.get('photo') || 0);
@@ -142,6 +143,89 @@ const AlbumDetails: React.FC = () => {
     return { digital, recommended, remaining };
   }, [orderedProducts, recommendedProductIds]);
 
+  const recommendedGrouped = useMemo(() => {
+    const grouped: Record<string, Record<string, ProductWithMatch[]>> = {};
+
+    const getProductGroupName = (rawName: string): string => {
+      const name = String(rawName || '').trim();
+      // Collapse size-suffixed product names (e.g., "Framed Print 12x16" -> "Framed Print")
+      return name
+        .replace(/\s+\d+(?:\.\d+)?x\d+(?:\.\d+)?$/i, '')
+        .trim() || 'Product';
+    };
+
+    const getPrimarySize = (product: ProductWithMatch): ProductSize | null => {
+      if (product.bestSize) return product.bestSize;
+      return Array.isArray(product.sizes) && product.sizes.length > 0 ? product.sizes[0] : null;
+    };
+
+    const getDimensionFromName = (value: string): { width: number; height: number } => {
+      const match = String(value || '').match(/(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)/i);
+      if (!match) return { width: 0, height: 0 };
+      return { width: Number(match[1]) || 0, height: Number(match[2]) || 0 };
+    };
+
+    const compareBySizeAsc = (a: ProductWithMatch, b: ProductWithMatch): number => {
+      const aSize = getPrimarySize(a);
+      const bSize = getPrimarySize(b);
+
+      const aDim = {
+        width: Number(aSize?.width || 0) || getDimensionFromName(aSize?.name || a.name).width,
+        height: Number(aSize?.height || 0) || getDimensionFromName(aSize?.name || a.name).height,
+      };
+      const bDim = {
+        width: Number(bSize?.width || 0) || getDimensionFromName(bSize?.name || b.name).width,
+        height: Number(bSize?.height || 0) || getDimensionFromName(bSize?.name || b.name).height,
+      };
+
+      const aArea = (aDim.width > 0 && aDim.height > 0) ? (aDim.width * aDim.height) : Number.POSITIVE_INFINITY;
+      const bArea = (bDim.width > 0 && bDim.height > 0) ? (bDim.width * bDim.height) : Number.POSITIVE_INFINITY;
+
+      if (aArea !== bArea) return aArea - bArea;
+      if (aDim.width !== bDim.width) return aDim.width - bDim.width;
+      if (aDim.height !== bDim.height) return aDim.height - bDim.height;
+
+      const aPrice = Number(aSize?.price || a.price || 0);
+      const bPrice = Number(bSize?.price || b.price || 0);
+      if (aPrice !== bPrice) return aPrice - bPrice;
+
+      return String(a.name || '').localeCompare(String(b.name || ''));
+    };
+
+    productsBySection.recommended.forEach((product) => {
+      const category = String(product.category || 'Other');
+      const productName = getProductGroupName(String(product.name || 'Product'));
+      if (!grouped[category]) grouped[category] = {};
+      if (!grouped[category][productName]) grouped[category][productName] = [];
+      grouped[category][productName].push(product);
+    });
+
+    return Object.entries(grouped)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([category, productsByName]) => ({
+        category,
+        products: Object.entries(productsByName)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([name, items]) => ({ name, items: [...items].sort(compareBySizeAsc) })),
+      }));
+  }, [productsBySection.recommended]);
+
+  const allProductsGrouped = useMemo(() => {
+    const grouped: Record<string, ProductWithMatch[]> = {};
+    orderedProducts.forEach((product) => {
+      const category = String(product.category || 'Other');
+      if (!grouped[category]) grouped[category] = [];
+      grouped[category].push(product);
+    });
+
+    return Object.entries(grouped)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([category, items]) => ({
+        category,
+        items: [...items].sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''))),
+      }));
+  }, [orderedProducts]);
+
   const getDefaultSize = (product: ProductWithMatch): ProductSize | null => {
     if (product.bestSize) return product.bestSize;
     return Array.isArray(product.sizes) && product.sizes.length > 0 ? product.sizes[0] : null;
@@ -149,7 +233,7 @@ const AlbumDetails: React.FC = () => {
 
   const getCropAspectRatio = (product: ProductWithMatch | null): number => {
     if (!product) return NaN;
-    const size = getDefaultSize(product);
+    const size = sizeToCrop || getDefaultSize(product);
     const width = Number(size?.width || 0);
     const height = Number(size?.height || 0);
     if (width > 0 && height > 0) {
@@ -158,15 +242,30 @@ const AlbumDetails: React.FC = () => {
     return NaN;
   };
 
-  const handleAddToCart = async (product: ProductWithMatch) => {
+  const getSelectedSizeForCart = (product: ProductWithMatch, sizeOverride?: ProductSize | null): ProductSize | null => {
+    const baseSize = sizeOverride || getDefaultSize(product);
+    if (!baseSize) return null;
+
+    if (product.isDigital) {
+      return {
+        ...baseSize,
+        price: Number(product.price || baseSize.price || 0),
+      };
+    }
+
+    return baseSize;
+  };
+
+  const handleAddToCart = async (product: ProductWithMatch, sizeOverride?: ProductSize | null) => {
     if (!selectedPhoto) return;
     setProductToCrop(product);
+    setSizeToCrop(getSelectedSizeForCart(product, sizeOverride));
     setShowCropModal(true);
   };
 
   const handleCropConfirm = async () => {
     if (!selectedPhoto || !productToCrop) return;
-    const size = getDefaultSize(productToCrop);
+    const size = sizeToCrop || getDefaultSize(productToCrop);
     if (!size) {
       setAddMessage('This product has no available size.');
       setShowCropModal(false);
@@ -199,6 +298,7 @@ const AlbumDetails: React.FC = () => {
       setAddMessage(`${productToCrop.name} added to cart.`);
       setShowCropModal(false);
       setProductToCrop(null);
+      setSizeToCrop(null);
       setCropperRef(null);
     } catch {
       setAddMessage('Failed to add item to cart.');
@@ -210,6 +310,7 @@ const AlbumDetails: React.FC = () => {
   const handleCancelCrop = () => {
     setShowCropModal(false);
     setProductToCrop(null);
+    setSizeToCrop(null);
     setCropperRef(null);
   };
 
@@ -273,7 +374,7 @@ const AlbumDetails: React.FC = () => {
                             </div>
                           </div>
                           <div style={{ minWidth: 90, textAlign: 'right', fontWeight: 700 }}>
-                            ${Number(defaultSize?.price || 0).toFixed(2)}
+                            ${Number(product.price || defaultSize?.price || 0).toFixed(2)}
                           </div>
                           <button
                             className="btn btn-primary btn-sm"
@@ -294,73 +395,103 @@ const AlbumDetails: React.FC = () => {
                 <div>
                   <h4 style={{ marginTop: 0, marginBottom: 10, color: '#7b61ff', fontSize: 14, fontWeight: 600 }}>Recommended</h4>
                   <div style={{ display: 'grid', gap: 8 }}>
-                    {productsBySection.recommended.map((product) => {
-                      const defaultSize = getDefaultSize(product);
-                      const rowKey = `${product.id}-${defaultSize?.id || 0}`;
-                      return (
-                        <div key={product.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 10, alignItems: 'center', border: '1px solid #232036', borderRadius: 6, padding: '8px 10px', background: 'rgba(123, 97, 255, 0.05)' }}>
-                          <div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                              <strong>{product.name}</strong>
-                              <span className="badge" style={{ background: '#2e2a52' }}>Recommended</span>
+                    {recommendedGrouped.map(({ category, products }) => (
+                      <details key={category} open style={{ border: '1px solid #232036', borderRadius: 8, padding: '6px 8px', background: 'rgba(123, 97, 255, 0.05)' }}>
+                        <summary style={{ cursor: 'pointer', fontSize: 13, color: '#8d81ff', fontWeight: 700 }}>
+                          {category}
+                        </summary>
+                        <div style={{ display: 'grid', gap: 8, marginTop: 6 }}>
+                          {products.map(({ name, items }) => (
+                            <div key={`${category}-${name}`} style={{ border: '1px solid #232036', borderRadius: 6, padding: '6px 8px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 4 }}>
+                                <strong>{name}</strong>
+                                <span className="badge" style={{ background: '#2e2a52' }}>Recommended</span>
+                              </div>
+                              <div style={{ display: 'grid', gap: 6 }}>
+                                {items.map((product) => {
+                                  const defaultSize = getDefaultSize(product);
+                                  const rowKey = `${product.id}-${defaultSize?.id || 0}`;
+                                  return (
+                                    <div key={product.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 10, alignItems: 'center', border: '1px solid #1f1c33', borderRadius: 6, padding: '4px 6px' }}>
+                                      <div style={{ fontSize: 12, color: '#aaa' }}>
+                                        {defaultSize
+                                          ? `${defaultSize.name}${defaultSize.width && defaultSize.height ? ` (${defaultSize.width}x${defaultSize.height})` : ''}`
+                                          : 'No size available'}
+                                      </div>
+                                      <div style={{ minWidth: 90, textAlign: 'right', fontWeight: 700 }}>
+                                        ${Number(defaultSize?.price || 0).toFixed(2)}
+                                      </div>
+                                      <button
+                                        className="btn btn-primary btn-sm"
+                                        disabled={!defaultSize || addingKey === rowKey}
+                                        onClick={() => handleAddToCart(product)}
+                                      >
+                                        {addingKey === rowKey ? 'Adding...' : 'Add to Cart'}
+                                      </button>
+                                    </div>
+                                  );
+                                })}
+                              </div>
                             </div>
-                            <div style={{ fontSize: 12, color: '#aaa' }}>
-                              {defaultSize
-                                ? `${defaultSize.name}${defaultSize.width && defaultSize.height ? ` (${defaultSize.width}x${defaultSize.height})` : ''}`
-                                : 'No size available'}
-                            </div>
-                          </div>
-                          <div style={{ minWidth: 90, textAlign: 'right', fontWeight: 700 }}>
-                            ${Number(defaultSize?.price || 0).toFixed(2)}
-                          </div>
-                          <button
-                            className="btn btn-primary btn-sm"
-                            disabled={!defaultSize || addingKey === rowKey}
-                            onClick={() => handleAddToCart(product)}
-                          >
-                            {addingKey === rowKey ? 'Adding...' : 'Add to Cart'}
-                          </button>
+                          ))}
                         </div>
-                      );
-                    })}
+                      </details>
+                    ))}
                   </div>
                 </div>
               )}
 
               {/* All Products Section */}
-              {productsBySection.remaining.length > 0 && (
+              {allProductsGrouped.length > 0 && (
                 <div>
-                  <h4 style={{ marginTop: 0, marginBottom: 10, color: '#7b61ff', fontSize: 14, fontWeight: 600 }}>All Products</h4>
-                  <div style={{ display: 'grid', gap: 8 }}>
-                    {productsBySection.remaining.map((product) => {
-                      const defaultSize = getDefaultSize(product);
-                      const rowKey = `${product.id}-${defaultSize?.id || 0}`;
-                      return (
-                        <div key={product.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 10, alignItems: 'center', border: '1px solid #232036', borderRadius: 6, padding: '8px 10px' }}>
-                          <div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                              <strong>{product.name}</strong>
-                            </div>
-                            <div style={{ fontSize: 12, color: '#aaa' }}>
-                              {defaultSize
-                                ? `${defaultSize.name}${defaultSize.width && defaultSize.height ? ` (${defaultSize.width}x${defaultSize.height})` : ''}`
-                                : 'No size available'}
-                            </div>
+                  <details style={{ border: '1px solid #232036', borderRadius: 8, padding: '10px 12px' }}>
+                    <summary style={{ cursor: 'pointer', color: '#7b61ff', fontSize: 14, fontWeight: 700 }}>
+                      All Products
+                    </summary>
+                    <div style={{ display: 'grid', gap: 14, marginTop: 10 }}>
+                      {allProductsGrouped.map(({ category, items }) => (
+                        <details key={category} style={{ border: '1px solid #232036', borderRadius: 8, padding: '10px 12px' }}>
+                          <summary style={{ cursor: 'pointer', fontSize: 13, color: '#8d81ff', fontWeight: 700 }}>
+                            {category}
+                          </summary>
+                          <div style={{ display: 'grid', gap: 10, marginTop: 10 }}>
+                            {items.map((product) => {
+                              const sizes = Array.isArray(product.sizes) ? product.sizes : [];
+                              return (
+                                <div key={product.id}>
+                                  <div style={{ fontWeight: 700, marginBottom: 6 }}>{product.name}</div>
+                                  <div style={{ display: 'grid', gap: 6 }}>
+                                    {sizes.length > 0 ? sizes.map((size) => {
+                                      const rowKey = `${product.id}-${size?.id || size?.name || 'size'}`;
+                                      return (
+                                        <div key={rowKey} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 10, alignItems: 'center', border: '1px solid #1f1c33', borderRadius: 6, padding: '6px 8px' }}>
+                                          <div style={{ fontSize: 12, color: '#bbb' }}>
+                                            {size?.name || 'Default'}{size?.width && size?.height ? ` (${size.width}x${size.height})` : ''}
+                                          </div>
+                                          <div style={{ minWidth: 90, textAlign: 'right', fontWeight: 700 }}>
+                                            ${Number(size?.price || 0).toFixed(2)}
+                                          </div>
+                                          <button
+                                            className="btn btn-primary btn-sm"
+                                            disabled={!size || addingKey === rowKey}
+                                            onClick={() => handleAddToCart(product, size)}
+                                          >
+                                            {addingKey === rowKey ? 'Adding...' : 'Add to Cart'}
+                                          </button>
+                                        </div>
+                                      );
+                                    }) : (
+                                      <div style={{ fontSize: 12, color: '#aaa' }}>No size available</div>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
                           </div>
-                          <div style={{ minWidth: 90, textAlign: 'right', fontWeight: 700 }}>
-                            ${Number(defaultSize?.price || 0).toFixed(2)}
-                          </div>
-                          <button
-                            className="btn btn-primary btn-sm"
-                            disabled={!defaultSize || addingKey === rowKey}
-                            onClick={() => handleAddToCart(product)}
-                          >
-                            {addingKey === rowKey ? 'Adding...' : 'Add to Cart'}
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
+                        </details>
+                      ))}
+                    </div>
+                  </details>
                 </div>
               )}
             </div>

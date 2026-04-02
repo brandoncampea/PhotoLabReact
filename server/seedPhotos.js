@@ -1,8 +1,10 @@
+import { createRequire } from 'module';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import sharp from 'sharp';
-import { queryRow, query } from './mssql.js';
+const require = createRequire(import.meta.url);
+const { queryRow, query } = require('./mssql.cjs');
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
