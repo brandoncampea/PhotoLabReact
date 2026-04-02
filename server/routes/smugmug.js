@@ -194,41 +194,109 @@ const pickBestImageUrl = (image) => {
   return null;
 };
 
+const pickLargestFromImageSizes = (sizes) => {
+  if (!Array.isArray(sizes) || !sizes.length) return null;
+
+  const withUrl = sizes
+    .map((size) => {
+      const url = [
+        size?.OriginalUrl,
+        size?.Url,
+        size?.UrlTemplate,
+        size?.Uri,
+      ].find((value) => typeof value === 'string' && /^https?:\/\//i.test(value));
+      const width = Number(size?.Width || 0);
+      const height = Number(size?.Height || 0);
+      const area = width > 0 && height > 0 ? width * height : 0;
+      const label = String(size?.Label || size?.Key || '').toLowerCase();
+      return { url, area, label };
+    })
+    .filter((row) => row.url);
+
+  if (!withUrl.length) return null;
+
+  const explicitOriginal = withUrl.find((row) => row.label === 'original');
+  if (explicitOriginal?.url) {
+    return explicitOriginal.url;
+  }
+
+  withUrl.sort((a, b) => b.area - a.area);
+  return withUrl[0]?.url || null;
+};
+
+const resolveSmugMugSourceUrl = async (image, apiKey) => {
+  const directOriginal = typeof image?.OriginalUrl === 'string' && /^https?:\/\//i.test(image.OriginalUrl)
+    ? image.OriginalUrl
+    : null;
+  if (directOriginal) {
+    return { sourceUrl: directOriginal, urlType: 'OriginalUrl' };
+  }
+
+  const detailUris = [
+    image?.Uri,
+    image?.ArchivedUri,
+  ].filter((uri, index, arr) => typeof uri === 'string' && uri.startsWith('/api/v2/') && arr.indexOf(uri) === index);
+
+  for (const uri of detailUris) {
+    try {
+      const imagePayload = await requestSmugMugJson(uri, apiKey);
+      const nested = imagePayload?.Response?.Image || imagePayload?.Response || {};
+
+      if (typeof nested?.OriginalUrl === 'string' && /^https?:\/\//i.test(nested.OriginalUrl)) {
+        return { sourceUrl: nested.OriginalUrl, urlType: `detail:${uri}:OriginalUrl` };
+      }
+
+      const nestedBest = pickBestImageUrl(nested);
+      if (nestedBest) {
+        return { sourceUrl: nestedBest, urlType: `detail:${uri}:best` };
+      }
+
+      const sizesUri = nested?.Uris?.ImageSizes?.Uri;
+      if (typeof sizesUri === 'string' && sizesUri.startsWith('/api/v2/')) {
+        const sizesPayload = await requestSmugMugJson(sizesUri, apiKey);
+        const sizeRows = sizesPayload?.Response?.ImageSizes || sizesPayload?.Response?.ImageSize || [];
+        const largestUrl = pickLargestFromImageSizes(sizeRows);
+        if (largestUrl) {
+          return { sourceUrl: largestUrl, urlType: `sizes:${sizesUri}` };
+        }
+      }
+    } catch {
+      // ignore per-image failures and continue to next strategy
+    }
+  }
+
+  const topLevelSizesUri = image?.Uris?.ImageSizes?.Uri;
+  if (typeof topLevelSizesUri === 'string' && topLevelSizesUri.startsWith('/api/v2/')) {
+    try {
+      const sizesPayload = await requestSmugMugJson(topLevelSizesUri, apiKey);
+      const sizeRows = sizesPayload?.Response?.ImageSizes || sizesPayload?.Response?.ImageSize || [];
+      const largestUrl = pickLargestFromImageSizes(sizeRows);
+      if (largestUrl) {
+        return { sourceUrl: largestUrl, urlType: `sizes:${topLevelSizesUri}` };
+      }
+    } catch {
+      // ignore and fall back
+    }
+  }
+
+  const fallback = pickBestImageUrl(image);
+  if (fallback) {
+    return { sourceUrl: fallback, urlType: 'fallback-best' };
+  }
+
+  return { sourceUrl: null, urlType: 'none' };
+};
+
 const listAlbumImages = async (albumKey, apiKey) => {
   const rows = await fetchAllSmugMugObjects(
-    `/api/v2/album/${encodeURIComponent(albumKey)}!images?count=100`,
+    `/api/v2/album/${encodeURIComponent(albumKey)}!images?count=100&_verbosity=1`,
     apiKey,
     ['AlbumImage', 'Image']
   );
 
   const out = [];
   for (const image of rows) {
-    let sourceUrl = null;
-    let urlType = 'fallback';
-    // Always try to fetch OriginalUrl
-    if (typeof image?.ArchivedUri === 'string' && image.ArchivedUri.startsWith('/api/v2/')) {
-      try {
-        const imagePayload = await requestSmugMugJson(image.ArchivedUri, apiKey);
-        const nested = imagePayload?.Response?.Image || imagePayload?.Response || {};
-        if (nested.OriginalUrl) {
-          sourceUrl = nested.OriginalUrl;
-          urlType = 'OriginalUrl';
-        } else {
-          sourceUrl = pickBestImageUrl(nested);
-        }
-      } catch {
-        // ignore per-image failures
-      }
-    }
-    // Fallback if no ArchivedUri or OriginalUrl
-    if (!sourceUrl) {
-      if (image.OriginalUrl) {
-        sourceUrl = image.OriginalUrl;
-        urlType = 'OriginalUrl';
-      } else {
-        sourceUrl = pickBestImageUrl(image);
-      }
-    }
+    const { sourceUrl, urlType } = await resolveSmugMugSourceUrl(image, apiKey);
     if (!sourceUrl) continue;
     // Log which URL is used for import
     console.log(`[SmugMug Import] Album ${albumKey} - Image ${image?.FileName || image?.Name}: Using ${urlType} (${sourceUrl})`);

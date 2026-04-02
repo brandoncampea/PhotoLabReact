@@ -71,22 +71,24 @@ jobs:
 
       - name: Configure App Service runtime
         env:
+          ALL_SECRETS: ${{ toJson(secrets) }}
           JWT_SECRET: ${{ secrets['JWT_SECRET'] }}
-          MSSQL_CONNECTION_STRING: ${{ secrets['MSSQL_CONNECTION_STRING'] }}
           DB_HOST: ${{ secrets['DB_HOST'] }}
           DB_PORT: ${{ secrets['DB_PORT'] }}
           DB_NAME: ${{ secrets['DB_NAME'] }}
           DB_USER: ${{ secrets['DB_USER'] }}
           DB_PASSWORD: ${{ secrets['DB_PASSWORD'] }}
-          MSSQL_ENCRYPT: ${{ secrets['MSSQL_ENCRYPT'] }}
-          MSSQL_TRUST_CERT: ${{ secrets['MSSQL_TRUST_CERT'] }}
-          STRIPE_SECRET_KEY: ${{ secrets['STRIPE_SECRET_KEY'] }}
-          STRIPE_WEBHOOK_SECRET: ${{ secrets['STRIPE_WEBHOOK_SECRET'] }}
-          MPIX_API_KEY: ${{ secrets['MPIX_API_KEY'] }}
-          MPIX_API_SECRET: ${{ secrets['MPIX_API_SECRET'] }}
           AZURE_STORAGE_CONNECTION_STRING: ${{ secrets['AZURE_STORAGE_CONNECTION_STRING'] }}
           AZURE_STORAGE_CONTAINER: ${{ secrets['AZURE_STORAGE_CONTAINER'] }}
         run: |
+          export MSSQL_CONNECTION_STRING=$(node -e "const s=JSON.parse(process.env.ALL_SECRETS||'{}'); process.stdout.write(s.MSSQL_CONNECTION_STRING||'')")
+          export MSSQL_ENCRYPT=$(node -e "const s=JSON.parse(process.env.ALL_SECRETS||'{}'); process.stdout.write(s.MSSQL_ENCRYPT||'')")
+          export MSSQL_TRUST_CERT=$(node -e "const s=JSON.parse(process.env.ALL_SECRETS||'{}'); process.stdout.write(s.MSSQL_TRUST_CERT||'')")
+          export STRIPE_SECRET_KEY=$(node -e "const s=JSON.parse(process.env.ALL_SECRETS||'{}'); process.stdout.write(s.STRIPE_SECRET_KEY||'')")
+          export STRIPE_WEBHOOK_SECRET=$(node -e "const s=JSON.parse(process.env.ALL_SECRETS||'{}'); process.stdout.write(s.STRIPE_WEBHOOK_SECRET||'')")
+          export MPIX_API_KEY=$(node -e "const s=JSON.parse(process.env.ALL_SECRETS||'{}'); process.stdout.write(s.MPIX_API_KEY||'')")
+          export MPIX_API_SECRET=$(node -e "const s=JSON.parse(process.env.ALL_SECRETS||'{}'); process.stdout.write(s.MPIX_API_SECRET||'')")
+
           if [ -z "$JWT_SECRET" ]; then
             echo "Missing required secret: JWT_SECRET"
             exit 1
