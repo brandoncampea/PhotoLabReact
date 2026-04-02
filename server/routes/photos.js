@@ -395,6 +395,72 @@ const resolvePlayerTagForFile = ({ fileName, rosterRows, fileNameTagMap }) => {
   return null;
 };
 
+const extractImageMetadata = async (buffer) => {
+  if (!buffer) return {};
+  try {
+    const image = sharp(buffer);
+    const metadata = await image.metadata();
+    
+    // Extract all available EXIF and metadata fields
+    const result = {
+      // Basic dimensions
+      width: metadata.width || null,
+      height: metadata.height || null,
+      
+      // Camera info (if available in EXIF)
+      cameraMake: metadata.exif?.IFD0?.Make || null,
+      cameraModel: metadata.exif?.IFD0?.Model || null,
+      
+      // Photo timing
+      dateTaken: metadata.exif?.IFD0?.DateTime || metadata.exif?.Exif?.DateTimeOriginal || null,
+      
+      // Exposure settings (EXIF)
+      iso: metadata.exif?.Exif?.ISO || null,
+      aperture: metadata.exif?.Exif?.FNumber ? String(metadata.exif.Exif.FNumber) : null,
+      shutterSpeed: metadata.exif?.Exif?.ExposureTime ? String(metadata.exif.Exif.ExposureTime) : null,
+      focalLength: metadata.exif?.Exif?.FocalLength ? String(metadata.exif.Exif.FocalLength) : null,
+      
+      // Advanced exposure data
+      fNumber: metadata.exif?.Exif?.FNumber || null,
+      exposureProgram: metadata.exif?.Exif?.ExposureProgram || null,
+      exposureTime: metadata.exif?.Exif?.ExposureTime || null,
+      meteringMode: metadata.exif?.Exif?.MeteringMode || null,
+      
+      // Keywords and description (IPTC/XMP)
+      keywords: metadata.exif?.IFD0?.Keywords || null,
+      headline: metadata.exif?.IFD0?.Headline || null,
+      
+      // Location data (EXIF GPS)
+      city: metadata.exif?.IFD0?.City || null,
+      stateOrProvince: metadata.exif?.IFD0?.Province || null,
+      
+      // Color and format info
+      colorSpace: metadata.colorspace || null,
+      colorProfile: metadata.hasProfile ? 'Yes' : null,
+      
+      // Additional info
+      alphaChannel: metadata.hasAlpha ? 'Yes' : null,
+      redEye: metadata.exif?.Exif?.RedEyeReduction ? 'Yes' : null,
+      
+      // File-level info
+      fileSize: buffer.length,
+      format: metadata.format,
+    };
+    
+    // Clean up null values
+    Object.keys(result).forEach(key => {
+      if (result[key] === null || result[key] === undefined) {
+        delete result[key];
+      }
+    });
+    
+    return result;
+  } catch (err) {
+    console.error('Failed to extract image metadata:', err);
+    return {};
+  }
+};
+
 const resolvePlayerTagBySignature = ({ signatureHash, signatures }) => {
   if (!signatureHash || !Array.isArray(signatures) || signatures.length === 0) return null;
   let best = null;
@@ -618,16 +684,18 @@ router.post('/upload', requireActiveSubscription, upload.fields([
       const blobName = makeBlobName(albumId, file.originalname);
       const photoUrl = await uploadImageBufferToAzure(file.buffer, blobName, file.mimetype);
 
-      // Extract image dimensions
-      let width = null;
-      let height = null;
-      try {
-        const metadata = await sharp(file.buffer).metadata();
-        width = metadata.width;
-        height = metadata.height;
-      } catch (err) {
-        console.error('Failed to extract image dimensions:', err);
-      }
+      // Extract comprehensive metadata from EXIF and image properties
+      const extractedMetadata = await extractImageMetadata(file.buffer);
+      const clientMetadata = parsedMetadata[index] || {};
+      
+      // Merge extracted EXIF metadata with any client-provided metadata (client takes precedence)
+      const mergedMetadata = {
+        ...extractedMetadata,
+        ...clientMetadata,
+      };
+      
+      const width = mergedMetadata.width || null;
+      const height = mergedMetadata.height || null;
 
       const signatureHash = await computeImageSignature(file.buffer);
       const fileTag = resolvePlayerTagForFile({
@@ -650,7 +718,7 @@ router.post('/upload', requireActiveSubscription, upload.fields([
         photoUrl,
         photoUrl,
         parsedDescriptions[index] || '',
-        parsedMetadata[index] ? JSON.stringify(parsedMetadata[index]) : null,
+        Object.keys(mergedMetadata).length > 0 ? JSON.stringify(mergedMetadata) : null,
         width,
         height,
         Number(file.size || file.buffer?.length || 0),
@@ -675,7 +743,7 @@ router.post('/upload', requireActiveSubscription, upload.fields([
         thumbnailUrl: photoUrl,
         fullImageUrl: photoUrl,
         description: parsedDescriptions[index] || '',
-        metadata: parsedMetadata[index] || null,
+        metadata: Object.keys(mergedMetadata).length > 0 ? mergedMetadata : null,
         width: width,
         height: height,
         playerName: player?.playerName || null,
