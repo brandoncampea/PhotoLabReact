@@ -6,19 +6,26 @@ import WatermarkedImage from './WatermarkedImage';
 interface CartItemProps {
   item: CartItemType;
   onEditCrop?: (item: CartItemType) => void;
+  onOpenWhccEditor?: (item: CartItemType) => void;
+  showWhccEditorButton?: boolean;
 }
 
-const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop }) => {
+const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop, onOpenWhccEditor, showWhccEditorButton }) => {
   const { updateQuantity, removeFromCart } = useCart();
   const [expanded, setExpanded] = useState(true);
 
   const handleQuantityChange = (newQuantity: number) => {
     if (newQuantity > 0) {
-      updateQuantity(item.photoId, newQuantity);
+      updateQuantity(item.photoId, newQuantity, item.productId, item.productSizeId);
     }
   };
 
   const subtotal = item.price * item.quantity;
+
+  const cropDebugText = (() => {
+    if (!item.cropData) return null;
+    return `x:${Math.round(item.cropData.x)} y:${Math.round(item.cropData.y)} w:${Math.round(item.cropData.width)} h:${Math.round(item.cropData.height)} sx:${Number(item.cropData.scaleX || 1).toFixed(2)} sy:${Number(item.cropData.scaleY || 1).toFixed(2)}`;
+  })();
 
   // Calculate crop preview overlay position (as percentage of image)
   const getCropStyle = () => {
@@ -64,7 +71,7 @@ const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop }) => {
           <button onClick={() => setExpanded(!expanded)} style={{ background: 'none', border: 'none', color: '#7b61ff', cursor: 'pointer' }}>
             {expanded ? 'Collapse' : 'Expand'}
           </button>
-          <button onClick={() => removeFromCart(item.photoId)} style={{ background: 'none', border: 'none', color: '#ff6b6b', cursor: 'pointer' }}>Remove</button>
+          <button onClick={() => removeFromCart(item.photoId, item.productId, item.productSizeId)} style={{ background: 'none', border: 'none', color: '#ff6b6b', cursor: 'pointer' }}>Remove</button>
         </div>
       </div>
 
@@ -92,6 +99,11 @@ const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop }) => {
             <div style={{ textAlign: 'center', fontSize: 12, color: '#aaa', marginBottom: 12 }}>
               {item.photo?.fileName || `Photo ${item.photoId}`}
             </div>
+            {cropDebugText && (
+              <div style={{ fontSize: 11, color: '#9aa3c7', marginBottom: 10, textAlign: 'center' }}>
+                Crop: {cropDebugText}
+              </div>
+            )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {onEditCrop && (
                 <button 
@@ -109,6 +121,24 @@ const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop }) => {
                   }}
                 >
                   ✏️ Edit Crop
+                </button>
+              )}
+              {showWhccEditorButton && onOpenWhccEditor && (
+                <button
+                  onClick={() => onOpenWhccEditor(item)}
+                  style={{
+                    padding: '8px 10px',
+                    background: '#1f8a70',
+                    border: 'none',
+                    borderRadius: 4,
+                    color: '#fff',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    textAlign: 'center'
+                  }}
+                >
+                  🖼️ Open WHCC Editor
                 </button>
               )}
             </div>

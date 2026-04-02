@@ -37,6 +37,8 @@ const AdminPhotos: React.FC = () => {
   const [coverSuccessId, setCoverSuccessId] = useState<number | null>(null);
   const [uploadItems, setUploadItems] = useState<UploadItem[]>([]);
   const [isDragging, setIsDragging] = useState(false);
+  const [rosterUploading, setRosterUploading] = useState(false);
+  const [rosterMessage, setRosterMessage] = useState<string | null>(null);
 
   useEffect(() => {
     loadAlbums();
@@ -232,6 +234,26 @@ const AdminPhotos: React.FC = () => {
     return metadata;
   };
 
+  const handleRosterCsvUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !albumId) return;
+
+    setRosterUploading(true);
+    setRosterMessage(null);
+    try {
+      const result = await photoService.uploadPlayerNamesCsv(albumId, file);
+      await loadPhotos();
+      const rosterSaved = Number((result as any).rosterPlayersSaved || 0);
+      const trained = Number((result as any).facialRecognitionTrained || 0);
+      setRosterMessage(`Roster uploaded: ${result.photosUpdated} photo(s) tagged, ${rosterSaved} roster player(s) saved, ${trained} training sample(s) captured.`);
+    } catch {
+      setRosterMessage('Failed to upload roster CSV.');
+    } finally {
+      setRosterUploading(false);
+      event.target.value = '';
+    }
+  };
+
   const currentAlbum = albums.find(a => a.id === albumId);
 
   if (loading || !albumId) {
@@ -401,6 +423,27 @@ const AdminPhotos: React.FC = () => {
               {uploadMessage.text}
             </p>
           )}
+          <div style={{ marginTop: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+            <input
+              type="file"
+              id="roster-csv-upload"
+              accept=".csv,text/csv"
+              style={{ display: 'none' }}
+              onChange={handleRosterCsvUpload}
+              disabled={rosterUploading || !albumId}
+            />
+            <label htmlFor="roster-csv-upload" className="btn btn-secondary" style={{ margin: 0 }}>
+              {rosterUploading ? 'Uploading roster…' : '📋 Upload Roster CSV'}
+            </label>
+            <span className="muted-text" style={{ fontSize: '0.8rem' }}>
+              Reused across this studio’s future album uploads.
+            </span>
+          </div>
+          {rosterMessage && (
+            <p className={rosterMessage.toLowerCase().includes('failed') ? 'danger-text' : 'success-text'} style={{ margin: '0.45rem 0 0 0', fontSize: '0.85rem' }}>
+              {rosterMessage}
+            </p>
+          )}
         </div>
       )}
 
@@ -432,6 +475,11 @@ const AdminPhotos: React.FC = () => {
                   i
                 </button>
               </div>
+              {!!(photo as any).playerNames && (
+                <p style={{ margin: '0.35rem 0 0 0', fontSize: '0.82rem', color: '#f5b041', fontWeight: 600 }}>
+                  👤 {(photo as any).playerNames}
+                </p>
+              )}
             </div>
             {currentAlbum && currentAlbum.coverPhotoId === photo.id && (
               <div className="cover-photo-badge">

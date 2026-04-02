@@ -19,6 +19,10 @@ function OrderItemWithSas({ item }: { item: any }) {
     };
   }
 
+  const cropDebugText = cropData
+    ? `x:${Math.round(cropData.x)} y:${Math.round(cropData.y)} w:${Math.round(cropData.width)} h:${Math.round(cropData.height)} sx:${Number(cropData.scaleX || 1).toFixed(2)} sy:${Number(cropData.scaleY || 1).toFixed(2)}`
+    : null;
+
   return (
     <div className="order-item">
       <div className="item-image-container">
@@ -38,6 +42,7 @@ function OrderItemWithSas({ item }: { item: any }) {
         <div>
           <span className="item-quantity">Qty: {item.quantity}</span>
         </div>
+        {cropDebugText && <p className="item-size-name">Crop: {cropDebugText}</p>}
         <p className="item-price">${(item.price * item.quantity).toFixed(2)}</p>
       </div>
     </div>
@@ -54,6 +59,8 @@ const Orders: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
+  const [loadingOrderDetails, setLoadingOrderDetails] = useState<Record<number, boolean>>({});
   const location = useLocation();
   const successMessage = location.state?.message;
 
@@ -63,13 +70,50 @@ const Orders: React.FC = () => {
 
   const loadOrders = async () => {
     try {
-      const data = await orderService.getOrders();
+      const data = await orderService.getOrders({ includeItems: false, limit: 100 });
       setOrders(data);
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to load orders');
     } finally {
       setLoading(false);
     }
+  };
+
+  const ensureOrderDetailsLoaded = async (orderId: number) => {
+    const existing = orders.find((entry) => entry.id === orderId);
+    if (existing && Array.isArray(existing.items) && existing.items.length > 0) {
+      return;
+    }
+    if (loadingOrderDetails[orderId]) {
+      return;
+    }
+
+    setLoadingOrderDetails((current) => ({
+      ...current,
+      [orderId]: true,
+    }));
+
+    try {
+      const detail = await orderService.getOrderDetails(orderId);
+      setOrders((current) => current.map((entry) => (entry.id === orderId ? { ...entry, ...detail } : entry)));
+    } catch (err: any) {
+      setError(err?.response?.data?.message || `Failed to load order #${orderId} details`);
+    } finally {
+      setLoadingOrderDetails((current) => {
+        const next = { ...current };
+        delete next[orderId];
+        return next;
+      });
+    }
+  };
+
+  const toggleOrderDetails = async (orderId: number) => {
+    if (selectedOrderId === orderId) {
+      setSelectedOrderId(null);
+      return;
+    }
+    setSelectedOrderId(orderId);
+    await ensureOrderDetailsLoaded(orderId);
   };
 
   if (loading) {
@@ -111,37 +155,56 @@ const Orders: React.FC = () => {
                       {order.status || 'Pending'}
                     </span>
                     <p className="order-total">${Number(order.totalAmount || 0).toFixed(2)}</p>
+                    <button
+                      type="button"
+                      className="order-toggle-button"
+                      onClick={() => {
+                        void toggleOrderDetails(order.id);
+                      }}
+                    >
+                      {selectedOrderId === order.id ? 'Hide details' : 'View details'}
+                    </button>
                   </div>
                 </div>
-                <div className="order-items">
-                  {order.items.map((item) => (
-                    <OrderItemWithSas key={item.id} item={item} />
-                  ))}
-                </div>
-                <div className="order-pricing-summary">
-                  {order.subtotal != null && (
-                    <div className="pricing-row">
-                      <span>Subtotal</span>
-                      <span>${Number(order.subtotal).toFixed(2)}</span>
-                    </div>
-                  )}
-                  {Number(order.shippingCost) > 0 && (
-                    <div className="pricing-row">
-                      <span>Shipping</span>
-                      <span>${Number(order.shippingCost).toFixed(2)}</span>
-                    </div>
-                  )}
-                  {Number(order.taxAmount) > 0 && (
-                    <div className="pricing-row">
-                      <span>Tax</span>
-                      <span>${Number(order.taxAmount).toFixed(2)}</span>
-                    </div>
-                  )}
-                  <div className="pricing-row pricing-total-row">
-                    <span>Total Charged</span>
-                    <span>${Number(order.totalAmount || 0).toFixed(2)}</span>
-                  </div>
-                </div>
+                {selectedOrderId === order.id && (
+                  <>
+                    {loadingOrderDetails[order.id] ? (
+                      <div className="loading" style={{ paddingTop: '1rem' }}>Loading order details...</div>
+                    ) : (
+                      <>
+                        <div className="order-items">
+                          {(order.items || []).map((item) => (
+                            <OrderItemWithSas key={item.id} item={item} />
+                          ))}
+                        </div>
+                        <div className="order-pricing-summary">
+                          {order.subtotal != null && (
+                            <div className="pricing-row">
+                              <span>Subtotal</span>
+                              <span>${Number(order.subtotal).toFixed(2)}</span>
+                            </div>
+                          )}
+                          {Number(order.shippingCost) > 0 && (
+                            <div className="pricing-row">
+                              <span>Shipping</span>
+                              <span>${Number(order.shippingCost).toFixed(2)}</span>
+                            </div>
+                          )}
+                          {Number(order.taxAmount) > 0 && (
+                            <div className="pricing-row">
+                              <span>Tax</span>
+                              <span>${Number(order.taxAmount).toFixed(2)}</span>
+                            </div>
+                          )}
+                          <div className="pricing-row pricing-total-row">
+                            <span>Total Charged</span>
+                            <span>${Number(order.totalAmount || 0).toFixed(2)}</span>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </>
+                )}
               </div>
             ))}
           </div>

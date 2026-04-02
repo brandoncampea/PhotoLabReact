@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Order, BatchQueueSummary, ShippingAddress } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
@@ -25,6 +25,10 @@ function AdminOrderItemCard({ item }: { item: any }) {
     };
   }
 
+  const cropDebugText = cropData
+    ? `x:${Math.round(cropData.x)} y:${Math.round(cropData.y)} w:${Math.round(cropData.width)} h:${Math.round(cropData.height)} sx:${Number(cropData.scaleX || 1).toFixed(2)} sy:${Number(cropData.scaleY || 1).toFixed(2)}`
+    : null;
+
   return (
     <div className="admin-order-item-card">
       <div className="admin-order-item-image-container">
@@ -43,6 +47,7 @@ function AdminOrderItemCard({ item }: { item: any }) {
           <span className="admin-order-qty-pill">Qty: {item.quantity}</span>
           <span className="admin-order-item-price">${Number((item.price || 0) * (item.quantity || 0)).toFixed(2)}</span>
         </div>
+        {cropDebugText && <p className="item-size-name" style={{ marginTop: 6 }}>Crop: {cropDebugText}</p>}
       </div>
     </div>
   );
@@ -52,7 +57,6 @@ const AdminOrders: React.FC = () => {
   const { user } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [batchQueue, setBatchQueue] = useState<BatchQueueSummary | null>(null);
-  const [selectedLab, setSelectedLab] = useState('roes');
   const [batchAddress, setBatchAddress] = useState<ShippingAddress>({
     fullName: '',
     addressLine1: '',
@@ -70,8 +74,93 @@ const AdminOrders: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [whccRetrying, setWhccRetrying] = useState<number | null>(null);
   const [whccRetryMessageByOrder, setWhccRetryMessageByOrder] = useState<Record<number, { tone: 'info' | 'error'; text: string }>>({});
+  const [loadingOrderDetails, setLoadingOrderDetails] = useState<Record<number, boolean>>({});
+  const [expandedBatchGroups, setExpandedBatchGroups] = useState<Record<string, boolean>>({});
+  const [batchReleaseProgress, setBatchReleaseProgress] = useState<{
+    active: boolean;
+    total: number;
+    submitted: number;
+    submitting: number;
+    failed: number;
+    pending: number;
+    lastUpdatedAt: string;
+  } | null>(null);
+  const [batchStatusByOrderId, setBatchStatusByOrderId] = useState<Record<number, 'pending' | 'submitting' | 'submitted' | 'failed'>>({});
+  const batchProgressIntervalRef = useRef<number | null>(null);
   const location = useLocation();
   const navigate = useNavigate();
+
+  const stopBatchProgressPolling = () => {
+    if (batchProgressIntervalRef.current != null) {
+      window.clearInterval(batchProgressIntervalRef.current);
+      batchProgressIntervalRef.current = null;
+    }
+  };
+
+  const refreshBatchProgress = async (trackedOrderIds: number[]) => {
+    if (!trackedOrderIds.length) return;
+
+    try {
+      const latestOrders = await orderService.getAdminOrders({ includeItems: false, limit: 500 });
+      const trackedSet = new Set(trackedOrderIds);
+      const trackedOrders = latestOrders.filter((order) => trackedSet.has(order.id));
+
+      const submitted = trackedOrders.filter((order) => Boolean(order.labSubmitted)).length;
+      const failed = trackedOrders.filter((order) => String(order.batchQueueStatus || '').toLowerCase() === 'failed').length;
+      const submitting = trackedOrders.filter((order) => String(order.batchQueueStatus || '').toLowerCase() === 'submitting').length;
+      const pending = Math.max(0, trackedOrderIds.length - submitted - failed);
+
+      const nextStatusByOrderId: Record<number, 'pending' | 'submitting' | 'submitted' | 'failed'> = {};
+      for (const orderId of trackedOrderIds) {
+        const latestOrder = trackedOrders.find((entry) => entry.id === orderId);
+        if (latestOrder?.labSubmitted) {
+          nextStatusByOrderId[orderId] = 'submitted';
+        } else if (String(latestOrder?.batchQueueStatus || '').toLowerCase() === 'failed') {
+          nextStatusByOrderId[orderId] = 'failed';
+        } else if (String(latestOrder?.batchQueueStatus || '').toLowerCase() === 'submitting') {
+          nextStatusByOrderId[orderId] = 'submitting';
+        } else {
+          nextStatusByOrderId[orderId] = 'pending';
+        }
+      }
+      setBatchStatusByOrderId(nextStatusByOrderId);
+
+      setBatchReleaseProgress({
+        active: pending > 0,
+        total: trackedOrderIds.length,
+        submitted,
+        submitting,
+        failed,
+        pending,
+        lastUpdatedAt: new Date().toLocaleTimeString(),
+      });
+
+      if (pending === 0) {
+        stopBatchProgressPolling();
+      }
+    } catch {
+      // Keep existing progress state if polling briefly fails.
+    }
+  };
+
+  const startBatchProgressPolling = (trackedOrderIds: number[]) => {
+    stopBatchProgressPolling();
+    setBatchStatusByOrderId(Object.fromEntries(trackedOrderIds.map((orderId) => [orderId, 'pending'])) as Record<number, 'pending' | 'submitting' | 'submitted' | 'failed'>);
+    setBatchReleaseProgress({
+      active: true,
+      total: trackedOrderIds.length,
+      submitted: 0,
+      submitting: 0,
+      failed: 0,
+      pending: trackedOrderIds.length,
+      lastUpdatedAt: new Date().toLocaleTimeString(),
+    });
+
+    void refreshBatchProgress(trackedOrderIds);
+    batchProgressIntervalRef.current = window.setInterval(() => {
+      void refreshBatchProgress(trackedOrderIds);
+    }, 1500);
+  };
 
   const updateBatchAddressField = (field: keyof ShippingAddress, value: string) => {
     setBatchAddress((current) => ({
@@ -84,13 +173,12 @@ const AdminOrders: React.FC = () => {
     setLoading(true);
     try {
       const [ordersData, queueData, config] = await Promise.all([
-        orderService.getAdminOrders(),
+        orderService.getAdminOrders({ includeItems: false, limit: 200 }),
         orderService.getBatchQueue(),
         shippingService.getConfig(),
       ]);
       setOrders(ordersData || []);
       setBatchQueue(queueData);
-      setSelectedLab(queueData.labOptions?.[0] || 'roes');
       const configuredAddress = queueData.batchShippingAddress || config.batchShippingAddress;
       if (configuredAddress) {
         setBatchAddress({
@@ -116,18 +204,42 @@ const AdminOrders: React.FC = () => {
     loadData();
   }, []);
 
+  useEffect(() => () => {
+    stopBatchProgressPolling();
+  }, []);
+
   const handleSubmitBatch = async () => {
     if (!batchQueue?.eligibleOrderIds.length) {
       setMessage('No eligible batch orders are ready to release.');
       return;
     }
 
+    const trackedOrderIds = [...batchQueue.eligibleOrderIds];
+    startBatchProgressPolling(trackedOrderIds);
+    setMessage(`Submitting ${trackedOrderIds.length} eligible batch order(s) to WHCC...`);
+
     try {
-      const result = await orderService.submitBatch(batchQueue.eligibleOrderIds, batchAddress, selectedLab);
-      setMessage(`Released ${result.updatedCount} batch order(s) to ${selectedLab.toUpperCase()}.`);
+      const result = await orderService.submitBatch(trackedOrderIds, batchAddress);
+      if ((result as any).failedCount) {
+        setMessage(`Released ${result.updatedCount} batch order(s) to ${String(result.selectedLab || 'configured lab').toUpperCase()}. ${(result as any).failedCount} failed. See WHCC logs in order details.`);
+      } else {
+        setMessage(`Released ${result.updatedCount} batch order(s) to ${String(result.selectedLab || 'configured lab').toUpperCase()}.`);
+      }
+      setBatchReleaseProgress({
+        active: false,
+        total: trackedOrderIds.length,
+        submitted: Number(result.updatedCount || 0),
+        submitting: 0,
+        failed: Number((result as any).failedCount || 0),
+        pending: Math.max(0, trackedOrderIds.length - Number(result.updatedCount || 0) - Number((result as any).failedCount || 0)),
+        lastUpdatedAt: new Date().toLocaleTimeString(),
+      });
+      stopBatchProgressPolling();
       await loadData();
     } catch {
       setMessage('Failed to release batch orders');
+      setBatchReleaseProgress((current) => current ? { ...current, active: false, lastUpdatedAt: new Date().toLocaleTimeString() } : null);
+      stopBatchProgressPolling();
     }
   };
 
@@ -165,10 +277,11 @@ const AdminOrders: React.FC = () => {
   const queuedBatchOrders = orders.filter((order) => order.isBatch && !order.labSubmitted);
   const recentDirectOrders = orders.filter((order) => !order.isBatch || order.labSubmitted);
   const visibleOrders = [...queuedBatchOrders, ...recentDirectOrders];
-  const canViewWhccDetails = user?.role === 'super_admin';
+  const recentVisibleOrders = [...recentDirectOrders];
+  const canViewWhccDetails = user?.role === 'super_admin' || user?.role === 'studio_admin' || user?.role === 'admin';
   const normalizedQuery = searchQuery.trim().toLowerCase();
-  const filteredOrders = normalizedQuery
-    ? visibleOrders.filter((order) => {
+  const filteredRecentOrders = normalizedQuery
+    ? recentVisibleOrders.filter((order) => {
         const shipping = order.shippingAddress || ({} as ShippingAddress);
         const searchableText = [
           shipping.fullName,
@@ -185,11 +298,39 @@ const AdminOrders: React.FC = () => {
           .toLowerCase();
         return searchableText.includes(normalizedQuery);
       })
-    : visibleOrders;
+    : recentVisibleOrders;
   const showWhccColumn = canViewWhccDetails && visibleOrders.some(
     (order) => order.whccConfirmationId || order.whccImportResponse || order.whccSubmitResponse || order.whccLastError || order.trackingNumber || order.whccWebhookEvent
   );
   const tableColumnCount = showWhccColumn ? 7 : 6;
+  const getOrderById = (orderId: number) => orders.find((entry) => entry.id === orderId);
+
+  const submittedBatchOrders = filteredRecentOrders.filter((order) => order.isBatch && order.labSubmitted);
+  const nonSubmittedBatchOrders = filteredRecentOrders.filter((order) => !(order.isBatch && order.labSubmitted));
+
+  const submittedBatchGroups = Array.from(
+    submittedBatchOrders.reduce((map, order) => {
+      const key = order.whccConfirmationId || `batch-${order.id}`;
+      const existing = map.get(key);
+      if (existing) {
+        existing.orders.push(order);
+        existing.total += Number(order.totalAmount) || 0;
+        if (new Date(order.orderDate).getTime() > new Date(existing.latestOrderDate).getTime()) {
+          existing.latestOrderDate = order.orderDate;
+        }
+      } else {
+        map.set(key, {
+          key,
+          confirmationId: order.whccConfirmationId || null,
+          orders: [order],
+          total: Number(order.totalAmount) || 0,
+          latestOrderDate: order.orderDate,
+        });
+      }
+      return map;
+    }, new Map<string, { key: string; confirmationId: string | null; orders: Order[]; total: number; latestOrderDate: string }>())
+      .values()
+  ).sort((a, b) => new Date(b.latestOrderDate).getTime() - new Date(a.latestOrderDate).getTime());
 
   const formatWhccPayload = (value: unknown) => {
     if (value == null) return null;
@@ -251,12 +392,41 @@ const AdminOrders: React.FC = () => {
     navigate({ pathname: location.pathname, search: params.toString() ? `?${params.toString()}` : '' }, { replace: true });
   };
 
-  const handleRowSelect = (orderId: number) => {
+  const ensureOrderDetailsLoaded = async (orderId: number) => {
+    const existing = orders.find((entry) => entry.id === orderId);
+    if (existing && Array.isArray(existing.items) && existing.items.length > 0) {
+      return;
+    }
+    if (loadingOrderDetails[orderId]) {
+      return;
+    }
+
+    setLoadingOrderDetails((current) => ({
+      ...current,
+      [orderId]: true,
+    }));
+
+    try {
+      const orderDetails = await orderService.getAdminOrderDetails(orderId);
+      setOrders((current) => current.map((entry) => (entry.id === orderId ? { ...entry, ...orderDetails } : entry)));
+    } catch {
+      setMessage(`Failed to load details for order #${orderId}`);
+    } finally {
+      setLoadingOrderDetails((current) => {
+        const next = { ...current };
+        delete next[orderId];
+        return next;
+      });
+    }
+  };
+
+  const handleRowSelect = async (orderId: number) => {
     if (selectedOrderId === orderId) {
       updateSelectedOrder(null);
       return;
     }
     updateSelectedOrder(orderId);
+    await ensureOrderDetailsLoaded(orderId);
   };
 
   const renderOrderDetails = (order: Order) => (
@@ -475,7 +645,7 @@ const AdminOrders: React.FC = () => {
       )}
 
       <div className="admin-order-items-grid">
-        {order.items.map((item) => (
+        {(order.items || []).map((item) => (
           <AdminOrderItemCard key={item.id} item={item} />
         ))}
       </div>
@@ -504,6 +674,25 @@ const AdminOrders: React.FC = () => {
       })()}
     </div>
   );
+
+  const getQueueOrderStatusDisplay = (order: { id: number; isEligible: boolean }) => {
+    const liveStatus = batchStatusByOrderId[order.id];
+    if (liveStatus === 'submitting') {
+      return { className: 'status-processing', label: 'Submitting' };
+    }
+    if (liveStatus === 'submitted') {
+      return { className: 'status-eligible', label: 'Submitted' };
+    }
+    if (liveStatus === 'failed') {
+      return { className: 'status-failed', label: 'Failed' };
+    }
+    if (liveStatus === 'pending') {
+      return { className: 'status-waiting', label: 'Pending' };
+    }
+    return order.isEligible
+      ? { className: 'status-eligible', label: 'Eligible' }
+      : { className: 'status-waiting', label: 'Waiting' };
+  };
 
   return (
     <AdminLayout>
@@ -574,9 +763,34 @@ const AdminOrders: React.FC = () => {
                 </div>
               </div>
 
-              <button className="batch-action-button" onClick={handleSubmitBatch} disabled={!batchQueue.eligibleOrderIds.length}>
-                Release Eligible Batch Orders
+              <button className="batch-action-button" onClick={handleSubmitBatch} disabled={!batchQueue.eligibleOrderIds.length || Boolean(batchReleaseProgress?.active)}>
+                {batchReleaseProgress?.active ? 'Submitting Batch Orders…' : 'Release Eligible Batch Orders'}
               </button>
+
+              {batchReleaseProgress && (
+                <div className="batch-progress-panel" role="status" aria-live="polite">
+                  <div className="batch-progress-header">
+                    <strong>
+                      {batchReleaseProgress.active
+                        ? `Submitting ${batchReleaseProgress.total} order(s) to WHCC...`
+                        : 'Batch submission completed'}
+                    </strong>
+                    <span>Updated {batchReleaseProgress.lastUpdatedAt}</span>
+                  </div>
+                  <div className="batch-progress-bar-track">
+                    <div
+                      className="batch-progress-bar-fill"
+                      style={{ width: `${Math.min(100, Math.round(((batchReleaseProgress.submitted + batchReleaseProgress.failed) / Math.max(1, batchReleaseProgress.total)) * 100))}%` }}
+                    />
+                  </div>
+                  <div className="batch-progress-metrics">
+                    <span>Submitted: {batchReleaseProgress.submitted}/{batchReleaseProgress.total}</span>
+                    <span>Submitting: {batchReleaseProgress.submitting}</span>
+                    <span>Failed: {batchReleaseProgress.failed}</span>
+                    <span>Pending: {batchReleaseProgress.pending}</span>
+                  </div>
+                </div>
+              )}
 
               <div className="orders-table-container">
                 {batchQueue.orders.length === 0 ? (
@@ -594,20 +808,51 @@ const AdminOrders: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {batchQueue.orders.map((order) => (
-                        <tr key={order.id}>
-                          <td><span className="order-id">#{order.id}</span></td>
-                          <td>{order.customerName}</td>
-                          <td>{new Date(order.createdAt).toLocaleDateString()}</td>
-                          <td>{order.batchReadyDate ? new Date(order.batchReadyDate).toLocaleString() : 'Ready now'}</td>
-                          <td>${order.totalAmount.toFixed(2)}</td>
-                          <td>
-                            <span className={`order-status ${order.isEligible ? 'status-eligible' : 'status-waiting'}`}>
-                              {order.isEligible ? 'Eligible' : 'Waiting'}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
+                      {batchQueue.orders.map((order) => {
+                        const statusDisplay = getQueueOrderStatusDisplay(order);
+                        return (
+                        <React.Fragment key={order.id}>
+                          <tr
+                            className={`admin-order-row ${selectedOrderId === order.id ? 'admin-order-row-selected' : ''}`}
+                            onClick={() => {
+                              void handleRowSelect(order.id);
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter' || event.key === ' ') {
+                                event.preventDefault();
+                                void handleRowSelect(order.id);
+                              }
+                            }}
+                            role="button"
+                            tabIndex={0}
+                          >
+                            <td><span className="order-id">#{order.id}</span></td>
+                            <td>{order.customerName}</td>
+                            <td>{new Date(order.createdAt).toLocaleDateString()}</td>
+                            <td>{order.batchReadyDate ? new Date(order.batchReadyDate).toLocaleString() : 'Ready now'}</td>
+                            <td>${order.totalAmount.toFixed(2)}</td>
+                            <td>
+                              <span className={`order-status ${statusDisplay.className}`}>
+                                {statusDisplay.label}
+                              </span>
+                            </td>
+                          </tr>
+
+                          {selectedOrderId === order.id && (
+                            <tr className="admin-order-details-row">
+                              <td colSpan={6}>
+                                {loadingOrderDetails[order.id] ? (
+                                  <div className="loading-state">Loading order details...</div>
+                                ) : getOrderById(order.id) ? (
+                                  renderOrderDetails(getOrderById(order.id) as Order)
+                                ) : (
+                                  <div className="loading-state">Order details unavailable.</div>
+                                )}
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );})}
                     </tbody>
                   </table>
                 )}
@@ -630,9 +875,9 @@ const AdminOrders: React.FC = () => {
           </div>
           {loading ? (
             <div className="loading-state">Loading orders...</div>
-          ) : orders.length === 0 ? (
+          ) : recentDirectOrders.length === 0 ? (
             <p className="empty-state">No recent orders found.</p>
-          ) : filteredOrders.length === 0 ? (
+          ) : filteredRecentOrders.length === 0 ? (
             <p className="empty-state">No orders match your search.</p>
           ) : (
             <div className="orders-table-container">
@@ -649,15 +894,17 @@ const AdminOrders: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredOrders.map((order) => (
+                  {nonSubmittedBatchOrders.map((order) => (
                     <React.Fragment key={order.id}>
                       <tr
                         className={`admin-order-row ${selectedOrderId === order.id ? 'admin-order-row-selected' : ''}`}
-                        onClick={() => handleRowSelect(order.id)}
+                        onClick={() => {
+                          void handleRowSelect(order.id);
+                        }}
                         onKeyDown={(event) => {
                           if (event.key === 'Enter' || event.key === ' ') {
                             event.preventDefault();
-                            handleRowSelect(order.id);
+                            void handleRowSelect(order.id);
                           }
                         }}
                         role="button"
@@ -711,12 +958,132 @@ const AdminOrders: React.FC = () => {
                       {selectedOrderId === order.id && (
                         <tr className="admin-order-details-row">
                           <td colSpan={tableColumnCount}>
-                            {renderOrderDetails(order)}
+                            {loadingOrderDetails[order.id] ? (
+                              <div className="loading-state">Loading order details...</div>
+                            ) : (
+                              renderOrderDetails(order)
+                            )}
                           </td>
                         </tr>
                       )}
                     </React.Fragment>
                   ))}
+
+                  {submittedBatchGroups.map((group) => {
+                    const isExpanded = Boolean(expandedBatchGroups[group.key]);
+                    return (
+                      <React.Fragment key={group.key}>
+                        <tr
+                          className="admin-batch-group-row"
+                          onClick={() => {
+                            setExpandedBatchGroups((current) => ({
+                              ...current,
+                              [group.key]: !current[group.key],
+                            }));
+                          }}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              setExpandedBatchGroups((current) => ({
+                                ...current,
+                                [group.key]: !current[group.key],
+                              }));
+                            }
+                          }}
+                        >
+                          <td colSpan={tableColumnCount}>
+                            <div className="admin-batch-group-content">
+                              <span className="admin-batch-group-toggle">{isExpanded ? '▾' : '▸'}</span>
+                              <span className="admin-batch-group-title">
+                                Submitted Batch Group ({group.orders.length} orders)
+                              </span>
+                              <span className="admin-batch-group-meta">
+                                {group.confirmationId ? `WHCC ID: ${group.confirmationId}` : 'WHCC ID pending'}
+                              </span>
+                              <span className="admin-batch-group-meta">Total: ${group.total.toFixed(2)}</span>
+                            </div>
+                          </td>
+                        </tr>
+
+                        {isExpanded && group.orders.map((order) => (
+                          <React.Fragment key={order.id}>
+                            <tr
+                              className={`admin-order-row admin-batch-group-order-row ${selectedOrderId === order.id ? 'admin-order-row-selected' : ''}`}
+                              onClick={() => {
+                                void handleRowSelect(order.id);
+                              }}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter' || event.key === ' ') {
+                                  event.preventDefault();
+                                  void handleRowSelect(order.id);
+                                }
+                              }}
+                              role="button"
+                              tabIndex={0}
+                            >
+                              <td><span className="order-id">#{order.id}</span></td>
+                              <td>{new Date(order.orderDate).toLocaleDateString()}</td>
+                              <td>
+                                <span className={`order-status status-${order.status}`}>
+                                  {order.status}
+                                </span>
+                              </td>
+                              <td>{order.shippingAddress?.fullName || 'Unknown customer'}</td>
+                              <td>${order.totalAmount.toFixed(2)}</td>
+                              <td>{order.shippingOption}</td>
+                              {showWhccColumn && (
+                                <td>
+                                  <div className="whcc-cell">
+                                    {order.whccConfirmationId ? (
+                                      <div className="whcc-pill whcc-success">ID: {order.whccConfirmationId}</div>
+                                    ) : (
+                                      <div className="whcc-pill whcc-muted">Not submitted</div>
+                                    )}
+                                    {order.whccSubmitResponse?.Received && (
+                                      <div className="whcc-meta">Submitted: {String(order.whccSubmitResponse.Received)}</div>
+                                    )}
+                                    {order.whccSubmitResponse?.Confirmation && (
+                                      <div className="whcc-meta">{String(order.whccSubmitResponse.Confirmation)}</div>
+                                    )}
+                                    {order.whccWebhookEvent && <div className="whcc-meta">Event: {order.whccWebhookEvent}</div>}
+                                    {order.whccWebhookStatus && <div className="whcc-meta">Status: {order.whccWebhookStatus}</div>}
+                                    {order.whccOrderNumber && <div className="whcc-meta">Order #: {order.whccOrderNumber}</div>}
+                                    {(order.shippingCarrier || order.trackingNumber) && (
+                                      <div className="whcc-tracking-box">
+                                        {order.shippingCarrier && <div className="whcc-meta"><strong>Carrier:</strong> {order.shippingCarrier}</div>}
+                                        {order.trackingNumber && <div className="whcc-meta"><strong>Tracking:</strong> {order.trackingNumber}</div>}
+                                        {order.shippedAt && <div className="whcc-meta"><strong>Shipped:</strong> {new Date(order.shippedAt).toLocaleString()}</div>}
+                                        {order.trackingUrl && (
+                                          <a className="whcc-link" href={order.trackingUrl} target="_blank" rel="noopener noreferrer" onClick={(event) => event.stopPropagation()}>
+                                            Open tracking
+                                          </a>
+                                        )}
+                                      </div>
+                                    )}
+                                    {order.whccLastError && <div className="whcc-pill whcc-error">Error stored</div>}
+                                  </div>
+                                </td>
+                              )}
+                            </tr>
+
+                            {selectedOrderId === order.id && (
+                              <tr className="admin-order-details-row">
+                                <td colSpan={tableColumnCount}>
+                                  {loadingOrderDetails[order.id] ? (
+                                    <div className="loading-state">Loading order details...</div>
+                                  ) : (
+                                    renderOrderDetails(order)
+                                  )}
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
+                        ))}
+                      </React.Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

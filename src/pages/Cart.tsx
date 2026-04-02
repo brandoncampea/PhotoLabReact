@@ -16,6 +16,7 @@ import { productService } from '../services/productService';
 import { downloadService } from '../services/downloadService';
 import { discountCodeService } from '../services/discountCodeService';
 import { taxService } from '../services/taxService';
+import { whccEditorService } from '../services/whccEditorService';
 import { ShippingConfig, StripeConfig, Product, DiscountCode, ShippingAddress, CartItem as CartItemType, PaymentIntent } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -179,7 +180,15 @@ const Cart: React.FC = () => {
 
   const isBatchAvailable = () => {
     if (!shippingConfig || !shippingConfig.isActive) return false;
-    return new Date(shippingConfig.batchDeadline) > new Date();
+    const deadline = new Date(shippingConfig.batchDeadline);
+    if (Number.isNaN(deadline.getTime())) return true;
+    return deadline > new Date();
+  };
+
+  const getBatchDeadlineDate = () => {
+    if (!shippingConfig?.batchDeadline) return null;
+    const deadline = new Date(shippingConfig.batchDeadline);
+    return Number.isNaN(deadline.getTime()) ? null : deadline;
   };
 
   const hasOnlyDigitalProducts = () => {
@@ -356,6 +365,71 @@ const Cart: React.FC = () => {
     };
   };
 
+  const isMultiImageItem = (item: CartItemType): boolean => {
+    const product = products.find((p) => Number(p.id) === Number(item.productId || 0));
+    const category = String(product?.category || '').toLowerCase();
+    const name = String(item.productName || product?.name || '').toLowerCase();
+
+    if (Number(product?.minPhotos || 0) > 1) return true;
+    if (category.includes('albums') || category.includes('books') || category.includes('press printed books')) return true;
+    if (name.includes('album') || name.includes('book')) return true;
+
+    return false;
+  };
+
+  const handleOpenWhccEditor = async (item: CartItemType) => {
+    try {
+      setError('');
+      const photoIds = Array.isArray(item.photoIds) && item.photoIds.length
+        ? item.photoIds
+        : item.photoId
+        ? [item.photoId]
+        : [];
+
+      const photos = Array.isArray(item.photos)
+        ? item.photos.map((entry) => ({
+            id: entry?.photo?.id,
+            name: entry?.photo?.fileName,
+            thumbnailUrl: entry?.photo?.thumbnailUrl,
+            fullImageUrl: entry?.photo?.fullImageUrl,
+            width: entry?.photo?.width || entry?.photo?.metadata?.width,
+            height: entry?.photo?.height || entry?.photo?.metadata?.height,
+          }))
+        : item.photo
+        ? [{
+            id: item.photo.id,
+            name: item.photo.fileName,
+            thumbnailUrl: item.photo.thumbnailUrl,
+            fullImageUrl: item.photo.fullImageUrl,
+            width: item.photo.width || item.photo.metadata?.width,
+            height: item.photo.height || item.photo.metadata?.height,
+          }]
+        : [];
+
+      if (!item.productId) {
+        setError('This cart item is missing a product ID and cannot open the WHCC editor.');
+        return;
+      }
+
+      const session = await whccEditorService.createSession({
+        productId: Number(item.productId),
+        quantity: Number(item.quantity) || 1,
+        photoIds,
+        photos,
+      });
+
+      if (!session?.url) {
+        setError('WHCC editor did not return a launch URL.');
+        return;
+      }
+
+      window.location.assign(session.url);
+    } catch (err: any) {
+      setError(err?.response?.data?.error || err?.response?.data?.details || err?.message || 'Failed to open WHCC editor.');
+    } finally {
+    }
+  };
+
   const handleSaveCrop = () => {
     if (!editingItem) return;
     const cropper = cropperRef?.cropper || cropperRef;
@@ -369,7 +443,7 @@ const Cart: React.FC = () => {
       rotate: 0,
       scaleX: 1,
       scaleY: 1,
-    });
+    }, editingItem.productId, editingItem.productSizeId);
     setEditingItem(null);
     setCropperRef(null);
   };
@@ -518,14 +592,18 @@ const Cart: React.FC = () => {
         <div className="cart-items">
           {items.map((item) => {
             const resolvedItem = getResolvedCartItem(item);
+            const product = products.find((p) => Number(p.id) === Number(resolvedItem.productId || 0));
+            const isDigitalItem = Boolean(product?.isDigital);
             return (
             <CartItem 
               key={`${item.photoId}-${item.productId || 0}-${item.productSizeId || 0}`}
               item={resolvedItem} 
-              onEditCrop={(selectedItem) => {
+              onEditCrop={isDigitalItem ? undefined : (selectedItem) => {
                 setEditingItem(selectedItem);
                 setCropperRef(null);
               }}
+              onOpenWhccEditor={handleOpenWhccEditor}
+              showWhccEditorButton={!isDigitalItem && isMultiImageItem(resolvedItem)}
             />
             );
           })}
@@ -682,9 +760,15 @@ const Cart: React.FC = () => {
                     onChange={() => setShippingOption('batch')}
                   />
                   <strong>Batch Shipping - FREE</strong>
-                  <p>
-                    Ships in {getDaysUntilDeadline()} days (by {new Date(shippingConfig.batchDeadline).toLocaleDateString()})
-                  </p>
+                  {getBatchDeadlineDate() ? (
+                    <p>
+                      Ships in {getDaysUntilDeadline()} days (by {getBatchDeadlineDate()!.toLocaleDateString()})
+                    </p>
+                  ) : (
+                    <p>
+                      Included with the next available batch shipment.
+                    </p>
+                  )}
                 </label>
               )}
 

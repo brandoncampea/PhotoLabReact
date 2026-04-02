@@ -190,6 +190,24 @@ function buildItemDrafts(items: any[]): Record<number, ItemDraft> {
   return drafts;
 }
 
+function getCategoryImageMode(categoryName: string): string {
+  const category = String(categoryName || '').toLowerCase();
+
+  if (category.includes('framed prints') || category.includes('framed print')) {
+    return 'Single image';
+  }
+
+  if (
+    category.includes('albums') ||
+    category.includes('books') ||
+    category.includes('press printed books')
+  ) {
+    return 'Multi image';
+  }
+
+  return 'Unknown';
+}
+
 const SuperAdminPricing: React.FC = () => {
   const [importType, setImportType] = useState<null | 'whcc' | 'csv' | 'mpix'>(null);
   const [priceLists, setPriceLists] = useState<SuperPriceListRow[]>([]);
@@ -230,9 +248,8 @@ const SuperAdminPricing: React.FC = () => {
   const [addingManual, setAddingManual] = useState(false);
   const [whccCatalog, setWhccCatalog] = useState<WhccCatalogEntry[]>([]);
   const [whccCatalogLoading, setWhccCatalogLoading] = useState(false);
-  const [whccCatalogError, setWhccCatalogError] = useState('');
-  const [pickerItemId, setPickerItemId] = useState<number | null>(null);
-  const [pickerQuery, setPickerQuery] = useState('');
+  const [, setWhccCatalogError] = useState('');
+  const [showZeroCostOnly, setShowZeroCostOnly] = useState(false);
   const [autoMatchingWhcc, setAutoMatchingWhcc] = useState(false);
   const [syncingWhccCosts, setSyncingWhccCosts] = useState(false);
   const [fillingWhccNodes, setFillingWhccNodes] = useState(false);
@@ -359,11 +376,12 @@ const SuperAdminPricing: React.FC = () => {
     }
   }, [whccCatalog, whccCatalogLoading]);
 
-  const openWhccPicker = async (item: any) => {
-    setPickerItemId(item.id);
-    setPickerQuery(`${item.product_name || ''} ${item.size_name || ''}`.trim());
-    await ensureWhccCatalogLoaded();
-  };
+  const isZeroCostItem = useCallback((item: any) => {
+    const raw = item?.base_cost;
+    if (raw === null || raw === undefined || raw === '') return true;
+    const value = Number(raw);
+    return Number.isFinite(value) && Math.abs(value) < 0.0001;
+  }, []);
 
   const itemNeedsWhccMapping = useCallback((item: any) => {
     const productUID = Number(item.whccProductUID || 0);
@@ -480,12 +498,6 @@ const SuperAdminPricing: React.FC = () => {
       .sort((a, b) => b.score - a.score || a.entry.name.localeCompare(b.entry.name));
   }, [whccCatalog]);
 
-  const getWhccSuggestions = useCallback((item: any) =>
-    rankWhccSuggestions(item, pickerQuery || `${item.product_name || ''} ${item.size_name || ''}`)
-      .slice(0, 8)
-      .map(result => result.entry),
-  [pickerQuery, rankWhccSuggestions]);
-
   const getBestWhccSuggestion = useCallback((item: any): WhccMatchCandidate | null => {
     const ranked = rankWhccSuggestions(item).filter(result => result.score >= 20);
     return ranked[0] || null;
@@ -508,8 +520,6 @@ const SuperAdminPricing: React.FC = () => {
 
   const handlePreviewWhccMatches = async () => {
     setViewError('');
-    setPickerItemId(null);
-    setPickerQuery('');
 
     try {
       await ensureWhccCatalogLoaded();
@@ -532,21 +542,10 @@ const SuperAdminPricing: React.FC = () => {
     whccItemAttributeUIDs: entry.itemAttributeUIDs.join(', '),
   }), [itemDrafts]);
 
-  const applyWhccCatalogEntry = async (item: any, entry: WhccCatalogEntry) => {
-    const nextDraft = buildDraftWithWhccEntry(item, entry);
-
-    setItemDrafts(prev => ({ ...prev, [item.id]: nextDraft }));
-    setPickerItemId(null);
-    setPickerQuery('');
-    await autoSaveItem(item.id, nextDraft);
-  };
-
   const handleAutoMatchWhcc = async () => {
     if (!viewList || autoMatchingWhcc) return;
     setAutoMatchingWhcc(true);
     setViewError('');
-    setPickerItemId(null);
-    setPickerQuery('');
 
     try {
       await ensureWhccCatalogLoaded();
@@ -695,13 +694,29 @@ const SuperAdminPricing: React.FC = () => {
 
   // ── Search filter helpers ──────────────────────────────────────────────────
   const q = viewSearch.toLowerCase().trim();
-  const catVisible = (cat: string) => !q || cat.toLowerCase().includes(q) ||
-    Object.keys(viewGrouped[cat] || {}).some(prod =>
-      prod.toLowerCase().includes(q) ||
-      (viewGrouped[cat][prod] || []).some((i: any) => (i.size_name || '').toLowerCase().includes(q))
-    );
-  const prodVisible = (cat: string, prod: string) => !q || prod.toLowerCase().includes(q) ||
-    (viewGrouped[cat]?.[prod] || []).some((i: any) => (i.size_name || '').toLowerCase().includes(q));
+  const catVisible = (cat: string) => {
+    const allItems = Object.values(viewGrouped[cat] || {}).flat() as any[];
+    const visibleItems = showZeroCostOnly ? allItems.filter(isZeroCostItem) : allItems;
+    if (!visibleItems.length) return false;
+
+    if (!q) return true;
+    if (cat.toLowerCase().includes(q)) return true;
+
+    return Object.keys(viewGrouped[cat] || {}).some(prod => {
+      const prodItems = (viewGrouped[cat][prod] || []).filter((i: any) => !showZeroCostOnly || isZeroCostItem(i));
+      return prodItems.length > 0 && (
+        prod.toLowerCase().includes(q) ||
+        prodItems.some((i: any) => (i.size_name || '').toLowerCase().includes(q))
+      );
+    });
+  };
+
+  const prodVisible = (cat: string, prod: string) => {
+    const prodItems = (viewGrouped[cat]?.[prod] || []).filter((i: any) => !showZeroCostOnly || isZeroCostItem(i));
+    if (!prodItems.length) return false;
+    if (!q) return true;
+    return prod.toLowerCase().includes(q) || prodItems.some((i: any) => (i.size_name || '').toLowerCase().includes(q));
+  };
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -818,6 +833,10 @@ const SuperAdminPricing: React.FC = () => {
               <div className="spl-toolbar">
                 <input className="spl-search" type="text" placeholder="Search category, product, or size…"
                   value={viewSearch} onChange={e => setViewSearch(e.target.value)} />
+                <label className="spl-toggle-label" style={{ marginRight: 8 }}>
+                  <input type="checkbox" checked={showZeroCostOnly} onChange={e => setShowZeroCostOnly(e.target.checked)} />
+                  Show 0 cost only
+                </label>
                 <div className="spl-markup-group">
                   <label>Markup % for all active:</label>
                   <input className="spl-markup-input" type="number" min={0} step={1} value={globalMarkup}
@@ -939,7 +958,11 @@ const SuperAdminPricing: React.FC = () => {
                   <p style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '2rem' }}>No items in this price list.</p>
                 )}
                 {Object.keys(viewGrouped).filter(catVisible).map(cat => {
-                  const catIds = itemIdsForCat(cat);
+                  const catIds = itemIdsForCat(cat).filter(id => {
+                    if (!showZeroCostOnly) return true;
+                    const found = viewItems.find(i => i.id === id);
+                    return found ? isZeroCostItem(found) : false;
+                  });
                   const catAllActive = allActiveInGroup(catIds);
                   const catSomeActive = !catAllActive && someActiveInGroup(catIds);
                   return (
@@ -961,6 +984,20 @@ const SuperAdminPricing: React.FC = () => {
                           />
                         </div>
                         <strong>{cat}</strong>
+                        <span
+                          style={{
+                            marginLeft: 10,
+                            padding: '4px 8px',
+                            borderRadius: 999,
+                            border: '1px solid rgba(255,255,255,0.15)',
+                            background: 'rgba(255,255,255,0.06)',
+                            fontSize: '0.78rem',
+                            fontWeight: 600,
+                            color: 'var(--text-primary)'
+                          }}
+                        >
+                          {getCategoryImageMode(cat)}
+                        </span>
                         <label className="spl-toggle-label" onClick={e => e.stopPropagation()}>
                           <IndeterminateCheckbox
                             checked={catAllActive}
@@ -976,7 +1013,11 @@ const SuperAdminPricing: React.FC = () => {
                       {!catCollapsed[cat] && (
                         <div className="spl-category-body">
                           {Object.keys(viewGrouped[cat]).filter(prod => prodVisible(cat, prod)).map(prod => {
-                            const prodIds = itemIdsForProd(cat, prod);
+                            const prodIds = itemIdsForProd(cat, prod).filter(id => {
+                              if (!showZeroCostOnly) return true;
+                              const found = viewItems.find(i => i.id === id);
+                              return found ? isZeroCostItem(found) : false;
+                            });
                             const prodAllActive = allActiveInGroup(prodIds);
                             const prodSomeActive = !prodAllActive && someActiveInGroup(prodIds);
                             const prodKey = `${cat}||${prod}`;
@@ -999,7 +1040,7 @@ const SuperAdminPricing: React.FC = () => {
 
                                 {!prodCollapsed[prodKey] && (
                                   <div className="spl-size-list">
-                                    {viewGrouped[cat][prod].map(item => (
+                                    {viewGrouped[cat][prod].filter(item => !showZeroCostOnly || isZeroCostItem(item)).map(item => (
                                       <div key={item.id} className={`spl-size-row${item.is_active ? '' : ' spl-inactive-row'}`}>
                                         <span className="spl-size-name">{item._sizeLabel || item.size_name || '—'}</span>
                                         <label className="spl-toggle-label">
@@ -1058,53 +1099,6 @@ const SuperAdminPricing: React.FC = () => {
                                             onBlur={() => autoSaveItem(item.id)}
                                           />
                                         </div>
-                                        <div className="spl-field-group" style={{ minWidth: 190 }}>
-                                          <label>WHCC Match</label>
-                                          <button
-                                            className="btn btn-secondary btn-sm"
-                                            type="button"
-                                            onClick={() => openWhccPicker(item)}
-                                            disabled={whccCatalogLoading}
-                                          >
-                                            {whccCatalogLoading && pickerItemId === item.id ? 'Loading…' : 'Find Catalog Match'}
-                                          </button>
-                                        </div>
-                                        {pickerItemId === item.id && (
-                                          <div className="spl-field-group" style={{ minWidth: 420, flex: '1 1 420px' }}>
-                                            <label>Catalog Search</label>
-                                            <input
-                                              className="spl-num-input"
-                                              type="text"
-                                              placeholder="Search WHCC catalog by name, size, or category"
-                                              value={pickerQuery}
-                                              onChange={e => setPickerQuery(e.target.value)}
-                                            />
-                                            <div style={{ marginTop: 8, padding: 10, border: '1px solid rgba(255,255,255,0.12)', borderRadius: 8, background: 'rgba(0,0,0,0.15)' }}>
-                                              {whccCatalogError && <div style={{ color: '#fca5a5', marginBottom: 8 }}>{whccCatalogError}</div>}
-                                              {!whccCatalogError && getWhccSuggestions(item).length === 0 && (
-                                                <div style={{ color: 'var(--text-secondary)' }}>No catalog matches found.</div>
-                                              )}
-                                              {getWhccSuggestions(item).map(entry => (
-                                                <div key={entry.key} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                                                  <div>
-                                                    <div style={{ fontWeight: 600 }}>{entry.name}</div>
-                                                    <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                                                      {entry.category} · UID {entry.productUID}{entry.productNodeID ? ` · Node ${entry.productNodeID}` : ''}
-                                                    </div>
-                                                    {entry.itemAttributeUIDs.length > 0 && (
-                                                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                                                        Attrs: {entry.itemAttributeUIDs.join(', ')}
-                                                      </div>
-                                                    )}
-                                                  </div>
-                                                  <button className="btn btn-primary btn-sm" type="button" onClick={() => applyWhccCatalogEntry(item, entry)}>
-                                                    Use Match
-                                                  </button>
-                                                </div>
-                                              ))}
-                                            </div>
-                                          </div>
-                                        )}
                                       </div>
                                     ))}
                                   </div>

@@ -4,23 +4,47 @@ import { Watermark } from '../types';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
+// Module-level cache: keyed by studioId, TTL 5 minutes
+const _watermarkCache: Map<number, { watermark: Watermark | null; fetchedAt: number }> = new Map();
+const WATERMARK_CACHE_TTL_MS = 5 * 60 * 1000;
+const _watermarkInFlight: Map<number, Promise<Watermark | null>> = new Map();
+
 export const watermarkService = {
   async getDefaultWatermark(studioId: number): Promise<Watermark | null> {
     try {
-      const timestamp = Date.now();
       if (!studioId) throw new Error('studioId is required');
-      const response = await axios.get(`${API_URL}/watermarks/public-default?studioId=${studioId}&t=${timestamp}`);
-      const watermark = response.data;
-      // Add timestamp to image URL to bust browser cache
-      if (watermark && watermark.imageUrl) {
-        watermark.imageUrl = `${watermark.imageUrl}?t=${timestamp}`;
+
+      // Return cached value if still fresh
+      const cached = _watermarkCache.get(studioId);
+      if (cached && Date.now() - cached.fetchedAt < WATERMARK_CACHE_TTL_MS) {
+        return cached.watermark;
       }
-      return watermark;
+
+      // Deduplicate concurrent calls for the same studioId
+      if (_watermarkInFlight.has(studioId)) {
+        return _watermarkInFlight.get(studioId)!;
+      }
+
+      const request = axios.get(`${API_URL}/watermarks/public-default?studioId=${studioId}`)
+        .then(response => {
+          const watermark = response.data || null;
+          _watermarkCache.set(studioId, { watermark, fetchedAt: Date.now() });
+          _watermarkInFlight.delete(studioId);
+          return watermark as Watermark | null;
+        })
+        .catch(() => {
+          _watermarkInFlight.delete(studioId);
+          _watermarkCache.set(studioId, { watermark: null, fetchedAt: Date.now() });
+          return null;
+        });
+
+      _watermarkInFlight.set(studioId, request);
+      return request;
     } catch (error) {
       // No default watermark configured
       return null;
     }
-    },
+  },
 
     async getWatermark(albumId: number): Promise<Watermark | null> {
       try {

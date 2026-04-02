@@ -45,6 +45,7 @@ import subscriptionPlansRoutes from './routes/subscriptionPlans.js';
 import invoicesRoutes from './routes/invoices.js';
 import publicSearchRoutes from './routes/publicSearch.js';
 import smugmugRoutes from './routes/smugmug.js';
+import whccEditorRoutes from './routes/whccEditor.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -103,6 +104,7 @@ app.use('/api/public-search', publicSearchRoutes);
 app.use('/api/publicSearch', publicSearchRoutes);
 app.use('/api/blob-sas', blobSasRoutes);
 app.use('/api/smugmug', smugmugRoutes);
+app.use('/api/whcc-editor', whccEditorRoutes);
 
 // Health check
 // Read version from package.json

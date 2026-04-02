@@ -1,0 +1,3199 @@
+[
+  {
+    "Id": 1045,
+    "Name": "Fine Art Print Deckled Edge 10x10",
+    "ProductCategoryUID": 207,
+    "AllowCustomNode": false,
+    "EffectiveDate": "9/1/2023",
+    "ExpirationDate": "9/1/2102",
+    "ProductNodes": [
+      {
+        "ProductUID": 1045,
+        "DP2NodeID": 10000,
+        "Description": "Main",
+        "X": 0.96,
+        "Y": 0.96,
+        "H": 8.08,
+        "W": 8.08,
+        "EffectiveDate": "9/1/2023",
+        "ExpirationDate": "9/1/2102"
+      }
+    ],
+    "AttributeCategories": [
+      {
+        "Id": 475,
+        "AttributeCategoryName": "Deckled Edge Mounting",
+        "RequiredLevel": -1,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 1,
+        "EffectiveDate": "5/7/2024",
+        "ExpirationDate": "5/7/2103",
+        "Attributes": [
+          {
+            "Id": 3071,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 475,
+            "SortOrder": 10,
+            "AttributeName": "3mm White Styrene",
+            "EffectiveDate": "5/7/2024",
+            "ExpirationDate": "5/7/2103",
+            "attributenodes": []
+          }
+        ]
+      },
+      {
+        "Id": 446,
+        "AttributeCategoryName": "Fine Art Print Deckled Border",
+        "RequiredLevel": 0,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 1,
+        "EffectiveDate": "6/10/2021",
+        "ExpirationDate": "6/10/2100",
+        "Attributes": [
+          {
+            "Id": 2779,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 446,
+            "SortOrder": 3,
+            "AttributeName": "Dynamic Border",
+            "EffectiveDate": "6/10/2021",
+            "ExpirationDate": "6/10/2100",
+            "attributenodes": []
+          }
+        ]
+      },
+      {
+        "Id": 447,
+        "AttributeCategoryName": "Fine Art Print Deckled Edge",
+        "RequiredLevel": 0,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 1,
+        "EffectiveDate": "6/10/2021",
+        "ExpirationDate": "6/10/2100",
+        "Attributes": [
+          {
+            "Id": 2780,
+            "ParentAttributeUID": 2062,
+            "AttributeCategoryUID": 447,
+            "SortOrder": 3,
+            "AttributeName": "Deckled Edge",
+            "EffectiveDate": "6/10/2021",
+            "ExpirationDate": "6/10/2100",
+            "attributenodes": []
+          }
+        ]
+      },
+      {
+        "Id": 78,
+        "AttributeCategoryName": "Fine Art Print Media",
+        "RequiredLevel": 0,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 1,
+        "EffectiveDate": "5/2/2011",
+        "ExpirationDate": "12/31/2099",
+        "Attributes": [
+          {
+            "Id": 2906,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 78,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Aquarelle Rag",
+            "EffectiveDate": "6/21/2022",
+            "ExpirationDate": "6/21/2101",
+            "attributenodes": []
+          },
+          {
+            "Id": 2711,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 78,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Photo Rag Baryta",
+            "EffectiveDate": "10/30/2020",
+            "ExpirationDate": "10/30/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 2904,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 78,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Photo Rag Metallic",
+            "EffectiveDate": "6/21/2022",
+            "ExpirationDate": "6/21/2101",
+            "attributenodes": []
+          },
+          {
+            "Id": 2061,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 78,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Smooth Matte",
+            "EffectiveDate": "8/20/2018",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 2062,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 78,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Torchon",
+            "EffectiveDate": "8/20/2018",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          }
+        ]
+      }
+    ],
+    "bookAttributes": []
+  },
+  {
+    "Id": 1009,
+    "Name": "Fine Art Print Deckled Edge 11x14",
+    "ProductCategoryUID": 207,
+    "AllowCustomNode": false,
+    "EffectiveDate": "6/10/2021",
+    "ExpirationDate": "6/10/2100",
+    "ProductNodes": [
+      {
+        "ProductUID": 1009,
+        "DP2NodeID": 10000,
+        "Description": "Main",
+        "X": 1.1,
+        "Y": 1.1,
+        "H": 11.8,
+        "W": 8.8,
+        "EffectiveDate": "6/10/2021",
+        "ExpirationDate": "6/10/2100"
+      }
+    ],
+    "AttributeCategories": [
+      {
+        "Id": 475,
+        "AttributeCategoryName": "Deckled Edge Mounting",
+        "RequiredLevel": -1,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 1,
+        "EffectiveDate": "5/7/2024",
+        "ExpirationDate": "5/7/2103",
+        "Attributes": [
+          {
+            "Id": 3071,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 475,
+            "SortOrder": 10,
+            "AttributeName": "3mm White Styrene",
+            "EffectiveDate": "5/7/2024",
+            "ExpirationDate": "5/7/2103",
+            "attributenodes": []
+          }
+        ]
+      },
+      {
+        "Id": 446,
+        "AttributeCategoryName": "Fine Art Print Deckled Border",
+        "RequiredLevel": 0,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 1,
+        "EffectiveDate": "6/10/2021",
+        "ExpirationDate": "6/10/2100",
+        "Attributes": [
+          {
+            "Id": 2779,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 446,
+            "SortOrder": 3,
+            "AttributeName": "Dynamic Border",
+            "EffectiveDate": "6/10/2021",
+            "ExpirationDate": "6/10/2100",
+            "attributenodes": []
+          }
+        ]
+      },
+      {
+        "Id": 447,
+        "AttributeCategoryName": "Fine Art Print Deckled Edge",
+        "RequiredLevel": 0,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 1,
+        "EffectiveDate": "6/10/2021",
+        "ExpirationDate": "6/10/2100",
+        "Attributes": [
+          {
+            "Id": 2780,
+            "ParentAttributeUID": 2062,
+            "AttributeCategoryUID": 447,
+            "SortOrder": 3,
+            "AttributeName": "Deckled Edge",
+            "EffectiveDate": "6/10/2021",
+            "ExpirationDate": "6/10/2100",
+            "attributenodes": []
+          }
+        ]
+      },
+      {
+        "Id": 78,
+        "AttributeCategoryName": "Fine Art Print Media",
+        "RequiredLevel": 0,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 1,
+        "EffectiveDate": "5/2/2011",
+        "ExpirationDate": "12/31/2099",
+        "Attributes": [
+          {
+            "Id": 2906,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 78,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Aquarelle Rag",
+            "EffectiveDate": "6/21/2022",
+            "ExpirationDate": "6/21/2101",
+            "attributenodes": []
+          },
+          {
+            "Id": 2711,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 78,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Photo Rag Baryta",
+            "EffectiveDate": "10/30/2020",
+            "ExpirationDate": "10/30/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 2904,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 78,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Photo Rag Metallic",
+            "EffectiveDate": "6/21/2022",
+            "ExpirationDate": "6/21/2101",
+            "attributenodes": []
+          },
+          {
+            "Id": 2061,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 78,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Smooth Matte",
+            "EffectiveDate": "8/20/2018",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 2062,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 78,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Torchon",
+            "EffectiveDate": "8/20/2018",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          }
+        ]
+      }
+    ],
+    "bookAttributes": []
+  },
+  {
+    "Id": 1046,
+    "Name": "Fine Art Print Deckled Edge 12x12",
+    "ProductCategoryUID": 207,
+    "AllowCustomNode": false,
+    "EffectiveDate": "9/1/2023",
+    "ExpirationDate": "9/1/2102",
+    "ProductNodes": [
+      {
+        "ProductUID": 1046,
+        "DP2NodeID": 10000,
+        "Description": "Main",
+        "X": 0.96,
+        "Y": 0.96,
+        "H": 10.08,
+        "W": 10.08,
+        "EffectiveDate": "9/1/2023",
+        "ExpirationDate": "9/1/2102"
+      }
+    ],
+    "AttributeCategories": [
+      {
+        "Id": 475,
+        "AttributeCategoryName": "Deckled Edge Mounting",
+        "RequiredLevel": -1,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 1,
+        "EffectiveDate": "5/7/2024",
+        "ExpirationDate": "5/7/2103",
+        "Attributes": [
+          {
+            "Id": 3071,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 475,
+            "SortOrder": 10,
+            "AttributeName": "3mm White Styrene",
+            "EffectiveDate": "5/7/2024",
+            "ExpirationDate": "5/7/2103",
+            "attributenodes": []
+          }
+        ]
+      },
+      {
+        "Id": 446,
+        "AttributeCategoryName": "Fine Art Print Deckled Border",
+        "RequiredLevel": 0,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 1,
+        "EffectiveDate": "6/10/2021",
+        "ExpirationDate": "6/10/2100",
+        "Attributes": [
+          {
+            "Id": 2779,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 446,
+            "SortOrder": 3,
+            "AttributeName": "Dynamic Border",
+            "EffectiveDate": "6/10/2021",
+            "ExpirationDate": "6/10/2100",
+            "attributenodes": []
+          }
+        ]
+      },
+      {
+        "Id": 447,
+        "AttributeCategoryName": "Fine Art Print Deckled Edge",
+        "RequiredLevel": 0,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 1,
+        "EffectiveDate": "6/10/2021",
+        "ExpirationDate": "6/10/2100",
+        "Attributes": [
+          {
+            "Id": 2780,
+            "ParentAttributeUID": 2062,
+            "AttributeCategoryUID": 447,
+            "SortOrder": 3,
+            "AttributeName": "Deckled Edge",
+            "EffectiveDate": "6/10/2021",
+            "ExpirationDate": "6/10/2100",
+            "attributenodes": []
+          }
+        ]
+      },
+      {
+        "Id": 78,
+        "AttributeCategoryName": "Fine Art Print Media",
+        "RequiredLevel": 0,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 1,
+        "EffectiveDate": "5/2/2011",
+        "ExpirationDate": "12/31/2099",
+        "Attributes": [
+          {
+            "Id": 2906,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 78,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Aquarelle Rag",
+            "EffectiveDate": "6/21/2022",
+            "ExpirationDate": "6/21/2101",
+            "attributenodes": []
+          },
+          {
+            "Id": 2711,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 78,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Photo Rag Baryta",
+            "EffectiveDate": "10/30/2020",
+            "ExpirationDate": "10/30/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 2904,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 78,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Photo Rag Metallic",
+            "EffectiveDate": "6/21/2022",
+            "ExpirationDate": "6/21/2101",
+            "attributenodes": []
+          },
+          {
+            "Id": 2061,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 78,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Smooth Matte",
+            "EffectiveDate": "8/20/2018",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 2062,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 78,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Torchon",
+            "EffectiveDate": "8/20/2018",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          }
+        ]
+      }
+    ],
+    "bookAttributes": []
+  },
+  {
+    "Id": 1005,
+    "Name": "Fine Art Print Deckled Edge 5x7",
+    "ProductCategoryUID": 207,
+    "AllowCustomNode": false,
+    "EffectiveDate": "6/10/2021",
+    "ExpirationDate": "6/10/2100",
+    "ProductNodes": [
+      {
+        "ProductUID": 1005,
+        "DP2NodeID": 10000,
+        "Description": "Main",
+        "X": 0.75,
+        "Y": 0.75,
+        "H": 5.5,
+        "W": 3.5,
+        "EffectiveDate": "6/10/2021",
+        "ExpirationDate": "6/10/2100"
+      }
+    ],
+    "AttributeCategories": [
+      {
+        "Id": 475,
+        "AttributeCategoryName": "Deckled Edge Mounting",
+        "RequiredLevel": -1,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 1,
+        "EffectiveDate": "5/7/2024",
+        "ExpirationDate": "5/7/2103",
+        "Attributes": [
+          {
+            "Id": 3071,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 475,
+            "SortOrder": 10,
+            "AttributeName": "3mm White Styrene",
+            "EffectiveDate": "5/7/2024",
+            "ExpirationDate": "5/7/2103",
+            "attributenodes": []
+          }
+        ]
+      },
+      {
+        "Id": 446,
+        "AttributeCategoryName": "Fine Art Print Deckled Border",
+        "RequiredLevel": 0,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 1,
+        "EffectiveDate": "6/10/2021",
+        "ExpirationDate": "6/10/2100",
+        "Attributes": [
+          {
+            "Id": 2779,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 446,
+            "SortOrder": 3,
+            "AttributeName": "Dynamic Border",
+            "EffectiveDate": "6/10/2021",
+            "ExpirationDate": "6/10/2100",
+            "attributenodes": []
+          }
+        ]
+      },
+      {
+        "Id": 447,
+        "AttributeCategoryName": "Fine Art Print Deckled Edge",
+        "RequiredLevel": 0,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 1,
+        "EffectiveDate": "6/10/2021",
+        "ExpirationDate": "6/10/2100",
+        "Attributes": [
+          {
+            "Id": 2780,
+            "ParentAttributeUID": 2062,
+            "AttributeCategoryUID": 447,
+            "SortOrder": 3,
+            "AttributeName": "Deckled Edge",
+            "EffectiveDate": "6/10/2021",
+            "ExpirationDate": "6/10/2100",
+            "attributenodes": []
+          }
+        ]
+      },
+      {
+        "Id": 78,
+        "AttributeCategoryName": "Fine Art Print Media",
+        "RequiredLevel": 0,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 1,
+        "EffectiveDate": "5/2/2011",
+        "ExpirationDate": "12/31/2099",
+        "Attributes": [
+          {
+            "Id": 2906,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 78,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Aquarelle Rag",
+            "EffectiveDate": "6/21/2022",
+            "ExpirationDate": "6/21/2101",
+            "attributenodes": []
+          },
+          {
+            "Id": 2711,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 78,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Photo Rag Baryta",
+            "EffectiveDate": "10/30/2020",
+            "ExpirationDate": "10/30/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 2904,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 78,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Photo Rag Metallic",
+            "EffectiveDate": "6/21/2022",
+            "ExpirationDate": "6/21/2101",
+            "attributenodes": []
+          },
+          {
+            "Id": 2061,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 78,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Smooth Matte",
+            "EffectiveDate": "8/20/2018",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 2062,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 78,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Torchon",
+            "EffectiveDate": "8/20/2018",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          }
+        ]
+      }
+    ],
+    "bookAttributes": []
+  },
+  {
+    "Id": 1043,
+    "Name": "Fine Art Print Deckled Edge 6x6",
+    "ProductCategoryUID": 207,
+    "AllowCustomNode": false,
+    "EffectiveDate": "9/1/2023",
+    "ExpirationDate": "9/1/2102",
+    "ProductNodes": [
+      {
+        "ProductUID": 1043,
+        "DP2NodeID": 10000,
+        "Description": "Main",
+        "X": 0.72,
+        "Y": 0.72,
+        "H": 4.56,
+        "W": 4.56,
+        "EffectiveDate": "9/1/2023",
+        "ExpirationDate": "9/1/2102"
+      }
+    ],
+    "AttributeCategories": [
+      {
+        "Id": 446,
+        "AttributeCategoryName": "Fine Art Print Deckled Border",
+        "RequiredLevel": 0,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 1,
+        "EffectiveDate": "6/10/2021",
+        "ExpirationDate": "6/10/2100",
+        "Attributes": [
+          {
+            "Id": 2779,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 446,
+            "SortOrder": 3,
+            "AttributeName": "Dynamic Border",
+            "EffectiveDate": "6/10/2021",
+            "ExpirationDate": "6/10/2100",
+            "attributenodes": []
+          }
+        ]
+      },
+      {
+        "Id": 447,
+        "AttributeCategoryName": "Fine Art Print Deckled Edge",
+        "RequiredLevel": 0,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 1,
+        "EffectiveDate": "6/10/2021",
+        "ExpirationDate": "6/10/2100",
+        "Attributes": [
+          {
+            "Id": 2780,
+            "ParentAttributeUID": 2062,
+            "AttributeCategoryUID": 447,
+            "SortOrder": 3,
+            "AttributeName": "Deckled Edge",
+            "EffectiveDate": "6/10/2021",
+            "ExpirationDate": "6/10/2100",
+            "attributenodes": []
+          }
+        ]
+      },
+      {
+        "Id": 78,
+        "AttributeCategoryName": "Fine Art Print Media",
+        "RequiredLevel": 0,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 1,
+        "EffectiveDate": "5/2/2011",
+        "ExpirationDate": "12/31/2099",
+        "Attributes": [
+          {
+            "Id": 2906,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 78,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Aquarelle Rag",
+            "EffectiveDate": "6/21/2022",
+            "ExpirationDate": "6/21/2101",
+            "attributenodes": []
+          },
+          {
+            "Id": 2711,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 78,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Photo Rag Baryta",
+            "EffectiveDate": "10/30/2020",
+            "ExpirationDate": "10/30/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 2904,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 78,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Photo Rag Metallic",
+            "EffectiveDate": "6/21/2022",
+            "ExpirationDate": "6/21/2101",
+            "attributenodes": []
+          },
+          {
+            "Id": 2061,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 78,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Smooth Matte",
+            "EffectiveDate": "8/20/2018",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 2062,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 78,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Torchon",
+            "EffectiveDate": "8/20/2018",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          }
+        ]
+      }
+    ],
+    "bookAttributes": []
+  },
+  {
+    "Id": 1006,
+    "Name": "Fine Art Print Deckled Edge 6x8",
+    "ProductCategoryUID": 207,
+    "AllowCustomNode": false,
+    "EffectiveDate": "6/10/2021",
+    "ExpirationDate": "6/10/2100",
+    "ProductNodes": [
+      {
+        "ProductUID": 1006,
+        "DP2NodeID": 10000,
+        "Description": "Main",
+        "X": 0.72,
+        "Y": 0.72,
+        "H": 6.56,
+        "W": 4.56,
+        "EffectiveDate": "6/10/2021",
+        "ExpirationDate": "6/10/2100"
+      }
+    ],
+    "AttributeCategories": [
+      {
+        "Id": 446,
+        "AttributeCategoryName": "Fine Art Print Deckled Border",
+        "RequiredLevel": 0,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 1,
+        "EffectiveDate": "6/10/2021",
+        "ExpirationDate": "6/10/2100",
+        "Attributes": [
+          {
+            "Id": 2779,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 446,
+            "SortOrder": 3,
+            "AttributeName": "Dynamic Border",
+            "EffectiveDate": "6/10/2021",
+            "ExpirationDate": "6/10/2100",
+            "attributenodes": []
+          }
+        ]
+      },
+      {
+        "Id": 447,
+        "AttributeCategoryName": "Fine Art Print Deckled Edge",
+        "RequiredLevel": 0,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 1,
+        "EffectiveDate": "6/10/2021",
+        "ExpirationDate": "6/10/2100",
+        "Attributes": [
+          {
+            "Id": 2780,
+            "ParentAttributeUID": 2062,
+            "AttributeCategoryUID": 447,
+            "SortOrder": 3,
+            "AttributeName": "Deckled Edge",
+            "EffectiveDate": "6/10/2021",
+            "ExpirationDate": "6/10/2100",
+            "attributenodes": []
+          }
+        ]
+      },
+      {
+        "Id": 78,
+        "AttributeCategoryName": "Fine Art Print Media",
+        "RequiredLevel": 0,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 1,
+        "EffectiveDate": "5/2/2011",
+        "ExpirationDate": "12/31/2099",
+        "Attributes": [
+          {
+            "Id": 2906,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 78,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Aquarelle Rag",
+            "EffectiveDate": "6/21/2022",
+            "ExpirationDate": "6/21/2101",
+            "attributenodes": []
+          },
+          {
+            "Id": 2711,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 78,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Photo Rag Baryta",
+            "EffectiveDate": "10/30/2020",
+            "ExpirationDate": "10/30/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 2904,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 78,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Photo Rag Metallic",
+            "EffectiveDate": "6/21/2022",
+            "ExpirationDate": "6/21/2101",
+            "attributenodes": []
+          },
+          {
+            "Id": 2061,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 78,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Smooth Matte",
+            "EffectiveDate": "8/20/2018",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 2062,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 78,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Torchon",
+            "EffectiveDate": "8/20/2018",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          }
+        ]
+      }
+    ],
+    "bookAttributes": []
+  },
+  {
+    "Id": 1007,
+    "Name": "Fine Art Print Deckled Edge 8x10",
+    "ProductCategoryUID": 207,
+    "AllowCustomNode": false,
+    "EffectiveDate": "6/10/2021",
+    "ExpirationDate": "6/10/2100",
+    "ProductNodes": [
+      {
+        "ProductUID": 1007,
+        "DP2NodeID": 10000,
+        "Description": "Main",
+        "X": 0.96,
+        "Y": 0.96,
+        "H": 8.08,
+        "W": 6.08,
+        "EffectiveDate": "6/10/2021",
+        "ExpirationDate": "6/10/2100"
+      }
+    ],
+    "AttributeCategories": [
+      {
+        "Id": 475,
+        "AttributeCategoryName": "Deckled Edge Mounting",
+        "RequiredLevel": -1,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 1,
+        "EffectiveDate": "5/7/2024",
+        "ExpirationDate": "5/7/2103",
+        "Attributes": [
+          {
+            "Id": 3071,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 475,
+            "SortOrder": 10,
+            "AttributeName": "3mm White Styrene",
+            "EffectiveDate": "5/7/2024",
+            "ExpirationDate": "5/7/2103",
+            "attributenodes": []
+          }
+        ]
+      },
+      {
+        "Id": 446,
+        "AttributeCategoryName": "Fine Art Print Deckled Border",
+        "RequiredLevel": 0,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 1,
+        "EffectiveDate": "6/10/2021",
+        "ExpirationDate": "6/10/2100",
+        "Attributes": [
+          {
+            "Id": 2779,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 446,
+            "SortOrder": 3,
+            "AttributeName": "Dynamic Border",
+            "EffectiveDate": "6/10/2021",
+            "ExpirationDate": "6/10/2100",
+            "attributenodes": []
+          }
+        ]
+      },
+      {
+        "Id": 447,
+        "AttributeCategoryName": "Fine Art Print Deckled Edge",
+        "RequiredLevel": 0,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 1,
+        "EffectiveDate": "6/10/2021",
+        "ExpirationDate": "6/10/2100",
+        "Attributes": [
+          {
+            "Id": 2780,
+            "ParentAttributeUID": 2062,
+            "AttributeCategoryUID": 447,
+            "SortOrder": 3,
+            "AttributeName": "Deckled Edge",
+            "EffectiveDate": "6/10/2021",
+            "ExpirationDate": "6/10/2100",
+            "attributenodes": []
+          }
+        ]
+      },
+      {
+        "Id": 78,
+        "AttributeCategoryName": "Fine Art Print Media",
+        "RequiredLevel": 0,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 1,
+        "EffectiveDate": "5/2/2011",
+        "ExpirationDate": "12/31/2099",
+        "Attributes": [
+          {
+            "Id": 2906,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 78,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Aquarelle Rag",
+            "EffectiveDate": "6/21/2022",
+            "ExpirationDate": "6/21/2101",
+            "attributenodes": []
+          },
+          {
+            "Id": 2711,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 78,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Photo Rag Baryta",
+            "EffectiveDate": "10/30/2020",
+            "ExpirationDate": "10/30/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 2904,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 78,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Photo Rag Metallic",
+            "EffectiveDate": "6/21/2022",
+            "ExpirationDate": "6/21/2101",
+            "attributenodes": []
+          },
+          {
+            "Id": 2061,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 78,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Smooth Matte",
+            "EffectiveDate": "8/20/2018",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 2062,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 78,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Torchon",
+            "EffectiveDate": "8/20/2018",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          }
+        ]
+      }
+    ],
+    "bookAttributes": []
+  },
+  {
+    "Id": 1008,
+    "Name": "Fine Art Print Deckled Edge 8x12",
+    "ProductCategoryUID": 207,
+    "AllowCustomNode": false,
+    "EffectiveDate": "6/10/2021",
+    "ExpirationDate": "6/10/2100",
+    "ProductNodes": [
+      {
+        "ProductUID": 1008,
+        "DP2NodeID": 10000,
+        "Description": "Main",
+        "X": 0.96,
+        "Y": 0.96,
+        "H": 10.08,
+        "W": 6.08,
+        "EffectiveDate": "6/10/2021",
+        "ExpirationDate": "6/10/2100"
+      }
+    ],
+    "AttributeCategories": [
+      {
+        "Id": 475,
+        "AttributeCategoryName": "Deckled Edge Mounting",
+        "RequiredLevel": -1,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 1,
+        "EffectiveDate": "5/7/2024",
+        "ExpirationDate": "5/7/2103",
+        "Attributes": [
+          {
+            "Id": 3071,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 475,
+            "SortOrder": 10,
+            "AttributeName": "3mm White Styrene",
+            "EffectiveDate": "5/7/2024",
+            "ExpirationDate": "5/7/2103",
+            "attributenodes": []
+          }
+        ]
+      },
+      {
+        "Id": 446,
+        "AttributeCategoryName": "Fine Art Print Deckled Border",
+        "RequiredLevel": 0,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 1,
+        "EffectiveDate": "6/10/2021",
+        "ExpirationDate": "6/10/2100",
+        "Attributes": [
+          {
+            "Id": 2779,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 446,
+            "SortOrder": 3,
+            "AttributeName": "Dynamic Border",
+            "EffectiveDate": "6/10/2021",
+            "ExpirationDate": "6/10/2100",
+            "attributenodes": []
+          }
+        ]
+      },
+      {
+        "Id": 447,
+        "AttributeCategoryName": "Fine Art Print Deckled Edge",
+        "RequiredLevel": 0,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 1,
+        "EffectiveDate": "6/10/2021",
+        "ExpirationDate": "6/10/2100",
+        "Attributes": [
+          {
+            "Id": 2780,
+            "ParentAttributeUID": 2062,
+            "AttributeCategoryUID": 447,
+            "SortOrder": 3,
+            "AttributeName": "Deckled Edge",
+            "EffectiveDate": "6/10/2021",
+            "ExpirationDate": "6/10/2100",
+            "attributenodes": []
+          }
+        ]
+      },
+      {
+        "Id": 78,
+        "AttributeCategoryName": "Fine Art Print Media",
+        "RequiredLevel": 0,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 1,
+        "EffectiveDate": "5/2/2011",
+        "ExpirationDate": "12/31/2099",
+        "Attributes": [
+          {
+            "Id": 2906,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 78,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Aquarelle Rag",
+            "EffectiveDate": "6/21/2022",
+            "ExpirationDate": "6/21/2101",
+            "attributenodes": []
+          },
+          {
+            "Id": 2711,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 78,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Photo Rag Baryta",
+            "EffectiveDate": "10/30/2020",
+            "ExpirationDate": "10/30/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 2904,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 78,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Photo Rag Metallic",
+            "EffectiveDate": "6/21/2022",
+            "ExpirationDate": "6/21/2101",
+            "attributenodes": []
+          },
+          {
+            "Id": 2061,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 78,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Smooth Matte",
+            "EffectiveDate": "8/20/2018",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 2062,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 78,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Torchon",
+            "EffectiveDate": "8/20/2018",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          }
+        ]
+      }
+    ],
+    "bookAttributes": []
+  },
+  {
+    "Id": 1044,
+    "Name": "Fine Art Print Deckled Edge 8x8",
+    "ProductCategoryUID": 207,
+    "AllowCustomNode": false,
+    "EffectiveDate": "9/1/2023",
+    "ExpirationDate": "9/1/2102",
+    "ProductNodes": [
+      {
+        "ProductUID": 1044,
+        "DP2NodeID": 10000,
+        "Description": "Main",
+        "X": 0.96,
+        "Y": 0.96,
+        "H": 6.08,
+        "W": 6.08,
+        "EffectiveDate": "9/1/2023",
+        "ExpirationDate": "9/1/2102"
+      }
+    ],
+    "AttributeCategories": [
+      {
+        "Id": 475,
+        "AttributeCategoryName": "Deckled Edge Mounting",
+        "RequiredLevel": -1,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 1,
+        "EffectiveDate": "5/7/2024",
+        "ExpirationDate": "5/7/2103",
+        "Attributes": [
+          {
+            "Id": 3071,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 475,
+            "SortOrder": 10,
+            "AttributeName": "3mm White Styrene",
+            "EffectiveDate": "5/7/2024",
+            "ExpirationDate": "5/7/2103",
+            "attributenodes": []
+          }
+        ]
+      },
+      {
+        "Id": 446,
+        "AttributeCategoryName": "Fine Art Print Deckled Border",
+        "RequiredLevel": 0,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 1,
+        "EffectiveDate": "6/10/2021",
+        "ExpirationDate": "6/10/2100",
+        "Attributes": [
+          {
+            "Id": 2779,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 446,
+            "SortOrder": 3,
+            "AttributeName": "Dynamic Border",
+            "EffectiveDate": "6/10/2021",
+            "ExpirationDate": "6/10/2100",
+            "attributenodes": []
+          }
+        ]
+      },
+      {
+        "Id": 447,
+        "AttributeCategoryName": "Fine Art Print Deckled Edge",
+        "RequiredLevel": 0,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 1,
+        "EffectiveDate": "6/10/2021",
+        "ExpirationDate": "6/10/2100",
+        "Attributes": [
+          {
+            "Id": 2780,
+            "ParentAttributeUID": 2062,
+            "AttributeCategoryUID": 447,
+            "SortOrder": 3,
+            "AttributeName": "Deckled Edge",
+            "EffectiveDate": "6/10/2021",
+            "ExpirationDate": "6/10/2100",
+            "attributenodes": []
+          }
+        ]
+      },
+      {
+        "Id": 78,
+        "AttributeCategoryName": "Fine Art Print Media",
+        "RequiredLevel": 0,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 1,
+        "EffectiveDate": "5/2/2011",
+        "ExpirationDate": "12/31/2099",
+        "Attributes": [
+          {
+            "Id": 2906,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 78,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Aquarelle Rag",
+            "EffectiveDate": "6/21/2022",
+            "ExpirationDate": "6/21/2101",
+            "attributenodes": []
+          },
+          {
+            "Id": 2711,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 78,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Photo Rag Baryta",
+            "EffectiveDate": "10/30/2020",
+            "ExpirationDate": "10/30/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 2904,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 78,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Photo Rag Metallic",
+            "EffectiveDate": "6/21/2022",
+            "ExpirationDate": "6/21/2101",
+            "attributenodes": []
+          },
+          {
+            "Id": 2061,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 78,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Smooth Matte",
+            "EffectiveDate": "8/20/2018",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 2062,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 78,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Torchon",
+            "EffectiveDate": "8/20/2018",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          }
+        ]
+      }
+    ],
+    "bookAttributes": []
+  },
+  {
+    "Id": 1032,
+    "Name": "Framed Print 15x15",
+    "ProductCategoryUID": 210,
+    "AllowCustomNode": false,
+    "EffectiveDate": "9/15/2022",
+    "ExpirationDate": "9/15/2101",
+    "ProductNodes": [],
+    "AttributeCategories": [
+      {
+        "Id": 466,
+        "AttributeCategoryName": "15x15 Mat Options",
+        "RequiredLevel": 0,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 1,
+        "EffectiveDate": "9/15/2022",
+        "ExpirationDate": "9/15/2101",
+        "Attributes": [
+          {
+            "Id": 2941,
+            "ParentAttributeUID": 560,
+            "AttributeCategoryUID": 466,
+            "SortOrder": 10,
+            "AttributeName": "1.5\" Mat",
+            "EffectiveDate": "9/15/2022",
+            "ExpirationDate": "9/15/2101",
+            "attributenodes": [
+              {
+                "AttributeUID": 2941,
+                "DP2NodeID": 1000,
+                "Description": "1",
+                "X": 1.625,
+                "Y": 1.625,
+                "H": 11.625,
+                "W": 11.625,
+                "EffectiveDate": "9/15/2022",
+                "ExpirationDate": "9/15/2101",
+                "ProductUID": 1032
+              }
+            ]
+          },
+          {
+            "Id": 2942,
+            "ParentAttributeUID": 560,
+            "AttributeCategoryUID": 466,
+            "SortOrder": 10,
+            "AttributeName": "2.5\" Mat",
+            "EffectiveDate": "9/15/2022",
+            "ExpirationDate": "9/15/2101",
+            "attributenodes": [
+              {
+                "AttributeUID": 2942,
+                "DP2NodeID": 1000,
+                "Description": "1",
+                "X": 2.625,
+                "Y": 2.625,
+                "H": 9.625,
+                "W": 9.625,
+                "EffectiveDate": "9/15/2022",
+                "ExpirationDate": "9/15/2101",
+                "ProductUID": 1032
+              }
+            ]
+          },
+          {
+            "Id": 2943,
+            "ParentAttributeUID": 560,
+            "AttributeCategoryUID": 466,
+            "SortOrder": 10,
+            "AttributeName": "3.5\" Mat",
+            "EffectiveDate": "9/15/2022",
+            "ExpirationDate": "9/15/2101",
+            "attributenodes": [
+              {
+                "AttributeUID": 2943,
+                "DP2NodeID": 1000,
+                "Description": "1",
+                "X": 3.625,
+                "Y": 3.625,
+                "H": 7.625,
+                "W": 7.625,
+                "EffectiveDate": "9/15/2022",
+                "ExpirationDate": "9/15/2101",
+                "ProductUID": 1032
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "Id": 145,
+        "AttributeCategoryName": "Frame Moulding",
+        "RequiredLevel": 623,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 1,
+        "EffectiveDate": "4/6/2012",
+        "ExpirationDate": "12/31/2099",
+        "Attributes": [
+          {
+            "Id": 2849,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 10,
+            "AttributeName": "Academie Black Frame",
+            "EffectiveDate": "3/14/2022",
+            "ExpirationDate": "3/14/2101",
+            "attributenodes": []
+          },
+          {
+            "Id": 2850,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 10,
+            "AttributeName": "Academie Gold Frame",
+            "EffectiveDate": "3/14/2022",
+            "ExpirationDate": "3/14/2101",
+            "attributenodes": []
+          },
+          {
+            "Id": 1866,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 19,
+            "AttributeName": "Ashland Aged Gray Frame",
+            "EffectiveDate": "10/23/2017",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 1867,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 20,
+            "AttributeName": "Ashland Aged Umber Frame",
+            "EffectiveDate": "10/23/2017",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 3143,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 10,
+            "AttributeName": "Brimfield Cottage White 0.875\" Frame",
+            "EffectiveDate": "10/24/2024",
+            "ExpirationDate": "10/24/2103",
+            "attributenodes": []
+          },
+          {
+            "Id": 3142,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 10,
+            "AttributeName": "Brimfield Cottage White Frame",
+            "EffectiveDate": "10/24/2024",
+            "ExpirationDate": "10/24/2103",
+            "attributenodes": []
+          },
+          {
+            "Id": 3144,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 10,
+            "AttributeName": "Brimfield Weathered Black 0.875\" Frame",
+            "EffectiveDate": "10/24/2024",
+            "ExpirationDate": "10/24/2103",
+            "attributenodes": []
+          },
+          {
+            "Id": 2851,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 10,
+            "AttributeName": "Brimfield Weathered Black Frame",
+            "EffectiveDate": "3/14/2022",
+            "ExpirationDate": "3/14/2101",
+            "attributenodes": []
+          },
+          {
+            "Id": 1864,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 17,
+            "AttributeName": "Colonial Aged Gray Frame",
+            "EffectiveDate": "10/23/2017",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 1865,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 18,
+            "AttributeName": "Colonial Aged Umber Frame",
+            "EffectiveDate": "10/23/2017",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 606,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 7,
+            "AttributeName": "Deluxe Rum Raisin Frame",
+            "EffectiveDate": "4/6/2012",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 609,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 8,
+            "AttributeName": "Deluxe Toffee Crunch Frame",
+            "EffectiveDate": "4/6/2012",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 1856,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 9,
+            "AttributeName": "Distressed Black Frame",
+            "EffectiveDate": "10/23/2017",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 1859,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 12,
+            "AttributeName": "Distressed Navy Frame",
+            "EffectiveDate": "10/23/2017",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 1863,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 16,
+            "AttributeName": "Distressed White Frame",
+            "EffectiveDate": "10/23/2017",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 1871,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 24,
+            "AttributeName": "Gallery Black Frame",
+            "EffectiveDate": "10/23/2017",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 1868,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 21,
+            "AttributeName": "Gallery Fine Black Frame",
+            "EffectiveDate": "10/23/2017",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 1870,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 23,
+            "AttributeName": "Gallery Fine White Frame",
+            "EffectiveDate": "10/23/2017",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 2466,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 10,
+            "AttributeName": "Gallery Grand Black Frame",
+            "EffectiveDate": "2/26/2020",
+            "ExpirationDate": "12/31/3020",
+            "attributenodes": []
+          },
+          {
+            "Id": 2467,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 10,
+            "AttributeName": "Gallery Grand White Frame",
+            "EffectiveDate": "2/26/2020",
+            "ExpirationDate": "12/31/3020",
+            "attributenodes": []
+          },
+          {
+            "Id": 3137,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 10,
+            "AttributeName": "Gallery Mocha Frame",
+            "EffectiveDate": "10/24/2024",
+            "ExpirationDate": "10/24/2103",
+            "attributenodes": []
+          },
+          {
+            "Id": 3136,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 10,
+            "AttributeName": "Gallery Natural Frame",
+            "EffectiveDate": "10/24/2024",
+            "ExpirationDate": "10/24/2103",
+            "attributenodes": []
+          },
+          {
+            "Id": 1873,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 26,
+            "AttributeName": "Gallery White Frame",
+            "EffectiveDate": "10/23/2017",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 2852,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 10,
+            "AttributeName": "Gramercy Silver Frame",
+            "EffectiveDate": "3/14/2022",
+            "ExpirationDate": "3/14/2101",
+            "attributenodes": []
+          },
+          {
+            "Id": 2853,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 10,
+            "AttributeName": "Hudson Black and Gold Frame",
+            "EffectiveDate": "3/14/2022",
+            "ExpirationDate": "3/14/2101",
+            "attributenodes": []
+          },
+          {
+            "Id": 2854,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 10,
+            "AttributeName": "Hudson Ivory Frame",
+            "EffectiveDate": "3/14/2022",
+            "ExpirationDate": "3/14/2101",
+            "attributenodes": []
+          },
+          {
+            "Id": 2855,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 10,
+            "AttributeName": "Hudson Silver Frame",
+            "EffectiveDate": "3/14/2022",
+            "ExpirationDate": "3/14/2101",
+            "attributenodes": []
+          },
+          {
+            "Id": 602,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 1,
+            "AttributeName": "Lexington Black Frame",
+            "EffectiveDate": "4/6/2012",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 603,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 2,
+            "AttributeName": "Lexington Bronze Frame",
+            "EffectiveDate": "4/6/2012",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 2856,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 10,
+            "AttributeName": "Lexington Brown Frame",
+            "EffectiveDate": "3/14/2022",
+            "ExpirationDate": "3/14/2101",
+            "attributenodes": []
+          },
+          {
+            "Id": 604,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 3,
+            "AttributeName": "Lexington Cherry Frame",
+            "EffectiveDate": "4/6/2012",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 605,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 4,
+            "AttributeName": "Lexington Iron Frame",
+            "EffectiveDate": "4/6/2012",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 1914,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 10,
+            "AttributeName": "Metal Frosted Gold Frame",
+            "EffectiveDate": "2/13/2018",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 1915,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 10,
+            "AttributeName": "Metal Graphite Frame",
+            "EffectiveDate": "2/13/2018",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 1912,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 10,
+            "AttributeName": "Metal Jet Black Frame",
+            "EffectiveDate": "2/13/2018",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 1913,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 10,
+            "AttributeName": "Metal Pewter Frame",
+            "EffectiveDate": "2/13/2018",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 2759,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 1,
+            "AttributeName": "Modern Metal Gold Frame",
+            "EffectiveDate": "6/4/2021",
+            "ExpirationDate": "6/4/2100",
+            "attributenodes": []
+          },
+          {
+            "Id": 2758,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 1,
+            "AttributeName": "Modern Metal Matte Black Frame",
+            "EffectiveDate": "6/4/2021",
+            "ExpirationDate": "6/4/2100",
+            "attributenodes": []
+          },
+          {
+            "Id": 2760,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 1,
+            "AttributeName": "Modern Metal Silver Frame",
+            "EffectiveDate": "6/4/2021",
+            "ExpirationDate": "6/4/2100",
+            "attributenodes": []
+          },
+          {
+            "Id": 2761,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 1,
+            "AttributeName": "Natural Maple Frame",
+            "EffectiveDate": "6/4/2021",
+            "ExpirationDate": "6/4/2100",
+            "attributenodes": []
+          },
+          {
+            "Id": 3135,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 10,
+            "AttributeName": "Patina Column Antique Brown Frame",
+            "EffectiveDate": "10/24/2024",
+            "ExpirationDate": "10/24/2103",
+            "attributenodes": []
+          },
+          {
+            "Id": 3134,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 10,
+            "AttributeName": "Patina Dot Antique Brown Frame",
+            "EffectiveDate": "10/24/2024",
+            "ExpirationDate": "10/24/2103",
+            "attributenodes": []
+          },
+          {
+            "Id": 1918,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 10,
+            "AttributeName": "Rustic Timber Frame",
+            "EffectiveDate": "2/13/2018",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 607,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 5,
+            "AttributeName": "Slim Black Frame",
+            "EffectiveDate": "4/6/2012",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 608,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 6,
+            "AttributeName": "Slim White Frame",
+            "EffectiveDate": "4/6/2012",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 3133,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 10,
+            "AttributeName": "Versailles Gold Frame",
+            "EffectiveDate": "10/24/2024",
+            "ExpirationDate": "10/24/2103",
+            "attributenodes": []
+          },
+          {
+            "Id": 2837,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 10,
+            "AttributeName": "Woodland Gray  0.75\" Frame",
+            "EffectiveDate": "2/14/2022",
+            "ExpirationDate": "2/14/2101",
+            "attributenodes": []
+          },
+          {
+            "Id": 3140,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 10,
+            "AttributeName": "Woodland Gray 1.25\" Frame",
+            "EffectiveDate": "10/24/2024",
+            "ExpirationDate": "10/24/2103",
+            "attributenodes": []
+          },
+          {
+            "Id": 3141,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 10,
+            "AttributeName": "Woodland Gray 2.25\" Frame",
+            "EffectiveDate": "10/24/2024",
+            "ExpirationDate": "10/24/2103",
+            "attributenodes": []
+          },
+          {
+            "Id": 2464,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 10,
+            "AttributeName": "Woodland Natural 0.75\" Frame",
+            "EffectiveDate": "2/26/2020",
+            "ExpirationDate": "12/31/3020",
+            "attributenodes": []
+          },
+          {
+            "Id": 2465,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 10,
+            "AttributeName": "Woodland Walnut  0.75\" Frame",
+            "EffectiveDate": "2/26/2020",
+            "ExpirationDate": "12/31/3020",
+            "attributenodes": []
+          },
+          {
+            "Id": 3138,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 10,
+            "AttributeName": "Woodland Walnut 1.25\" Frame",
+            "EffectiveDate": "10/24/2024",
+            "ExpirationDate": "10/24/2103",
+            "attributenodes": []
+          },
+          {
+            "Id": 3139,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 145,
+            "SortOrder": 10,
+            "AttributeName": "Woodland Walnut 2.25\" Frame",
+            "EffectiveDate": "10/24/2024",
+            "ExpirationDate": "10/24/2103",
+            "attributenodes": []
+          }
+        ]
+      },
+      {
+        "Id": 150,
+        "AttributeCategoryName": "Frame Mounting Style",
+        "RequiredLevel": -1,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 20,
+        "EffectiveDate": "4/10/2012",
+        "ExpirationDate": "12/31/2099",
+        "Attributes": [
+          {
+            "Id": 2569,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 150,
+            "SortOrder": 0,
+            "AttributeName": "Float Frame Mounting",
+            "EffectiveDate": "5/29/2020",
+            "ExpirationDate": "5/29/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 623,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 150,
+            "SortOrder": 1,
+            "AttributeName": "Standard Framed Print Mounting",
+            "EffectiveDate": "4/10/2012",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          }
+        ]
+      },
+      {
+        "Id": 324,
+        "AttributeCategoryName": "Framed Print Acrylic Options",
+        "RequiredLevel": -1,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 10,
+        "EffectiveDate": "10/24/2017",
+        "ExpirationDate": "12/31/2099",
+        "Attributes": [
+          {
+            "Id": 1879,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 324,
+            "SortOrder": 9,
+            "AttributeName": "Glare Resistant Acrylic",
+            "EffectiveDate": "10/24/2017",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 1878,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 324,
+            "SortOrder": 9,
+            "AttributeName": "Standard Acrylic",
+            "EffectiveDate": "10/24/2017",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          }
+        ]
+      },
+      {
+        "Id": 414,
+        "AttributeCategoryName": "Framed Print Coating",
+        "RequiredLevel": -1,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 10,
+        "EffectiveDate": "3/3/2020",
+        "ExpirationDate": "12/31/3020",
+        "Attributes": [
+          {
+            "Id": 627,
+            "ParentAttributeUID": 617,
+            "AttributeCategoryUID": 414,
+            "SortOrder": 1,
+            "AttributeName": "Lustre Coating (Kodak Lustre)",
+            "EffectiveDate": "4/13/2012",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          }
+        ]
+      },
+      {
+        "Id": 147,
+        "AttributeCategoryName": "Framed Print Printing Media",
+        "RequiredLevel": 0,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 1,
+        "EffectiveDate": "4/6/2012",
+        "ExpirationDate": "12/31/2099",
+        "Attributes": [
+          {
+            "Id": 2905,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 147,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Aquarelle Rag Print",
+            "EffectiveDate": "6/21/2022",
+            "ExpirationDate": "6/21/2101",
+            "attributenodes": []
+          },
+          {
+            "Id": 2049,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 147,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Canvas Print with Matte Laminate",
+            "EffectiveDate": "8/6/2018",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 2050,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 147,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Canvas Print with Semi-Gloss Laminate",
+            "EffectiveDate": "8/6/2018",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 2710,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 147,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Photo Rag Baryta Print",
+            "EffectiveDate": "10/30/2020",
+            "ExpirationDate": "10/30/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 2903,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 147,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Photo Rag Metallic Print",
+            "EffectiveDate": "6/21/2022",
+            "ExpirationDate": "6/21/2101",
+            "attributenodes": []
+          },
+          {
+            "Id": 2046,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 147,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Smooth Matte Print",
+            "EffectiveDate": "8/6/2018",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 2048,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 147,
+            "SortOrder": 10,
+            "AttributeName": "Fine Art Torchon Print",
+            "EffectiveDate": "8/6/2018",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 1880,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 147,
+            "SortOrder": 9,
+            "AttributeName": "Fuji Deep Matte Photo Print",
+            "EffectiveDate": "10/24/2017",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 2045,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 147,
+            "SortOrder": 10,
+            "AttributeName": "Fuji Pearl Photo Print",
+            "EffectiveDate": "8/6/2018",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 617,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 147,
+            "SortOrder": 1,
+            "AttributeName": "Lustre Photo Print",
+            "EffectiveDate": "4/6/2012",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 2054,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 147,
+            "SortOrder": 10,
+            "AttributeName": "Metal Print with Clear Base, High Gloss Finish",
+            "EffectiveDate": "8/6/2018",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 2055,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 147,
+            "SortOrder": 10,
+            "AttributeName": "Metal Print with Clear Base, Matte Finish",
+            "EffectiveDate": "8/6/2018",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 2051,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 147,
+            "SortOrder": 10,
+            "AttributeName": "Metal Print with White Base, High Gloss Finish",
+            "EffectiveDate": "8/6/2018",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 2782,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 147,
+            "SortOrder": 10,
+            "AttributeName": "Metal Print with White Base, High Gloss Finish, External Rated",
+            "EffectiveDate": "7/7/2021",
+            "ExpirationDate": "7/7/2100",
+            "attributenodes": []
+          },
+          {
+            "Id": 2053,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 147,
+            "SortOrder": 10,
+            "AttributeName": "Metal Print with White Base, Matte Finish",
+            "EffectiveDate": "8/6/2018",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 2052,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 147,
+            "SortOrder": 10,
+            "AttributeName": "Metal Print with White Base, Semi-Gloss Finish",
+            "EffectiveDate": "8/6/2018",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 618,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 147,
+            "SortOrder": 2,
+            "AttributeName": "Metallic Photo Print",
+            "EffectiveDate": "4/6/2012",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          }
+        ]
+      },
+      {
+        "Id": 138,
+        "AttributeCategoryName": "Framed Print Style",
+        "RequiredLevel": -1,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 1,
+        "EffectiveDate": "4/6/2012",
+        "ExpirationDate": "12/31/2099",
+        "Attributes": [
+          {
+            "Id": 561,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 138,
+            "SortOrder": 1,
+            "AttributeName": "No Mat",
+            "EffectiveDate": "4/6/2012",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 560,
+            "ParentAttributeUID": 623,
+            "AttributeCategoryUID": 138,
+            "SortOrder": 3,
+            "AttributeName": "Mat",
+            "EffectiveDate": "4/6/2012",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          }
+        ]
+      },
+      {
+        "Id": 330,
+        "AttributeCategoryName": "Large Frames Backing Options",
+        "RequiredLevel": 623,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 50,
+        "EffectiveDate": "2/12/2018",
+        "ExpirationDate": "12/31/2099",
+        "Attributes": [
+          {
+            "Id": 2524,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 330,
+            "SortOrder": 10,
+            "AttributeName": "Corner Brackets with Paper Backing",
+            "EffectiveDate": "3/4/2020",
+            "ExpirationDate": "12/31/3020",
+            "attributenodes": []
+          },
+          {
+            "Id": 1909,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 330,
+            "SortOrder": 10,
+            "AttributeName": "Wire Wall Hanger with Paper Backing",
+            "EffectiveDate": "2/12/2018",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          }
+        ]
+      },
+      {
+        "Id": 146,
+        "AttributeCategoryName": "Mat Color",
+        "RequiredLevel": 560,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 1,
+        "EffectiveDate": "4/6/2012",
+        "ExpirationDate": "12/31/2099",
+        "Attributes": [
+          {
+            "Id": 1877,
+            "ParentAttributeUID": 560,
+            "AttributeCategoryUID": 146,
+            "SortOrder": 9,
+            "AttributeName": "Double Black Mat",
+            "EffectiveDate": "10/24/2017",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 1921,
+            "ParentAttributeUID": 560,
+            "AttributeCategoryUID": 146,
+            "SortOrder": 10,
+            "AttributeName": "Double Gray Mat",
+            "EffectiveDate": "2/13/2018",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 615,
+            "ParentAttributeUID": 560,
+            "AttributeCategoryUID": 146,
+            "SortOrder": 1,
+            "AttributeName": "Double White Mat",
+            "EffectiveDate": "4/6/2012",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 1923,
+            "ParentAttributeUID": 560,
+            "AttributeCategoryUID": 146,
+            "SortOrder": 10,
+            "AttributeName": "Single Black Mat",
+            "EffectiveDate": "2/13/2018",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 1924,
+            "ParentAttributeUID": 560,
+            "AttributeCategoryUID": 146,
+            "SortOrder": 10,
+            "AttributeName": "Single Gray Mat",
+            "EffectiveDate": "2/13/2018",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 1922,
+            "ParentAttributeUID": 560,
+            "AttributeCategoryUID": 146,
+            "SortOrder": 10,
+            "AttributeName": "Single White Mat",
+            "EffectiveDate": "2/13/2018",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 2838,
+            "ParentAttributeUID": 560,
+            "AttributeCategoryUID": 146,
+            "SortOrder": 10,
+            "AttributeName": "Single White Mat, 1/8\"",
+            "EffectiveDate": "2/14/2022",
+            "ExpirationDate": "2/14/2101",
+            "attributenodes": []
+          }
+        ]
+      }
+    ],
+    "bookAttributes": []
+  },
+  {
+    "Id": 945,
+    "Name": "Bamboo Ornament",
+    "ProductCategoryUID": 238,
+    "AllowCustomNode": false,
+    "EffectiveDate": "11/3/2020",
+    "ExpirationDate": "11/3/2099",
+    "ProductNodes": [
+      {
+        "ProductUID": 945,
+        "DP2NodeID": 10000,
+        "Description": "Front",
+        "X": 0,
+        "Y": 0,
+        "H": 3,
+        "W": 3,
+        "EffectiveDate": "11/3/2020",
+        "ExpirationDate": "11/3/2099"
+      },
+      {
+        "ProductUID": 945,
+        "DP2NodeID": 10001,
+        "Description": "Back",
+        "X": 0,
+        "Y": 0,
+        "H": 3,
+        "W": 3,
+        "EffectiveDate": "11/3/2020",
+        "ExpirationDate": "11/3/2099"
+      }
+    ],
+    "AttributeCategories": [
+      {
+        "Id": 354,
+        "AttributeCategoryName": "Ornament Ribbon",
+        "RequiredLevel": 0,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 30,
+        "EffectiveDate": "8/3/2018",
+        "ExpirationDate": "12/31/2099",
+        "Attributes": [
+          {
+            "Id": 2034,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 354,
+            "SortOrder": 10,
+            "AttributeName": "Black Ribbon",
+            "EffectiveDate": "8/3/2018",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 2035,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 354,
+            "SortOrder": 20,
+            "AttributeName": "Gold Ribbon",
+            "EffectiveDate": "8/3/2018",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 2036,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 354,
+            "SortOrder": 30,
+            "AttributeName": "Green Ribbon",
+            "EffectiveDate": "8/3/2018",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 2037,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 354,
+            "SortOrder": 40,
+            "AttributeName": "Red Ribbon",
+            "EffectiveDate": "8/3/2018",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 2795,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 354,
+            "SortOrder": 20,
+            "AttributeName": "Twine Hanger",
+            "EffectiveDate": "8/27/2021",
+            "ExpirationDate": "8/27/2100",
+            "attributenodes": []
+          },
+          {
+            "Id": 2038,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 354,
+            "SortOrder": 50,
+            "AttributeName": "White Ribbon",
+            "EffectiveDate": "8/3/2018",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          }
+        ]
+      },
+      {
+        "Id": 240,
+        "AttributeCategoryName": "Ornament Substrate",
+        "RequiredLevel": -1,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 30,
+        "EffectiveDate": "4/10/2014",
+        "ExpirationDate": "12/31/2099",
+        "Attributes": [
+          {
+            "Id": 2717,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 240,
+            "SortOrder": 10,
+            "AttributeName": "Deep Matte",
+            "EffectiveDate": "11/3/2020",
+            "ExpirationDate": "11/3/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 1083,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 240,
+            "SortOrder": 10,
+            "AttributeName": "Lustre",
+            "EffectiveDate": "5/1/2014",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 1084,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 240,
+            "SortOrder": 10,
+            "AttributeName": "Metallic",
+            "EffectiveDate": "5/1/2014",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          }
+        ]
+      }
+    ],
+    "bookAttributes": []
+  },
+  {
+    "Id": 507,
+    "Name": "2x3.5 Rep Cards Horizontal",
+    "ProductCategoryUID": 222,
+    "AllowCustomNode": false,
+    "EffectiveDate": "1/29/2021",
+    "ExpirationDate": "1/1/2099",
+    "ProductNodes": [
+      {
+        "ProductUID": 507,
+        "DP2NodeID": 10000,
+        "Description": "Front",
+        "X": 0,
+        "Y": 0,
+        "H": 2.25,
+        "W": 3.75,
+        "EffectiveDate": "4/29/2014",
+        "ExpirationDate": "12/31/2099"
+      },
+      {
+        "ProductUID": 507,
+        "DP2NodeID": 10010,
+        "Description": "Back",
+        "X": 0,
+        "Y": 0,
+        "H": 2.25,
+        "W": 3.75,
+        "EffectiveDate": "4/29/2014",
+        "ExpirationDate": "12/31/2099"
+      }
+    ],
+    "AttributeCategories": [
+      {
+        "Id": 277,
+        "AttributeCategoryName": "Flat Card Paper Types",
+        "RequiredLevel": 0,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 10,
+        "EffectiveDate": "7/7/2014",
+        "ExpirationDate": "12/31/2099",
+        "Attributes": [
+          {
+            "Id": 1370,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 277,
+            "SortOrder": 20,
+            "AttributeName": "Press Flat Card Paper No Coating",
+            "EffectiveDate": "7/7/2014",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 1369,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 277,
+            "SortOrder": 10,
+            "AttributeName": "Press Flat Card Paper with Coating",
+            "EffectiveDate": "7/7/2014",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          }
+        ]
+      },
+      {
+        "Id": 249,
+        "AttributeCategoryName": "Press Flat Card Gloss Coating",
+        "RequiredLevel": 1369,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 10,
+        "EffectiveDate": "7/7/2014",
+        "ExpirationDate": "12/31/2099",
+        "Attributes": [
+          {
+            "Id": 1099,
+            "ParentAttributeUID": 1369,
+            "AttributeCategoryUID": 249,
+            "SortOrder": 20,
+            "AttributeName": "Gloss Coating Front and Back",
+            "EffectiveDate": "7/7/2014",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 1098,
+            "ParentAttributeUID": 1369,
+            "AttributeCategoryUID": 249,
+            "SortOrder": 10,
+            "AttributeName": "Gloss Coating Front Only",
+            "EffectiveDate": "7/7/2014",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          }
+        ]
+      },
+      {
+        "Id": 279,
+        "AttributeCategoryName": "Press Flat Card Paper No Coating",
+        "RequiredLevel": 1370,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 20,
+        "EffectiveDate": "7/7/2014",
+        "ExpirationDate": "12/31/2099",
+        "Attributes": [
+          {
+            "Id": 3057,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 279,
+            "SortOrder": 10,
+            "AttributeName": "Premium Matte Eggshell",
+            "EffectiveDate": "9/21/2023",
+            "ExpirationDate": "9/21/2102",
+            "attributenodes": []
+          },
+          {
+            "Id": 1803,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 279,
+            "SortOrder": 10,
+            "AttributeName": "Smooth Matte Cover",
+            "EffectiveDate": "10/11/2017",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 2408,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 279,
+            "SortOrder": 10,
+            "AttributeName": "Thick Card Smooth Matte",
+            "EffectiveDate": "11/4/2019",
+            "ExpirationDate": "12/31/3019",
+            "attributenodes": []
+          },
+          {
+            "Id": 1379,
+            "ParentAttributeUID": 1370,
+            "AttributeCategoryUID": 279,
+            "SortOrder": 20,
+            "AttributeName": "Art Linen",
+            "EffectiveDate": "7/7/2014",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 1381,
+            "ParentAttributeUID": 1370,
+            "AttributeCategoryUID": 279,
+            "SortOrder": 40,
+            "AttributeName": "Art Recycled",
+            "EffectiveDate": "7/7/2014",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 1380,
+            "ParentAttributeUID": 1370,
+            "AttributeCategoryUID": 279,
+            "SortOrder": 30,
+            "AttributeName": "Art Watercolor",
+            "EffectiveDate": "7/7/2014",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 1378,
+            "ParentAttributeUID": 1370,
+            "AttributeCategoryUID": 279,
+            "SortOrder": 10,
+            "AttributeName": "Bamboo",
+            "EffectiveDate": "7/7/2014",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 1377,
+            "ParentAttributeUID": 1370,
+            "AttributeCategoryUID": 279,
+            "SortOrder": 30,
+            "AttributeName": "Pearl",
+            "EffectiveDate": "7/7/2014",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 1338,
+            "ParentAttributeUID": 1370,
+            "AttributeCategoryUID": 279,
+            "SortOrder": 2,
+            "AttributeName": "Premium Semi-Gloss Cover",
+            "EffectiveDate": "7/7/2014",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 1384,
+            "ParentAttributeUID": 1370,
+            "AttributeCategoryUID": 279,
+            "SortOrder": 10,
+            "AttributeName": "Soft Touch Matte Cover",
+            "EffectiveDate": "7/7/2014",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 1374,
+            "ParentAttributeUID": 1370,
+            "AttributeCategoryUID": 279,
+            "SortOrder": 10,
+            "AttributeName": "Standard Semi-Gloss Cover",
+            "EffectiveDate": "7/7/2014",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          }
+        ]
+      },
+      {
+        "Id": 278,
+        "AttributeCategoryName": "Press Flat Card Paper with Coating",
+        "RequiredLevel": 1369,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 10,
+        "EffectiveDate": "7/7/2014",
+        "ExpirationDate": "12/31/2099",
+        "Attributes": [
+          {
+            "Id": 1373,
+            "ParentAttributeUID": 1369,
+            "AttributeCategoryUID": 278,
+            "SortOrder": 30,
+            "AttributeName": "Pearl",
+            "EffectiveDate": "7/7/2014",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 1092,
+            "ParentAttributeUID": 1369,
+            "AttributeCategoryUID": 278,
+            "SortOrder": 20,
+            "AttributeName": "Premium Semi-Gloss Cover",
+            "EffectiveDate": "7/7/2014",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 1371,
+            "ParentAttributeUID": 1369,
+            "AttributeCategoryUID": 278,
+            "SortOrder": 10,
+            "AttributeName": "Standard Semi-Gloss Cover",
+            "EffectiveDate": "7/7/2014",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          }
+        ]
+      },
+      {
+        "Id": 407,
+        "AttributeCategoryName": "Thick Card Inserts",
+        "RequiredLevel": 2408,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 10,
+        "EffectiveDate": "11/4/2019",
+        "ExpirationDate": "12/31/3019",
+        "Attributes": [
+          {
+            "Id": 2411,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 407,
+            "SortOrder": 10,
+            "AttributeName": "Black Insert (Triple Thick)",
+            "EffectiveDate": "11/4/2019",
+            "ExpirationDate": "12/31/3019",
+            "attributenodes": []
+          },
+          {
+            "Id": 2417,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 407,
+            "SortOrder": 10,
+            "AttributeName": "Green Insert (Triple Thick)",
+            "EffectiveDate": "11/4/2019",
+            "ExpirationDate": "12/31/3019",
+            "attributenodes": []
+          },
+          {
+            "Id": 2409,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 407,
+            "SortOrder": 10,
+            "AttributeName": "No Insert (Double Thick)",
+            "EffectiveDate": "11/4/2019",
+            "ExpirationDate": "12/31/3019",
+            "attributenodes": []
+          },
+          {
+            "Id": 2415,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 407,
+            "SortOrder": 10,
+            "AttributeName": "Orange Insert (Triple Thick)",
+            "EffectiveDate": "11/4/2019",
+            "ExpirationDate": "12/31/3019",
+            "attributenodes": []
+          },
+          {
+            "Id": 2414,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 407,
+            "SortOrder": 10,
+            "AttributeName": "Pink Insert (Triple Thick)",
+            "EffectiveDate": "11/4/2019",
+            "ExpirationDate": "12/31/3019",
+            "attributenodes": []
+          },
+          {
+            "Id": 2416,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 407,
+            "SortOrder": 10,
+            "AttributeName": "Red Insert (Triple Thick)",
+            "EffectiveDate": "11/4/2019",
+            "ExpirationDate": "12/31/3019",
+            "attributenodes": []
+          },
+          {
+            "Id": 2413,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 407,
+            "SortOrder": 10,
+            "AttributeName": "Teal Insert (Triple Thick)",
+            "EffectiveDate": "11/4/2019",
+            "ExpirationDate": "12/31/3019",
+            "attributenodes": []
+          },
+          {
+            "Id": 2410,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 407,
+            "SortOrder": 10,
+            "AttributeName": "White Insert (Triple Thick)",
+            "EffectiveDate": "11/4/2019",
+            "ExpirationDate": "12/31/3019",
+            "attributenodes": []
+          },
+          {
+            "Id": 2412,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 407,
+            "SortOrder": 10,
+            "AttributeName": "Yellow Insert (Triple Thick)",
+            "EffectiveDate": "11/4/2019",
+            "ExpirationDate": "12/31/3019",
+            "attributenodes": []
+          }
+        ]
+      }
+    ],
+    "bookAttributes": []
+  },
+  {
+    "Id": 506,
+    "Name": "2x3.5 Rep Cards Vertical",
+    "ProductCategoryUID": 222,
+    "AllowCustomNode": false,
+    "EffectiveDate": "1/29/2021",
+    "ExpirationDate": "1/1/2099",
+    "ProductNodes": [
+      {
+        "ProductUID": 506,
+        "DP2NodeID": 10000,
+        "Description": "Front",
+        "X": 0,
+        "Y": 0,
+        "H": 3.75,
+        "W": 2.25,
+        "EffectiveDate": "4/29/2014",
+        "ExpirationDate": "12/31/2099"
+      },
+      {
+        "ProductUID": 506,
+        "DP2NodeID": 10010,
+        "Description": "Back",
+        "X": 0,
+        "Y": 0,
+        "H": 3.75,
+        "W": 2.25,
+        "EffectiveDate": "4/29/2014",
+        "ExpirationDate": "12/31/2099"
+      }
+    ],
+    "AttributeCategories": [
+      {
+        "Id": 277,
+        "AttributeCategoryName": "Flat Card Paper Types",
+        "RequiredLevel": 0,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 10,
+        "EffectiveDate": "7/7/2014",
+        "ExpirationDate": "12/31/2099",
+        "Attributes": [
+          {
+            "Id": 1370,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 277,
+            "SortOrder": 20,
+            "AttributeName": "Press Flat Card Paper No Coating",
+            "EffectiveDate": "7/7/2014",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 1369,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 277,
+            "SortOrder": 10,
+            "AttributeName": "Press Flat Card Paper with Coating",
+            "EffectiveDate": "7/7/2014",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          }
+        ]
+      },
+      {
+        "Id": 249,
+        "AttributeCategoryName": "Press Flat Card Gloss Coating",
+        "RequiredLevel": 1369,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 10,
+        "EffectiveDate": "7/7/2014",
+        "ExpirationDate": "12/31/2099",
+        "Attributes": [
+          {
+            "Id": 1099,
+            "ParentAttributeUID": 1369,
+            "AttributeCategoryUID": 249,
+            "SortOrder": 20,
+            "AttributeName": "Gloss Coating Front and Back",
+            "EffectiveDate": "7/7/2014",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 1098,
+            "ParentAttributeUID": 1369,
+            "AttributeCategoryUID": 249,
+            "SortOrder": 10,
+            "AttributeName": "Gloss Coating Front Only",
+            "EffectiveDate": "7/7/2014",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          }
+        ]
+      },
+      {
+        "Id": 279,
+        "AttributeCategoryName": "Press Flat Card Paper No Coating",
+        "RequiredLevel": 1370,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 20,
+        "EffectiveDate": "7/7/2014",
+        "ExpirationDate": "12/31/2099",
+        "Attributes": [
+          {
+            "Id": 3057,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 279,
+            "SortOrder": 10,
+            "AttributeName": "Premium Matte Eggshell",
+            "EffectiveDate": "9/21/2023",
+            "ExpirationDate": "9/21/2102",
+            "attributenodes": []
+          },
+          {
+            "Id": 1803,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 279,
+            "SortOrder": 10,
+            "AttributeName": "Smooth Matte Cover",
+            "EffectiveDate": "10/11/2017",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 2408,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 279,
+            "SortOrder": 10,
+            "AttributeName": "Thick Card Smooth Matte",
+            "EffectiveDate": "11/4/2019",
+            "ExpirationDate": "12/31/3019",
+            "attributenodes": []
+          },
+          {
+            "Id": 1379,
+            "ParentAttributeUID": 1370,
+            "AttributeCategoryUID": 279,
+            "SortOrder": 20,
+            "AttributeName": "Art Linen",
+            "EffectiveDate": "7/7/2014",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 1381,
+            "ParentAttributeUID": 1370,
+            "AttributeCategoryUID": 279,
+            "SortOrder": 40,
+            "AttributeName": "Art Recycled",
+            "EffectiveDate": "7/7/2014",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 1380,
+            "ParentAttributeUID": 1370,
+            "AttributeCategoryUID": 279,
+            "SortOrder": 30,
+            "AttributeName": "Art Watercolor",
+            "EffectiveDate": "7/7/2014",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 1378,
+            "ParentAttributeUID": 1370,
+            "AttributeCategoryUID": 279,
+            "SortOrder": 10,
+            "AttributeName": "Bamboo",
+            "EffectiveDate": "7/7/2014",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 1377,
+            "ParentAttributeUID": 1370,
+            "AttributeCategoryUID": 279,
+            "SortOrder": 30,
+            "AttributeName": "Pearl",
+            "EffectiveDate": "7/7/2014",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 1338,
+            "ParentAttributeUID": 1370,
+            "AttributeCategoryUID": 279,
+            "SortOrder": 2,
+            "AttributeName": "Premium Semi-Gloss Cover",
+            "EffectiveDate": "7/7/2014",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 1384,
+            "ParentAttributeUID": 1370,
+            "AttributeCategoryUID": 279,
+            "SortOrder": 10,
+            "AttributeName": "Soft Touch Matte Cover",
+            "EffectiveDate": "7/7/2014",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 1374,
+            "ParentAttributeUID": 1370,
+            "AttributeCategoryUID": 279,
+            "SortOrder": 10,
+            "AttributeName": "Standard Semi-Gloss Cover",
+            "EffectiveDate": "7/7/2014",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          }
+        ]
+      },
+      {
+        "Id": 278,
+        "AttributeCategoryName": "Press Flat Card Paper with Coating",
+        "RequiredLevel": 1369,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 10,
+        "EffectiveDate": "7/7/2014",
+        "ExpirationDate": "12/31/2099",
+        "Attributes": [
+          {
+            "Id": 1373,
+            "ParentAttributeUID": 1369,
+            "AttributeCategoryUID": 278,
+            "SortOrder": 30,
+            "AttributeName": "Pearl",
+            "EffectiveDate": "7/7/2014",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 1092,
+            "ParentAttributeUID": 1369,
+            "AttributeCategoryUID": 278,
+            "SortOrder": 20,
+            "AttributeName": "Premium Semi-Gloss Cover",
+            "EffectiveDate": "7/7/2014",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          },
+          {
+            "Id": 1371,
+            "ParentAttributeUID": 1369,
+            "AttributeCategoryUID": 278,
+            "SortOrder": 10,
+            "AttributeName": "Standard Semi-Gloss Cover",
+            "EffectiveDate": "7/7/2014",
+            "ExpirationDate": "12/31/2099",
+            "attributenodes": []
+          }
+        ]
+      },
+      {
+        "Id": 407,
+        "AttributeCategoryName": "Thick Card Inserts",
+        "RequiredLevel": 2408,
+        "MultValueAllowedFlag": false,
+        "SortOrder": 10,
+        "EffectiveDate": "11/4/2019",
+        "ExpirationDate": "12/31/3019",
+        "Attributes": [
+          {
+            "Id": 2411,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 407,
+            "SortOrder": 10,
+            "AttributeName": "Black Insert (Triple Thick)",
+            "EffectiveDate": "11/4/2019",
+            "ExpirationDate": "12/31/3019",
+            "attributenodes": []
+          },
+          {
+            "Id": 2417,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 407,
+            "SortOrder": 10,
+            "AttributeName": "Green Insert (Triple Thick)",
+            "EffectiveDate": "11/4/2019",
+            "ExpirationDate": "12/31/3019",
+            "attributenodes": []
+          },
+          {
+            "Id": 2409,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 407,
+            "SortOrder": 10,
+            "AttributeName": "No Insert (Double Thick)",
+            "EffectiveDate": "11/4/2019",
+            "ExpirationDate": "12/31/3019",
+            "attributenodes": []
+          },
+          {
+            "Id": 2415,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 407,
+            "SortOrder": 10,
+            "AttributeName": "Orange Insert (Triple Thick)",
+            "EffectiveDate": "11/4/2019",
+            "ExpirationDate": "12/31/3019",
+            "attributenodes": []
+          },
+          {
+            "Id": 2414,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 407,
+            "SortOrder": 10,
+            "AttributeName": "Pink Insert (Triple Thick)",
+            "EffectiveDate": "11/4/2019",
+            "ExpirationDate": "12/31/3019",
+            "attributenodes": []
+          },
+          {
+            "Id": 2416,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 407,
+            "SortOrder": 10,
+            "AttributeName": "Red Insert (Triple Thick)",
+            "EffectiveDate": "11/4/2019",
+            "ExpirationDate": "12/31/3019",
+            "attributenodes": []
+          },
+          {
+            "Id": 2413,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 407,
+            "SortOrder": 10,
+            "AttributeName": "Teal Insert (Triple Thick)",
+            "EffectiveDate": "11/4/2019",
+            "ExpirationDate": "12/31/3019",
+            "attributenodes": []
+          },
+          {
+            "Id": 2410,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 407,
+            "SortOrder": 10,
+            "AttributeName": "White Insert (Triple Thick)",
+            "EffectiveDate": "11/4/2019",
+            "ExpirationDate": "12/31/3019",
+            "attributenodes": []
+          },
+          {
+            "Id": 2412,
+            "ParentAttributeUID": 0,
+            "AttributeCategoryUID": 407,
+            "SortOrder": 10,
+            "AttributeName": "Yellow Insert (Triple Thick)",
+            "EffectiveDate": "11/4/2019",
+            "ExpirationDate": "12/31/3019",
+            "attributenodes": []
+          }
+        ]
+      }
+    ],
+    "bookAttributes": []
+  }
+]

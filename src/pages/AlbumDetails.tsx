@@ -15,7 +15,7 @@ type ProductWithMatch = Product & {
 };
 
 const AlbumDetails: React.FC = () => {
-  const { albumId } = useParams();
+  const { albumId, studioSlug } = useParams();
   const [searchParams] = useSearchParams();
   const [album, setAlbum] = useState<Album | null>(null);
   const [photos, setPhotos] = useState<Photo[]>([]);
@@ -28,9 +28,17 @@ const AlbumDetails: React.FC = () => {
   const [cropperRef, setCropperRef] = useState<any>(null);
   const [productToCrop, setProductToCrop] = useState<ProductWithMatch | null>(null);
   const [sizeToCrop, setSizeToCrop] = useState<ProductSize | null>(null);
+  const [photoQuery, setPhotoQuery] = useState('');
+  const [metadataFilter, setMetadataFilter] = useState<'all' | 'camera' | 'iso' | 'aperture' | 'shutterSpeed' | 'focalLength' | 'dateTaken' | 'any'>('all');
   const { addToCart } = useCart();
 
   const selectedPhotoId = Number(searchParams.get('photo') || 0);
+  const studioSlugFromQuery = searchParams.get('studioSlug');
+  const backToAlbumsHref = studioSlug
+    ? `/studio/${studioSlug}`
+    : studioSlugFromQuery
+    ? `/albums?studioSlug=${encodeURIComponent(studioSlugFromQuery)}`
+    : '/albums';
 
   useEffect(() => {
     const id = Number(albumId);
@@ -62,9 +70,73 @@ const AlbumDetails: React.FC = () => {
     load();
   }, [albumId]);
 
+  const normalizeMetadata = (metadata: unknown): Record<string, any> => {
+    if (!metadata) return {};
+    if (typeof metadata === 'string') {
+      try {
+        const parsed = JSON.parse(metadata);
+        return parsed && typeof parsed === 'object' ? parsed : {};
+      } catch {
+        return {};
+      }
+    }
+    if (typeof metadata === 'object') return metadata as Record<string, any>;
+    return {};
+  };
+
+  const filteredPhotos = useMemo(() => {
+    const query = photoQuery.trim().toLowerCase();
+    if (!query) return photos;
+
+    return photos.filter((photo) => {
+      const fileName = String(photo.fileName || '').toLowerCase();
+      const playerNames = String((photo as any).playerNames || '').toLowerCase();
+      const metadata = normalizeMetadata((photo as any).metadata);
+
+      if (metadataFilter === 'all') {
+        if (fileName.includes(query)) return true;
+        if (playerNames.includes(query)) return true;
+        return Object.values(metadata).some((value) => String(value || '').toLowerCase().includes(query));
+      }
+
+      if (metadataFilter === 'any') {
+        if (playerNames.includes(query)) return true;
+        return Object.values(metadata).some((value) => String(value || '').toLowerCase().includes(query));
+      }
+
+      if (metadataFilter === 'camera') {
+        const make = String(metadata.cameraMake || '').toLowerCase();
+        const model = String(metadata.cameraModel || '').toLowerCase();
+        return make.includes(query) || model.includes(query);
+      }
+
+      if (metadataFilter === 'iso') {
+        return String(metadata.iso || '').toLowerCase().includes(query);
+      }
+
+      if (metadataFilter === 'aperture') {
+        return String(metadata.aperture || '').toLowerCase().includes(query);
+      }
+
+      if (metadataFilter === 'shutterSpeed') {
+        return String(metadata.shutterSpeed || '').toLowerCase().includes(query);
+      }
+
+      if (metadataFilter === 'focalLength') {
+        return String(metadata.focalLength || '').toLowerCase().includes(query);
+      }
+
+      if (metadataFilter === 'dateTaken') {
+        return String(metadata.dateTaken || '').toLowerCase().includes(query);
+      }
+
+      return false;
+    });
+  }, [photos, photoQuery, metadataFilter]);
+
   const selectedPhoto = useMemo(
-    () => photos.find((p) => p.id === selectedPhotoId) || null,
-    [photos, selectedPhotoId]
+    () => filteredPhotos.find((p) => p.id === selectedPhotoId) || null,
+    [filteredPhotos, selectedPhotoId]
   );
 
   const orderedProducts = useMemo((): ProductWithMatch[] => {
@@ -258,8 +330,37 @@ const AlbumDetails: React.FC = () => {
 
   const handleAddToCart = async (product: ProductWithMatch, sizeOverride?: ProductSize | null) => {
     if (!selectedPhoto) return;
+
+    const selectedSize = getSelectedSizeForCart(product, sizeOverride);
+    if (!selectedSize) {
+      setAddMessage('This product has no available size.');
+      return;
+    }
+
+    // Digital products do not require crop workflow.
+    if (product.isDigital) {
+      const key = `${product.id}-${selectedSize.id}`;
+      setAddingKey(key);
+      setAddMessage('');
+      try {
+        await addToCart(
+          selectedPhoto,
+          { x: 0, y: 0, width: 100, height: 100, rotate: 0, scaleX: 1, scaleY: 1 },
+          product,
+          selectedSize,
+          1
+        );
+        setAddMessage(`${product.name} added to cart.`);
+      } catch {
+        setAddMessage('Failed to add item to cart.');
+      } finally {
+        setAddingKey('');
+      }
+      return;
+    }
+
     setProductToCrop(product);
-    setSizeToCrop(getSelectedSizeForCart(product, sizeOverride));
+    setSizeToCrop(selectedSize);
     setShowCropModal(true);
   };
 
@@ -328,9 +429,26 @@ const AlbumDetails: React.FC = () => {
   return (
     <div className="main-content dark-bg albums-full-height">
       <div className="page-header" style={{ marginBottom: 16 }}>
-        <Link to="/albums" className="btn btn-secondary" style={{ marginBottom: 12 }}>← Back to Albums</Link>
-        <h1 className="gradient-text" style={{ marginBottom: 6 }}>{album.name}</h1>
-        {album.description && <p className="albums-description" style={{ marginTop: 0 }}>{album.description}</p>}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
+          <Link
+            to={backToAlbumsHref}
+            className="btn btn-secondary"
+            style={{
+              marginBottom: 0,
+              textDecoration: 'none',
+              borderRadius: 999,
+              padding: '8px 14px',
+              border: '1px solid #7b61ff',
+              background: 'rgba(123, 97, 255, 0.08)',
+              color: '#c7bcff',
+              fontWeight: 600,
+            }}
+          >
+            ← Back to Albums
+          </Link>
+        </div>
+        <h1 className="gradient-text" style={{ marginBottom: 6, lineHeight: 1.15 }}>{album.name}</h1>
+        {album.description && <p className="albums-description" style={{ marginTop: 0, color: '#a8a8b8' }}>{album.description}</p>}
       </div>
 
       {selectedPhoto && (
@@ -499,11 +617,56 @@ const AlbumDetails: React.FC = () => {
         </div>
       )}
 
+      <div style={{ marginBottom: 14, border: '1px solid #2a2740', borderRadius: 8, padding: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 10 }}>
+          <input
+            type="text"
+            value={photoQuery}
+            onChange={(e) => setPhotoQuery(e.target.value)}
+            placeholder="Filter photos by name or metadata..."
+            style={{
+              width: '100%',
+              padding: '10px 12px',
+              borderRadius: 6,
+              border: '1px solid #3a3656',
+              background: '#141320',
+              color: '#fff',
+            }}
+          />
+          <select
+            value={metadataFilter}
+            onChange={(e) => setMetadataFilter(e.target.value as any)}
+            style={{
+              minWidth: 170,
+              padding: '10px 12px',
+              borderRadius: 6,
+              border: '1px solid #3a3656',
+              background: '#141320',
+              color: '#fff',
+            }}
+          >
+            <option value="all">Name + Metadata</option>
+            <option value="any">Metadata (Any Field)</option>
+            <option value="camera">Camera</option>
+            <option value="iso">ISO</option>
+            <option value="aperture">Aperture</option>
+            <option value="shutterSpeed">Shutter Speed</option>
+            <option value="focalLength">Focal Length</option>
+            <option value="dateTaken">Date Taken</option>
+          </select>
+        </div>
+        <div style={{ marginTop: 8, fontSize: 12, color: '#aaa' }}>
+          Showing {filteredPhotos.length} of {photos.length} photo{photos.length === 1 ? '' : 's'}
+        </div>
+      </div>
+
       {photos.length === 0 ? (
         <div className="empty-state">No photos in this album yet.</div>
+      ) : filteredPhotos.length === 0 ? (
+        <div className="empty-state">No photos match your filter.</div>
       ) : (
         <div className="albums-grid">
-          {photos.map((photo) => (
+          {filteredPhotos.map((photo) => (
             <Link
               key={photo.id}
               to={`?photo=${photo.id}`}

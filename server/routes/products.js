@@ -118,10 +118,29 @@ router.get('/active', async (req, res) => {
       // ── NEW SYSTEM: studio_price_list_items (preferred) ──────────────────
       // Check if the album's studio has configured offerings in the new system
       if (effectiveStudioId) {
-        const studioPriceList = await queryRow(
-          `SELECT TOP 1 id FROM studio_price_lists WHERE studio_id = $1 ORDER BY is_default DESC, id ASC`,
-          [effectiveStudioId]
-        );
+        // Prefer the album-linked studio price list when available.
+        // (Important when a studio has multiple price lists with different offered items.)
+        let studioPriceList = null;
+        const albumLinkedStudioPriceListId = Number(album?.priceListId || 0) || null;
+        if (albumLinkedStudioPriceListId) {
+          studioPriceList = await queryRow(
+            `SELECT TOP 1 id, super_price_list_id as superPriceListId
+             FROM studio_price_lists
+             WHERE id = $1 AND studio_id = $2`,
+            [albumLinkedStudioPriceListId, effectiveStudioId]
+          );
+        }
+
+        if (!studioPriceList?.id) {
+          studioPriceList = await queryRow(
+            `SELECT TOP 1 id, super_price_list_id as superPriceListId
+             FROM studio_price_lists
+             WHERE studio_id = $1
+             ORDER BY is_default DESC, id ASC`,
+            [effectiveStudioId]
+          );
+        }
+
         if (studioPriceList?.id) {
           const rows = await queryRows(
             `SELECT
@@ -129,10 +148,15 @@ router.get('/active', async (req, res) => {
                ps.id as sizeId, ps.size_name as sizeName, ps.cost as sizeCost,
                COALESCE(spi.price, ps.price) as sizePrice
              FROM studio_price_list_items spi
+             JOIN studio_price_lists spl ON spl.id = spi.studio_price_list_id
              JOIN product_sizes ps ON ps.id = spi.product_size_id
              JOIN products p ON p.id = ps.product_id
+             LEFT JOIN super_price_list_items sspi
+               ON sspi.super_price_list_id = spl.super_price_list_id
+              AND sspi.product_size_id = spi.product_size_id
              WHERE spi.studio_price_list_id = $1
                AND spi.is_offered = 1
+               AND COALESCE(sspi.is_active, 1) = 1
              ORDER BY p.category, p.name, ps.size_name`,
             [studioPriceList.id]
           );

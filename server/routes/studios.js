@@ -366,10 +366,27 @@ router.get('/public/:slug', async (req, res) => {
       return res.status(404).json({ error: 'Studio not found' });
     }
 
+    const hasProfileConfig = await tableExists('profile_config');
+
     const studio = await queryRow(
-      `SELECT id, name, email, public_slug as publicSlug
-       FROM studios
-       WHERE public_slug = $1`,
+      hasProfileConfig
+        ? `SELECT s.id,
+                  s.name,
+                  s.email,
+                  s.public_slug as publicSlug,
+                  pc.business_name as businessName,
+                  pc.logo_url as logoUrl
+           FROM studios s
+           LEFT JOIN profile_config pc ON pc.id = s.id
+           WHERE s.public_slug = $1`
+        : `SELECT id,
+                  name,
+                  email,
+                  public_slug as publicSlug,
+                  CAST(NULL AS NVARCHAR(255)) as businessName,
+                  CAST(NULL AS NVARCHAR(MAX)) as logoUrl
+           FROM studios
+           WHERE public_slug = $1`,
       [slug]
     );
 
@@ -379,6 +396,7 @@ router.get('/public/:slug', async (req, res) => {
 
     res.json({
       ...studio,
+      displayName: studio.businessName || studio.name,
       publicUrl: `${getPublicStudioBaseUrl(req)}/s/${studio.publicSlug}`,
     });
   } catch (error) {

@@ -1,0 +1,155 @@
+{
+  "studio": {
+    "studioId": 7,
+    "studioPriceListId": 2,
+    "studioPriceListName": "WHCC",
+    "samplePhotoId": 1
+  },
+  "offeredItemCount": 245,
+  "physicalOfferedItemCount": 244,
+  "skippedDigitalCount": 1,
+  "orderRequest": {
+    "itemCount": 244,
+    "subtotal": 129558.06,
+    "total": 129558.06,
+    "shippingOption": "direct"
+  },
+  "createOrder": {
+    "status": 201,
+    "ok": true,
+    "body": {
+      "id": 11,
+      "userId": 4,
+      "totalAmount": 129558.06,
+      "subtotal": 129558.06,
+      "taxAmount": 0,
+      "taxRate": 0,
+      "stripeFeeAmount": 0,
+      "paymentIntentId": null,
+      "status": "processing",
+      "orderDate": "2026-04-02T18:09:26.426Z",
+      "shippingAddress": {
+        "fullName": "WHCC Full Catalog Test",
+        "addressLine1": "123 Test Lane",
+        "addressLine2": "",
+        "city": "Eagan",
+        "state": "MN",
+        "zipCode": "55121",
+        "country": "US",
+        "email": "customer@example.com",
+        "phone": "6516468263"
+      },
+      "shippingOption": "direct",
+      "shippingCost": 0,
+      "batchShippingAddress": null,
+      "batchReadyDate": null,
+      "batchQueueStatus": null,
+      "batchLabVendor": null,
+      "isBatch": false,
+      "labSubmitted": false,
+      "labSubmittedAt": null,
+      "items": [],
+      "message": "Order created successfully"
+    }
+  },
+  "orderSummary": {
+    "id": 11,
+    "status": "processing",
+    "whccConfirmationId": null,
+    "hasImportResponse": true,
+    "hasSubmitResponse": false,
+    "whccLastError": {
+      "stage": "import",
+      "runAt": "2026-04-02T18:11:06.591Z",
+      "url": "https://sandbox.apps.whcc.com/api/OrderImport",
+      "status": null,
+      "statusText": null,
+      "message": "WHCC import succeeded but no confirmation ID was returned",
+      "sandbox": true,
+      "confirmationId": null,
+      "responseData": null
+    }
+  },
+  "offeredItemSample": [
+    {
+      "studioItemId": 370,
+      "productId": 591,
+      "productSizeId": 1377,
+      "productName": "Digital Image",
+      "sizeName": "High Resolution",
+      "sellPrice": 6
+    },
+    {
+      "studioItemId": 27,
+      "productId": 178,
+      "productSizeId": 1004,
+      "productName": "Fine Art Print 10x10",
+      "sizeName": "10x10",
+      "sellPrice": 61.5
+    },
+    {
+      "studioItemId": 28,
+      "productId": 179,
+      "productSizeId": 1005,
+      "productName": "Fine Art Print 10x20",
+      "sizeName": "10x20",
+      "sellPrice": 199.5
+    },
+    {
+      "studioItemId": 29,
+      "productId": 180,
+      "productSizeId": 1006,
+      "productName": "Fine Art Print 11x14",
+      "sizeName": "11x14",
+      "sellPrice": 93
+    },
+    {
+      "studioItemId": 30,
+      "productId": 181,
+      "productSizeId": 1007,
+      "productName": "Fine Art Print 12x12",
+      "sizeName": "12x12",
+      "sellPrice": 91.5
+    },
+    {
+      "studioItemId": 31,
+      "productId": 182,
+      "productSizeId": 1008,
+      "productName": "Fine Art Print 12x18",
+      "sizeName": "12x18",
+      "sellPrice": 138
+    },
+    {
+      "studioItemId": 32,
+      "productId": 183,
+      "productSizeId": 1009,
+      "productName": "Fine Art Print 15x30",
+      "sizeName": "15x30",
+      "sellPrice": 570
+    },
+    {
+      "studioItemId": 33,
+      "productId": 184,
+      "productSizeId": 1010,
+      "productName": "Fine Art Print 16x16",
+      "sizeName": "16x16",
+      "sellPrice": 330
+    },
+    {
+      "studioItemId": 34,
+      "productId": 185,
+      "productSizeId": 1011,
+      "productName": "Fine Art Print 16x20",
+      "sizeName": "16x20",
+      "sellPrice": 330
+    },
+    {
+      "studioItemId": 35,
+      "productId": 186,
+      "productSizeId": 1012,
+      "productName": "Fine Art Print 16x24",
+      "sizeName": "16x24",
+      "sellPrice": 474
+    }
+  ]
+}

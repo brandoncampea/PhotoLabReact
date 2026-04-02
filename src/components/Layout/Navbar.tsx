@@ -1,13 +1,54 @@
-
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import styles from './Navbar.module.css';
 // import { useAuth } from '../../contexts/AuthContext';
 // import { profileService } from '../../services/profileService';
 
 const Navbar: React.FC = () => {
-  // Placeholder: Replace with studio config/profileService when available
-  const studioName = "Studio Name";
-  const studioLogo = "/logo.png"; // Replace with dynamic logo URL if available
+  const location = useLocation();
+  const [publicStudioBrand, setPublicStudioBrand] = useState<{ name: string; logoUrl: string | null } | null>(null);
+
+  const studioSlug = useMemo(() => {
+    const pathMatch = location.pathname.match(/^\/(?:s|studio)\/([^/]+)/i);
+    if (pathMatch?.[1]) return decodeURIComponent(pathMatch[1]);
+
+    const params = new URLSearchParams(location.search);
+    const fromQuery = params.get('studioSlug');
+    return fromQuery ? decodeURIComponent(fromQuery) : '';
+  }, [location.pathname, location.search]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!studioSlug) {
+      setPublicStudioBrand(null);
+      return;
+    }
+
+    fetch(`/api/studios/public/${encodeURIComponent(studioSlug)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return;
+        const name = String(data.displayName || data.businessName || data.name || 'Studio Name');
+        const logoRaw = String(data.logoUrl || '').trim();
+        const logoUrl = logoRaw
+          ? (logoRaw.startsWith('http://') || logoRaw.startsWith('https://') || logoRaw.startsWith('/api/') || logoRaw.startsWith('/uploads/')
+              ? logoRaw
+              : `/${logoRaw.replace(/^\/+/, '')}`)
+          : null;
+        setPublicStudioBrand({ name, logoUrl });
+      })
+      .catch(() => {
+        if (!cancelled) setPublicStudioBrand(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [studioSlug]);
+
+  const studioName = publicStudioBrand?.name || 'Studio Name';
+  const studioLogo = publicStudioBrand?.logoUrl || '/logo.png';
   const isLoggedIn = false; // Replace with auth context
   const user = null; // Replace with auth context user
 
@@ -18,16 +59,16 @@ const Navbar: React.FC = () => {
         {studioName}
       </div>
       <div className={styles.navbarLinks}>
-        <a href="/albums" className={styles.navbarLink}>Albums</a>
-        <a href="/orders" className={styles.navbarLink}>Orders</a>
-        <a href="/cart" className={styles.navbarLink}>Cart</a>
-        <a href="/" className={styles.navbarLink}>Customer Site</a>
+        <Link to={studioSlug ? `/albums?studioSlug=${encodeURIComponent(studioSlug)}` : '/albums'} className={styles.navbarLink}>Albums</Link>
+        <Link to="/orders" className={styles.navbarLink}>Orders</Link>
+        <Link to="/cart" className={styles.navbarLink}>Cart</Link>
+        <Link to="/" className={styles.navbarLink}>Customer Site</Link>
         {isLoggedIn ? (
-          <a href="/logout" className={styles.navbarLink}>Logout</a>
+          <Link to="/logout" className={styles.navbarLink}>Logout</Link>
         ) : (
           <>
-            <a href="/login" className={styles.navbarLink}>Login</a>
-            <a href="/register" className={styles.navbarLink}>Register</a>
+            <Link to="/login" className={styles.navbarLink}>Login</Link>
+            <Link to="/register" className={styles.navbarLink}>Register</Link>
           </>
         )}
       </div>

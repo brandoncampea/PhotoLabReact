@@ -228,12 +228,16 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
             const photoViewsRows = await queryRows(
                 `SELECT TOP 5
                     TRY_CAST(JSON_VALUE(event_data, '$.photoId') AS INT) as photoId,
+                    TRY_CAST(JSON_VALUE(event_data, '$.albumId') AS INT) as albumId,
                     JSON_VALUE(event_data, '$.photoFileName') as photoFileName,
                     JSON_VALUE(event_data, '$.albumName') as albumName,
+                    p.thumbnail_url as thumbnailUrl,
+                    p.full_image_url as fullImageUrl,
                     COUNT(*) as views
                  FROM analytics
+                 LEFT JOIN photos p ON p.id = TRY_CAST(JSON_VALUE(event_data, '$.photoId') AS INT)
                  WHERE event_type = 'photo_view'${analyticsStudioFilter}
-                 GROUP BY JSON_VALUE(event_data, '$.photoId'), JSON_VALUE(event_data, '$.photoFileName'), JSON_VALUE(event_data, '$.albumName')
+                 GROUP BY JSON_VALUE(event_data, '$.photoId'), JSON_VALUE(event_data, '$.albumId'), JSON_VALUE(event_data, '$.photoFileName'), JSON_VALUE(event_data, '$.albumName'), p.thumbnail_url, p.full_image_url
                  ORDER BY views DESC`
             );
 
@@ -247,8 +251,11 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
                 })),
                 photoViews: (photoViewsRows || []).map((r) => ({
                     photoId: Number(r.photoId || 0),
+                    albumId: Number(r.albumId || 0),
                     photoFileName: r.photoFileName || 'Unknown Photo',
                     albumName: r.albumName || 'Unknown Album',
+                    thumbnailUrl: r.thumbnailUrl || null,
+                    fullImageUrl: r.fullImageUrl || null,
                     views: Number(r.views || 0),
                 })),
             };

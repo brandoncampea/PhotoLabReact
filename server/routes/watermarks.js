@@ -2,11 +2,69 @@ import express from 'express';
 import { authRequired } from '../middleware/auth.js';
 import multer from 'multer';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import mssql from '../mssql.cjs';
 const { queryRow, queryRows, query } = mssql;
 import { uploadImageBufferToAzure } from '../services/azureStorage.js';
 const router = express.Router();
+
+const WATERMARK_URL_CACHE_TTL_MS = 5 * 60 * 1000;
+const watermarkUrlAvailabilityCache = new Map();
+
+const isUrlAvailable = async (url) => {
+  if (!url) return false;
+  const now = Date.now();
+  const cached = watermarkUrlAvailabilityCache.get(url);
+  if (cached && cached.expiresAt > now) {
+    return cached.available;
+  }
+
+  let available = false;
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2000);
+    const response = await fetch(url, { method: 'HEAD', signal: controller.signal });
+    clearTimeout(timeout);
+    available = response.ok;
+  } catch {
+    available = false;
+  }
+
+  watermarkUrlAvailabilityCache.set(url, {
+    available,
+    expiresAt: now + WATERMARK_URL_CACHE_TTL_MS,
+  });
+  return available;
+};
+
+const normalizeWatermarkImageUrl = async (watermark) => {
+  if (!watermark) return watermark;
+  const imageUrl = String(watermark.imageUrl || '');
+  if (!imageUrl || imageUrl.startsWith('http://') || imageUrl.startsWith('https://') || imageUrl.startsWith('/api/')) {
+    return watermark;
+  }
+
+  if (imageUrl.startsWith('/uploads/')) {
+    const filename = imageUrl.split('/').pop();
+    const localPath = path.join(__dirname, '../uploads', filename || '');
+    const localExists = Boolean(filename) && fs.existsSync(localPath);
+    if (localExists) return watermark;
+
+    const account = process.env.AZURE_STORAGE_ACCOUNT;
+    const container = process.env.AZURE_CONTAINER_NAME;
+    if (account && container && filename) {
+      const azureWatermarkUrl = `https://${account}.blob.core.windows.net/${container}/watermarks/${filename}`;
+      const existsInAzure = await isUrlAvailable(azureWatermarkUrl);
+      return {
+        ...watermark,
+        imageUrl: existsInAzure ? azureWatermarkUrl : '',
+      };
+    }
+  }
+
+  return watermark;
+};
 
 
 
@@ -15,14 +73,32 @@ router.get('/public-default', async (req, res) => {
   try {
     const studioId = req.query.studioId;
     if (!studioId) return res.status(400).json({ error: 'studioId is required' });
-    const watermark = await queryRow(`
-      SELECT TOP 1 id, name, image_url as imageUrl, position, opacity,
-        is_default as isDefault, tiled, created_at as createdDate, studio_id as studioId
-      FROM watermarks
-      WHERE is_default = 1 AND studio_id = $1
-    `, [studioId]);
+    let watermark;
+
+    try {
+      watermark = await queryRow(`
+        SELECT TOP 1 id, name, image_url as imageUrl, position, opacity,
+          is_default as isDefault, tiled, created_at as createdDate, studio_id as studioId
+        FROM watermarks
+        WHERE is_default = 1 AND studio_id = $1
+      `, [studioId]);
+    } catch (err) {
+      // Backward-compat for older databases that do not have watermarks.studio_id
+      const message = String(err?.message || '');
+      if (!/Invalid column name 'studio_id'/i.test(message)) {
+        throw err;
+      }
+
+      watermark = await queryRow(`
+        SELECT TOP 1 id, name, image_url as imageUrl, position, opacity,
+          is_default as isDefault, tiled, created_at as createdDate
+        FROM watermarks
+        WHERE is_default = 1
+      `);
+    }
+
     if (!watermark) return res.status(404).json({ error: 'No default watermark found for this studio' });
-    res.json(watermark);
+    res.json(await normalizeWatermarkImageUrl(watermark));
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

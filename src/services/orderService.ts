@@ -73,13 +73,39 @@ export const orderService = {
     return response.data;
   },
 
-  async getOrders(): Promise<Order[]> {
-    const response = await api.get<Order[]>('/orders');
+  async getOrders(options?: { includeItems?: boolean; limit?: number }): Promise<Order[]> {
+    const params = new URLSearchParams();
+    if (options?.includeItems) {
+      params.set('includeItems', '1');
+    }
+    if (typeof options?.limit === 'number' && Number.isFinite(options.limit) && options.limit > 0) {
+      params.set('limit', String(Math.floor(options.limit)));
+    }
+    const query = params.toString();
+    const response = await api.get<Order[]>(`/orders${query ? `?${query}` : ''}`);
     return response.data;
   },
 
-  async getAdminOrders(): Promise<Order[]> {
-    const response = await api.get<Order[]>('/orders/admin/all-orders');
+  async getOrderDetails(orderId: number): Promise<Order> {
+    const response = await api.get<Order>(`/orders/details/${orderId}`);
+    return response.data;
+  },
+
+  async getAdminOrders(options?: { includeItems?: boolean; limit?: number }): Promise<Order[]> {
+    const params = new URLSearchParams();
+    if (options?.includeItems) {
+      params.set('includeItems', '1');
+    }
+    if (typeof options?.limit === 'number' && Number.isFinite(options.limit) && options.limit > 0) {
+      params.set('limit', String(Math.floor(options.limit)));
+    }
+    const query = params.toString();
+    const response = await api.get<Order[]>(`/orders/admin/all-orders${query ? `?${query}` : ''}`);
+    return response.data;
+  },
+
+  async getAdminOrderDetails(orderId: number): Promise<Order> {
+    const response = await api.get<Order>(`/orders/admin/order-details/${orderId}`);
     return response.data;
   },
 
@@ -93,11 +119,11 @@ export const orderService = {
     return response.data;
   },
 
-  async submitBatch(orderIds: number[], batchAddress: ShippingAddress, selectedLab: string): Promise<{ success: boolean; updatedCount: number; notReadyCount: number; selectedLab: string; }> {
+  async submitBatch(orderIds: number[], batchAddress: ShippingAddress, selectedLab?: string): Promise<{ success: boolean; updatedCount: number; notReadyCount: number; failedCount?: number; selectedLab: string; }> {
     const response = await api.post('/orders/admin/submit-batch', {
       orderIds,
       batchAddress,
-      selectedLab,
+      ...(selectedLab ? { selectedLab } : {}),
     });
     return response.data;
   },

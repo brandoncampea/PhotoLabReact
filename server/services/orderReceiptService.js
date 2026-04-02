@@ -38,6 +38,128 @@ const getTransporter = async () => {
   return transporterPromise;
 };
 
+const formatDateTime = (value) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString();
+};
+
+const renderItemsRows = (items) => items.map((item) => {
+  const photoName = item.photoFileName || `Photo #${item.photoId}`;
+  const unitPrice = Number(item.unitPrice ?? item.price ?? 0);
+  const quantity = Number(item.quantity || 0);
+  const lineTotal = unitPrice * quantity;
+  return `<tr>
+    <td style="padding:10px 8px;border-bottom:1px solid #343b45;color:#e7edf6;">${esc(item.productName || 'Product')}</td>
+    <td style="padding:10px 8px;border-bottom:1px solid #343b45;color:#d0d8e3;">${esc(photoName)}</td>
+    <td style="padding:10px 8px;border-bottom:1px solid #343b45;text-align:right;color:#d0d8e3;">${currency(unitPrice)}</td>
+    <td style="padding:10px 8px;border-bottom:1px solid #343b45;text-align:right;color:#d0d8e3;">${quantity}</td>
+    <td style="padding:10px 8px;border-bottom:1px solid #343b45;text-align:right;color:#fff;">${currency(lineTotal)}</td>
+  </tr>`;
+}).join('');
+
+const renderCustomerReceiptHtml = ({ customerName, order, items, digitalDownloads }) => {
+  const downloadSection = Array.isArray(digitalDownloads) && digitalDownloads.length > 0
+    ? `<div style="margin-top:20px;padding:16px;border:1px solid #3f4957;border-radius:10px;background:#141922;">
+        <div style="font-size:16px;font-weight:700;color:#fff;margin-bottom:8px;">Digital Downloads</div>
+        <div style="font-size:13px;color:#b8c2d1;margin-bottom:10px;">Use your unique links below to download your digital products.</div>
+        ${digitalDownloads.map((entry) => `
+          <div style="margin-bottom:8px;">
+            <a href="${esc(entry.url)}" style="display:inline-block;padding:9px 12px;background:#6ee7b7;color:#0f172a;text-decoration:none;border-radius:8px;font-weight:700;font-size:13px;">Download ${esc(entry.productName || 'Digital Product')}</a>
+            <div style="font-size:12px;color:#95a3b8;margin-top:4px;">${esc(entry.photoFileName || '')}</div>
+          </div>
+        `).join('')}
+      </div>`
+    : '';
+
+  return `
+    <div style="font-family:Arial,sans-serif;background:#0f131a;color:#eaf1fb;max-width:760px;margin:0 auto;padding:20px;border:1px solid #2e3642;border-radius:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+        <div>
+          <div style="font-size:14px;color:#9fb0c6;">Photo Lab</div>
+          <div style="font-size:28px;font-weight:700;color:#fff;">Customer Invoice</div>
+          <div style="font-size:13px;color:#9fb0c6;margin-top:6px;">Order #${esc(order.id)} • ${esc(formatDateTime(order.createdAt))}</div>
+        </div>
+      </div>
+
+      <div style="margin-top:16px;font-size:14px;color:#d3dceb;">Thanks${customerName ? ` ${esc(customerName)}` : ''}! Your order has been received.</div>
+
+      <table style="width:100%;border-collapse:collapse;margin-top:18px;background:#111722;border:1px solid #303846;border-radius:8px;overflow:hidden;">
+        <thead>
+          <tr style="background:#1a2330;color:#b9c7da;font-size:12px;text-transform:uppercase;letter-spacing:0.03em;">
+            <th style="text-align:left;padding:10px 8px;">Product</th>
+            <th style="text-align:left;padding:10px 8px;">Image Name</th>
+            <th style="text-align:right;padding:10px 8px;">Unit Price</th>
+            <th style="text-align:right;padding:10px 8px;">Qty</th>
+            <th style="text-align:right;padding:10px 8px;">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${renderItemsRows(items)}
+        </tbody>
+      </table>
+
+      ${downloadSection}
+
+      <div style="margin-top:18px;display:flex;justify-content:flex-end;">
+        <table style="width:300px;border-collapse:collapse;color:#d3dceb;">
+          <tr><td style="padding:4px 0;">Item(s) Subtotal:</td><td style="padding:4px 0;text-align:right;">${currency(order.subtotal)}</td></tr>
+          <tr><td style="padding:4px 0;">Shipping:</td><td style="padding:4px 0;text-align:right;">${currency(order.shippingCost)}</td></tr>
+          <tr><td style="padding:4px 0;">Sales Tax:</td><td style="padding:4px 0;text-align:right;">${currency(order.taxAmount)}</td></tr>
+          <tr><td style="padding:8px 0 0 0;font-weight:700;color:#fff;">Grand Total:</td><td style="padding:8px 0 0 0;text-align:right;font-weight:700;color:#fff;">${currency(order.totalAmount)}</td></tr>
+        </table>
+      </div>
+
+      ${appBaseUrl ? `<div style="margin-top:18px;font-size:13px;"><a href="${esc(appBaseUrl)}" style="color:#7cc7ff;">Open Photo Lab</a></div>` : ''}
+    </div>
+  `;
+};
+
+const renderStudioSaleHtml = ({ order, items, customerEmail, studioName }) => {
+  const orderUrl = order?.orderUrl ? String(order.orderUrl) : null;
+  return `
+    <div style="font-family:Arial,sans-serif;background:#0f131a;color:#eaf1fb;max-width:760px;margin:0 auto;padding:20px;border:1px solid #84cc16;border-radius:12px;">
+      <div style="font-size:44px;line-height:1;">💸</div>
+      <div style="font-size:44px;line-height:1;">🔥</div>
+      <div style="font-size:42px;font-weight:800;color:#fff;margin-top:8px;">Cha-ching! You just made a sale.</div>
+      <div style="margin-top:14px;font-size:16px;color:#c7d2e3;">${studioName ? `${esc(studioName)} — ` : ''}New order${customerEmail ? ` from <strong style="color:#a3e635;">${esc(customerEmail)}</strong>` : ''}.</div>
+
+      ${orderUrl ? `<div style="margin-top:14px;"><a href="${esc(orderUrl)}" style="display:inline-block;padding:10px 14px;background:#16a34a;color:#fff;text-decoration:none;border-radius:999px;font-weight:700;">View Order</a></div>` : ''}
+
+      <div style="margin-top:18px;font-size:24px;font-weight:700;color:#fff;">Here's what they ordered</div>
+      <table style="width:100%;border-collapse:collapse;margin-top:14px;">
+        <thead>
+          <tr style="color:#9fb0c6;font-size:12px;text-transform:uppercase;letter-spacing:0.03em;">
+            <th style="text-align:left;padding:8px 6px;">Quantity</th>
+            <th style="text-align:left;padding:8px 6px;">Item Description</th>
+            <th style="text-align:right;padding:8px 6px;">Line Subtotal</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${items.map((item) => {
+            const qty = Number(item.quantity || 0);
+            const line = (Number(item.unitPrice ?? item.price ?? 0) * qty);
+            return `<tr>
+              <td style="padding:8px 6px;border-bottom:1px solid #313a47;">${qty}</td>
+              <td style="padding:8px 6px;border-bottom:1px solid #313a47;">${esc(item.productName || 'Product')}<div style="font-size:12px;color:#95a3b8;">${esc(item.photoFileName || '')}</div></td>
+              <td style="padding:8px 6px;border-bottom:1px solid #313a47;text-align:right;">${currency(line)}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+
+      <div style="margin-top:16px;display:flex;justify-content:flex-end;">
+        <table style="width:300px;border-collapse:collapse;color:#d3dceb;">
+          <tr><td style="padding:4px 0;">Order Subtotal:</td><td style="padding:4px 0;text-align:right;">${currency(order.subtotal)}</td></tr>
+          <tr><td style="padding:4px 0;">Taxes:</td><td style="padding:4px 0;text-align:right;">${currency(order.taxAmount)}</td></tr>
+          <tr><td style="padding:8px 0 0 0;font-weight:700;color:#fff;">Total:</td><td style="padding:8px 0 0 0;text-align:right;font-weight:700;color:#fff;">${currency(order.totalAmount)}</td></tr>
+        </table>
+      </div>
+    </div>
+  `;
+};
+
 const renderItemsTable = (items, { includeCosts = false } = {}) => {
   const rows = items.map((item) => {
     const photoName = item.photoFileName || `Photo #${item.photoId}`;
@@ -127,15 +249,11 @@ const renderInternalAccounting = (order) => `
 export const orderReceiptService = {
   isConfigured,
 
-  async sendCustomerReceipt({ to, customerName, order, items }) {
+  async sendCustomerReceipt({ to, customerName, order, items, digitalDownloads = [] }) {
     const transporter = await getTransporter();
     if (!transporter || !to) return false;
 
-    const html = wrapHtml(
-      `Your receipt for Order #${order.id}`,
-      `Thanks${customerName ? ` ${esc(customerName)}` : ''}! Your order has been received.`,
-      `${summaryBlock(order)}${renderItemsTable(items)}`
-    );
+    const html = renderCustomerReceiptHtml({ customerName, order, items, digitalDownloads });
 
     await transporter.sendMail({
       from: smtpFrom,
@@ -143,7 +261,7 @@ export const orderReceiptService = {
       replyTo: smtpReplyTo,
       subject: `Photo Lab receipt — Order #${order.id}`,
       html,
-      text: `Order #${order.id}\nTotal charged: ${currency(order.totalAmount)}\nSubtotal: ${currency(order.subtotal)}\nShipping: ${currency(order.shippingCost)}\nTax: ${currency(order.taxAmount)}`,
+      text: `Order #${order.id}\nTotal charged: ${currency(order.totalAmount)}\nSubtotal: ${currency(order.subtotal)}\nShipping: ${currency(order.shippingCost)}\nTax: ${currency(order.taxAmount)}${digitalDownloads.length ? `\nDigital downloads:\n${digitalDownloads.map((entry) => `- ${entry.productName || 'Digital product'}: ${entry.url}`).join('\n')}` : ''}`,
     });
     return true;
   },
@@ -152,11 +270,7 @@ export const orderReceiptService = {
     const transporter = await getTransporter();
     if (!transporter || !to) return false;
 
-    const html = wrapHtml(
-      `Studio receipt for Order #${order.id}`,
-      `A new order was placed${customerEmail ? ` by ${esc(customerEmail)}` : ''}.`,
-      `${summaryBlock(order, { studioName })}${renderItemsTable(items, { includeCosts: true })}${renderInternalAccounting(order)}`
-    );
+    const html = `${renderStudioSaleHtml({ order, items, customerEmail, studioName })}${renderInternalAccounting(order)}`;
 
     await transporter.sendMail({
       from: smtpFrom,

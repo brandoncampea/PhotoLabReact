@@ -20,6 +20,22 @@ const sizeFromRow = (item: any) => {
 	return m ? m[1] : '—';
 };
 
+const toCurrency = (value: unknown) => `$${Number(value || 0).toFixed(2)}`;
+const toCurrencyInput = (value: unknown) => {
+	if (value === null || value === undefined || value === '') return '';
+	const num = Number(value);
+	if (!Number.isFinite(num)) return '';
+	return num.toFixed(2);
+};
+
+const estimateProfit = (baseCost: unknown, priceInput: unknown) => {
+	const base = Number(baseCost || 0);
+	if (priceInput === '' || priceInput === null || priceInput === undefined) return 0;
+	const price = Number(priceInput);
+	if (!Number.isFinite(price)) return 0;
+	return price - base;
+};
+
 
 const AdminPriceLists: React.FC = () => {
 	const { user } = useAuth();
@@ -148,7 +164,7 @@ const AdminPriceLists: React.FC = () => {
 			setProdCollapsed(nextProds);
 			const nextDrafts: Record<number, string> = {};
 			(items || []).forEach((it: any) => {
-				nextDrafts[it.id] = String(it.price ?? '');
+				nextDrafts[it.id] = toCurrencyInput(it.price);
 			});
 			setDraftPrices(nextDrafts);
 		} catch {
@@ -164,7 +180,7 @@ const AdminPriceLists: React.FC = () => {
 		setItems(refreshed || []);
 		const nextDrafts: Record<number, string> = {};
 		(refreshed || []).forEach((it: any) => {
-			nextDrafts[it.id] = String(it.price ?? '');
+			nextDrafts[it.id] = toCurrencyInput(it.price);
 		});
 		setDraftPrices(nextDrafts);
 	};
@@ -229,10 +245,12 @@ const AdminPriceLists: React.FC = () => {
 		const value = draftPrices[item.id];
 		if (value === undefined) return;
 		try {
+			const normalizedValue = value === '' ? '' : toCurrencyInput(value);
 			await studioPriceListService.updateItem(selectedPriceList.id, item.id, {
 				price: value === '' ? null : Number(value),
 			});
 			setItems(prev => prev.map((i: any) => i.id === item.id ? { ...i, price: value === '' ? null : Number(value) } : i));
+			setDraftPrices(prev => ({ ...prev, [item.id]: normalizedValue }));
 		} catch {
 			setError('Failed to save price');
 		}
@@ -522,7 +540,7 @@ const AdminPriceLists: React.FC = () => {
 													{!prodCollapsed[productKey] && (
 														<div>
 															{filteredGroupedItems[cat][product].map((item: any) => (
-																<div key={item.id} style={{ display: 'grid', gridTemplateColumns: '74px 1fr 100px 120px', gap: 6, alignItems: 'center', padding: '4px 8px', borderTop: '1px solid #232036' }}>
+																<div key={item.id} style={{ display: 'grid', gridTemplateColumns: '74px 1fr 100px 120px 90px', gap: 6, alignItems: 'center', padding: '4px 8px', borderTop: '1px solid #232036' }}>
 																	<label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
 																		<input
 																			type="checkbox"
@@ -532,7 +550,7 @@ const AdminPriceLists: React.FC = () => {
 																		<span style={{ fontSize: 12 }}>Offer</span>
 																	</label>
 																	<div>{item._sizeLabel || item.size_name || '—'}</div>
-																	<div>${Number(item.base_cost || 0).toFixed(2)}</div>
+																	<div>{toCurrency(item.base_cost)}</div>
 																	<input
 																		type="number"
 																		min={0}
@@ -543,6 +561,13 @@ const AdminPriceLists: React.FC = () => {
 																		disabled={!item.is_offered}
 																		style={{ width: 120 }}
 																	/>
+																	<div style={{ fontSize: 12, color: '#aaa', textAlign: 'right' }}>
+																		{(() => {
+																			const profit = estimateProfit(item.base_cost, draftPrices[item.id]);
+																			const color = profit >= 0 ? '#79d279' : '#ff9a9a';
+																			return <span style={{ color }}>Est. Profit {toCurrency(profit)}</span>;
+																		})()}
+																	</div>
 																</div>
 															))}
 														</div>

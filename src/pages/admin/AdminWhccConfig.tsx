@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react';
 import { whccService, WhccWebhookStatus } from '../../services/whccService';
+import { orderService } from '../../services/orderService';
+import { useAuth } from '../../contexts/AuthContext';
+import { Order } from '../../types';
 
 const formatWebhookSummary = (webhookStatus: WhccWebhookStatus | null) => {
   const payload = webhookStatus?.lastPayload;
@@ -18,6 +21,8 @@ const formatWebhookSummary = (webhookStatus: WhccWebhookStatus | null) => {
 };
 
 const AdminWhccConfig = () => {
+  const { user } = useAuth();
+  const canViewApiLogs = user?.role === 'super_admin';
   const [enabled, setEnabled] = useState(false);
   const [consumerKey, setConsumerKey] = useState('');
   const [consumerSecret, setConsumerSecret] = useState('');
@@ -37,6 +42,13 @@ const AdminWhccConfig = () => {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isTestLoading, setIsTestLoading] = useState(false);
+  const [whccLogOrders, setWhccLogOrders] = useState<Order[]>([]);
+  const [isLogLoading, setIsLogLoading] = useState(false);
+  const [logError, setLogError] = useState<string | null>(null);
+  const [logQuery, setLogQuery] = useState('');
+  const [logDateFrom, setLogDateFrom] = useState('');
+  const [logDateTo, setLogDateTo] = useState('');
+  const [failedOnly, setFailedOnly] = useState(false);
 
   // Load config from localStorage
   useEffect(() => {
@@ -79,6 +91,78 @@ const AdminWhccConfig = () => {
     };
     loadWebhookStatus();
   }, []);
+
+  const loadWhccApiLogs = async () => {
+    if (!canViewApiLogs) return;
+    setIsLogLoading(true);
+    setLogError(null);
+    try {
+      const orders = await orderService.getAdminOrders();
+      const withWhccLogs = (orders || [])
+        .filter((order) => (
+          order.whccRequestLog ||
+          order.whccImportResponse ||
+          order.whccSubmitResponse ||
+          order.whccLastError ||
+          order.whccConfirmationId ||
+          order.whccOrderNumber
+        ))
+        .sort((a, b) => {
+          const aTs = new Date(a.orderDate).getTime() || 0;
+          const bTs = new Date(b.orderDate).getTime() || 0;
+          return bTs - aTs;
+        });
+      setWhccLogOrders(withWhccLogs);
+    } catch (err) {
+      setLogError(`Failed to load WHCC API logs: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      setWhccLogOrders([]);
+    } finally {
+      setIsLogLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadWhccApiLogs();
+  }, [canViewApiLogs]);
+
+  const formatWhccPayload = (value: unknown) => {
+    if (value == null) return null;
+    if (typeof value === 'string') {
+      try {
+        return JSON.stringify(JSON.parse(value), null, 2);
+      } catch {
+        return value;
+      }
+    }
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch {
+      return String(value);
+    }
+  };
+
+  const formatDateTime = (value: unknown) => {
+    if (!value) return null;
+    const date = new Date(String(value));
+    if (Number.isNaN(date.getTime())) return String(value);
+    return date.toLocaleString();
+  };
+
+  const renderWhccLogBlock = (title: string, value: unknown, defaultOpen = false, runAt?: unknown) => {
+    const formatted = formatWhccPayload(value);
+    if (!formatted) return null;
+    const runAtText = formatDateTime(runAt);
+
+    return (
+      <details open={defaultOpen} style={{ border: '1px solid var(--border-color)', borderRadius: '8px', marginBottom: '10px' }}>
+        <summary style={{ padding: '10px 12px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', gap: '10px', fontWeight: 600 }}>
+          <span>{title}</span>
+          {runAtText && <span style={{ color: 'var(--text-secondary)', fontWeight: 400 }}>Last run: {runAtText}</span>}
+        </summary>
+        <pre style={{ margin: 0, padding: '12px', borderTop: '1px solid var(--border-color)', background: 'var(--bg-secondary)', overflowX: 'auto', maxHeight: '360px' }}>{formatted}</pre>
+      </details>
+    );
+  };
 
   const handleSave = () => {
     try {
@@ -176,6 +260,40 @@ const AdminWhccConfig = () => {
   };
 
   const webhookSummary = formatWebhookSummary(webhookStatus);
+  const normalizedLogQuery = logQuery.trim().toLowerCase();
+  const fromDate = logDateFrom ? new Date(`${logDateFrom}T00:00:00`) : null;
+  const toDate = logDateTo ? new Date(`${logDateTo}T23:59:59.999`) : null;
+  const filteredWhccLogOrders = whccLogOrders.filter((order) => {
+    const searchable = [
+      order.id,
+      order.status,
+      order.whccConfirmationId,
+      order.whccOrderNumber,
+      order.shippingAddress?.fullName,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+
+    if (normalizedLogQuery && !searchable.includes(normalizedLogQuery)) {
+      return false;
+    }
+
+    const orderDate = new Date(order.orderDate);
+    if (fromDate && !Number.isNaN(orderDate.getTime()) && orderDate < fromDate) {
+      return false;
+    }
+    if (toDate && !Number.isNaN(orderDate.getTime()) && orderDate > toDate) {
+      return false;
+    }
+
+    if (failedOnly) {
+      const hasFailure = Boolean(order.whccLastError) || String(order.status || '').toLowerCase() === 'failed';
+      if (!hasFailure) return false;
+    }
+
+    return true;
+  });
 
   return (
     <div style={{ maxWidth: '900px', margin: '0 auto', padding: '20px' }}>
@@ -520,6 +638,128 @@ const AdminWhccConfig = () => {
           </div>
         </div>
       </div>
+
+      {canViewApiLogs && (
+        <div style={{ backgroundColor: 'var(--bg-tertiary)', padding: '20px', borderRadius: '8px', marginBottom: '30px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
+            <h2 style={{ fontSize: '18px', margin: 0 }}>WHCC API Logs (All Orders)</h2>
+            <button onClick={loadWhccApiLogs} className="btn btn-secondary" disabled={isLogLoading} style={{ opacity: isLogLoading ? 0.6 : 1 }}>
+              {isLogLoading ? 'Refreshing…' : 'Refresh Logs'}
+            </button>
+          </div>
+
+          <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '12px' }}>
+            Super admin visibility into WHCC token, import, submit, response, and error payloads across all orders.
+          </p>
+
+          <input
+            type="text"
+            value={logQuery}
+            onChange={(e) => setLogQuery(e.target.value)}
+            placeholder="Filter by order #, status, confirmation, customer…"
+            style={{ width: '100%', padding: '10px', border: '1px solid var(--border-color)', borderRadius: '4px', boxSizing: 'border-box', marginBottom: '12px' }}
+          />
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '10px', marginBottom: '12px', alignItems: 'end' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '6px' }}>From Date</label>
+              <input
+                type="date"
+                value={logDateFrom}
+                onChange={(e) => setLogDateFrom(e.target.value)}
+                style={{ width: '100%', padding: '10px', border: '1px solid var(--border-color)', borderRadius: '4px', boxSizing: 'border-box' }}
+              />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '6px' }}>To Date</label>
+              <input
+                type="date"
+                value={logDateTo}
+                onChange={(e) => setLogDateTo(e.target.value)}
+                style={{ width: '100%', padding: '10px', border: '1px solid var(--border-color)', borderRadius: '4px', boxSizing: 'border-box' }}
+              />
+            </div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', paddingBottom: '10px' }}>
+              <input
+                type="checkbox"
+                checked={failedOnly}
+                onChange={(e) => setFailedOnly(e.target.checked)}
+              />
+              Failed only
+            </label>
+          </div>
+
+          <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '14px' }}>
+            Showing {filteredWhccLogOrders.length} of {whccLogOrders.length} order log entries.
+          </div>
+
+          {logError && (
+            <div className="info-box-error" style={{ marginBottom: '12px' }}>
+              {logError}
+            </div>
+          )}
+
+          {!isLogLoading && !logError && filteredWhccLogOrders.length === 0 && (
+            <div className="info-box-blue">No WHCC API logs found for current filters.</div>
+          )}
+
+          {filteredWhccLogOrders.map((order) => {
+            const importRunAt =
+              order.whccRequestLog?.importRequest?.runAt ||
+              order.whccImportResponse?.Received ||
+              order.whccImportResponse?.received ||
+              order.whccImportResponse?.Timestamp ||
+              null;
+            const submitRunAt =
+              order.whccRequestLog?.submitRequest?.runAt ||
+              order.whccSubmitResponse?.Received ||
+              order.whccSubmitResponse?.received ||
+              order.whccSubmitResponse?.Timestamp ||
+              order.labSubmittedAt ||
+              null;
+            const errorRunAt =
+              order.whccLastError?.runAt ||
+              order.whccLastError?.timestamp ||
+              order.whccLastError?.createdAt ||
+              null;
+
+            return (
+              <details key={order.id} style={{ marginBottom: '14px', border: '1px solid var(--border-color)', borderRadius: '10px', overflow: 'hidden' }}>
+                <summary style={{ cursor: 'pointer', padding: '12px', background: 'var(--bg-secondary)', display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
+                  <strong>Order #{order.id}</strong>
+                  <span>Status: {order.status}</span>
+                  {order.whccConfirmationId && <span>Confirmation: {order.whccConfirmationId}</span>}
+                  {order.whccOrderNumber && <span>WHCC Order #: {order.whccOrderNumber}</span>}
+                  <span>{new Date(order.orderDate).toLocaleString()}</span>
+                </summary>
+
+                <div style={{ padding: '12px' }}>
+                  {order.whccLastError && (
+                    <div style={{ marginBottom: '10px', border: '1px solid #cc3333', borderRadius: '8px', background: 'rgba(204, 51, 51, 0.08)', padding: '10px' }}>
+                      <div style={{ fontWeight: 700, marginBottom: '6px' }}>⚠ Last Error</div>
+                      <pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{formatWhccPayload(order.whccLastError)}</pre>
+                    </div>
+                  )}
+
+                  {renderWhccLogBlock('Full OrderImport Payload Sent to WHCC', order.whccRequestLog?.importRequest?.body, true, order.whccRequestLog?.importRequest?.runAt)}
+                  {renderWhccLogBlock('WHCC Token Request Metadata', order.whccRequestLog?.tokenRequest, false, order.whccRequestLog?.tokenRequest?.runAt)}
+                  {renderWhccLogBlock('WHCC Import Request Envelope', order.whccRequestLog?.importRequest, false, importRunAt)}
+                  {renderWhccLogBlock('WHCC Submit Request', order.whccRequestLog?.submitRequest, false, order.whccRequestLog?.submitRequest?.runAt)}
+                  {renderWhccLogBlock('WHCC Import Response', order.whccImportResponse, false, importRunAt)}
+                  {renderWhccLogBlock('WHCC Submit Response', order.whccSubmitResponse, false, submitRunAt)}
+                  {renderWhccLogBlock('WHCC Last Error (Raw)', order.whccLastError, false, errorRunAt)}
+
+                  {!order.whccRequestLog && !order.whccImportResponse && !order.whccSubmitResponse && !order.whccLastError && (
+                    <div className="info-box-blue">
+                      No detailed WHCC payload log captured for this order yet.
+                    </div>
+                  )}
+                </div>
+              </details>
+            );
+          })}
+        </div>
+      )}
 
       <div className="info-box-blue" style={{ marginBottom: '20px' }}>
         <h3 style={{ fontSize: '14px', marginBottom: '10px' }}>ℹ️ Integration Notes</h3>

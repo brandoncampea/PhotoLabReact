@@ -134,6 +134,47 @@
   color: #7ee787;
 }
 
+.admin-dashboard-analytics-link {
+  color: #c9d1d9;
+  text-decoration: none;
+  border-bottom: 1px dashed transparent;
+}
+
+.admin-dashboard-analytics-link:hover {
+  color: #79c0ff;
+  border-bottom-color: rgba(121, 192, 255, 0.55);
+}
+
+.admin-dashboard-photo-hover-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.admin-dashboard-photo-hover-preview {
+  display: none;
+  position: absolute;
+  left: 0;
+  top: 115%;
+  z-index: 20;
+  width: 180px;
+  padding: 0.35rem;
+  border-radius: 10px;
+  border: 1px solid rgba(121, 192, 255, 0.35);
+  background: rgba(10, 13, 24, 0.98);
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.4);
+}
+
+.admin-dashboard-photo-hover-preview img {
+  width: 100%;
+  height: 130px;
+  object-fit: cover;
+  border-radius: 8px;
+}
+
+.admin-dashboard-photo-hover-wrap:hover .admin-dashboard-photo-hover-preview {
+  display: block;
+}
+
 .admin-dashboard-analytics-list li:last-child {
   border-bottom: none;
 }

@@ -1,5 +1,6 @@
 
 import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import DashboardChart from '../../components/DashboardChart';
 import AdminLayout from '../../components/AdminLayout';
 import './AdminDashboard.css';
@@ -14,7 +15,7 @@ type DashboardStats = {
     totalVisitors: number;
     totalPageViews: number;
     albumViews: Array<{ albumId: number; albumName: string; views: number }>;
-    photoViews: Array<{ photoId: number; photoFileName: string; albumName: string; views: number }>;
+    photoViews: Array<{ photoId: number; albumId: number; photoFileName: string; albumName: string; thumbnailUrl?: string | null; fullImageUrl?: string | null; views: number }>;
   };
   recentOrders?: Array<{
     id: number;
@@ -196,7 +197,11 @@ const AdminDashboard: React.FC = () => {
             <ul className="admin-dashboard-analytics-list">
               {(stats.analytics?.albumViews || []).slice().sort((a, b) => b.views - a.views).slice(0, 5).map((album) => (
                 <li key={album.albumId}>
-                  <span>{album.albumName}</span>
+                  <span>
+                    <Link className="admin-dashboard-analytics-link" to={`/albums/${album.albumId}`}>
+                      {album.albumName}
+                    </Link>
+                  </span>
                   <strong>{album.views}</strong>
                 </li>
               ))}
@@ -209,7 +214,22 @@ const AdminDashboard: React.FC = () => {
             <ul className="admin-dashboard-analytics-list">
               {(stats.analytics?.photoViews || []).slice().sort((a, b) => b.views - a.views).slice(0, 5).map((photo) => (
                 <li key={photo.photoId}>
-                  <span>{photo.photoFileName}</span>
+                  <span className="admin-dashboard-photo-hover-wrap">
+                    <Link
+                      className="admin-dashboard-analytics-link"
+                      to={photo.albumId ? `/albums/${photo.albumId}?photo=${photo.photoId}` : '#'}
+                      onClick={(event) => {
+                        if (!photo.albumId) event.preventDefault();
+                      }}
+                    >
+                      {photo.photoFileName}
+                    </Link>
+                    {(photo.thumbnailUrl || photo.fullImageUrl) && (
+                      <span className="admin-dashboard-photo-hover-preview" role="tooltip">
+                        <img src={(photo.thumbnailUrl || photo.fullImageUrl) as string} alt={photo.photoFileName} />
+                      </span>
+                    )}
+                  </span>
                   <strong>{photo.views}</strong>
                 </li>
               ))}

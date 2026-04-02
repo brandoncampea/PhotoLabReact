@@ -1,0 +1,233 @@
+{
+  "studio": {
+    "studioId": 7,
+    "studioName": "Campea Photography",
+    "studioPriceListId": 2,
+    "albumId": 2
+  },
+  "requestedOrders": 20,
+  "createdCount": 20,
+  "failedCount": 0,
+  "createdOrders": [
+    {
+      "index": 1,
+      "orderId": 1,
+      "customerEmail": "batchtest+1775158463796-1@example.com",
+      "productId": 178,
+      "productSizeId": 1004,
+      "productName": "Fine Art Print 10x10",
+      "sizeName": "10x10",
+      "photoId": 18
+    },
+    {
+      "index": 2,
+      "orderId": 2,
+      "customerEmail": "batchtest+1775158463796-2@example.com",
+      "productId": 179,
+      "productSizeId": 1005,
+      "productName": "Fine Art Print 10x20",
+      "sizeName": "10x20",
+      "photoId": 17
+    },
+    {
+      "index": 3,
+      "orderId": 3,
+      "customerEmail": "batchtest+1775158463796-3@example.com",
+      "productId": 180,
+      "productSizeId": 1006,
+      "productName": "Fine Art Print 11x14",
+      "sizeName": "11x14",
+      "photoId": 16
+    },
+    {
+      "index": 4,
+      "orderId": 4,
+      "customerEmail": "batchtest+1775158463796-4@example.com",
+      "productId": 181,
+      "productSizeId": 1007,
+      "productName": "Fine Art Print 12x12",
+      "sizeName": "12x12",
+      "photoId": 15
+    },
+    {
+      "index": 5,
+      "orderId": 5,
+      "customerEmail": "batchtest+1775158463796-5@example.com",
+      "productId": 182,
+      "productSizeId": 1008,
+      "productName": "Fine Art Print 12x18",
+      "sizeName": "12x18",
+      "photoId": 14
+    },
+    {
+      "index": 6,
+      "orderId": 6,
+      "customerEmail": "batchtest+1775158463796-6@example.com",
+      "productId": 183,
+      "productSizeId": 1009,
+      "productName": "Fine Art Print 15x30",
+      "sizeName": "15x30",
+      "photoId": 13
+    },
+    {
+      "index": 7,
+      "orderId": 7,
+      "customerEmail": "batchtest+1775158463796-7@example.com",
+      "productId": 184,
+      "productSizeId": 1010,
+      "productName": "Fine Art Print 16x16",
+      "sizeName": "16x16",
+      "photoId": 12
+    },
+    {
+      "index": 8,
+      "orderId": 8,
+      "customerEmail": "batchtest+1775158463796-8@example.com",
+      "productId": 185,
+      "productSizeId": 1011,
+      "productName": "Fine Art Print 16x20",
+      "sizeName": "16x20",
+      "photoId": 11
+    },
+    {
+      "index": 9,
+      "orderId": 9,
+      "customerEmail": "batchtest+1775158463796-9@example.com",
+      "productId": 186,
+      "productSizeId": 1012,
+      "productName": "Fine Art Print 16x24",
+      "sizeName": "16x24",
+      "photoId": 10
+    },
+    {
+      "index": 10,
+      "orderId": 10,
+      "customerEmail": "batchtest+1775158463796-10@example.com",
+      "productId": 187,
+      "productSizeId": 1013,
+      "productName": "Fine Art Print 20x20",
+      "sizeName": "20x20",
+      "photoId": 9
+    },
+    {
+      "index": 11,
+      "orderId": 11,
+      "customerEmail": "batchtest+1775158463796-11@example.com",
+      "productId": 188,
+      "productSizeId": 1014,
+      "productName": "Fine Art Print 20x24",
+      "sizeName": "20x24",
+      "photoId": 8
+    },
+    {
+      "index": 12,
+      "orderId": 12,
+      "customerEmail": "batchtest+1775158463796-12@example.com",
+      "productId": 189,
+      "productSizeId": 1015,
+      "productName": "Fine Art Print 20x30",
+      "sizeName": "20x30",
+      "photoId": 7
+    },
+    {
+      "index": 13,
+      "orderId": 13,
+      "customerEmail": "batchtest+1775158463796-13@example.com",
+      "productId": 190,
+      "productSizeId": 1016,
+      "productName": "Fine Art Print 20x40",
+      "sizeName": "20x40",
+      "photoId": 6
+    },
+    {
+      "index": 14,
+      "orderId": 14,
+      "customerEmail": "batchtest+1775158463796-14@example.com",
+      "productId": 191,
+      "productSizeId": 1017,
+      "productName": "Fine Art Print 20x60",
+      "sizeName": "20x60",
+      "photoId": 5
+    },
+    {
+      "index": 15,
+      "orderId": 15,
+      "customerEmail": "batchtest+1775158463796-15@example.com",
+      "productId": 192,
+      "productSizeId": 1018,
+      "productName": "Fine Art Print 24x24",
+      "sizeName": "24x24",
+      "photoId": 4
+    },
+    {
+      "index": 16,
+      "orderId": 16,
+      "customerEmail": "batchtest+1775158463796-16@example.com",
+      "productId": 193,
+      "productSizeId": 1019,
+      "productName": "Fine Art Print 24x30",
+      "sizeName": "24x30",
+      "photoId": 3
+    },
+    {
+      "index": 17,
+      "orderId": 17,
+      "customerEmail": "batchtest+1775158463796-17@example.com",
+      "productId": 194,
+      "productSizeId": 1020,
+      "productName": "Fine Art Print 24x36",
+      "sizeName": "24x36",
+      "photoId": 2
+    },
+    {
+      "index": 18,
+      "orderId": 18,
+      "customerEmail": "batchtest+1775158463796-18@example.com",
+      "productId": 195,
+      "productSizeId": 1021,
+      "productName": "Fine Art Print 30x30",
+      "sizeName": "30x30",
+      "photoId": 1
+    },
+    {
+      "index": 19,
+      "orderId": 19,
+      "customerEmail": "batchtest+1775158463796-19@example.com",
+      "productId": 196,
+      "productSizeId": 1022,
+      "productName": "Fine Art Print 30x40",
+      "sizeName": "30x40",
+      "photoId": 18
+    },
+    {
+      "index": 20,
+      "orderId": 20,
+      "customerEmail": "batchtest+1775158463796-20@example.com",
+      "productId": 197,
+      "productSizeId": 1023,
+      "productName": "Fine Art Print 30x45",
+      "sizeName": "30x45",
+      "photoId": 17
+    }
+  ],
+  "failedOrders": [],
+  "batchQueue": {
+    "status": 200,
+    "ok": true,
+    "totalQueued": 20,
+    "eligibleCount": 10,
+    "eligibleOrderIds": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10
+    ],
+    "nextBatchDate": "2026-04-05T06:34:00.000Z"
+  }
+}

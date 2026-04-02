@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import AlbumCoverCarousel from '../components/AlbumCoverCarousel';
 import styles from './Albums.module.css';
 import studioCardStyles from './StudioCard.module.css';
@@ -23,6 +23,7 @@ type PublicAlbum = {
 
 
 const Albums: React.FC = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [studios, setStudios] = useState<PublicStudio[]>([]);
   const [selectedStudio, setSelectedStudio] = useState<PublicStudio | null>(null);
   const [albums, setAlbums] = useState<PublicAlbum[]>([]);
@@ -35,6 +36,16 @@ const Albums: React.FC = () => {
       fetchStudios();
     }
   }, [selectedStudio]);
+
+  useEffect(() => {
+    if (!studios.length || selectedStudio) return;
+    const studioSlug = searchParams.get('studioSlug');
+    if (!studioSlug) return;
+    const match = studios.find((s) => s.publicSlug === studioSlug);
+    if (match) {
+      setSelectedStudio(match);
+    }
+  }, [studios, selectedStudio, searchParams]);
 
   const fetchStudios = async () => {
     setLoading(true);
@@ -122,7 +133,10 @@ const Albums: React.FC = () => {
                 <button
                   key={studio.id}
                   className={studioCardStyles.studioCard}
-                  onClick={() => setSelectedStudio(studio)}
+                  onClick={() => {
+                    setSelectedStudio(studio);
+                    setSearchParams({ studioSlug: studio.publicSlug });
+                  }}
                 >
                   {studio.name}
                 </button>
@@ -135,7 +149,10 @@ const Albums: React.FC = () => {
           <div className={styles.albumsFlexRow}>
             <button
               className={`btn btn-secondary ${styles.albumsMr16}`}
-              onClick={() => setSelectedStudio(null)}
+              onClick={() => {
+                setSelectedStudio(null);
+                setSearchParams({});
+              }}
             >
               ← Back to Studios
             </button>
@@ -146,7 +163,7 @@ const Albums: React.FC = () => {
               <p className="empty-state">No albums available for this studio</p>
             ) : (
               albums.map((album) => (
-                <Link to={`/albums/${album.id}`} key={album.id} className="album-card">
+                <Link to={`/albums/${album.id}?studioSlug=${encodeURIComponent(selectedStudio.publicSlug)}`} key={album.id} className="album-card">
                   <div className="album-cover">
                     <AlbumCoverCarousel
                       albumId={album.id}

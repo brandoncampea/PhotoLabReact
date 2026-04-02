@@ -14,29 +14,28 @@ interface WatermarkedImageProps {
 
 const WatermarkedImage: React.FC<WatermarkedImageProps> = ({ src, alt, className, style, fill = true }) => {
   const [watermark, setWatermark] = useState<Watermark | null>(null);
-  const [imageKey, setImageKey] = useState(Date.now());
+
+  const resolveWatermarkUrl = (raw: string): string => {
+    const value = String(raw || '');
+    if (!value) return '';
+    if (value.startsWith('http://') || value.startsWith('https://')) return value;
+    if (value.startsWith('/api/')) return value;
+    if (value.startsWith('/uploads/')) return value;
+    return getBlobUrl(value);
+  };
 
   useEffect(() => {
-    loadWatermark();
-    // Reload watermark every 60 seconds to catch updates
-    const interval = setInterval(() => {
-      loadWatermark();
-      setImageKey(Date.now());
-    }, 60000);
-    return () => clearInterval(interval);
+    let cancelled = false;
+    watermarkService.getDefaultWatermark(1)
+      .then(wm => { if (!cancelled) setWatermark(wm); })
+      .catch(() => {});
+    return () => { cancelled = true; };
   }, []);
-
-  const loadWatermark = async () => {
-    try {
-      const defaultWatermark = await watermarkService.getDefaultWatermark(1);
-      setWatermark(defaultWatermark);
-    } catch (error) {
-      console.error('Failed to load watermark:', error);
-    }
-  };
 
   const getWatermarkStyle = (): React.CSSProperties => {
     if (!watermark) return {};
+    const watermarkUrl = resolveWatermarkUrl(watermark.imageUrl);
+    if (!watermarkUrl) return {};
 
     const baseStyle: React.CSSProperties = {
       position: 'absolute',
@@ -53,7 +52,7 @@ const WatermarkedImage: React.FC<WatermarkedImageProps> = ({ src, alt, className
         left: 0,
         right: 0,
         bottom: 0,
-        backgroundImage: `url(${watermark.imageUrl})`,
+        backgroundImage: `url(${watermarkUrl})`,
         backgroundRepeat: 'repeat',
         backgroundSize: '200px auto',
         backgroundPosition: 'center',
@@ -105,11 +104,8 @@ const WatermarkedImage: React.FC<WatermarkedImageProps> = ({ src, alt, className
   const isApiOrUploads = src.startsWith('/api/') || src.startsWith('/uploads/');
   const sasUrl = !isFullUrl && !isApiOrUploads ? useSasUrl(src) : null;
   const resolvedSrc = isFullUrl || isApiOrUploads ? src : (sasUrl || '');
-  // For watermark, if watermark.imageUrl starts with /uploads/, strip it before getBlobUrl
-  let watermarkUrl = watermark?.imageUrl || '';
-  if (watermarkUrl.startsWith('/uploads/')) {
-    watermarkUrl = watermarkUrl.replace(/^\/uploads\//, '');
-  }
+  const watermarkUrl = watermark ? resolveWatermarkUrl(watermark.imageUrl) : '';
+
   return (
     <div style={containerStyle}>
       <img
@@ -118,12 +114,11 @@ const WatermarkedImage: React.FC<WatermarkedImageProps> = ({ src, alt, className
         className={className}
         style={imageStyle}
       />
-      {watermark && (
+      {watermark && watermarkUrl && (
         <div style={getWatermarkStyle()}>
           {!watermark.tiled && (
             <img 
-              key={imageKey}
-              src={getBlobUrl(watermarkUrl)} 
+              src={watermarkUrl}
               alt="Watermark" 
               style={{ 
                 width: '100%', 

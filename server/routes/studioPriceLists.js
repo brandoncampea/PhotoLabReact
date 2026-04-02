@@ -207,7 +207,9 @@ router.patch('/:id/items/apply-markup', async (req, res) => {
     const pct = Number(markup_percent) || 0;
     for (const row of rows) {
       const base = Number(row.base_cost || 0);
-      const computed = Number((base * (1 + pct / 100)).toFixed(2));
+      // Markup percent is treated as a direct multiplier percentage.
+      // Example: 500% => 5.00x base cost (1.15 -> 5.75).
+      const computed = Number((base * (pct / 100)).toFixed(2));
       await mssql.query(
         'UPDATE studio_price_list_items SET markup_percent = @p1, price = @p2 WHERE id = @p3',
         [pct, computed, row.id]

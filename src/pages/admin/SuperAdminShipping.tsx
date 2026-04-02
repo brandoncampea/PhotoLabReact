@@ -4,6 +4,27 @@ import React, { useState, useEffect } from 'react';
 import { shippingService } from '../../services/shippingService';
 // Removed unused ShippingConfig import
 
+const toDateTimeLocalValue = (value?: string | null) => {
+  if (!value) return '';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return String(value).slice(0, 16);
+  }
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, '0');
+  const day = String(parsed.getDate()).padStart(2, '0');
+  const hours = String(parsed.getHours()).padStart(2, '0');
+  const minutes = String(parsed.getMinutes()).padStart(2, '0');
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+};
+
+const toApiDateTimeValue = (value: string) => {
+  if (!value) return value;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toISOString();
+};
+
 
 const SuperAdminShipping = () => {
   // Removed unused config state
@@ -19,7 +40,7 @@ const SuperAdminShipping = () => {
       try {
         const data = await shippingService.getConfig();
         // Removed unused setConfig
-        setBatchDeadline(data.batchDeadline || '');
+        setBatchDeadline(toDateTimeLocalValue(data.batchDeadline));
         setDirectShippingCharge(data.directShippingCharge?.toString() || '');
         setIsActive(!!data.isActive);
       } catch (e) {
@@ -36,7 +57,7 @@ const SuperAdminShipping = () => {
     setMessage('');
     try {
       await shippingService.updateConfig({
-        batchDeadline,
+        batchDeadline: toApiDateTimeValue(batchDeadline),
         directShippingCharge: parseFloat(directShippingCharge),
         isActive,
       });

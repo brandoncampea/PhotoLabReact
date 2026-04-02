@@ -7,9 +7,9 @@ interface CartContextType {
   items: CartItem[];
   addToCart: (photo: Photo, cropData: CropData, product: Product, size: ProductSize, quantity?: number, photoIds?: number[], photos?: { photo: Photo; cropData: CropData; position: number }[]) => Promise<void>;
   addPackageToCart: (pkg: Package, photo: Photo, cropData: CropData) => Promise<void>;
-  removeFromCart: (photoId: number) => void;
-  updateQuantity: (photoId: number, quantity: number) => void;
-  updateCropData: (photoId: number, cropData: CropData) => void;
+  removeFromCart: (photoId: number, productId?: number, productSizeId?: number) => void;
+  updateQuantity: (photoId: number, quantity: number, productId?: number, productSizeId?: number) => void;
+  updateCropData: (photoId: number, cropData: CropData, productId?: number, productSizeId?: number) => void;
   clearCart: () => void;
   getTotalItems: () => number;
   getTotalPrice: () => number;
@@ -230,27 +230,39 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setItems((prevItems) => [...prevItems, ...newItems]);
   };
 
-  const removeFromCart = (photoId: number) => {
-    setItems((prevItems) => prevItems.filter((item) => item.photoId !== photoId));
+  const removeFromCart = (photoId: number, productId?: number, productSizeId?: number) => {
+    setItems((prevItems) => prevItems.filter((item) => {
+      if (item.photoId !== photoId) return true;
+      if (productId == null && productSizeId == null) return false;
+      return !(Number(item.productId || 0) === Number(productId || 0) && Number(item.productSizeId || 0) === Number(productSizeId || 0));
+    }));
   };
 
-  const updateQuantity = (photoId: number, quantity: number) => {
+  const updateQuantity = (photoId: number, quantity: number, productId?: number, productSizeId?: number) => {
     if (quantity <= 0) {
-      removeFromCart(photoId);
+      removeFromCart(photoId, productId, productSizeId);
       return;
     }
     
     setItems((prevItems) =>
       prevItems.map((item) =>
-        item.photoId === photoId ? { ...item, quantity } : item
+        item.photoId === photoId &&
+        (productId == null || Number(item.productId || 0) === Number(productId || 0)) &&
+        (productSizeId == null || Number(item.productSizeId || 0) === Number(productSizeId || 0))
+          ? { ...item, quantity }
+          : item
       )
     );
   };
 
-  const updateCropData = (photoId: number, cropData: CropData) => {
+  const updateCropData = (photoId: number, cropData: CropData, productId?: number, productSizeId?: number) => {
     setItems((prevItems) =>
       prevItems.map((item) =>
-        item.photoId === photoId ? { ...item, cropData } : item
+        item.photoId === photoId &&
+        (productId == null || Number(item.productId || 0) === Number(productId || 0)) &&
+        (productSizeId == null || Number(item.productSizeId || 0) === Number(productSizeId || 0))
+          ? { ...item, cropData }
+          : item
       )
     );
   };
