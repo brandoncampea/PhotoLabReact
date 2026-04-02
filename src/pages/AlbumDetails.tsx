@@ -528,6 +528,34 @@ const AlbumDetails: React.FC = () => {
                     </div>
                   )}
 
+                  {/* Keywords */}
+                  {(selectedPhoto.metadata as any).keywords && (
+                    <div>
+                      <div style={{ fontSize: '0.85rem', color: '#a8a8b8', marginBottom: 2 }}>Keywords</div>
+                      <div style={{ fontSize: '0.9rem', color: '#ccc' }}>{(selectedPhoto.metadata as any).keywords}</div>
+                    </div>
+                  )}
+
+                  {/* Headline */}
+                  {(selectedPhoto.metadata as any).headline && (
+                    <div>
+                      <div style={{ fontSize: '0.85rem', color: '#a8a8b8', marginBottom: 2 }}>Headline</div>
+                      <div style={{ fontSize: '0.9rem', color: '#ccc' }}>{(selectedPhoto.metadata as any).headline}</div>
+                    </div>
+                  )}
+
+                  {/* Location Info */}
+                  {((selectedPhoto.metadata as any).city || (selectedPhoto.metadata as any).stateOrProvince) && (
+                    <div>
+                      <div style={{ fontSize: '0.85rem', color: '#a8a8b8', marginBottom: 2 }}>Location</div>
+                      <div style={{ fontSize: '0.9rem', color: '#ccc' }}>
+                        {(selectedPhoto.metadata as any).city}
+                        {(selectedPhoto.metadata as any).city && (selectedPhoto.metadata as any).stateOrProvince ? ', ' : ''}
+                        {(selectedPhoto.metadata as any).stateOrProvince}
+                      </div>
+                    </div>
+                  )}
+
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
                     {(selectedPhoto.metadata as any).dateTaken && (
                       <div>
@@ -550,6 +578,13 @@ const AlbumDetails: React.FC = () => {
                       </div>
                     )}
 
+                    {(selectedPhoto.metadata as any).fNumber && (
+                      <div>
+                        <div style={{ fontSize: '0.75rem', color: '#a8a8b8', marginBottom: 2 }}>F Number</div>
+                        <div style={{ fontSize: '0.9rem', color: '#ccc' }}>{(selectedPhoto.metadata as any).fNumber}</div>
+                      </div>
+                    )}
+
                     {(selectedPhoto.metadata as any).shutterSpeed && (
                       <div>
                         <div style={{ fontSize: '0.75rem', color: '#a8a8b8', marginBottom: 2 }}>Shutter Speed</div>
@@ -557,10 +592,31 @@ const AlbumDetails: React.FC = () => {
                       </div>
                     )}
 
+                    {(selectedPhoto.metadata as any).exposureTime && (
+                      <div>
+                        <div style={{ fontSize: '0.75rem', color: '#a8a8b8', marginBottom: 2 }}>Exposure Time</div>
+                        <div style={{ fontSize: '0.9rem', color: '#ccc' }}>{(selectedPhoto.metadata as any).exposureTime}</div>
+                      </div>
+                    )}
+
+                    {(selectedPhoto.metadata as any).exposureProgram && (
+                      <div>
+                        <div style={{ fontSize: '0.75rem', color: '#a8a8b8', marginBottom: 2 }}>Exposure Program</div>
+                        <div style={{ fontSize: '0.9rem', color: '#ccc' }}>{(selectedPhoto.metadata as any).exposureProgram}</div>
+                      </div>
+                    )}
+
                     {(selectedPhoto.metadata as any).focalLength && (
                       <div>
                         <div style={{ fontSize: '0.75rem', color: '#a8a8b8', marginBottom: 2 }}>Focal Length</div>
                         <div style={{ fontSize: '0.9rem', color: '#ccc' }}>{(selectedPhoto.metadata as any).focalLength}</div>
+                      </div>
+                    )}
+
+                    {(selectedPhoto.metadata as any).meteringMode && (
+                      <div>
+                        <div style={{ fontSize: '0.75rem', color: '#a8a8b8', marginBottom: 2 }}>Metering Mode</div>
+                        <div style={{ fontSize: '0.9rem', color: '#ccc' }}>{(selectedPhoto.metadata as any).meteringMode}</div>
                       </div>
                     )}
 
@@ -586,6 +642,34 @@ const AlbumDetails: React.FC = () => {
                             Number((selectedPhoto.metadata as any).fileSize) / (1024 * 1024)
                           ).toFixed(2)} MB
                         </div>
+                      </div>
+                    )}
+
+                    {(selectedPhoto.metadata as any).colorSpace && (
+                      <div>
+                        <div style={{ fontSize: '0.75rem', color: '#a8a8b8', marginBottom: 2 }}>Color Space</div>
+                        <div style={{ fontSize: '0.9rem', color: '#ccc' }}>{(selectedPhoto.metadata as any).colorSpace}</div>
+                      </div>
+                    )}
+
+                    {(selectedPhoto.metadata as any).colorProfile && (
+                      <div>
+                        <div style={{ fontSize: '0.75rem', color: '#a8a8b8', marginBottom: 2 }}>Color Profile</div>
+                        <div style={{ fontSize: '0.9rem', color: '#ccc' }}>{(selectedPhoto.metadata as any).colorProfile}</div>
+                      </div>
+                    )}
+
+                    {(selectedPhoto.metadata as any).redEye && (
+                      <div>
+                        <div style={{ fontSize: '0.75rem', color: '#a8a8b8', marginBottom: 2 }}>Red Eye</div>
+                        <div style={{ fontSize: '0.9rem', color: '#ccc' }}>{(selectedPhoto.metadata as any).redEye}</div>
+                      </div>
+                    )}
+
+                    {(selectedPhoto.metadata as any).alphaChannel && (
+                      <div>
+                        <div style={{ fontSize: '0.75rem', color: '#a8a8b8', marginBottom: 2 }}>Alpha Channel</div>
+                        <div style={{ fontSize: '0.9rem', color: '#ccc' }}>{(selectedPhoto.metadata as any).alphaChannel}</div>
                       </div>
                     )}
                   </div>

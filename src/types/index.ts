@@ -58,6 +58,18 @@ export interface PhotoMetadata {
   width?: number;
   height?: number;
   fileSize?: number;
+  keywords?: string;
+  colorSpace?: string;
+  colorProfile?: string;
+  fNumber?: string;
+  exposureProgram?: string;
+  exposureTime?: string;
+  meteringMode?: string;
+  alphaChannel?: string;
+  redEye?: string;
+  headline?: string;
+  city?: string;
+  stateOrProvince?: string;
 }
 
 export interface CartItem {
