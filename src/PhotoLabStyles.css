@@ -2688,6 +2688,7 @@ tbody tr:hover {
 	display: flex !important;
 	align-items: center !important;
 	justify-content: center !important;
+	flex-direction: column !important;
 }
 
 @media (max-width: 768px) {
