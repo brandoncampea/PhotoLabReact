@@ -1,0 +1,11 @@
+/* Player hover overlay for album photo grid */
+.player-hover-overlay {
+	display: none !important;
+}
+
+.album-card:hover .player-hover-overlay {
+	display: flex !important;
+	align-items: center !important;
+	justify-content: center !important;
+	flex-direction: column !important;
+}

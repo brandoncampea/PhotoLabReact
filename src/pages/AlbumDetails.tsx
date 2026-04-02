@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import Cropper from 'react-cropper';
 import 'cropperjs/dist/cropper.css';
+import './AlbumDetails.css';
 import api from '../services/api';
 import { photoService } from '../services/photoService';
 import { productService } from '../services/productService';
