@@ -64,10 +64,39 @@ jobs:
           cd ..
           ls -lh appservice-deploy.zip
 
-      - name: Azure Login
-        uses: azure/login@v2
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      - name: Azure CLI Login
+        env:
+          AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
+        run: |
+          if [ -z "$AZURE_CREDENTIALS" ]; then
+            echo "Missing required secret: AZURE_CREDENTIALS"
+            exit 1
+          fi
+
+          if ! command -v az >/dev/null 2>&1; then
+            echo "Azure CLI not found on runner"
+            exit 1
+          fi
+
+          CLIENT_ID=$(node -e "const c=JSON.parse(process.env.AZURE_CREDENTIALS||'{}'); process.stdout.write(c.clientId||'')")
+          CLIENT_SECRET=$(node -e "const c=JSON.parse(process.env.AZURE_CREDENTIALS||'{}'); process.stdout.write(c.clientSecret||'')")
+          TENANT_ID=$(node -e "const c=JSON.parse(process.env.AZURE_CREDENTIALS||'{}'); process.stdout.write(c.tenantId||'')")
+          SUBSCRIPTION_ID=$(node -e "const c=JSON.parse(process.env.AZURE_CREDENTIALS||'{}'); process.stdout.write(c.subscriptionId||'')")
+
+          if [ -z "$CLIENT_ID" ] || [ -z "$CLIENT_SECRET" ] || [ -z "$TENANT_ID" ]; then
+            echo "AZURE_CREDENTIALS is missing clientId, clientSecret, or tenantId"
+            exit 1
+          fi
+
+          az login --service-principal \
+            --username "$CLIENT_ID" \
+            --password "$CLIENT_SECRET" \
+            --tenant "$TENANT_ID" \
+            --output none
+
+          if [ -n "$SUBSCRIPTION_ID" ]; then
+            az account set --subscription "$SUBSCRIPTION_ID"
+          fi
 
       - name: Configure App Service runtime
         env:
