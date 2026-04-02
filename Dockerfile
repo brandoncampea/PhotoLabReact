@@ -18,4 +18,4 @@ EXPOSE 8080
 ENV PORT=8080
 
 # Start server
-CMD ["node", "server/server.js"]
+CMD ["node", "server/server.mjs"]

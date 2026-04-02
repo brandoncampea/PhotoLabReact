@@ -195,7 +195,7 @@ jobs:
           az webapp config set \
             --name ${{ env.AZURE_WEBAPP_NAME }} \
             --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-            --startup-file "node server/server.js"
+            --startup-file "node server/server.mjs"
 
       - name: Deploy to Azure Web App (zip deploy with retry)
         run: |
