@@ -697,6 +697,7 @@ const AlbumDetails: React.FC = () => {
                       right: 0,
                       bottom: 0,
                       background: 'rgba(20, 19, 32, 0.9)',
+                      display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
                       padding: '12px',
