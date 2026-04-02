@@ -469,6 +469,22 @@ const AlbumDetails: React.FC = () => {
               📋 Photo Details
             </summary>
             <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #3a3656', display: 'grid', gap: 10 }}>
+              {/* Filename */}
+              {selectedPhoto.fileName && (
+                <div>
+                  <div style={{ fontSize: '0.85rem', color: '#a8a8b8', marginBottom: 2 }}>Filename</div>
+                  <div style={{ fontSize: '0.95rem', color: '#ccc', wordBreak: 'break-all' }}>{selectedPhoto.fileName}</div>
+                </div>
+              )}
+
+              {/* Description */}
+              {selectedPhoto.description && (
+                <div>
+                  <div style={{ fontSize: '0.85rem', color: '#a8a8b8', marginBottom: 2 }}>Description</div>
+                  <div style={{ fontSize: '0.95rem', color: '#ccc' }}>{selectedPhoto.description}</div>
+                </div>
+              )}
+
               {/* Player Names */}
               {(selectedPhoto.playerNames || '').split(',').filter((p) => p.trim()).length > 0 && (
                 <div>
@@ -547,11 +563,36 @@ const AlbumDetails: React.FC = () => {
                         <div style={{ fontSize: '0.9rem', color: '#ccc' }}>{(selectedPhoto.metadata as any).focalLength}</div>
                       </div>
                     )}
+
+                    {((selectedPhoto.metadata as any).width || selectedPhoto.width) && (
+                      <div>
+                        <div style={{ fontSize: '0.75rem', color: '#a8a8b8', marginBottom: 2 }}>Width</div>
+                        <div style={{ fontSize: '0.9rem', color: '#ccc' }}>{(selectedPhoto.metadata as any).width || selectedPhoto.width}px</div>
+                      </div>
+                    )}
+
+                    {((selectedPhoto.metadata as any).height || selectedPhoto.height) && (
+                      <div>
+                        <div style={{ fontSize: '0.75rem', color: '#a8a8b8', marginBottom: 2 }}>Height</div>
+                        <div style={{ fontSize: '0.9rem', color: '#ccc' }}>{(selectedPhoto.metadata as any).height || selectedPhoto.height}px</div>
+                      </div>
+                    )}
+
+                    {(selectedPhoto.metadata as any).fileSize && (
+                      <div>
+                        <div style={{ fontSize: '0.75rem', color: '#a8a8b8', marginBottom: 2 }}>File Size</div>
+                        <div style={{ fontSize: '0.9rem', color: '#ccc' }}>
+                          {(
+                            Number((selectedPhoto.metadata as any).fileSize) / (1024 * 1024)
+                          ).toFixed(2)} MB
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </>
               )}
 
-              {!selectedPhoto.playerNames && !selectedPhoto.playerNumbers && !selectedPhoto.metadata && (
+              {!selectedPhoto.playerNames && !selectedPhoto.playerNumbers && !selectedPhoto.metadata && !selectedPhoto.fileName && !selectedPhoto.description && (
                 <div style={{ color: '#888' }}>No additional details available for this photo.</div>
               )}
             </div>
