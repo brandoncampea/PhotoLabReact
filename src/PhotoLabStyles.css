@@ -2680,6 +2680,10 @@ tbody tr:hover {
 	background-color: #0056b3;
 }
 /* Player hover overlay for album photo grid */
+.player-hover-overlay {
+	display: none !important;
+}
+
 .album-card:hover .player-hover-overlay {
 	display: flex !important;
 }
