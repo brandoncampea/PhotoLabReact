@@ -1,11 +1,11 @@
-import nodemailer from 'nodemailer';
 
-const smtpHost = String(process.env.SMTP_HOST || '').trim();
-const smtpPort = Number(process.env.SMTP_PORT || 587);
-const smtpUser = String(process.env.SMTP_USER || '').trim();
-const smtpPassword = String(process.env.SMTP_PASSWORD || '').trim();
-const smtpSecure = String(process.env.SMTP_SECURE || '').toLowerCase() === 'true';
-const smtpFrom = String(process.env.SMTP_FROM || '').trim() || 'Photo Lab <no-reply@photolab.local>';
+import { MailtrapClient } from 'mailtrap';
+
+const mailtrapToken = String(process.env.MAILTRAP_API_KEY || '').trim();
+const mailtrapSenderEmail = String(process.env.MAILTRAP_SENDER_EMAIL || '').trim();
+const mailtrapSenderName = String(process.env.MAILTRAP_SENDER_NAME || '').trim() || 'Photo Lab';
+const mailtrapClient = mailtrapToken ? new MailtrapClient({ token: mailtrapToken }) : null;
+
 const smtpReplyTo = String(process.env.SMTP_REPLY_TO || '').trim() || undefined;
 const appBaseUrl = String(process.env.APP_BASE_URL || '').trim();
 
@@ -18,25 +18,7 @@ const esc = (value) => String(value ?? '')
   .replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;');
 
-const isConfigured = () => Boolean(smtpHost && smtpUser && smtpPassword);
-
-const getTransporter = async () => {
-  if (!isConfigured()) return null;
-  if (!transporterPromise) {
-    transporterPromise = Promise.resolve(
-      nodemailer.createTransport({
-        host: smtpHost,
-        port: smtpPort,
-        secure: smtpSecure,
-        auth: {
-          user: smtpUser,
-          pass: smtpPassword,
-        },
-      })
-    );
-  }
-  return transporterPromise;
-};
+const isConfigured = () => Boolean(mailtrapClient && mailtrapSenderEmail);
 
 const formatDateTime = (value) => {
   if (!value) return '';
@@ -299,21 +281,22 @@ export const orderReceiptService = {
    * @param {number}   [opts.photoCount]  - how many photos were newly tagged
    */
   async sendPlayerPhotoNotification({ to, customerName, playerName, playerNumber, albumName, albumUrl, studioName, photoCount = 1 }) {
-    const transporter = await getTransporter();
-    if (!transporter || !to) return false;
-
+    if (!isConfigured() || !to) return false;
     const playerLabel = playerNumber ? `${playerName} (#${playerNumber})` : playerName;
     const albumPart = albumName ? ` in "${albumName}"` : '';
     const photoWord = photoCount === 1 ? 'photo' : 'photos';
-
     try {
-      await transporter.sendMail({
-        from: smtpFrom,
-        to,
-        replyTo: smtpReplyTo,
+      await mailtrapClient.send({
+        from: {
+          email: mailtrapSenderEmail,
+          name: mailtrapSenderName,
+        },
+        to: Array.isArray(to) ? to.map(email => ({ email })) : [{ email: to }],
         subject: `New ${photoWord} added for ${playerLabel}${albumPart}`,
         html: renderPlayerPhotoNotificationHtml({ customerName, playerName, playerNumber, albumName, albumUrl, studioName, photoCount }),
         text: `Hi ${customerName || 'there'},\n\n${photoCount} new ${photoWord} featuring ${playerLabel}${albumPart} have been added.\n${albumUrl ? `\nView the album: ${albumUrl}` : ''}\n\nManage your watchlist: ${appBaseUrl ? `${appBaseUrl}/account` : '/account'}`,
+        reply_to: smtpReplyTo,
+        category: 'Player Photo Notification',
       });
     } catch (emailErr) {
       console.error('[playerPhotoNotification] Failed to send to', to, emailErr?.message);
@@ -323,36 +306,38 @@ export const orderReceiptService = {
   },
 
   async sendCustomerReceipt({ to, customerName, order, items, digitalDownloads = [] }) {
-    const transporter = await getTransporter();
-    if (!transporter || !to) return false;
-
+    if (!isConfigured() || !to) return false;
     const html = renderCustomerReceiptHtml({ customerName, order, items, digitalDownloads });
-
-    await transporter.sendMail({
-      from: smtpFrom,
-      to,
-      replyTo: smtpReplyTo,
+    await mailtrapClient.send({
+      from: {
+        email: mailtrapSenderEmail,
+        name: mailtrapSenderName,
+      },
+      to: Array.isArray(to) ? to.map(email => ({ email })) : [{ email: to }],
       subject: `Photo Lab receipt — Order #${order.id}`,
       html,
       text: `Order #${order.id}\nTotal charged: ${currency(order.totalAmount)}\nSubtotal: ${currency(order.subtotal)}\nShipping: ${currency(order.shippingCost)}\nTax: ${currency(order.taxAmount)}${digitalDownloads.length ? `\nDigital downloads:\n${digitalDownloads.map((entry) => `- ${entry.productName || 'Digital product'}: ${entry.url}`).join('\n')}` : ''}`,
+      reply_to: smtpReplyTo,
+      category: 'Order Receipt',
     });
     return true;
   },
 
   async sendStudioReceipt({ to, bcc, studioName, order, items, customerEmail }) {
-    const transporter = await getTransporter();
-    if (!transporter || !to) return false;
-
+    if (!isConfigured() || !to) return false;
     const html = `${renderStudioSaleHtml({ order, items, customerEmail, studioName })}${renderInternalAccounting(order)}`;
-
-    await transporter.sendMail({
-      from: smtpFrom,
-      to,
-      bcc: Array.isArray(bcc) && bcc.length > 0 ? bcc : undefined,
-      replyTo: smtpReplyTo,
+    await mailtrapClient.send({
+      from: {
+        email: mailtrapSenderEmail,
+        name: mailtrapSenderName,
+      },
+      to: Array.isArray(to) ? to.map(email => ({ email })) : [{ email: to }],
+      bcc: Array.isArray(bcc) && bcc.length > 0 ? bcc.map(email => ({ email })) : undefined,
       subject: `Studio receipt — Order #${order.id}`,
       html,
       text: `Order #${order.id}\nStudio: ${studioName || 'Unknown'}\nCustomer: ${customerEmail || 'Unknown'}\nTotal charged: ${currency(order.totalAmount)}\nStudio revenue: ${currency(order.studioRevenue)}\nBase order cost: ${currency(order.baseRevenue)}\nProduction cost estimate: ${currency(order.productionCost)}\nGross studio markup: ${currency(order.grossStudioMarkup)}\nStripe fee: ${currency(order.stripeFeeAmount)}\nEstimated studio profit: ${currency(order.studioProfitNet)}\nSuper admin profit: ${currency(order.superAdminProfit)}${order.orderUrl ? `\nOrder link: ${order.orderUrl}` : ''}`,
+      reply_to: smtpReplyTo,
+      category: 'Studio Receipt',
     });
     return true;
   },
