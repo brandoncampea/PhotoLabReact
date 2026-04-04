@@ -58,9 +58,24 @@ const PORT = process.env.PORT || 3000;
 const clientDistPath = path.resolve(__dirname, '../dist');
 const hasClientBuild = fs.existsSync(path.join(clientDistPath, 'index.html'));
 
-// CORS: allow frontend dev server (must be first middleware)
+// CORS: allow frontend dev server and production origin
+const allowedOrigins = [
+  'http://localhost:3004',
+  'http://localhost:3000',
+  'http://localhost:5173',
+  process.env.FRONTEND_URL,
+  process.env.CANONICAL_APP_URL || 'https://labs.campeaphotography.com',
+].filter(Boolean);
+
 app.use(cors({
-  origin: 'http://localhost:3004',
+  origin: (origin, callback) => {
+    // Allow requests with no origin (curl, mobile apps, same-origin) or whitelisted origins
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(null, true); // Permissive: allow all for now; tighten per environment if needed
+    }
+  },
   credentials: true
 }));
 

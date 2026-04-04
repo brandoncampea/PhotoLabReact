@@ -192,11 +192,30 @@ jobs:
             --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
             --settings "${SETTINGS[@]}"
 
-          az webapp config set \
+          # Get current linuxFxVersion to avoid unnecessary container restarts
+          CURRENT_FX=$(az webapp config show \
             --name ${{ env.AZURE_WEBAPP_NAME }} \
             --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-            --linux-fx-version "NODE|22-lts" \
-            --startup-file "node server/server.mjs"
+            --query linuxFxVersion -o tsv 2>/dev/null || echo '')
+
+          TARGET_FX="NODE|22-lts"
+
+          if [ "$CURRENT_FX" != "$TARGET_FX" ]; then
+            echo "Updating linuxFxVersion: '$CURRENT_FX' → '$TARGET_FX'"
+            az webapp config set \
+              --name ${{ env.AZURE_WEBAPP_NAME }} \
+              --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+              --linux-fx-version "$TARGET_FX" \
+              --startup-file "node server/server.mjs"
+            echo "Runtime changed — waiting 90s for container to restart before deploying..."
+            sleep 90
+          else
+            echo "linuxFxVersion already '$TARGET_FX', skipping runtime change."
+            az webapp config set \
+              --name ${{ env.AZURE_WEBAPP_NAME }} \
+              --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+              --startup-file "node server/server.mjs"
+          fi
 
       - name: Deploy to Azure Web App (zip deploy with retry)
         run: |
@@ -310,7 +329,7 @@ jobs:
 
       - name: Verify health endpoint
         run: |
-          sleep 20
+          sleep 30
           APP_HOST=$(az webapp show \
             --name ${{ env.AZURE_WEBAPP_NAME }} \
             --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
@@ -321,20 +340,21 @@ jobs:
 
           check_health() {
             local url="$1"
-            for attempt in $(seq 1 18); do
-              echo "Health check ${attempt}/18: ${url}"
-              if curl -fsS --max-time 10 "$url" > /dev/null; then
+            local max_attempts=36
+            for attempt in $(seq 1 $max_attempts); do
+              echo "Health check ${attempt}/${max_attempts}: ${url}"
+              if curl -fsS --max-time 15 "$url" > /dev/null; then
                 echo "Health check passed: ${url}"
                 return 0
               fi
-              sleep 10
+              sleep 15
             done
             return 1
           }
 
-            if check_health "$DEFAULT_HEALTH" || check_health "$CANONICAL_HEALTH"; then
-              echo "Health check succeeded."
-            else
-              echo "Error: Health endpoint did not become ready in time. Failing workflow."
-              exit 1
-            fi
+          if check_health "$DEFAULT_HEALTH" || check_health "$CANONICAL_HEALTH"; then
+            echo "Health check succeeded."
+          else
+            echo "Error: Health endpoint did not become ready in time. Failing workflow."
+            exit 1
+          fi
