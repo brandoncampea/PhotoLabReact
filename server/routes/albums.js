@@ -4,6 +4,7 @@ const { queryRow, queryRows, query } = mssql;
 import { requireActiveSubscription } from '../middleware/subscription.js';
 import { enforceAlbumQuotaForStudio } from '../middleware/subscription.js';
 import { authRequired } from '../middleware/auth.js';
+import { deleteBlobByUrl } from '../services/azureStorage.js';
 const router = express.Router();
 
 // Public: Get albums by studioSlug (for customer view)
@@ -32,8 +33,11 @@ router.get('/public', async (req, res) => {
         a.is_password_protected as isPasswordProtected,
         a.password,
         a.password_hint as passwordHint,
+        COALESCE(sc.is_active, 0) as batchShippingActive,
+        sc.batch_deadline as batchDeadline,
         a.created_at as createdDate
       FROM albums a
+      LEFT JOIN shipping_config sc ON sc.id = a.studio_id
       WHERE a.studio_id = $1
       ORDER BY a.created_at DESC
     `, [studio.id]);
@@ -46,6 +50,7 @@ router.get('/public', async (req, res) => {
 
 const signAlbumForResponse = (album) => ({
   ...album,
+  batchShippingActive: Boolean(album?.batchShippingActive),
   coverImageUrl: album?.coverPhotoId
     ? `/api/photos/${album.coverPhotoId}/asset?variant=full`
     : album?.coverImageUrl
@@ -158,19 +163,23 @@ router.get('/:id', async (req, res) => {
   try {
     const album = await queryRow(`
       SELECT 
-        id,
-        COALESCE(name, title) as name,
-        description,
-        cover_image_url as coverImageUrl,
-        cover_photo_id as coverPhotoId,
-        photo_count as photoCount,
-        category,
-        price_list_id as priceListId,
-        is_password_protected as isPasswordProtected,
-        password,
-        password_hint as passwordHint,
-        created_at as createdDate
-      FROM albums WHERE id = $1
+        a.id,
+        COALESCE(a.name, a.title) as name,
+        a.description,
+        a.cover_image_url as coverImageUrl,
+        a.cover_photo_id as coverPhotoId,
+        a.photo_count as photoCount,
+        a.category,
+        a.price_list_id as priceListId,
+        a.is_password_protected as isPasswordProtected,
+        a.password,
+        a.password_hint as passwordHint,
+        COALESCE(sc.is_active, 0) as batchShippingActive,
+        sc.batch_deadline as batchDeadline,
+        a.created_at as createdDate
+      FROM albums a
+      LEFT JOIN shipping_config sc ON sc.id = a.studio_id
+      WHERE a.id = $1
     `, [req.params.id]);
     if (!album) {
       return res.status(404).json({ error: 'Album not found' });
@@ -314,6 +323,30 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const albumId = Number(req.params.id);
+
+    // Fetch photo asset URLs first so we can clean up Azure blobs
+    const photoAssets = await queryRows(
+      `SELECT full_image_url as fullImageUrl, thumbnail_url as thumbnailUrl
+       FROM photos
+       WHERE album_id = $1`,
+      [albumId]
+    );
+
+    // Delete Azure blobs (best effort) before removing DB rows
+    const blobUrls = new Set();
+    for (const asset of photoAssets) {
+      if (asset?.fullImageUrl) blobUrls.add(asset.fullImageUrl);
+      if (asset?.thumbnailUrl) blobUrls.add(asset.thumbnailUrl);
+    }
+
+    await Promise.allSettled(
+      Array.from(blobUrls).map(async (url) => {
+        if (typeof url === 'string' && url.startsWith('http')) {
+          await deleteBlobByUrl(url);
+        }
+      })
+    );
+
     // Delete order_items referencing photos in this album
     await query(`DELETE FROM order_items WHERE photo_id IN (SELECT id FROM photos WHERE album_id = $1)`, [albumId]);
     // Delete photos in this album

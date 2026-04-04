@@ -44,6 +44,7 @@ import webhookRoutes from './routes/webhooks.js';
 import subscriptionPlansRoutes from './routes/subscriptionPlans.js';
 import invoicesRoutes from './routes/invoices.js';
 import publicSearchRoutes from './routes/publicSearch.js';
+import playerWatchlistRoutes from './routes/playerWatchlist.js';
 import smugmugRoutes from './routes/smugmug.js';
 import whccEditorRoutes from './routes/whccEditor.js';
 
@@ -102,6 +103,7 @@ app.use('/api/subscription-plans', subscriptionPlansRoutes);
 app.use('/api/invoices', invoicesRoutes);
 app.use('/api/public-search', publicSearchRoutes);
 app.use('/api/publicSearch', publicSearchRoutes);
+app.use('/api/player-watchlist', playerWatchlistRoutes);
 app.use('/api/blob-sas', blobSasRoutes);
 app.use('/api/smugmug', smugmugRoutes);
 app.use('/api/whcc-editor', whccEditorRoutes);

@@ -1,8 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import styles from './Navbar.module.css';
-// import { useAuth } from '../../contexts/AuthContext';
-// import { profileService } from '../../services/profileService';
+import { useAuth } from '../../contexts/AuthContext';
 
 const Navbar: React.FC = () => {
   const location = useLocation();
@@ -49,8 +48,8 @@ const Navbar: React.FC = () => {
 
   const studioName = publicStudioBrand?.name || 'Studio Name';
   const studioLogo = publicStudioBrand?.logoUrl || '/logo.png';
-  const isLoggedIn = false; // Replace with auth context
-  const user = null; // Replace with auth context user
+  const { user, logout } = useAuth();
+  const isLoggedIn = Boolean(user);
 
   return (
     <nav className={styles.navbar}>
@@ -62,9 +61,22 @@ const Navbar: React.FC = () => {
         <Link to={studioSlug ? `/albums?studioSlug=${encodeURIComponent(studioSlug)}` : '/albums'} className={styles.navbarLink}>Albums</Link>
         <Link to="/orders" className={styles.navbarLink}>Orders</Link>
         <Link to="/cart" className={styles.navbarLink}>Cart</Link>
-        <Link to="/" className={styles.navbarLink}>Customer Site</Link>
         {isLoggedIn ? (
-          <Link to="/logout" className={styles.navbarLink}>Logout</Link>
+          <>
+            <Link
+              to={studioSlug ? `/account?studioSlug=${encodeURIComponent(studioSlug)}` : '/account'}
+              className={styles.navbarLink}
+            >
+              My Account
+            </Link>
+            <button
+              className={styles.navbarLink}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, font: 'inherit', color: 'inherit' }}
+              onClick={logout}
+            >
+              Logout
+            </button>
+          </>
         ) : (
           <>
             <Link to="/login" className={styles.navbarLink}>Login</Link>
@@ -75,8 +87,7 @@ const Navbar: React.FC = () => {
       <div className={styles.navbarUser}>
         {isLoggedIn && user ? (
           <span className={styles.navbarUserInfo}>
-            <img src={'/default-avatar.png'} alt="User Avatar" className={styles.navbarUserImg} />
-            {'User'}
+            {user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : user.email}
           </span>
         ) : null}
       </div>

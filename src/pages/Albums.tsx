@@ -19,6 +19,8 @@ type PublicAlbum = {
   previewImageUrls?: string[];
   photoCount: number;
   createdDate: string;
+  batchShippingActive?: boolean;
+  batchDeadline?: string;
 };
 
 
@@ -158,6 +160,17 @@ const Albums: React.FC = () => {
             </button>
             <h2 className={styles.albumsH2}>{selectedStudio.name} Albums</h2>
           </div>
+          {albums.some((album) => album.batchShippingActive) && (
+            <div className={styles.albumsBatchNotice}>
+              <strong>Batch shipping is active for this studio.</strong>
+              <span>
+                You can choose free batch shipping at checkout when available.
+                {albums.find((album) => album.batchShippingActive)?.batchDeadline
+                  ? ` Current release deadline: ${new Date(String(albums.find((album) => album.batchShippingActive)?.batchDeadline)).toLocaleString()}.`
+                  : ''}
+              </span>
+            </div>
+          )}
           <div className="albums-grid">
             {albums.length === 0 ? (
               <p className="empty-state">No albums available for this studio</p>
@@ -177,6 +190,9 @@ const Albums: React.FC = () => {
                   </div>
                   <div className="album-info">
                     <h3>{album.name}</h3>
+                    {album.batchShippingActive && (
+                      <div className={styles.albumsBatchBadge}>Batch Shipping Available</div>
+                    )}
                     <p>{album.description}</p>
                     <div className="album-info-row">
                       <span className="album-date">

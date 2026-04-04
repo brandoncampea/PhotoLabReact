@@ -32,6 +32,33 @@ const normalizeRecommendations = (data: any) => {
 
 
 export const photoService = {
+  async updatePhoto(id: number, payload: {
+    description?: string;
+    metadata?: Record<string, any> | null;
+    playerNames?: string[] | string | null;
+    playerNumbers?: string[] | string | null;
+  }): Promise<Photo> {
+    const response = await api.put<Photo>(`/photos/${id}`, payload);
+    return response.data;
+  },
+
+  async getPhotoDetections(photoId: number): Promise<{
+    photoId: number;
+    detectedNumbers: string[];
+    usedCachedDetections?: boolean;
+    detectedNumbersUpdatedAt?: string | null;
+    numberMatchingAvailable?: boolean;
+    rosterPlayersWithNumbersCount?: number;
+    faceMatchingAvailable?: boolean;
+    faceMatches: Array<{ playerName: string; playerNumber?: string | null; distance: number }>;
+    numberMatches: Array<{ playerName: string; playerNumber?: string | null; matchedNumber: string }>;
+    suggestions: Array<{ playerName: string; playerNumber?: string | null; reasons: string[]; confidence: number }>;
+    currentlyTagged: { playerNames: string[]; playerNumbers: string[] };
+  }> {
+    const response = await api.get(`/photos/${photoId}/detections`);
+    return response.data;
+  },
+
   async getAlbumRoster(albumId: number): Promise<Array<{ playerName: string; playerNumber?: string }>> {
     const response = await api.get<Array<{ playerName: string; playerNumber?: string }>>(`/photos/album/${albumId}/roster`);
     return response.data;
@@ -68,11 +95,11 @@ export const photoService = {
     return response.data;
   },
 
-  async uploadPlayerNamesCsv(albumId: number, file: File): Promise<{ message: string; rowsParsed: number; photosUpdated: number; totalPhotos: number }> {
+  async uploadPlayerNamesCsv(albumId: number, file: File): Promise<{ message: string; rosterName?: string; rowsParsed: number; photosUpdated: number; totalPhotos: number; rosterPlayersSaved?: number; facialRecognitionTrained?: number }> {
     const formData = new FormData();
     formData.append('csv', file);
     
-    const response = await api.post<{ message: string; rowsParsed: number; photosUpdated: number; totalPhotos: number }>(
+    const response = await api.post<{ message: string; rosterName?: string; rowsParsed: number; photosUpdated: number; totalPhotos: number; rosterPlayersSaved?: number; facialRecognitionTrained?: number }>(
       `/photos/album/${albumId}/upload-players`,
       formData,
       {
@@ -88,10 +115,12 @@ export const photoService = {
     albumId: number,
     files: File[],
     descriptions?: string[],
+    duplicateMode: 'allow' | 'skip' | 'overwrite' = 'allow',
     onProgress?: (percent: number) => void
   ): Promise<Photo[]> {
     const formData = new FormData();
     formData.append('albumId', String(albumId));
+    formData.append('duplicateMode', duplicateMode);
     files.forEach((file) => formData.append('photos', file));
     if (descriptions && descriptions.length) {
       formData.append('descriptions', JSON.stringify(descriptions));

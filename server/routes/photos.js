@@ -5,20 +5,35 @@ import mssql from '../mssql.cjs';
 const { queryRow, queryRows, query } = mssql;
 import csv from 'csv-parser';
 import sharp from 'sharp';
+import exifReader from 'exif-reader';
+import { createWorker } from 'tesseract.js';
 import { uploadImageBufferToAzure, deleteBlobByUrl, downloadBlob } from '../services/azureStorage.js';
 import { requireActiveSubscription, enforceStorageQuotaForStudio } from '../middleware/subscription.js';
+import orderReceiptService from '../services/orderReceiptService.js';
 const router = express.Router();
 
 const getPhotoAssetUrl = (photoId, variant = 'full') => `/api/photos/${photoId}/asset?variant=${variant}`;
 const getProxySourceUrl = (source) => `/api/photos/proxy?source=${encodeURIComponent(source)}`;
 
 // Removed duplicate declaration. Only the updated signPhotoForResponse remains below.
-  const signPhotoForResponse = (photo) => ({
+const signPhotoForResponse = (photo) => {
+  let parsedMetadata = photo?.metadata;
+  if (typeof parsedMetadata === 'string') {
+    try {
+      parsedMetadata = JSON.parse(parsedMetadata);
+    } catch {
+      parsedMetadata = null;
+    }
+  }
+
+  return {
     ...photo,
+    metadata: parsedMetadata && typeof parsedMetadata === 'object' ? parsedMetadata : null,
     // Always return the direct Azure blob URLs for frontend use
     thumbnailUrl: photo?.thumbnailUrl,
     fullImageUrl: photo?.fullImageUrl,
-  });
+  };
+};
 
 async function pipeAssetToResponse(source, res) {
   try {
@@ -113,10 +128,20 @@ const ensurePlayerRecognitionSchema = async () => {
         studio_id INT NOT NULL,
         player_name NVARCHAR(255) NOT NULL,
         player_number NVARCHAR(64) NULL,
+        roster_name NVARCHAR(255) NULL,
+        source_album_id INT NULL,
         created_at DATETIME2 DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME2 DEFAULT CURRENT_TIMESTAMP
       )
     END
+  `);
+
+  await query(`
+    IF COL_LENGTH('studio_player_roster', 'roster_name') IS NULL
+      ALTER TABLE studio_player_roster ADD roster_name NVARCHAR(255) NULL;
+
+    IF COL_LENGTH('studio_player_roster', 'source_album_id') IS NULL
+      ALTER TABLE studio_player_roster ADD source_album_id INT NULL;
   `);
 
   await query(`
@@ -151,6 +176,12 @@ const ensurePhotoUploadColumns = async () => {
 
     IF COL_LENGTH('photos', 'player_numbers') IS NULL
       ALTER TABLE photos ADD player_numbers NVARCHAR(255) NULL;
+
+    IF COL_LENGTH('photos', 'detected_numbers') IS NULL
+      ALTER TABLE photos ADD detected_numbers NVARCHAR(MAX) NULL;
+
+    IF COL_LENGTH('photos', 'detected_numbers_updated_at') IS NULL
+      ALTER TABLE photos ADD detected_numbers_updated_at DATETIME2 NULL;
   `);
 };
 
@@ -279,6 +310,57 @@ const computeImageSignature = async (buffer) => {
   return hex;
 };
 
+const computeImageCandidateSignatures = async (buffer) => {
+  if (!buffer) return [];
+
+  try {
+    const metadata = await sharp(buffer).metadata();
+    const width = Number(metadata.width || 0);
+    const height = Number(metadata.height || 0);
+
+    const regions = [{ left: 0, top: 0, width, height }];
+
+    if (width > 0 && height > 0) {
+      const upperHeight = Math.max(1, Math.round(height * 0.6));
+      const centerWidth = Math.max(1, Math.round(width * 0.5));
+      const centerHeight = Math.max(1, Math.round(height * 0.5));
+      const centerLeft = Math.max(0, Math.round((width - centerWidth) / 2));
+      const centerTop = Math.max(0, Math.round((height - centerHeight) / 2));
+      const upperLeft = Math.max(0, Math.round(width * 0.15));
+      const upperWidth = Math.max(1, Math.round(width * 0.7));
+
+      regions.push(
+        { left: centerLeft, top: centerTop, width: centerWidth, height: centerHeight },
+        { left: upperLeft, top: 0, width: upperWidth, height: upperHeight },
+        { left: 0, top: 0, width: Math.max(1, Math.round(width * 0.5)), height: upperHeight },
+        { left: Math.max(0, width - Math.max(1, Math.round(width * 0.5))), top: 0, width: Math.max(1, Math.round(width * 0.5)), height: upperHeight },
+      );
+    }
+
+    const signatures = [];
+    const seen = new Set();
+
+    for (const region of regions) {
+      let regionBuffer = buffer;
+      if (region.width !== width || region.height !== height || region.left !== 0 || region.top !== 0) {
+        regionBuffer = await sharp(buffer)
+          .extract(region)
+          .toBuffer();
+      }
+
+      const signature = await computeImageSignature(regionBuffer);
+      if (!signature || seen.has(signature)) continue;
+      seen.add(signature);
+      signatures.push(signature);
+    }
+
+    return signatures;
+  } catch {
+    const fallback = await computeImageSignature(buffer);
+    return fallback ? [fallback] : [];
+  }
+};
+
 const popCountLookup = [0,1,1,2,1,2,2,3,1,2,2,3,2,3,3,4];
 
 const hammingHexDistance = (a, b) => {
@@ -293,8 +375,17 @@ const hammingHexDistance = (a, b) => {
   return distance;
 };
 
-const saveRosterPlayers = async (studioId, rosterRows = []) => {
+const buildRosterNameFromAlbum = (album) => {
+  const category = String(album?.category || '').trim();
+  const albumName = String(album?.albumName || album?.name || album?.title || '').trim();
+  if (category && albumName) return `${category} - ${albumName}`;
+  return albumName || category || 'Roster';
+};
+
+const saveRosterPlayers = async (studioId, rosterRows = [], options = {}) => {
   if (!studioId || !rosterRows.length) return 0;
+  const rosterName = String(options?.rosterName || '').trim() || null;
+  const sourceAlbumId = Number(options?.sourceAlbumId || 0) || null;
   const uniqueRows = [];
   const seen = new Set();
   for (const row of rosterRows) {
@@ -321,17 +412,19 @@ const saveRosterPlayers = async (studioId, rosterRows = []) => {
     if (existing?.id) {
       await query(
         `UPDATE studio_player_roster
-         SET updated_at = CURRENT_TIMESTAMP
-         WHERE id = $1`,
-        [existing.id]
+         SET updated_at = CURRENT_TIMESTAMP,
+             roster_name = COALESCE($1, roster_name),
+             source_album_id = COALESCE($2, source_album_id)
+         WHERE id = $3`,
+        [rosterName, sourceAlbumId, existing.id]
       );
       continue;
     }
 
     await query(
-      `INSERT INTO studio_player_roster (studio_id, player_name, player_number)
-       VALUES ($1, $2, $3)`,
-      [studioId, row.playerName, row.playerNumber || null]
+      `INSERT INTO studio_player_roster (studio_id, player_name, player_number, roster_name, source_album_id)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [studioId, row.playerName, row.playerNumber || null, rosterName, sourceAlbumId]
     );
     saved += 1;
   }
@@ -344,7 +437,9 @@ const fetchStudioRoster = async (studioId) => {
   return queryRows(
     `SELECT id,
             player_name as playerName,
-            player_number as playerNumber
+            player_number as playerNumber,
+            roster_name as rosterName,
+            source_album_id as sourceAlbumId
      FROM studio_player_roster
      WHERE studio_id = $1`,
     [studioId]
@@ -366,11 +461,200 @@ const fetchStudioFaceSignatures = async (studioId) => {
 
 const saveFaceSignature = async ({ studioId, playerName, playerNumber, signatureHash, sourcePhotoId }) => {
   if (!studioId || !playerName || !signatureHash) return;
+
+  const existing = await queryRow(
+    `SELECT TOP 1 id
+     FROM studio_player_face_signatures
+     WHERE studio_id = $1
+       AND LOWER(player_name) = LOWER($2)
+       AND COALESCE(LOWER(player_number), '') = COALESCE(LOWER($3), '')
+       AND signature_hash = $4`,
+    [studioId, playerName, playerNumber || null, signatureHash]
+  );
+
+  if (existing?.id) return;
+
   await query(
     `INSERT INTO studio_player_face_signatures (studio_id, player_name, player_number, signature_hash, source_photo_id)
      VALUES ($1, $2, $3, $4, $5)`,
     [studioId, playerName, playerNumber || null, signatureHash, sourcePhotoId || null]
   );
+};
+
+const parseMetadataObject = (value) => {
+  if (!value) return null;
+  if (typeof value === 'object') return value;
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+};
+
+const extractFaceTagsFromMetadata = (metadataValue) => {
+  const metadata = parseMetadataObject(metadataValue);
+  const faceTags = Array.isArray(metadata?.faceTags) ? metadata.faceTags : [];
+
+  return faceTags
+    .map((tag, index) => ({
+      id: String(tag?.id || `face-${index + 1}`),
+      leftPct: Number(tag?.leftPct),
+      topPct: Number(tag?.topPct),
+      widthPct: Number(tag?.widthPct),
+      heightPct: Number(tag?.heightPct),
+      playerName: String(tag?.playerName || '').trim() || null,
+      playerNumber: String(tag?.playerNumber || '').trim() || null,
+    }))
+    .filter((tag) => (
+      Number.isFinite(tag.leftPct)
+      && Number.isFinite(tag.topPct)
+      && Number.isFinite(tag.widthPct)
+      && Number.isFinite(tag.heightPct)
+      && tag.widthPct > 0
+      && tag.heightPct > 0
+    ));
+};
+
+const clampPercent = (value) => Math.max(0, Math.min(100, Number(value) || 0));
+
+const cropBufferFromFaceTag = async (imageBuffer, faceTag) => {
+  if (!imageBuffer || !faceTag) return null;
+
+  try {
+    const image = sharp(imageBuffer);
+    const meta = await image.metadata();
+    const imageWidth = Number(meta.width || 0);
+    const imageHeight = Number(meta.height || 0);
+    if (!imageWidth || !imageHeight) return null;
+
+    const leftPct = clampPercent(faceTag.leftPct);
+    const topPct = clampPercent(faceTag.topPct);
+    const widthPct = clampPercent(faceTag.widthPct);
+    const heightPct = clampPercent(faceTag.heightPct);
+    if (!widthPct || !heightPct) return null;
+
+    const baseLeft = Math.round((leftPct / 100) * imageWidth);
+    const baseTop = Math.round((topPct / 100) * imageHeight);
+    const baseWidth = Math.max(1, Math.round((widthPct / 100) * imageWidth));
+    const baseHeight = Math.max(1, Math.round((heightPct / 100) * imageHeight));
+
+    const padX = Math.round(baseWidth * 0.18);
+    const padY = Math.round(baseHeight * 0.18);
+
+    const left = Math.max(0, baseLeft - padX);
+    const top = Math.max(0, baseTop - padY);
+    const width = Math.max(1, Math.min(imageWidth - left, baseWidth + (padX * 2)));
+    const height = Math.max(1, Math.min(imageHeight - top, baseHeight + (padY * 2)));
+
+    return await sharp(imageBuffer)
+      .extract({ left, top, width, height })
+      .toBuffer();
+  } catch {
+    return null;
+  }
+};
+
+const saveFaceSignaturesForPlayers = async ({ studioId, taggedNames = [], taggedNumbers = [], imageBuffer, sourcePhotoId, faceTags = [] }) => {
+  if (!studioId || !imageBuffer || taggedNames.length === 0) return 0;
+
+  const normalizedFaceTags = Array.isArray(faceTags) ? faceTags : [];
+  let fallbackSignatures = null;
+
+  let saved = 0;
+  for (let i = 0; i < taggedNames.length; i += 1) {
+    const playerName = String(taggedNames[i] || '').trim();
+    if (!playerName) continue;
+    const playerNumber = taggedNumbers[i] || taggedNumbers[0] || null;
+
+    let signatures = [];
+    const matchedFaceTag = normalizedFaceTags.find((tag) => {
+      if (normalizeToken(tag.playerName) !== normalizeToken(playerName)) return false;
+      if (!playerNumber) return true;
+      return normalizeToken(tag.playerNumber) === normalizeToken(playerNumber);
+    });
+
+    if (matchedFaceTag) {
+      const croppedFaceBuffer = await cropBufferFromFaceTag(imageBuffer, matchedFaceTag);
+      signatures = croppedFaceBuffer ? await computeImageCandidateSignatures(croppedFaceBuffer) : [];
+    }
+
+    if (signatures.length === 0) {
+      if (!fallbackSignatures) {
+        fallbackSignatures = await computeImageCandidateSignatures(imageBuffer);
+      }
+      signatures = fallbackSignatures;
+    }
+
+    if (!Array.isArray(signatures) || signatures.length === 0) continue;
+
+    for (const signatureHash of signatures) {
+      const beforeSave = await queryRow(
+        `SELECT TOP 1 id
+         FROM studio_player_face_signatures
+         WHERE studio_id = $1
+           AND LOWER(player_name) = LOWER($2)
+           AND COALESCE(LOWER(player_number), '') = COALESCE(LOWER($3), '')
+           AND signature_hash = $4`,
+        [studioId, playerName, playerNumber, signatureHash]
+      );
+      if (beforeSave?.id) continue;
+
+      await saveFaceSignature({
+        studioId,
+        playerName,
+        playerNumber,
+        signatureHash,
+        sourcePhotoId,
+      });
+      saved += 1;
+    }
+  }
+
+  return saved;
+};
+
+const findBestPlayerFaceMatch = async ({ imageBuffer, signatures, allowedPlayers = [] }) => {
+  if (!imageBuffer || !Array.isArray(signatures) || signatures.length === 0) {
+    return { matchedPlayers: [], bestDistance: Number.POSITIVE_INFINITY };
+  }
+
+  const candidateSignatures = await computeImageCandidateSignatures(imageBuffer);
+  if (candidateSignatures.length === 0) {
+    return { matchedPlayers: [], bestDistance: Number.POSITIVE_INFINITY };
+  }
+
+  const allowedKeys = new Set(
+    allowedPlayers.map((player) => `${normalizeToken(player.playerName)}|${normalizeToken(player.playerNumber)}`)
+  );
+
+  const bestByPlayer = new Map();
+  for (const sig of signatures) {
+    const playerKey = `${normalizeToken(sig.playerName)}|${normalizeToken(sig.playerNumber)}`;
+    if (allowedKeys.size > 0 && !allowedKeys.has(playerKey)) continue;
+
+    for (const candidate of candidateSignatures) {
+      const distance = hammingHexDistance(candidate, sig.signatureHash);
+      if (!Number.isFinite(distance) || distance > 8) continue;
+      const existing = bestByPlayer.get(playerKey);
+      if (!existing || distance < existing.distance) {
+        bestByPlayer.set(playerKey, {
+          playerName: sig.playerName,
+          playerNumber: sig.playerNumber || null,
+          distance,
+        });
+      }
+    }
+  }
+
+  const matchedPlayers = Array.from(bestByPlayer.values()).sort((a, b) => a.distance - b.distance);
+  return {
+    matchedPlayers,
+    bestDistance: matchedPlayers[0]?.distance ?? Number.POSITIVE_INFINITY,
+  };
 };
 
 const resolvePlayerTagForFile = ({ fileName, rosterRows, fileNameTagMap }) => {
@@ -395,11 +679,164 @@ const resolvePlayerTagForFile = ({ fileName, rosterRows, fileNameTagMap }) => {
   return null;
 };
 
+const normalizeTextValue = (value) => {
+  if (value === null || value === undefined) return '';
+
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => normalizeTextValue(entry))
+      .filter(Boolean)
+      .join(', ')
+      .trim();
+  }
+
+  if (Buffer.isBuffer(value)) {
+    const utf8 = value.toString('utf8').replace(/\u0000/g, '').trim();
+    if (utf8) return utf8;
+    return value.toString('utf16le').replace(/\u0000/g, '').trim();
+  }
+
+  if (typeof value === 'object') {
+    if ('description' in value) return normalizeTextValue(value.description);
+    if ('value' in value) return normalizeTextValue(value.value);
+    return '';
+  }
+
+  return String(value).replace(/\u0000/g, '').trim();
+};
+
+const pickFirstText = (...values) => {
+  for (const value of values) {
+    const text = normalizeTextValue(value);
+    if (text) return text;
+  }
+  return '';
+};
+
+const splitKeywordTokens = (value) => normalizeTextValue(value)
+  .split(/[,;|\n\r]+/)
+  .map((entry) => entry.trim())
+  .filter(Boolean);
+
+const mergeKeywordValues = (...values) => {
+  const tokens = [];
+  const seen = new Set();
+  for (const value of values) {
+    for (const token of splitKeywordTokens(value)) {
+      const key = token.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      tokens.push(token);
+    }
+  }
+  return tokens.join(', ');
+};
+
+const parseIptcBuffer = (iptcBuffer) => {
+  if (!iptcBuffer || !Buffer.isBuffer(iptcBuffer)) {
+    return { keywords: [], caption: '', headline: '', city: '', stateOrProvince: '' };
+  }
+
+  const fields = {
+    keywords: [],
+    caption: '',
+    headline: '',
+    city: '',
+    stateOrProvince: '',
+  };
+
+  let i = 0;
+  while (i + 5 < iptcBuffer.length) {
+    if (iptcBuffer[i] !== 0x1c) {
+      i += 1;
+      continue;
+    }
+
+    const record = iptcBuffer[i + 1];
+    const dataset = iptcBuffer[i + 2];
+    const length = (iptcBuffer[i + 3] << 8) | iptcBuffer[i + 4];
+    const start = i + 5;
+    const end = start + length;
+
+    if (end > iptcBuffer.length) break;
+
+    const raw = iptcBuffer.subarray(start, end);
+    const value = raw.toString('utf8').replace(/\u0000/g, '').trim();
+
+    if (record === 2 && value) {
+      if (dataset === 25) fields.keywords.push(value); // 2:25 Keywords
+      if (dataset === 120 && !fields.caption) fields.caption = value; // 2:120 Caption/Abstract
+      if (dataset === 105 && !fields.headline) fields.headline = value; // 2:105 Headline
+      if (dataset === 90 && !fields.city) fields.city = value; // 2:90 City
+      if (dataset === 95 && !fields.stateOrProvince) fields.stateOrProvince = value; // 2:95 Province/State
+    }
+
+    i = end;
+  }
+
+  return fields;
+};
+
+const extractXmpTag = (xmpText, tagName) => {
+  if (!xmpText) return '';
+  const directTagRegex = new RegExp(`<${tagName}>([\\s\\S]*?)<\\/${tagName}>`, 'i');
+  const direct = xmpText.match(directTagRegex)?.[1];
+  if (direct) {
+    const liMatches = [...direct.matchAll(/<rdf:li[^>]*>([\s\S]*?)<\/rdf:li>/gi)]
+      .map((match) => normalizeTextValue(match[1]))
+      .filter(Boolean);
+
+    if (liMatches.length > 0) {
+      return liMatches.join(', ');
+    }
+
+    return normalizeTextValue(direct);
+  }
+  return '';
+};
+
 const extractImageMetadata = async (buffer) => {
   if (!buffer) return {};
   try {
     const image = sharp(buffer);
     const metadata = await image.metadata();
+
+    let parsedExif = null;
+    try {
+      parsedExif = metadata.exif ? exifReader(metadata.exif) : null;
+    } catch {
+      parsedExif = null;
+    }
+
+    const imageExif = parsedExif?.image || {};
+    const photoExif = parsedExif?.exif || {};
+    const xmpText = metadata.xmp ? Buffer.from(metadata.xmp).toString('utf8') : '';
+    const iptcFields = parseIptcBuffer(metadata.iptc ? Buffer.from(metadata.iptc) : null);
+
+    const caption = pickFirstText(
+      imageExif.ImageDescription,
+      imageExif.XPTitle,
+      imageExif.XPSubject,
+      photoExif.UserComment,
+      iptcFields.caption,
+      extractXmpTag(xmpText, 'dc:description'),
+      extractXmpTag(xmpText, 'photoshop:Headline')
+    );
+
+    const headline = pickFirstText(
+      iptcFields.headline,
+      extractXmpTag(xmpText, 'photoshop:Headline'),
+      imageExif.XPTitle,
+      imageExif.ImageDescription
+    );
+
+    const keywords = mergeKeywordValues(
+      imageExif.XPKeywords,
+      imageExif.Keywords,
+      iptcFields.keywords,
+      extractXmpTag(xmpText, 'dc:subject'),
+      extractXmpTag(xmpText, 'lr:hierarchicalSubject')
+    );
     
     // Extract all available EXIF and metadata fields
     const result = {
@@ -408,39 +845,40 @@ const extractImageMetadata = async (buffer) => {
       height: metadata.height || null,
       
       // Camera info (if available in EXIF)
-      cameraMake: metadata.exif?.IFD0?.Make || null,
-      cameraModel: metadata.exif?.IFD0?.Model || null,
+      cameraMake: pickFirstText(imageExif.Make),
+      cameraModel: pickFirstText(imageExif.Model),
       
       // Photo timing
-      dateTaken: metadata.exif?.IFD0?.DateTime || metadata.exif?.Exif?.DateTimeOriginal || null,
+      dateTaken: pickFirstText(photoExif.DateTimeOriginal, photoExif.CreateDate, imageExif.DateTime),
       
       // Exposure settings (EXIF)
-      iso: metadata.exif?.Exif?.ISO || null,
-      aperture: metadata.exif?.Exif?.FNumber ? String(metadata.exif.Exif.FNumber) : null,
-      shutterSpeed: metadata.exif?.Exif?.ExposureTime ? String(metadata.exif.Exif.ExposureTime) : null,
-      focalLength: metadata.exif?.Exif?.FocalLength ? String(metadata.exif.Exif.FocalLength) : null,
+      iso: photoExif.ISO ? String(photoExif.ISO) : null,
+      aperture: photoExif.FNumber ? String(photoExif.FNumber) : null,
+      shutterSpeed: photoExif.ExposureTime ? String(photoExif.ExposureTime) : null,
+      focalLength: photoExif.FocalLength ? String(photoExif.FocalLength) : null,
       
       // Advanced exposure data
-      fNumber: metadata.exif?.Exif?.FNumber || null,
-      exposureProgram: metadata.exif?.Exif?.ExposureProgram || null,
-      exposureTime: metadata.exif?.Exif?.ExposureTime || null,
-      meteringMode: metadata.exif?.Exif?.MeteringMode || null,
+      fNumber: photoExif.FNumber || null,
+      exposureProgram: photoExif.ExposureProgram || null,
+      exposureTime: photoExif.ExposureTime || null,
+      meteringMode: photoExif.MeteringMode || null,
       
-      // Keywords and description (IPTC/XMP)
-      keywords: metadata.exif?.IFD0?.Keywords || null,
-      headline: metadata.exif?.IFD0?.Headline || null,
+      // Keywords and description (EXIF/XMP)
+      caption: caption || null,
+      keywords: keywords || null,
+      headline: headline || null,
       
-      // Location data (EXIF GPS)
-      city: metadata.exif?.IFD0?.City || null,
-      stateOrProvince: metadata.exif?.IFD0?.Province || null,
+      // Location data (XMP)
+      city: pickFirstText(iptcFields.city, extractXmpTag(xmpText, 'Iptc4xmpCore:City')) || null,
+      stateOrProvince: pickFirstText(iptcFields.stateOrProvince, extractXmpTag(xmpText, 'Iptc4xmpCore:ProvinceState')) || null,
       
       // Color and format info
-      colorSpace: metadata.colorspace || null,
+      colorSpace: metadata.space || metadata.colorspace || null,
       colorProfile: metadata.hasProfile ? 'Yes' : null,
       
       // Additional info
       alphaChannel: metadata.hasAlpha ? 'Yes' : null,
-      redEye: metadata.exif?.Exif?.RedEyeReduction ? 'Yes' : null,
+      redEye: photoExif.RedEyeReduction ? 'Yes' : null,
       
       // File-level info
       fileSize: buffer.length,
@@ -493,6 +931,183 @@ const toCsvValue = (value) => {
   if (value === undefined) return undefined;
   const text = String(value || '').trim();
   return text ? text : null;
+};
+
+const csvToList = (value) => String(value || '')
+  .split(',')
+  .map((entry) => entry.trim())
+  .filter(Boolean);
+
+const mergeCsvLists = (currentValue, incomingValues = []) => {
+  const merged = [];
+  const seen = new Set();
+
+  for (const entry of [...csvToList(currentValue), ...incomingValues]) {
+    const normalized = normalizeToken(entry);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    merged.push(entry);
+  }
+
+  return merged.length ? merged.join(', ') : null;
+};
+
+const photoTextContainsNumber = ({ fileName, description, metadata, number }) => {
+  const token = String(number || '').trim();
+  if (!token) return false;
+
+  const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const boundaryRegex = new RegExp(`(^|[^0-9])${escaped}([^0-9]|$)`, 'i');
+
+  const haystacks = [
+    String(fileName || ''),
+    String(description || ''),
+    typeof metadata === 'string' ? metadata : JSON.stringify(metadata || {}),
+  ];
+
+  return haystacks.some((text) => boundaryRegex.test(text));
+};
+
+const downloadImageBufferFromSource = async (source) => {
+  if (!source) return null;
+
+  try {
+    if (String(source).startsWith('http')) {
+      const upstream = await fetch(source);
+      if (!upstream.ok) return null;
+      return Buffer.from(await upstream.arrayBuffer());
+    }
+
+    const blob = await downloadBlob(source);
+    if (!blob?.readableStreamBody) return null;
+
+    const chunks = [];
+    await new Promise((resolve, reject) => {
+      blob.readableStreamBody.on('data', (chunk) => chunks.push(chunk));
+      blob.readableStreamBody.on('end', resolve);
+      blob.readableStreamBody.on('error', reject);
+    });
+
+    return Buffer.concat(chunks);
+  } catch {
+    return null;
+  }
+};
+
+let ocrWorkerPromise = null;
+
+const getOcrWorker = async () => {
+  if (!ocrWorkerPromise) {
+    ocrWorkerPromise = (async () => {
+      const worker = await createWorker('eng');
+      return worker;
+    })();
+  }
+  return ocrWorkerPromise;
+};
+
+const extractDetectedNumbersFromImage = async (imageBuffer) => {
+  if (!imageBuffer) return [];
+
+  try {
+    const processed = await sharp(imageBuffer)
+      .rotate()
+      .resize({ width: 1800, withoutEnlargement: true })
+      .grayscale()
+      .normalize()
+      .sharpen()
+      .png()
+      .toBuffer();
+
+    const worker = await getOcrWorker();
+    const result = await worker.recognize(processed);
+    const rawText = String(result?.data?.text || '');
+    const candidates = rawText.match(/\b\d{1,3}\b/g) || [];
+
+    const detected = [];
+    const seen = new Set();
+    for (const token of candidates) {
+      const normalized = String(token).trim();
+      if (!normalized || seen.has(normalized)) continue;
+      seen.add(normalized);
+      detected.push(normalized);
+    }
+
+    return detected;
+  } catch (error) {
+    console.error('OCR number detection failed:', error);
+    return [];
+  }
+};
+
+const parseDetectedNumbersCache = (value) => {
+  if (!value) return [];
+
+  if (Array.isArray(value)) {
+    return value.map((entry) => String(entry || '').trim()).filter(Boolean);
+  }
+
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        return parsed.map((entry) => String(entry || '').trim()).filter(Boolean);
+      }
+    } catch {
+      return value.split(',').map((entry) => entry.trim()).filter(Boolean);
+    }
+  }
+
+  return [];
+};
+
+const normalizeJerseyNumber = (value) => {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+
+  const digitsOnly = raw.replace(/\D+/g, '');
+  if (!digitsOnly) return raw.toLowerCase();
+
+  const normalizedDigits = digitsOnly.replace(/^0+(?=\d)/, '');
+  return normalizedDigits || '0';
+};
+
+const mergeDetectionSuggestions = ({ numberMatches = [], faceMatches = [] }) => {
+  const byPlayer = new Map();
+
+  for (const match of numberMatches) {
+    const key = `${normalizeToken(match.playerName)}|${normalizeToken(match.playerNumber)}`;
+    const current = byPlayer.get(key) || {
+      playerName: match.playerName,
+      playerNumber: match.playerNumber || null,
+      reasons: [],
+      confidence: 0,
+    };
+    current.reasons.push('number');
+    current.confidence += 50;
+    byPlayer.set(key, current);
+  }
+
+  for (const match of faceMatches) {
+    const key = `${normalizeToken(match.playerName)}|${normalizeToken(match.playerNumber)}`;
+    const current = byPlayer.get(key) || {
+      playerName: match.playerName,
+      playerNumber: match.playerNumber || null,
+      reasons: [],
+      confidence: 0,
+    };
+    current.reasons.push('face');
+    current.confidence += Math.max(10, 70 - Number(match.distance || 0) * 5);
+    byPlayer.set(key, current);
+  }
+
+  return Array.from(byPlayer.values())
+    .map((entry) => ({
+      ...entry,
+      reasons: Array.from(new Set(entry.reasons)),
+    }))
+    .sort((a, b) => b.confidence - a.confidence)
+    .slice(0, 12);
 };
 
 function makeBlobName(albumId, originalName) {
@@ -611,6 +1226,110 @@ router.get('/:id/asset', async (req, res) => {
   }
 });
 
+router.get('/:id/detections', async (req, res) => {
+  try {
+    await ensurePlayerRecognitionSchema();
+    await ensurePhotoUploadColumns();
+    const forceRefresh = String(req.query.refresh || '').trim() === '1';
+
+    const photo = await queryRow(
+      `SELECT p.id,
+              p.album_id as albumId,
+              p.file_name as fileName,
+              p.description,
+              p.metadata,
+              p.player_names as playerNames,
+              p.player_numbers as playerNumbers,
+              p.detected_numbers as detectedNumbers,
+              p.detected_numbers_updated_at as detectedNumbersUpdatedAt,
+              p.full_image_url as fullImageUrl,
+              a.studio_id as studioId
+       FROM photos p
+       LEFT JOIN albums a ON a.id = p.album_id
+       WHERE p.id = $1`,
+      [req.params.id]
+    );
+
+    if (!photo) {
+      return res.status(404).json({ error: 'Photo not found' });
+    }
+
+    const studioId = Number(photo.studioId || 0) || null;
+    const roster = studioId ? await fetchStudioRoster(studioId) : [];
+    const sourceBuffer = photo.fullImageUrl ? await downloadImageBufferFromSource(photo.fullImageUrl) : null;
+    let detectedNumbers = parseDetectedNumbersCache(photo.detectedNumbers);
+    let usedCachedDetections = detectedNumbers.length > 0 && !forceRefresh;
+
+    if (!usedCachedDetections) {
+      detectedNumbers = await extractDetectedNumbersFromImage(sourceBuffer);
+      await query(
+        `UPDATE photos
+         SET detected_numbers = $1,
+             detected_numbers_updated_at = CURRENT_TIMESTAMP
+         WHERE id = $2`,
+        [JSON.stringify(detectedNumbers), photo.id]
+      );
+      usedCachedDetections = false;
+    }
+
+    const normalizedDetectedNumbers = Array.from(new Set(
+      detectedNumbers
+        .map((value) => normalizeJerseyNumber(value))
+        .filter(Boolean)
+    ));
+
+    const rosterPlayersWithNumbers = roster.filter((player) => normalizeJerseyNumber(player.playerNumber));
+
+    const numberMatches = rosterPlayersWithNumbers
+      .filter((player) => {
+        const playerNumber = normalizeJerseyNumber(player.playerNumber);
+        return playerNumber && normalizedDetectedNumbers.includes(playerNumber);
+      })
+      .map((player) => ({
+        playerName: player.playerName,
+        playerNumber: player.playerNumber || null,
+        matchedNumber: String(player.playerNumber || ''),
+      }));
+
+    let faceMatches = [];
+    let faceMatchingAvailable = false;
+    if (studioId && photo.fullImageUrl) {
+      const signatures = sourceBuffer ? await fetchStudioFaceSignatures(studioId) : [];
+      faceMatchingAvailable = signatures.length > 0;
+
+      if (sourceBuffer && signatures.length > 0) {
+        const matchResult = await findBestPlayerFaceMatch({
+          imageBuffer: sourceBuffer,
+          signatures,
+        });
+
+        faceMatches = matchResult.matchedPlayers.slice(0, 10);
+      }
+    }
+
+    const suggestions = mergeDetectionSuggestions({ numberMatches, faceMatches });
+
+    res.json({
+      photoId: photo.id,
+      detectedNumbers,
+      usedCachedDetections,
+      detectedNumbersUpdatedAt: photo.detectedNumbersUpdatedAt || null,
+      numberMatchingAvailable: rosterPlayersWithNumbers.length > 0,
+      rosterPlayersWithNumbersCount: rosterPlayersWithNumbers.length,
+      faceMatches,
+      faceMatchingAvailable,
+      numberMatches,
+      suggestions,
+      currentlyTagged: {
+        playerNames: csvToList(photo.playerNames),
+        playerNumbers: csvToList(photo.playerNumbers),
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Upload photos
 const upload = multer({ storage: multer.memoryStorage() });
 router.post('/upload', requireActiveSubscription, upload.fields([
@@ -620,13 +1339,18 @@ router.post('/upload', requireActiveSubscription, upload.fields([
   try {
     await ensurePlayerRecognitionSchema();
     await ensurePhotoUploadColumns();
-    const files = req.files?.photos || [];
+    const rawFiles = req.files?.photos || [];
     const csvFile = req.files?.csv?.[0];
-    if (!files.length) {
+    if (!rawFiles.length) {
       return res.status(400).json({ error: 'No photos provided' });
     }
 
-    const { albumId, descriptions, metadata } = req.body;
+    const { albumId, descriptions, metadata, duplicateMode } = req.body;
+    const normalizedDuplicateMode = String(duplicateMode || 'allow').trim().toLowerCase();
+    if (!['allow', 'skip', 'overwrite'].includes(normalizedDuplicateMode)) {
+      return res.status(400).json({ error: 'Invalid duplicateMode. Use allow, skip, or overwrite.' });
+    }
+
     let parsedDescriptions = [];
     let parsedMetadata = [];
 
@@ -649,21 +1373,106 @@ router.post('/upload', requireActiveSubscription, upload.fields([
 
     const csvRosterRows = csvFile ? await parseCsvRowsFromBuffer(csvFile.buffer) : [];
 
-    const targetAlbum = await queryRow('SELECT id, studio_id as studioId FROM albums WHERE id = $1', [parsedAlbumId]);
+    const targetAlbum = await queryRow(
+      `SELECT id,
+              studio_id as studioId,
+              description,
+              category,
+              COALESCE(name, title) as albumName
+       FROM albums
+       WHERE id = $1`,
+      [parsedAlbumId]
+    );
     if (!targetAlbum) {
       return res.status(404).json({ error: 'Album not found' });
     }
 
     const studioId = Number(targetAlbum.studioId || req.studioId || 0) || null;
+    const rosterName = buildRosterNameFromAlbum(targetAlbum);
     if (req.studioId && targetAlbum.studioId && Number(targetAlbum.studioId) !== Number(req.studioId)) {
       return res.status(403).json({ error: 'Cannot upload to an album outside your studio' });
     }
 
+    let uploadEntries = rawFiles.map((file, index) => ({
+      file,
+      description: parsedDescriptions[index] || '',
+      metadata: parsedMetadata[index] || {},
+    }));
+
+    const incomingNames = Array.from(new Set(uploadEntries.map((entry) => normalizeToken(entry.file.originalname)).filter(Boolean)));
+    let duplicateRows = [];
+
+    if (incomingNames.length > 0) {
+      const namePlaceholders = incomingNames.map((_, i) => `$${i + 2}`).join(', ');
+      duplicateRows = await queryRows(
+        `SELECT id,
+                file_name as fileName,
+                full_image_url as fullImageUrl,
+                thumbnail_url as thumbnailUrl
+         FROM photos
+         WHERE album_id = $1
+           AND LOWER(file_name) IN (${namePlaceholders})`,
+        [parsedAlbumId, ...incomingNames]
+      );
+    }
+
+    const duplicateNameSet = new Set(duplicateRows.map((row) => normalizeToken(row.fileName)));
+
+    if (normalizedDuplicateMode === 'skip') {
+      uploadEntries = uploadEntries.filter((entry) => !duplicateNameSet.has(normalizeToken(entry.file.originalname)));
+    }
+
+    if (normalizedDuplicateMode === 'overwrite' && duplicateRows.length > 0) {
+      const duplicateIds = duplicateRows.map((row) => Number(row.id)).filter((id) => Number.isInteger(id) && id > 0);
+      const blobUrls = new Set();
+      for (const row of duplicateRows) {
+        if (row?.fullImageUrl) blobUrls.add(row.fullImageUrl);
+        if (row?.thumbnailUrl) blobUrls.add(row.thumbnailUrl);
+      }
+
+      await Promise.allSettled(
+        Array.from(blobUrls).map(async (url) => {
+          if (typeof url === 'string' && url.startsWith('http')) {
+            await deleteBlobByUrl(url);
+          }
+        })
+      );
+
+      if (duplicateIds.length > 0) {
+        const idPlaceholders = duplicateIds.map((_, i) => `$${i + 1}`).join(', ');
+        await query(`DELETE FROM order_items WHERE photo_id IN (${idPlaceholders})`, duplicateIds);
+        await query(`DELETE FROM photos WHERE id IN (${idPlaceholders})`, duplicateIds);
+
+        const coverIdPlaceholders = duplicateIds.map((_, i) => `$${i + 2}`).join(', ');
+
+        const coverHit = await queryRow(
+          `SELECT id
+           FROM albums
+           WHERE id = $1
+             AND cover_photo_id IN (${coverIdPlaceholders})`,
+          [parsedAlbumId, ...duplicateIds]
+        );
+
+        if (coverHit?.id) {
+          await query(
+            `UPDATE albums
+             SET cover_photo_id = NULL,
+                 cover_image_url = NULL
+             WHERE id = $1`,
+            [parsedAlbumId]
+          );
+        }
+      }
+    }
+
     if (studioId) {
-      const additionalBytes = files.reduce((sum, file) => sum + Number(file.size || file.buffer?.length || 0), 0);
+      const additionalBytes = uploadEntries.reduce((sum, entry) => sum + Number(entry.file.size || entry.file.buffer?.length || 0), 0);
       await enforceStorageQuotaForStudio(studioId, additionalBytes);
       if (csvRosterRows.length > 0) {
-        await saveRosterPlayers(studioId, csvRosterRows);
+        await saveRosterPlayers(studioId, csvRosterRows, {
+          rosterName,
+          sourceAlbumId: parsedAlbumId,
+        });
       }
     }
 
@@ -679,20 +1488,29 @@ router.post('/upload', requireActiveSubscription, upload.fields([
     }
 
     const photos = [];
-    for (let index = 0; index < files.length; index++) {
-      const file = files[index];
+    let firstExifCaption = '';
+    for (let index = 0; index < uploadEntries.length; index++) {
+      const entry = uploadEntries[index];
+      const file = entry.file;
       const blobName = makeBlobName(albumId, file.originalname);
       const photoUrl = await uploadImageBufferToAzure(file.buffer, blobName, file.mimetype);
 
       // Extract comprehensive metadata from EXIF and image properties
       const extractedMetadata = await extractImageMetadata(file.buffer);
-      const clientMetadata = parsedMetadata[index] || {};
+      const clientMetadata = entry.metadata || {};
       
       // Merge extracted EXIF metadata with any client-provided metadata (client takes precedence)
       const mergedMetadata = {
         ...extractedMetadata,
         ...clientMetadata,
       };
+
+      if (!firstExifCaption) {
+        const captionCandidate = String(mergedMetadata.caption || mergedMetadata.headline || '').trim();
+        if (captionCandidate) {
+          firstExifCaption = captionCandidate;
+        }
+      }
       
       const width = mergedMetadata.width || null;
       const height = mergedMetadata.height || null;
@@ -717,7 +1535,7 @@ router.post('/upload', requireActiveSubscription, upload.fields([
         file.originalname,
         photoUrl,
         photoUrl,
-        parsedDescriptions[index] || '',
+        entry.description || '',
         Object.keys(mergedMetadata).length > 0 ? JSON.stringify(mergedMetadata) : null,
         width,
         height,
@@ -742,13 +1560,22 @@ router.post('/upload', requireActiveSubscription, upload.fields([
         fileName: file.originalname,
         thumbnailUrl: photoUrl,
         fullImageUrl: photoUrl,
-        description: parsedDescriptions[index] || '',
+        description: entry.description || '',
         metadata: Object.keys(mergedMetadata).length > 0 ? mergedMetadata : null,
         width: width,
         height: height,
         playerName: player?.playerName || null,
         playerNumber: player?.playerNumber || null
       });
+    }
+
+    // If album description is empty, populate it from the first uploaded photo caption/headline
+    const existingAlbumDescription = String(targetAlbum.description || '').trim();
+    if (!existingAlbumDescription && firstExifCaption) {
+      await query(
+        `UPDATE albums SET description = $1 WHERE id = $2`,
+        [firstExifCaption, parsedAlbumId]
+      );
     }
 
     // Update album photo count
@@ -787,11 +1614,19 @@ router.post('/upload', requireActiveSubscription, upload.fields([
 // Update photo
 router.put('/:id', async (req, res) => {
   try {
+    await ensurePlayerRecognitionSchema();
     await ensurePhotoUploadColumns();
 
     const { description, metadata, playerNames, playerNumbers } = req.body;
     const currentPhoto = await queryRow(
-      `SELECT id, description, metadata, player_names as playerNames, player_numbers as playerNumbers
+      `SELECT id,
+              album_id as albumId,
+              file_name as fileName,
+              full_image_url as fullImageUrl,
+              description,
+              metadata,
+              player_names as playerNames,
+              player_numbers as playerNumbers
        FROM photos
        WHERE id = $1`,
       [req.params.id]
@@ -813,7 +1648,185 @@ router.put('/:id', async (req, res) => {
       SET description = $1, metadata = $2, player_names = $3, player_numbers = $4
       WHERE id = $5
     `, [nextDescription, nextMetadata, nextPlayerNames, nextPlayerNumbers, req.params.id]);
-    
+
+    let autoTaggedCount = 0;
+    let faceMatchedCount = 0;
+    let numberMatchedCount = 0;
+    let trainedFaceSamples = 0;
+    let album = null; // hoisted so notification block can reference it
+
+    const taggedNames = csvToList(nextPlayerNames);
+    const taggedNumbers = csvToList(nextPlayerNumbers);
+    const hasAnyTag = taggedNames.length > 0 || taggedNumbers.length > 0;
+
+    if (hasAnyTag) {
+      try {
+        album = await queryRow(
+          `SELECT id, name, title, studio_id as studioId
+           FROM albums
+           WHERE id = $1`,
+          [currentPhoto.albumId]
+        );
+
+        const studioId = Number(album?.studioId || 0) || null;
+        const sourceBuffer = await downloadImageBufferFromSource(currentPhoto.fullImageUrl);
+        const faceTags = extractFaceTagsFromMetadata(nextMetadata);
+
+        if (studioId && sourceBuffer && taggedNames.length > 0) {
+          trainedFaceSamples = await saveFaceSignaturesForPlayers({
+            studioId,
+            taggedNames,
+            taggedNumbers,
+            imageBuffer: sourceBuffer,
+            sourcePhotoId: currentPhoto.id,
+            faceTags,
+          });
+        }
+
+        const trainingSignatures = studioId && taggedNames.length > 0
+          ? (await fetchStudioFaceSignatures(studioId)).filter((sig) =>
+              taggedNames.some((name, index) =>
+                normalizeToken(sig.playerName) === normalizeToken(name)
+                && normalizeToken(sig.playerNumber) === normalizeToken(taggedNumbers[index] || taggedNumbers[0] || null)
+              )
+            )
+          : [];
+
+        const siblingPhotos = await queryRows(
+          `SELECT id,
+                  file_name as fileName,
+                  full_image_url as fullImageUrl,
+                  description,
+                  metadata,
+                  player_names as playerNames,
+                  player_numbers as playerNumbers
+           FROM photos
+           WHERE album_id = $1
+             AND id <> $2`,
+          [currentPhoto.albumId, currentPhoto.id]
+        );
+
+        for (const sibling of siblingPhotos) {
+          let matchedByFace = false;
+          let matchedByNumber = false;
+
+          if (trainingSignatures.length > 0 && sibling.fullImageUrl) {
+            const siblingBuffer = await downloadImageBufferFromSource(sibling.fullImageUrl);
+            const faceMatchResult = siblingBuffer
+              ? await findBestPlayerFaceMatch({
+                  imageBuffer: siblingBuffer,
+                  signatures: trainingSignatures,
+                  allowedPlayers: taggedNames.map((name, index) => ({
+                    playerName: name,
+                    playerNumber: taggedNumbers[index] || taggedNumbers[0] || null,
+                  })),
+                })
+              : { matchedPlayers: [], bestDistance: Number.POSITIVE_INFINITY };
+
+            matchedByFace = faceMatchResult.matchedPlayers.length > 0;
+          }
+
+          if (!matchedByFace && taggedNumbers.length > 0) {
+            matchedByNumber = taggedNumbers.some((number) => photoTextContainsNumber({
+              fileName: sibling.fileName,
+              description: sibling.description,
+              metadata: sibling.metadata,
+              number,
+            }));
+          }
+
+          if (!matchedByFace && !matchedByNumber) continue;
+
+          const mergedNames = mergeCsvLists(sibling.playerNames, taggedNames);
+          const mergedNumbers = mergeCsvLists(sibling.playerNumbers, taggedNumbers);
+
+          const changed = (mergedNames || null) !== (sibling.playerNames || null)
+            || (mergedNumbers || null) !== (sibling.playerNumbers || null);
+
+          if (!changed) continue;
+
+          await query(
+            `UPDATE photos
+             SET player_names = $1,
+                 player_numbers = $2
+             WHERE id = $3`,
+            [mergedNames, mergedNumbers, sibling.id]
+          );
+
+          autoTaggedCount += 1;
+          if (matchedByFace) faceMatchedCount += 1;
+          if (matchedByNumber) numberMatchedCount += 1;
+        }
+      } catch (recognitionError) {
+        console.error('Photo tag recognition follow-up failed:', recognitionError);
+      }
+    }
+
+    // ── Player watchlist notifications ────────────────────────────────────────
+    // Send emails to customers who are watching any of the newly-tagged players.
+    // We only notify for players that were NOT already on this photo before this update.
+    try {
+      const previousNames = csvToList(currentPhoto.playerNames);
+      const previousSet = new Set(previousNames.map((n) => n.toLowerCase()));
+      const newlyTaggedNames = taggedNames.filter((n) => !previousSet.has(n.toLowerCase()));
+
+      if (newlyTaggedNames.length > 0 && album?.studioId) {
+        const studioId = Number(album.studioId);
+
+        // album is already loaded above; use it directly
+        const albumName = album?.title || album?.name || null;
+
+        // Get studio slug for a friendly URL
+        const studioRow = await queryRow(
+          `SELECT public_slug as publicSlug, name FROM studios WHERE id = $1`,
+          [studioId]
+        ).catch(() => null);
+        const studioSlug = studioRow?.publicSlug || null;
+        const studioName = studioRow?.name || 'Photo Lab';
+
+        const appBase = String(process.env.APP_BASE_URL || '').replace(/\/$/, '');
+        const albumUrl = appBase
+          ? (studioSlug
+              ? `${appBase}/s/${encodeURIComponent(studioSlug)}/albums/${album?.id}`
+              : `${appBase}/albums/${album?.id}`)
+          : null;
+
+        for (const playerName of newlyTaggedNames) {
+          try {
+            // Find customers watching this player in this studio
+            const subscribers = await queryRows(
+              `SELECT w.id, w.player_number as playerNumber, u.email, u.name as customerName
+               FROM customer_player_watchlist w
+               JOIN users u ON u.id = w.user_id
+               WHERE w.studio_id = $1
+                 AND LOWER(w.player_name) = LOWER($2)
+                 AND u.email IS NOT NULL
+                 AND u.is_active = 1`,
+              [studioId, playerName]
+            );
+
+            for (const sub of subscribers) {
+              orderReceiptService.sendPlayerPhotoNotification({
+                to: sub.email,
+                customerName: sub.customerName || null,
+                playerName,
+                playerNumber: sub.playerNumber || null,
+                albumName,
+                albumUrl,
+                studioName,
+                photoCount: 1,
+              }).catch((e) => console.error('[watchlist notify] email error:', e?.message));
+            }
+          } catch (notifyErr) {
+            console.error('[watchlist notify] lookup error for player', playerName, notifyErr?.message);
+          }
+        }
+      }
+    } catch (notifyTopErr) {
+      console.error('[watchlist notify] top-level error:', notifyTopErr?.message);
+    }
+    // ── End watchlist notifications ───────────────────────────────────────────
+
     const photo = await queryRow(`
       SELECT 
         id, album_id as albumId, file_name as fileName, 
@@ -822,7 +1835,15 @@ router.put('/:id', async (req, res) => {
       FROM photos 
       WHERE id = $1
     `, [req.params.id]);
-    res.json(signPhotoForResponse(photo));
+    res.json({
+      ...signPhotoForResponse(photo),
+      autoTaggedCount,
+      trainedFaceSamples,
+      autoTagMatches: {
+        face: faceMatchedCount,
+        number: numberMatchedCount,
+      },
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -1006,7 +2027,10 @@ router.post('/album/:albumId/upload-players', csvUpload.single('csv'), async (re
     }
 
     const album = await queryRow(
-      `SELECT id, studio_id as studioId
+      `SELECT id,
+              studio_id as studioId,
+              category,
+              COALESCE(name, title) as albumName
        FROM albums
        WHERE id = $1`,
       [albumId]
@@ -1016,6 +2040,7 @@ router.post('/album/:albumId/upload-players', csvUpload.single('csv'), async (re
     }
 
     const studioId = Number(album.studioId || 0) || null;
+    const rosterName = buildRosterNameFromAlbum(album);
     const csvRows = await parseCsvRowsFromBuffer(req.file.buffer);
     const rowCount = csvRows.length;
 
@@ -1027,7 +2052,10 @@ router.post('/album/:albumId/upload-players', csvUpload.single('csv'), async (re
 
     let rosterPlayersSaved = 0;
     if (studioId) {
-      rosterPlayersSaved = await saveRosterPlayers(studioId, csvRows);
+      rosterPlayersSaved = await saveRosterPlayers(studioId, csvRows, {
+        rosterName,
+        sourceAlbumId: albumId,
+      });
     }
 
     const playerMapping = new Map();
@@ -1099,6 +2127,7 @@ router.post('/album/:albumId/upload-players', csvUpload.single('csv'), async (re
 
     res.json({
       message: 'Player roster uploaded successfully',
+      rosterName,
       rowsParsed: rowCount,
       photosUpdated: updatedCount,
       totalPhotos: photos.length,

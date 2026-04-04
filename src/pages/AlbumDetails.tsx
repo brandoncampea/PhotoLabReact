@@ -450,6 +450,15 @@ const AlbumDetails: React.FC = () => {
         </div>
         <h1 className="gradient-text" style={{ marginBottom: 6, lineHeight: 1.15 }}>{album.name}</h1>
         {album.description && <p className="albums-description" style={{ marginTop: 0, color: '#a8a8b8' }}>{album.description}</p>}
+        {album.batchShippingActive && (
+          <div className="album-details-batch-notice">
+            <strong>Batch shipping is active for this studio.</strong>
+            <span>
+              Select batch shipping at checkout to join the studio release shipment.
+              {album.batchDeadline ? ` Current release deadline: ${new Date(String(album.batchDeadline)).toLocaleString()}.` : ''}
+            </span>
+          </div>
+        )}
       </div>
 
       {selectedPhoto && (

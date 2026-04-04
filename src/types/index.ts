@@ -31,6 +31,8 @@ export interface Album {
   isPasswordProtected?: boolean;
   password?: string;
   passwordHint?: string;
+  batchShippingActive?: boolean;
+  batchDeadline?: string;
 }
 
 export interface Photo {
@@ -45,6 +47,11 @@ export interface Photo {
   playerNumbers?: string;
   width?: number;
   height?: number;
+  autoTaggedCount?: number;
+  autoTagMatches?: {
+    face?: number;
+    number?: number;
+  };
 }
 
 export interface PhotoMetadata {
@@ -70,6 +77,15 @@ export interface PhotoMetadata {
   headline?: string;
   city?: string;
   stateOrProvince?: string;
+  faceTags?: Array<{
+    id: string;
+    leftPct: number;
+    topPct: number;
+    widthPct: number;
+    heightPct: number;
+    playerName?: string | null;
+    playerNumber?: string | null;
+  }>;
 }
 
 export interface CartItem {
@@ -104,6 +120,12 @@ export interface Order {
   status: string;
   shippingOption: 'batch' | 'direct' | 'none';
   shippingCost: number;
+  studioShippingCost?: number;
+  shippingMargin?: number;
+  shippingDestination?: string;
+  shippingProductGroup?: string;
+  directPricingModeUsed?: 'pass_through' | 'flat_fee' | string;
+  shippingRubricSource?: string;
   items: OrderItem[];
   downloadUrls?: DownloadUrl[];
   shippingAddress: ShippingAddress;
@@ -133,6 +155,8 @@ export interface Order {
   trackingNumber?: string;
   trackingUrl?: string;
   shippedAt?: string;
+  hasDigitalItems?: boolean;
+  digitalItemCount?: number;
   excludedItemsNote?: string;
 }
 
@@ -171,6 +195,7 @@ export interface OrderItem {
   productSizeId?: number;
   productName?: string;
   productSizeName?: string;
+  isDigital?: boolean;
   basePrice?: number;
   labCost?: number;
 }
@@ -278,8 +303,24 @@ export interface ShippingConfig {
   id: number;
   batchDeadline: string;
   directShippingCharge: number;
+  directPricingMode?: 'pass_through' | 'flat_fee';
+  directFlatFee?: number | null;
   isActive: boolean;
   batchShippingAddress?: ShippingAddress | null;
+}
+
+export interface ShippingQuote {
+  studioId: number;
+  shippingOption: 'batch' | 'direct';
+  destinationLabel: string;
+  productGroup: 'Albums' | 'Books' | 'Wall Art' | 'Everything Else' | string;
+  whccShippingCost: number;
+  customerShippingCost: number;
+  studioShippingCost: number;
+  studioShippingDelta: number;
+  directPricingMode: 'pass_through' | 'flat_fee';
+  directFlatFee: number;
+  rubricSource: string;
 }
 
 export interface BatchQueueOrder {

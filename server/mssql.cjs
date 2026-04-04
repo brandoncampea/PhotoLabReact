@@ -254,6 +254,13 @@ async function initializeDatabase() {
 				shipping_address NVARCHAR(MAX),
 				billing_address NVARCHAR(MAX),
 				payment_status NVARCHAR(50),
+				shipping_cost FLOAT DEFAULT 0,
+				studio_shipping_cost FLOAT DEFAULT 0,
+				shipping_margin FLOAT DEFAULT 0,
+				shipping_destination NVARCHAR(100),
+				shipping_product_group NVARCHAR(100),
+				direct_pricing_mode_used NVARCHAR(32),
+				shipping_rubric_source NVARCHAR(255),
 				payment_intent_id NVARCHAR(255),
 				stripe_fee_amount FLOAT DEFAULT 0,
 				customer_receipt_sent_at DATETIME2,
@@ -331,6 +338,60 @@ async function initializeDatabase() {
 		IF COL_LENGTH('shipping_config', 'updated_at') IS NULL
 		BEGIN
 			ALTER TABLE shipping_config ADD updated_at DATETIME2 DEFAULT GETDATE()
+		END
+	`);
+		await query(`
+			IF COL_LENGTH('shipping_config', 'direct_pricing_mode') IS NULL
+			BEGIN
+				ALTER TABLE shipping_config ADD direct_pricing_mode NVARCHAR(32) DEFAULT 'flat_fee'
+			END
+		`);
+		await query(`
+			IF COL_LENGTH('shipping_config', 'direct_flat_fee') IS NULL
+			BEGIN
+				ALTER TABLE shipping_config ADD direct_flat_fee FLOAT NULL
+			END
+		`);
+	await query(`
+		IF COL_LENGTH('orders', 'shipping_cost') IS NULL
+		BEGIN
+			ALTER TABLE orders ADD shipping_cost FLOAT DEFAULT 0
+		END
+	`);
+	await query(`
+		IF COL_LENGTH('orders', 'studio_shipping_cost') IS NULL
+		BEGIN
+			ALTER TABLE orders ADD studio_shipping_cost FLOAT DEFAULT 0
+		END
+	`);
+	await query(`
+		IF COL_LENGTH('orders', 'shipping_margin') IS NULL
+		BEGIN
+			ALTER TABLE orders ADD shipping_margin FLOAT DEFAULT 0
+		END
+	`);
+	await query(`
+		IF COL_LENGTH('orders', 'shipping_destination') IS NULL
+		BEGIN
+			ALTER TABLE orders ADD shipping_destination NVARCHAR(100) NULL
+		END
+	`);
+	await query(`
+		IF COL_LENGTH('orders', 'shipping_product_group') IS NULL
+		BEGIN
+			ALTER TABLE orders ADD shipping_product_group NVARCHAR(100) NULL
+		END
+	`);
+	await query(`
+		IF COL_LENGTH('orders', 'direct_pricing_mode_used') IS NULL
+		BEGIN
+			ALTER TABLE orders ADD direct_pricing_mode_used NVARCHAR(32) NULL
+		END
+	`);
+	await query(`
+		IF COL_LENGTH('orders', 'shipping_rubric_source') IS NULL
+		BEGIN
+			ALTER TABLE orders ADD shipping_rubric_source NVARCHAR(255) NULL
 		END
 	`);
 	await query(`

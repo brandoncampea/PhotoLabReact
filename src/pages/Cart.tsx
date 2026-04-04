@@ -17,7 +17,7 @@ import { downloadService } from '../services/downloadService';
 import { discountCodeService } from '../services/discountCodeService';
 import { taxService } from '../services/taxService';
 import { whccEditorService } from '../services/whccEditorService';
-import { ShippingConfig, StripeConfig, Product, DiscountCode, ShippingAddress, CartItem as CartItemType, PaymentIntent } from '../types';
+import { ShippingConfig, StripeConfig, Product, DiscountCode, ShippingAddress, CartItem as CartItemType, PaymentIntent, ShippingQuote } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 
 const Cart: React.FC = () => {
@@ -27,6 +27,7 @@ const Cart: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [shippingConfig, setShippingConfig] = useState<ShippingConfig | null>(null);
+  const [shippingQuote, setShippingQuote] = useState<ShippingQuote | null>(null);
   const [stripeConfig, setStripeConfig] = useState<StripeConfig | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [shippingOption, setShippingOption] = useState<'batch' | 'direct'>('batch');
@@ -74,6 +75,37 @@ const Cart: React.FC = () => {
       setShippingAddress(prev => ({ ...prev, email: user.email }));
     }
   }, [user]);
+
+  useEffect(() => {
+    const shouldQuote = !!shippingConfig && hasPhysicalProducts();
+    if (!shouldQuote) {
+      setShippingQuote(null);
+      return;
+    }
+
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      try {
+        const quote = await shippingService.quote({
+          shippingOption,
+          shippingAddress,
+          items,
+        });
+        if (!cancelled) {
+          setShippingQuote(quote);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setShippingQuote(null);
+        }
+      }
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [shippingConfig, shippingOption, shippingAddress, items]);
 
   const loadStudioFees = async () => {
     try {
@@ -208,6 +240,9 @@ const Cart: React.FC = () => {
 
   const getShippingCost = () => {
     if (hasOnlyDigitalProducts()) return 0; // No shipping for digital-only orders
+    if (shippingQuote && shippingQuote.shippingOption === shippingOption) {
+      return Number(shippingQuote.customerShippingCost || 0);
+    }
     if (shippingOption === 'direct') {
       return shippingConfig?.directShippingCharge || 15.00;
     }
@@ -780,10 +815,15 @@ const Cart: React.FC = () => {
                   checked={shippingOption === 'direct'}
                   onChange={() => setShippingOption('direct')}
                 />
-                <strong>Direct Shipping - ${shippingConfig.directShippingCharge.toFixed(2)}</strong>
+                <strong>Direct Shipping - ${getShippingCost().toFixed(2)}</strong>
                 <p>
                   Ships immediately (2-3 business days)
                 </p>
+                {shippingQuote && shippingOption === 'direct' && (
+                  <p style={{ marginTop: '0.35rem', fontSize: '0.85rem', color: '#9ad1ff' }}>
+                    WHCC: ${Number(shippingQuote.whccShippingCost || 0).toFixed(2)} · Pricing: {shippingQuote.directPricingMode === 'flat_fee' ? 'Flat fee' : 'Pass-through'}
+                  </p>
+                )}
               </label>
 
               {!isBatchAvailable() && shippingOption === 'batch' && (

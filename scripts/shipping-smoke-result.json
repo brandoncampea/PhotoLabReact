@@ -6,7 +6,7 @@
     "productSizeId": 907,
     "productName": "Print",
     "sizeName": "2x3",
-    "price": 1.015
+    "price": 1.74
   },
   "futureConfig": {
     "status": 200,
@@ -15,6 +15,8 @@
       "id": 7,
       "batchDeadline": "2099-12-31T23:59:59.000Z",
       "directShippingCharge": 12.5,
+      "directPricingMode": "pass_through",
+      "directFlatFee": null,
       "isActive": true,
       "batchShippingAddress": {
         "fullName": "Campea Photography Batch Ship",
@@ -37,16 +39,16 @@
   },
   "directOrder": {
     "status": 201,
-    "id": 117,
+    "id": 28,
     "shippingOption": "direct",
     "orderStatus": "processing",
-    "labSubmitted": true,
+    "labSubmitted": false,
     "batchQueueStatus": null,
     "batchReadyDate": null
   },
   "futureBatchOrder": {
     "status": 201,
-    "id": 118,
+    "id": 29,
     "shippingOption": "batch",
     "orderStatus": "pending",
     "labSubmitted": false,
@@ -55,8 +57,8 @@
   },
   "queueFuture": {
     "status": 200,
-    "totalQueued": 6,
-    "eligibleCount": 0,
+    "totalQueued": 5,
+    "eligibleCount": 2,
     "nextBatchDate": "2099-12-31T23:59:59.000Z"
   },
   "pastConfig": {
@@ -66,6 +68,8 @@
       "id": 7,
       "batchDeadline": "2024-01-01T00:00:00.000Z",
       "directShippingCharge": 12.5,
+      "directPricingMode": "pass_through",
+      "directFlatFee": null,
       "isActive": true,
       "batchShippingAddress": {
         "fullName": "Campea Photography Batch Ship",
@@ -82,7 +86,7 @@
   },
   "eligibleBatchOrder": {
     "status": 201,
-    "id": 119,
+    "id": 30,
     "shippingOption": "batch",
     "orderStatus": "pending",
     "labSubmitted": false,
@@ -91,10 +95,12 @@
   },
   "queueEligible": {
     "status": 200,
-    "totalQueued": 7,
-    "eligibleCount": 1,
+    "totalQueued": 6,
+    "eligibleCount": 3,
     "eligibleOrderIds": [
-      119
+      24,
+      27,
+      30
     ]
   },
   "submitBatch": {
@@ -102,8 +108,9 @@
     "body": {
       "success": true,
       "selectedLab": "whcc",
-      "updatedCount": 1,
-      "notReadyCount": 0
+      "updatedCount": 0,
+      "notReadyCount": 0,
+      "failedCount": 3
     }
   }
 }

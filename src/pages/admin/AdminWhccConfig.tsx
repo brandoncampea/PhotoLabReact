@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { whccService, WhccWebhookStatus } from '../../services/whccService';
 import { orderService } from '../../services/orderService';
+import { shippingService, ShippingRubricSummary } from '../../services/shippingService';
 import { useAuth } from '../../contexts/AuthContext';
 import { Order } from '../../types';
 
@@ -20,9 +21,12 @@ const formatWebhookSummary = (webhookStatus: WhccWebhookStatus | null) => {
   };
 };
 
+const currency = (value: number) => `$${Number(value || 0).toFixed(2)}`;
+
 const AdminWhccConfig = () => {
   const { user } = useAuth();
   const canViewApiLogs = user?.role === 'super_admin';
+  const canViewRubricRules = user?.role === 'super_admin';
   const [enabled, setEnabled] = useState(false);
   const [consumerKey, setConsumerKey] = useState('');
   const [consumerSecret, setConsumerSecret] = useState('');
@@ -49,6 +53,14 @@ const AdminWhccConfig = () => {
   const [logDateFrom, setLogDateFrom] = useState('');
   const [logDateTo, setLogDateTo] = useState('');
   const [failedOnly, setFailedOnly] = useState(false);
+  const [shippingPolicyLoading, setShippingPolicyLoading] = useState(false);
+  const [shippingPolicySaving, setShippingPolicySaving] = useState(false);
+  const [shippingPolicyMessage, setShippingPolicyMessage] = useState<string | null>(null);
+  const [directPricingMode, setDirectPricingMode] = useState<'pass_through' | 'flat_fee'>('pass_through');
+  const [directFlatFee, setDirectFlatFee] = useState('');
+  const [shippingRubric, setShippingRubric] = useState<ShippingRubricSummary | null>(null);
+  const [shippingRubricLoading, setShippingRubricLoading] = useState(false);
+  const [shippingRubricError, setShippingRubricError] = useState<string | null>(null);
 
   // Load config from localStorage
   useEffect(() => {
@@ -91,6 +103,40 @@ const AdminWhccConfig = () => {
     };
     loadWebhookStatus();
   }, []);
+
+  useEffect(() => {
+    const loadShippingPolicy = async () => {
+      setShippingPolicyLoading(true);
+      try {
+        const config = await shippingService.getConfig();
+        setDirectPricingMode(config.directPricingMode === 'flat_fee' ? 'flat_fee' : 'pass_through');
+        setDirectFlatFee(config.directFlatFee == null ? String(config.directShippingCharge || '') : String(config.directFlatFee));
+      } catch {
+        // no-op: this section is optional and should not block WHCC config page usage
+      } finally {
+        setShippingPolicyLoading(false);
+      }
+    };
+    loadShippingPolicy();
+  }, []);
+
+  useEffect(() => {
+    const loadShippingRubric = async () => {
+      if (!canViewRubricRules) return;
+      setShippingRubricLoading(true);
+      setShippingRubricError(null);
+      try {
+        const rubric = await shippingService.getRubric();
+        setShippingRubric(rubric);
+      } catch (err) {
+        setShippingRubricError(`Failed to load translated shipping rules: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      } finally {
+        setShippingRubricLoading(false);
+      }
+    };
+
+    loadShippingRubric();
+  }, [canViewRubricRules]);
 
   const loadWhccApiLogs = async () => {
     if (!canViewApiLogs) return;
@@ -259,6 +305,24 @@ const AdminWhccConfig = () => {
     }
   };
 
+  const handleSaveShippingPolicy = async () => {
+    setShippingPolicySaving(true);
+    setShippingPolicyMessage(null);
+    try {
+      await shippingService.updateConfig({
+        directPricingMode,
+        directFlatFee: directPricingMode === 'flat_fee'
+          ? (directFlatFee === '' ? 0 : Number(directFlatFee))
+          : null,
+      });
+      setShippingPolicyMessage('✓ WHCC shipping policy saved for this studio context.');
+    } catch (err) {
+      setShippingPolicyMessage(`✗ Failed to save shipping policy: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setShippingPolicySaving(false);
+    }
+  };
+
   const webhookSummary = formatWebhookSummary(webhookStatus);
   const normalizedLogQuery = logQuery.trim().toLowerCase();
   const fromDate = logDateFrom ? new Date(`${logDateFrom}T00:00:00`) : null;
@@ -294,6 +358,12 @@ const AdminWhccConfig = () => {
 
     return true;
   });
+  const shippingRubricDestinations = shippingRubric?.destinations
+    ? Object.values(shippingRubric.destinations)
+    : [];
+  const shippingRubricGroups = shippingRubric?.matrix
+    ? Object.entries(shippingRubric.matrix)
+    : [];
 
   return (
     <div style={{ maxWidth: '900px', margin: '0 auto', padding: '20px' }}>
@@ -317,6 +387,133 @@ const AdminWhccConfig = () => {
       {testResult && (
         <div className={testResult.startsWith('✓') ? 'info-box-success' : 'info-box-error'} style={{ marginBottom: '20px' }}>
           {testResult}
+        </div>
+      )}
+
+      <div style={{ backgroundColor: 'var(--bg-tertiary)', padding: '20px', borderRadius: '8px', marginBottom: '30px' }}>
+        <h2 style={{ fontSize: '18px', marginBottom: '15px' }}>WHCC Shipping Policy</h2>
+        <p style={{ color: 'var(--text-secondary)', marginTop: 0 }}>
+          Configure how direct-shipping WHCC costs are charged to customers. Batch shipping remains studio-paid.
+        </p>
+
+        {shippingPolicyLoading ? (
+          <div style={{ color: 'var(--text-secondary)' }}>Loading shipping policy…</div>
+        ) : (
+          <>
+            <div style={{ marginBottom: '14px' }}>
+              <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500 }}>
+                Direct Shipping Pricing Mode
+              </label>
+              <select
+                value={directPricingMode}
+                onChange={(e) => setDirectPricingMode((e.target.value === 'flat_fee' ? 'flat_fee' : 'pass_through'))}
+                style={{ width: '100%', padding: '10px', borderRadius: '4px', border: '1px solid var(--border-color)' }}
+              >
+                <option value="pass_through">Pass WHCC shipping cost to customer</option>
+                <option value="flat_fee">Charge a flat fee to customer</option>
+              </select>
+            </div>
+
+            {directPricingMode === 'flat_fee' && (
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500 }}>
+                  Direct Shipping Flat Fee ($)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={directFlatFee}
+                  onChange={(e) => setDirectFlatFee(e.target.value)}
+                  style={{ width: '100%', padding: '10px', borderRadius: '4px', border: '1px solid var(--border-color)' }}
+                />
+              </div>
+            )}
+
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={handleSaveShippingPolicy}
+              disabled={shippingPolicySaving}
+            >
+              {shippingPolicySaving ? 'Saving…' : 'Save Shipping Policy'}
+            </button>
+
+            {shippingPolicyMessage && (
+              <div className={shippingPolicyMessage.startsWith('✓') ? 'info-box-success' : 'info-box-error'} style={{ marginTop: '12px' }}>
+                {shippingPolicyMessage}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {canViewRubricRules && (
+        <div style={{ backgroundColor: 'var(--bg-tertiary)', padding: '20px', borderRadius: '8px', marginBottom: '30px' }}>
+          <h2 style={{ fontSize: '18px', marginBottom: '15px' }}>Translated WHCC Shipping Rules</h2>
+          <p style={{ color: 'var(--text-secondary)', marginTop: 0 }}>
+            These rules are translated from {shippingRubric?.source || 'WHCC Shipping Rubric.xlsx'} and drive per-order shipping charges.
+          </p>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px', marginBottom: '16px' }}>
+            <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', padding: '12px' }}>
+              <strong>Batch Orders</strong>
+              <div style={{ color: 'var(--text-secondary)', marginTop: '6px', fontSize: '14px' }}>
+                Customer is charged $0 shipping. Studio pays the WHCC rubric amount.
+              </div>
+            </div>
+            <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', padding: '12px' }}>
+              <strong>Direct + Pass Through</strong>
+              <div style={{ color: 'var(--text-secondary)', marginTop: '6px', fontSize: '14px' }}>
+                Customer pays the WHCC rubric amount for the detected destination and product group.
+              </div>
+            </div>
+            <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', padding: '12px' }}>
+              <strong>Direct + Flat Fee</strong>
+              <div style={{ color: 'var(--text-secondary)', marginTop: '6px', fontSize: '14px' }}>
+                Customer pays your flat fee. The studio keeps or absorbs the difference versus the rubric amount.
+              </div>
+            </div>
+          </div>
+
+          <div style={{ marginBottom: '12px', color: 'var(--text-secondary)', fontSize: '14px' }}>
+            Shipping is calculated from the Drop Ship Lowest Cost rubric by destination. Destinations are classified as Lower 48, Alaska, Hawaii, Military, PO Box, US Territories, Canada, or International.
+          </div>
+
+          {shippingRubricLoading ? (
+            <div style={{ color: 'var(--text-secondary)' }}>Loading translated rules…</div>
+          ) : shippingRubricError ? (
+            <div className="info-box-error">✗ {shippingRubricError}</div>
+          ) : shippingRubric && shippingRubricDestinations.length > 0 ? (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: 'left', padding: '10px', borderBottom: '1px solid var(--border-color)' }}>Product Group</th>
+                    {shippingRubricDestinations.map((destination) => (
+                      <th key={destination} style={{ textAlign: 'right', padding: '10px', borderBottom: '1px solid var(--border-color)', whiteSpace: 'nowrap' }}>
+                        {destination}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {shippingRubricGroups.map(([groupName, groupRules]) => (
+                    <tr key={groupName}>
+                      <td style={{ padding: '10px', borderBottom: '1px solid var(--border-color)', fontWeight: 600 }}>{groupName}</td>
+                      {shippingRubricDestinations.map((destination) => (
+                        <td key={`${groupName}-${destination}`} style={{ padding: '10px', borderBottom: '1px solid var(--border-color)', textAlign: 'right', color: groupRules?.[destination] == null ? 'var(--text-secondary)' : 'inherit' }}>
+                          {groupRules?.[destination] == null ? '—' : currency(groupRules[destination])}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div style={{ color: 'var(--text-secondary)' }}>No translated rules available.</div>
+          )}
         </div>
       )}
 

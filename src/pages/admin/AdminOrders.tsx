@@ -74,6 +74,8 @@ const AdminOrders: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [whccRetrying, setWhccRetrying] = useState<number | null>(null);
   const [whccRetryMessageByOrder, setWhccRetryMessageByOrder] = useState<Record<number, { tone: 'info' | 'error'; text: string }>>({});
+  const [digitalResendingOrderId, setDigitalResendingOrderId] = useState<number | null>(null);
+  const [digitalResendMessageByOrder, setDigitalResendMessageByOrder] = useState<Record<number, { tone: 'info' | 'error'; text: string }>>({});
   const [loadingOrderDetails, setLoadingOrderDetails] = useState<Record<number, boolean>>({});
   const [expandedBatchGroups, setExpandedBatchGroups] = useState<Record<string, boolean>>({});
   const [batchReleaseProgress, setBatchReleaseProgress] = useState<{
@@ -274,6 +276,37 @@ const AdminOrders: React.FC = () => {
     }
   };
 
+  const handleDigitalResend = async (orderId: number) => {
+    setDigitalResendingOrderId(orderId);
+    const startedAt = new Date().toLocaleString();
+    setDigitalResendMessageByOrder((prev) => ({
+      ...prev,
+      [orderId]: { tone: 'info', text: `Sending new download links at ${startedAt}…` },
+    }));
+
+    try {
+      const result = await orderService.resendDigitalDownload(orderId);
+      setDigitalResendMessageByOrder((prev) => ({
+        ...prev,
+        [orderId]: {
+          tone: 'info',
+          text: `${result.message || `Digital download links resent for order #${orderId}.`} (${new Date().toLocaleString()})`,
+        },
+      }));
+      await ensureOrderDetailsLoaded(orderId);
+    } catch (err: any) {
+      setDigitalResendMessageByOrder((prev) => ({
+        ...prev,
+        [orderId]: {
+          tone: 'error',
+          text: `${err?.response?.data?.error || `Failed to resend digital download links for order #${orderId}`} (${new Date().toLocaleString()})`,
+        },
+      }));
+    } finally {
+      setDigitalResendingOrderId(null);
+    }
+  };
+
   const queuedBatchOrders = orders.filter((order) => order.isBatch && !order.labSubmitted);
   const recentDirectOrders = orders.filter((order) => !order.isBatch || order.labSubmitted);
   const visibleOrders = [...queuedBatchOrders, ...recentDirectOrders];
@@ -307,6 +340,25 @@ const AdminOrders: React.FC = () => {
 
   const submittedBatchOrders = filteredRecentOrders.filter((order) => order.isBatch && order.labSubmitted);
   const nonSubmittedBatchOrders = filteredRecentOrders.filter((order) => !(order.isBatch && order.labSubmitted));
+
+  const shippingReport = filteredRecentOrders.reduce(
+    (acc, order) => {
+      const customerShipping = Number(order.shippingCost || 0);
+      const studioShipping = Number(order.studioShippingCost ?? order.shippingCost ?? 0);
+      const shippingMargin = Number(order.shippingMargin ?? (customerShipping - studioShipping));
+      acc.customerShippingTotal += customerShipping;
+      acc.studioShippingTotal += studioShipping;
+      acc.shippingMarginTotal += shippingMargin;
+      acc.ordersWithShipping += customerShipping > 0 || studioShipping > 0 ? 1 : 0;
+      return acc;
+    },
+    {
+      customerShippingTotal: 0,
+      studioShippingTotal: 0,
+      shippingMarginTotal: 0,
+      ordersWithShipping: 0,
+    }
+  );
 
   const submittedBatchGroups = Array.from(
     submittedBatchOrders.reduce((map, order) => {
@@ -393,10 +445,6 @@ const AdminOrders: React.FC = () => {
   };
 
   const ensureOrderDetailsLoaded = async (orderId: number) => {
-    const existing = orders.find((entry) => entry.id === orderId);
-    if (existing && Array.isArray(existing.items) && existing.items.length > 0) {
-      return;
-    }
     if (loadingOrderDetails[orderId]) {
       return;
     }
@@ -451,9 +499,17 @@ const AdminOrders: React.FC = () => {
           0
         );
         const shippingCost = Number(order.shippingCost) || 0;
+        const studioShippingCost = Number(order.studioShippingCost ?? order.shippingCost ?? 0);
+        const shippingMargin = Number(order.shippingMargin ?? (shippingCost - studioShippingCost));
+        const shippingRuleLabel = order.isBatch
+          ? 'Batch order: customer $0, studio pays rubric cost'
+          : order.directPricingModeUsed === 'pass_through'
+            ? 'Direct order: customer charged rubric cost'
+            : 'Direct order: customer charged flat fee';
         const taxAmount = Number(order.taxAmount) || 0;
         const stripeFeeAmount = Number(order.stripeFeeAmount) || 0;
-        const otherOrderCosts = shippingCost + taxAmount + stripeFeeAmount;
+        const uncoveredShippingCost = Math.max(0, studioShippingCost - shippingCost);
+        const otherOrderCosts = uncoveredShippingCost + taxAmount + stripeFeeAmount;
         const grossMargin = studioRevenue - baseRevenue - otherOrderCosts;
         const importRunAt =
           order.whccRequestLog?.importResponseMeta?.runAt ||
@@ -650,12 +706,49 @@ const AdminOrders: React.FC = () => {
         ))}
       </div>
 
+      {order.hasDigitalItems && (
+        <div className="whcc-retry-row" style={{ marginTop: 14 }}>
+          <div className="whcc-retry-inline">
+            <button
+              type="button"
+              className="whcc-retry-btn"
+              disabled={digitalResendingOrderId === order.id}
+              onClick={() => handleDigitalResend(order.id)}
+            >
+              {digitalResendingOrderId === order.id
+                ? '⏳ Sending links…'
+                : `✉ Resend Download Link${(order.digitalItemCount || 0) > 1 ? 's' : ''}`}
+            </button>
+            {digitalResendMessageByOrder[order.id]?.text && (
+              <span className={`whcc-retry-message ${digitalResendMessageByOrder[order.id].tone === 'error' ? 'is-error' : 'is-info'}`}>
+                {digitalResendMessageByOrder[order.id].text}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="admin-order-pricing-summary">
         {order.subtotal != null && (
           <div className="admin-order-pricing-row"><span>Subtotal</span><span>${Number(order.subtotal).toFixed(2)}</span></div>
         )}
         {Number(order.shippingCost) > 0 && (
-          <div className="admin-order-pricing-row"><span>Shipping</span><span>${Number(order.shippingCost).toFixed(2)}</span></div>
+          <div className="admin-order-pricing-row"><span>Customer Shipping Charged</span><span>${Number(order.shippingCost).toFixed(2)}</span></div>
+        )}
+        <div className="admin-order-pricing-row"><span>Studio Shipping Cost</span><span>${studioShippingCost.toFixed(2)}</span></div>
+        <div className="admin-order-pricing-row"><span>Shipping Margin</span><span>${shippingMargin.toFixed(2)}</span></div>
+        {order.shippingDestination && (
+          <div className="admin-order-pricing-row"><span>Shipping Destination Rule</span><span>{order.shippingDestination}</span></div>
+        )}
+        {order.shippingProductGroup && (
+          <div className="admin-order-pricing-row"><span>Product Group Rule</span><span>{order.shippingProductGroup}</span></div>
+        )}
+        {order.directPricingModeUsed && (
+          <div className="admin-order-pricing-row"><span>Pricing Mode Used</span><span>{order.directPricingModeUsed === 'pass_through' ? 'Pass Through' : 'Flat Fee'}</span></div>
+        )}
+        <div className="admin-order-pricing-row"><span>Charge Rule</span><span>{shippingRuleLabel}</span></div>
+        {order.shippingRubricSource && (
+          <div className="admin-order-pricing-row"><span>Rubric Source</span><span>{order.shippingRubricSource}</span></div>
         )}
         {Number(order.taxAmount) > 0 && (
           <div className="admin-order-pricing-row"><span>Tax</span><span>${Number(order.taxAmount).toFixed(2)}</span></div>
@@ -863,6 +956,24 @@ const AdminOrders: React.FC = () => {
 
         <div className="recent-orders-section">
           <h2>Recent Orders</h2>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.6rem', marginBottom: '0.9rem' }}>
+            <div className="batch-stat-card">
+              <strong>Customer Shipping Collected</strong>
+              <div>${shippingReport.customerShippingTotal.toFixed(2)}</div>
+            </div>
+            <div className="batch-stat-card">
+              <strong>Studio Shipping Cost</strong>
+              <div>${shippingReport.studioShippingTotal.toFixed(2)}</div>
+            </div>
+            <div className="batch-stat-card">
+              <strong>Shipping Margin</strong>
+              <div>${shippingReport.shippingMarginTotal.toFixed(2)}</div>
+            </div>
+            <div className="batch-stat-card">
+              <strong>Orders with Shipping</strong>
+              <div>{shippingReport.ordersWithShipping}</div>
+            </div>
+          </div>
           <div className="admin-orders-search-row">
             <input
               type="text"

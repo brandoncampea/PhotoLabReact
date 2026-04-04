@@ -9,3 +9,18 @@
 	justify-content: center !important;
 	flex-direction: column !important;
 }
+
+.album-details-batch-notice {
+	display: grid;
+	gap: 6px;
+	margin-top: 10px;
+	padding: 12px 14px;
+	border-radius: 10px;
+	border: 1px solid rgba(139, 92, 246, 0.5);
+	background: rgba(76, 29, 149, 0.18);
+	color: #ddd6fe;
+}
+
+.album-details-batch-notice strong {
+	color: #f5f3ff;
+}

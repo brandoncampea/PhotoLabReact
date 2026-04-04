@@ -141,4 +141,9 @@ export const orderService = {
       return fallbackResponse.data;
     }
   },
+
+  async resendDigitalDownload(orderId: number): Promise<{ success: boolean; message: string; digitalItemCount: number; recipientEmail: string; }> {
+    const response = await api.post(`/orders/admin/${orderId}/resend-digital-download`);
+    return response.data;
+  },
 };

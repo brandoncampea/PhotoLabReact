@@ -45,6 +45,7 @@ const AdminUsers = lazy(() => import('./pages/admin/AdminUsers'));
 const AdminStudioAdmins = lazy(() => import('./pages/admin/AdminStudioAdmins'));
 const AdminLogin = lazy(() => import('./pages/admin/AdminLogin'));
 const SuperAdminLogin = lazy(() => import('./pages/admin/SuperAdminLogin'));
+const CustomerAccount = lazy(() => import('./pages/CustomerAccount'));
 
 
 
@@ -64,6 +65,7 @@ function App() {
               <Route path="/cart" element={<Cart />} />
               <Route path="/checkout" element={<Checkout />} />
               <Route path="/orders" element={<Orders />} />
+              <Route path="/account" element={<CustomerAccount />} />
               <Route path="/search" element={<SearchPage />} />
               <Route path="/studio/:studioSlug" element={<StudioPublicPage />} />
               <Route path="/s/:studioSlug/albums/:albumId" element={<AlbumDetails />} />

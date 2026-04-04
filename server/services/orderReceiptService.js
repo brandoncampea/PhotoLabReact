@@ -246,8 +246,81 @@ const renderInternalAccounting = (order) => `
     ${order.orderUrl ? `<p style="margin:12px 0 0 0;"><a href="${esc(order.orderUrl)}">View this order in Photo Lab</a></p>` : ''}
   </div>`;
 
+// ─── Player photo notification ────────────────────────────────────────────────
+
+const renderPlayerPhotoNotificationHtml = ({ customerName, playerName, playerNumber, albumName, albumUrl, studioName, photoCount }) => {
+  const playerLabel = playerNumber ? `${playerName} (#${playerNumber})` : playerName;
+  const photoWord = photoCount === 1 ? 'photo' : 'photos';
+  return `
+<div style="font-family:Arial,sans-serif;background:#0f131a;color:#eaf1fb;max-width:600px;margin:0 auto;padding:24px;border:1px solid #2e3642;border-radius:12px;">
+  <div style="margin-bottom:20px;">
+    <div style="font-size:13px;color:#9fb0c6;margin-bottom:4px;">${esc(studioName || 'Photo Lab')}</div>
+    <div style="font-size:22px;font-weight:700;color:#fff;">New photo${photoCount !== 1 ? 's' : ''} added!</div>
+  </div>
+
+  <p style="color:#d0d8e3;margin:0 0 16px 0;">
+    Hi ${esc(customerName || 'there')},
+  </p>
+  <p style="color:#d0d8e3;margin:0 0 20px 0;">
+    ${photoCount} new ${photoWord} featuring <strong style="color:#fff;">${esc(playerLabel)}</strong>
+    ${albumName ? `in the album <strong style="color:#fff;">${esc(albumName)}</strong>` : ''} ${photoCount === 1 ? 'has' : 'have'} just been added.
+  </p>
+
+  ${albumUrl ? `
+  <div style="text-align:center;margin:24px 0;">
+    <a href="${esc(albumUrl)}"
+       style="display:inline-block;padding:12px 28px;background:#6ee7b7;color:#0f172a;text-decoration:none;border-radius:8px;font-weight:700;font-size:15px;">
+      View Album
+    </a>
+  </div>
+  ` : ''}
+
+  <p style="font-size:12px;color:#6b7a8d;margin:24px 0 0 0;">
+    You're receiving this because you added <strong>${esc(playerLabel)}</strong> to your player watchlist.
+    <br/>To manage your notifications, visit your
+    <a href="${esc(appBaseUrl ? `${appBaseUrl}/account` : '/account')}" style="color:#6ee7b7;">account page</a>.
+  </p>
+</div>`.trim();
+};
+
 export const orderReceiptService = {
   isConfigured,
+
+  /**
+   * Send a notification to a customer that new photos were tagged for a watched player.
+   * @param {object} opts
+   * @param {string}   opts.to            - recipient email
+   * @param {string}   [opts.customerName]
+   * @param {string}   opts.playerName
+   * @param {string}   [opts.playerNumber]
+   * @param {string}   [opts.albumName]
+   * @param {string}   [opts.albumUrl]    - full URL to the album
+   * @param {string}   [opts.studioName]
+   * @param {number}   [opts.photoCount]  - how many photos were newly tagged
+   */
+  async sendPlayerPhotoNotification({ to, customerName, playerName, playerNumber, albumName, albumUrl, studioName, photoCount = 1 }) {
+    const transporter = await getTransporter();
+    if (!transporter || !to) return false;
+
+    const playerLabel = playerNumber ? `${playerName} (#${playerNumber})` : playerName;
+    const albumPart = albumName ? ` in "${albumName}"` : '';
+    const photoWord = photoCount === 1 ? 'photo' : 'photos';
+
+    try {
+      await transporter.sendMail({
+        from: smtpFrom,
+        to,
+        replyTo: smtpReplyTo,
+        subject: `New ${photoWord} added for ${playerLabel}${albumPart}`,
+        html: renderPlayerPhotoNotificationHtml({ customerName, playerName, playerNumber, albumName, albumUrl, studioName, photoCount }),
+        text: `Hi ${customerName || 'there'},\n\n${photoCount} new ${photoWord} featuring ${playerLabel}${albumPart} have been added.\n${albumUrl ? `\nView the album: ${albumUrl}` : ''}\n\nManage your watchlist: ${appBaseUrl ? `${appBaseUrl}/account` : '/account'}`,
+      });
+    } catch (emailErr) {
+      console.error('[playerPhotoNotification] Failed to send to', to, emailErr?.message);
+      return false;
+    }
+    return true;
+  },
 
   async sendCustomerReceipt({ to, customerName, order, items, digitalDownloads = [] }) {
     const transporter = await getTransporter();

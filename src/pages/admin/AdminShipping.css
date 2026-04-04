@@ -1,0 +1,329 @@
+.admin-shipping-page {
+  padding: 2rem;
+  min-height: 100%;
+  background:
+    radial-gradient(circle at top right, rgba(97, 75, 255, 0.16), transparent 28%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(17, 24, 39, 0.96));
+  color: #f8fafc;
+}
+
+.admin-shipping-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(320px, 1fr);
+  gap: 1.5rem;
+  align-items: stretch;
+  margin-bottom: 1.5rem;
+}
+
+.admin-shipping-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: 999px;
+  background: rgba(129, 140, 248, 0.14);
+  color: #c7d2fe;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 1rem;
+}
+
+.admin-shipping-hero h1 {
+  margin: 0;
+  font-size: clamp(2rem, 3vw, 2.8rem);
+  line-height: 1.05;
+  color: #ffffff;
+}
+
+.admin-shipping-hero p {
+  margin: 1rem 0 0;
+  max-width: 62ch;
+  color: #cbd5e1;
+  font-size: 1rem;
+  line-height: 1.65;
+}
+
+.admin-shipping-hero-cards {
+  display: grid;
+  gap: 1rem;
+}
+
+.admin-shipping-stat-card,
+.admin-shipping-section {
+  background: rgba(15, 23, 42, 0.76);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 20px;
+  box-shadow: 0 20px 45px rgba(2, 6, 23, 0.28);
+  backdrop-filter: blur(14px);
+}
+
+.admin-shipping-stat-card {
+  padding: 1.15rem 1.25rem;
+}
+
+.admin-shipping-stat-label {
+  display: block;
+  color: #94a3b8;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 0.5rem;
+}
+
+.admin-shipping-stat-card strong {
+  display: block;
+  color: #f8fafc;
+  font-size: 1.05rem;
+  line-height: 1.35;
+  margin-bottom: 0.35rem;
+}
+
+.admin-shipping-stat-card small {
+  color: #cbd5e1;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.admin-shipping-banner {
+  margin-bottom: 1.25rem;
+  padding: 0.95rem 1.1rem;
+  border-radius: 14px;
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+
+.admin-shipping-banner.is-success {
+  background: rgba(34, 197, 94, 0.12);
+  border-color: rgba(74, 222, 128, 0.32);
+  color: #bbf7d0;
+}
+
+.admin-shipping-banner.is-error {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(248, 113, 113, 0.28);
+  color: #fecaca;
+}
+
+.admin-shipping-loading {
+  padding: 2rem;
+  border-radius: 18px;
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  color: #cbd5e1;
+}
+
+.admin-shipping-form {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.admin-shipping-section {
+  padding: 1.5rem;
+}
+
+.admin-shipping-section-heading {
+  margin-bottom: 1.25rem;
+}
+
+.admin-shipping-section-heading h2 {
+  margin: 0 0 0.4rem;
+  color: #f8fafc;
+  font-size: 1.3rem;
+}
+
+.admin-shipping-section-heading p {
+  margin: 0;
+  color: #94a3b8;
+  line-height: 1.6;
+}
+
+.admin-shipping-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.admin-shipping-grid--top {
+  margin-bottom: 1rem;
+}
+
+.admin-shipping-field {
+  grid-column: span 4;
+  margin: 0;
+}
+
+.admin-shipping-field--wide {
+  grid-column: span 6;
+}
+
+.admin-shipping-field label {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: #e2e8f0;
+  font-weight: 600;
+}
+
+.admin-shipping-field .input,
+.admin-shipping-field select {
+  width: 100%;
+  padding: 0.85rem 1rem;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(30, 41, 59, 0.78);
+  color: #f8fafc;
+  box-sizing: border-box;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.admin-shipping-field .input:focus,
+.admin-shipping-field select:focus {
+  outline: none;
+  border-color: rgba(129, 140, 248, 0.75);
+  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.16);
+  background: rgba(30, 41, 59, 0.95);
+}
+
+.admin-shipping-field small {
+  display: block;
+  margin-top: 0.45rem;
+  color: #94a3b8;
+  line-height: 1.45;
+}
+
+.admin-shipping-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 0.5rem;
+  padding: 1rem 1.1rem;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(30, 41, 59, 0.42);
+  cursor: pointer;
+}
+
+.admin-shipping-toggle-title {
+  display: block;
+  color: #f8fafc;
+  font-weight: 700;
+  margin-bottom: 0.2rem;
+}
+
+.admin-shipping-toggle-copy {
+  display: block;
+  color: #94a3b8;
+  font-size: 0.92rem;
+}
+
+.admin-shipping-toggle-control {
+  position: relative;
+  width: 54px;
+  height: 32px;
+  flex: 0 0 auto;
+}
+
+.admin-shipping-toggle-control input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  margin: 0;
+}
+
+.admin-shipping-toggle-slider {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: rgba(71, 85, 105, 0.95);
+  transition: background 0.2s ease;
+}
+
+.admin-shipping-toggle-slider::after {
+  content: '';
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.35);
+  transition: transform 0.2s ease;
+}
+
+.admin-shipping-toggle-control input:checked + .admin-shipping-toggle-slider {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+}
+
+.admin-shipping-toggle-control input:checked + .admin-shipping-toggle-slider::after {
+  transform: translateX(22px);
+}
+
+.admin-shipping-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.1rem 1.25rem;
+  border-radius: 18px;
+  background: rgba(15, 23, 42, 0.78);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.admin-shipping-actions-copy {
+  color: #94a3b8;
+  max-width: 60ch;
+  line-height: 1.55;
+}
+
+.admin-shipping-save-button {
+  min-width: 180px;
+  border-radius: 14px;
+  font-weight: 700;
+  box-shadow: 0 12px 24px rgba(79, 70, 229, 0.22);
+}
+
+@media (max-width: 1100px) {
+  .admin-shipping-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-shipping-field,
+  .admin-shipping-field--wide {
+    grid-column: span 6;
+  }
+}
+
+@media (max-width: 720px) {
+  .admin-shipping-page {
+    padding: 1rem;
+  }
+
+  .admin-shipping-section,
+  .admin-shipping-actions {
+    padding: 1rem;
+  }
+
+  .admin-shipping-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-shipping-field,
+  .admin-shipping-field--wide {
+    grid-column: auto;
+  }
+
+  .admin-shipping-toggle,
+  .admin-shipping-actions {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .admin-shipping-save-button {
+    width: 100%;
+  }
+}

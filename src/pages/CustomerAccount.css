@@ -1,0 +1,287 @@
+/* ── Page wrapper ─────────────────────────────────────────────────────────── */
+.customer-account-page {
+  min-height: 100vh;
+  background: #0f131a;
+  display: flex;
+  justify-content: center;
+  padding: 40px 16px 60px;
+}
+
+.account-card {
+  background: #141922;
+  border: 1px solid #2e3642;
+  border-radius: 14px;
+  padding: 32px 28px;
+  width: 100%;
+  max-width: 680px;
+  color: #eaf1fb;
+}
+
+/* ── Title / header ───────────────────────────────────────────────────────── */
+.account-title {
+  font-size: 1.6rem;
+  font-weight: 700;
+  margin: 0 0 6px 0;
+  color: #fff;
+}
+
+.account-user-info {
+  font-size: 0.9rem;
+  color: #9fb0c6;
+  margin: 0 0 24px 0;
+}
+
+.account-login-prompt {
+  color: #d0d8e3;
+}
+
+.account-login-prompt a {
+  color: #6ee7b7;
+  text-decoration: none;
+}
+
+/* ── Message banner ───────────────────────────────────────────────────────── */
+.account-message {
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  margin-bottom: 16px;
+}
+
+.account-message--success {
+  background: #0d2b1f;
+  border: 1px solid #22c55e;
+  color: #86efac;
+}
+
+.account-message--error {
+  background: #2b0d0d;
+  border: 1px solid #ef4444;
+  color: #fca5a5;
+}
+
+/* ── Sections ─────────────────────────────────────────────────────────────── */
+.account-section {
+  margin-top: 28px;
+}
+
+.account-section + .account-section {
+  border-top: 1px solid #2e3642;
+  padding-top: 28px;
+}
+
+.account-section-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #fff;
+  margin: 0 0 6px 0;
+}
+
+.account-section-desc {
+  font-size: 0.85rem;
+  color: #9fb0c6;
+  margin: 0 0 16px 0;
+}
+
+.account-loading,
+.account-empty {
+  font-size: 0.9rem;
+  color: #6b7a8d;
+  padding: 12px 0;
+}
+
+/* ── Watchlist ────────────────────────────────────────────────────────────── */
+.watchlist-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.watchlist-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #1a2232;
+  border: 1px solid #2e3642;
+  border-radius: 8px;
+  padding: 10px 14px;
+}
+
+.watchlist-player-name {
+  font-weight: 600;
+  color: #eaf1fb;
+  flex: 1;
+}
+
+.watchlist-player-number {
+  font-size: 0.82rem;
+  color: #6ee7b7;
+  background: #0d2b1f;
+  border: 1px solid #22c55e44;
+  border-radius: 12px;
+  padding: 2px 8px;
+}
+
+.watchlist-remove-btn {
+  background: transparent;
+  border: 1px solid #3f4957;
+  color: #9fb0c6;
+  border-radius: 6px;
+  width: 28px;
+  height: 28px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+
+.watchlist-remove-btn:hover:not(:disabled) {
+  background: #2b0d0d;
+  border-color: #ef4444;
+  color: #fca5a5;
+}
+
+.watchlist-remove-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── Roster search ────────────────────────────────────────────────────────── */
+.account-search-input {
+  width: 100%;
+  padding: 9px 12px;
+  background: #1a2232;
+  border: 1px solid #3f4957;
+  border-radius: 8px;
+  color: #eaf1fb;
+  font-size: 0.9rem;
+  margin-bottom: 14px;
+  box-sizing: border-box;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.account-search-input::placeholder {
+  color: #6b7a8d;
+}
+
+.account-search-input:focus {
+  border-color: #6ee7b7;
+}
+
+/* ── Roster list ──────────────────────────────────────────────────────────── */
+.roster-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.roster-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: #1a2232;
+  border: 1px solid #2e3642;
+  border-radius: 8px;
+  padding: 10px 14px;
+  transition: border-color 0.15s;
+}
+
+.roster-item--watching {
+  border-color: #22c55e66;
+  background: #0d2b1f66;
+}
+
+.roster-item-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.roster-player-name {
+  font-weight: 600;
+  color: #eaf1fb;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.roster-player-number {
+  font-size: 0.8rem;
+  color: #6ee7b7;
+  background: #0d2b1f;
+  border: 1px solid #22c55e44;
+  border-radius: 12px;
+  padding: 1px 7px;
+  flex-shrink: 0;
+}
+
+.roster-team-name {
+  font-size: 0.78rem;
+  color: #6b7a8d;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Watch button ─────────────────────────────────────────────────────────── */
+.roster-watch-btn {
+  flex-shrink: 0;
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid #3f4957;
+  background: #1a2232;
+  color: #9fb0c6;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.roster-watch-btn:hover:not(:disabled) {
+  background: #0d2b1f;
+  border-color: #22c55e;
+  color: #6ee7b7;
+}
+
+.roster-watch-btn--watching {
+  background: #0d2b1f;
+  border-color: #22c55e;
+  color: #6ee7b7;
+}
+
+.roster-watch-btn--watching:hover:not(:disabled) {
+  background: #2b0d0d;
+  border-color: #ef4444;
+  color: #fca5a5;
+}
+
+.roster-watch-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ── Mobile ───────────────────────────────────────────────────────────────── */
+@media (max-width: 480px) {
+  .account-card {
+    padding: 20px 14px;
+  }
+
+  .roster-item-info {
+    flex-wrap: wrap;
+  }
+}
