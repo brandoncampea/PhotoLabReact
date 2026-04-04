@@ -1,41 +1,49 @@
-import sql from 'mssql';
-import dotenv from 'dotenv';
-dotenv.config({ path: '.env.local' });
-
-const config = process.env.MSSQL_CONNECTION_STRING || {
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  server: process.env.DB_HOST,
-  database: process.env.DB_NAME,
-  port: parseInt(process.env.DB_PORT || '1433', 10),
-  options: {
-    encrypt: process.env.MSSQL_ENCRYPT === 'true',
-    trustServerCertificate: process.env.MSSQL_TRUST_CERT === 'true',
-  },
-};
-
-const poolPromise = sql.connect(config)
-  .then(pool => {
-    console.log('Connected to MSSQL');
-    return pool;
-  })
-  .catch(err => {
-    console.error('MSSQL Connection Error:', err);
-    throw err;
-  });
+import mssqlCjs from './mssql.cjs';
 
 export async function query(text, params = []) {
-  const pool = await poolPromise;
-  const request = pool.request();
-  if (params && Array.isArray(params)) {
-    params.forEach((param, idx) => {
-      request.input(`p${idx + 1}`, param);
-    });
-  }
-  const result = await request.query(text);
-  return result.recordset;
+  const result = await mssqlCjs.query(text, params);
+  return result?.rows || [];
+}
+
+export async function queryRow(text, params = []) {
+  return mssqlCjs.queryRow(text, params);
+}
+
+export async function queryRows(text, params = []) {
+  return mssqlCjs.queryRows(text, params);
+}
+
+export async function tableExists(tableName) {
+  return mssqlCjs.tableExists(tableName);
+}
+
+export async function columnExists(tableName, columnName) {
+  return mssqlCjs.columnExists(tableName, columnName);
+}
+
+export async function transaction(callback) {
+  return mssqlCjs.transaction(async (client) => {
+    const legacyClient = {
+      query: async (text, params = []) => {
+        const result = await client.query(text, params);
+        return result?.rows || [];
+      },
+    };
+
+    return callback(legacyClient);
+  });
+}
+
+export async function initializeDatabase() {
+  return mssqlCjs.initializeDatabase();
 }
 
 export default {
   query,
+  queryRow,
+  queryRows,
+  tableExists,
+  columnExists,
+  transaction,
+  initializeDatabase,
 };

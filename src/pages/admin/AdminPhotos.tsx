@@ -88,8 +88,7 @@ const detectFaceBoxesInBrowser = async (photo: Photo): Promise<{ faceBoxes: Face
     const model = await getBlazeFaceModel();
     const predictions = await model.estimateFaces(image, false);
 
-    const faceBoxes: FaceTagBox[] = (predictions || [])
-      .map((prediction: any, index: number) => {
+    const mappedFaceBoxes: FaceTagBox[] = (predictions || []).map((prediction: any, index: number): FaceTagBox => {
         const topLeft = Array.isArray(prediction.topLeft)
           ? prediction.topLeft
           : (prediction.topLeft?.arraySync?.() || [0, 0]);
@@ -112,8 +111,10 @@ const detectFaceBoxesInBrowser = async (photo: Photo): Promise<{ faceBoxes: Face
           widthPct: clampPercent((boxWidth / width) * 100),
           heightPct: clampPercent((boxHeight / height) * 100),
         };
-      })
-      .filter((box: FaceTagBox) => box.widthPct > 0 && box.heightPct > 0);
+      });
+
+    const faceBoxes: FaceTagBox[] = mappedFaceBoxes
+      .filter((box) => box.widthPct > 0 && box.heightPct > 0);
 
     return {
       faceBoxes,
