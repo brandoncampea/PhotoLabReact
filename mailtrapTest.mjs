@@ -1,4 +1,5 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
+dotenv.config({ path: '.env.local' });
 // Minimal Mailtrap API test script (ESM)
 // Usage: node mailtrapTest.mjs
 
