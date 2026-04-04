@@ -335,8 +335,10 @@ jobs:
             --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
             --query defaultHostName -o tsv)
 
-          DEFAULT_HEALTH="https://${APP_HOST}/api/health"
-          CANONICAL_HEALTH="${{ env.CANONICAL_APP_URL }}/api/health"
+          DEFAULT_STARTUP_HEALTH="https://${APP_HOST}/health"
+          CANONICAL_STARTUP_HEALTH="${{ env.CANONICAL_APP_URL }}/health"
+          DEFAULT_API_HEALTH="https://${APP_HOST}/api/health"
+          CANONICAL_API_HEALTH="${{ env.CANONICAL_APP_URL }}/api/health"
 
           check_health() {
             local url="$1"
@@ -352,9 +354,16 @@ jobs:
             return 1
           }
 
-          if check_health "$DEFAULT_HEALTH" || check_health "$CANONICAL_HEALTH"; then
-            echo "Health check succeeded."
+          if check_health "$DEFAULT_STARTUP_HEALTH" || check_health "$CANONICAL_STARTUP_HEALTH"; then
+            echo "Startup health check succeeded. Verifying API health..."
           else
-            echo "Error: Health endpoint did not become ready in time. Failing workflow."
+            echo "Error: Startup health endpoint did not become ready in time. Failing workflow."
+            exit 1
+          fi
+
+          if check_health "$DEFAULT_API_HEALTH" || check_health "$CANONICAL_API_HEALTH"; then
+            echo "API health check succeeded."
+          else
+            echo "Error: API health endpoint did not become ready in time. Failing workflow."
             exit 1
           fi
