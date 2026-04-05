@@ -44,6 +44,10 @@ const AdminDiscountCodes: React.FC = () => {
               <th>Applies To</th>
               <th>Expiration</th>
               <th>Usage</th>
+              <th>Total Cost to Studio</th>
+              <th>Orders</th>
+              <th>First Use</th>
+              <th>Last Use</th>
               <th>Status</th>
               <th>Actions</th>
             </tr>
@@ -75,7 +79,7 @@ const AdminDiscountCodes: React.FC = () => {
                 </td>
                 <td>
                   <div>
-                    {code.usageCount}{code.maxUsages ? ` / ${code.maxUsages}` : ''}
+                    {code.couponStats?.useCount ?? code.usageCount}{code.maxUsages ? ` / ${code.maxUsages}` : ''}
                   </div>
                   {code.isOneTimeUse && (
                     <span className="muted-text" style={{ fontSize: '0.85rem' }}>One-time</span>
@@ -83,6 +87,18 @@ const AdminDiscountCodes: React.FC = () => {
                   {isMaxedOut(code) && (
                     <span className="danger-text" style={{ fontSize: '0.85rem', display: 'block' }}>Max reached</span>
                   )}
+                </td>
+                <td>
+                  ${code.couponStats?.totalCostToStudio?.toFixed(2) ?? '0.00'}
+                </td>
+                <td>
+                  {code.couponStats?.orderCount ?? 0}
+                </td>
+                <td>
+                  {code.couponStats?.firstUse ? new Date(code.couponStats.firstUse).toLocaleDateString() : '--'}
+                </td>
+                <td>
+                  {code.couponStats?.lastUse ? new Date(code.couponStats.lastUse).toLocaleDateString() : '--'}
                 </td>
                 <td>
                   <span className={`status-badge ${code.isActive && !isExpired(code.expirationDate) && !isMaxedOut(code) ? 'status-active' : 'status-inactive'}`}>

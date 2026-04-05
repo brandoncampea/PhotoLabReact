@@ -98,17 +98,11 @@ export const calculateWhccShippingQuote = ({
     ? 'flat_fee'
     : 'pass_through';
 
-  const flatFee = toNumber(
-    studioConfig?.directFlatFee,
-    toNumber(studioConfig?.directShippingCharge, whccShippingCost)
-  );
 
+  // Force flat $7.95 shipping for all direct (non-batch) orders
+  const FLAT_WHCC_SHIPPING = 7.95;
   const isBatch = shippingOption === 'batch';
-  const customerShippingCost = isBatch
-    ? 0
-    : directPricingMode === 'flat_fee'
-      ? roundCurrency(flatFee)
-      : roundCurrency(whccShippingCost);
+  const customerShippingCost = isBatch ? 0 : FLAT_WHCC_SHIPPING;
 
   const studioShippingCost = roundCurrency(whccShippingCost);
   const studioShippingDelta = roundCurrency(customerShippingCost - studioShippingCost);
@@ -121,8 +115,8 @@ export const calculateWhccShippingQuote = ({
     customerShippingCost,
     studioShippingCost,
     studioShippingDelta,
-    directPricingMode,
-    directFlatFee: roundCurrency(flatFee),
+    directPricingMode: 'flat_fee',
+    directFlatFee: FLAT_WHCC_SHIPPING,
     rubricSource: 'WHCC Shipping Rubric.xlsx',
   };
 };

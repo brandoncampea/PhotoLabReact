@@ -35,7 +35,7 @@ router.get('/', async (req, res) => {
       `, [studioId]);
     }
 
-    // Get applicable products for each code
+    // Get applicable products and usage/cost stats for each code
     const enriched = [];
     for (const code of codes) {
       const products = await queryRows(`
@@ -43,9 +43,28 @@ router.get('/', async (req, res) => {
         FROM discount_code_products
         WHERE discount_code_id = $1
       `, [code.id]);
+
+      // Get usage stats: total uses, total cost to studio, first/last use, order count
+      const usageStats = await queryRow(`
+        SELECT COUNT(*) as useCount,
+               COALESCE(SUM(o.subtotal - o.total), 0) as totalCostToStudio,
+               MIN(o.created_at) as firstUse,
+               MAX(o.created_at) as lastUse,
+               COUNT(DISTINCT o.id) as orderCount
+        FROM orders o
+        WHERE o.discount_code = $1
+      `, [code.code]);
+
       enriched.push({
         ...code,
-        applicableProductIds: products.map(p => p.productId)
+        applicableProductIds: products.map(p => p.productId),
+        couponStats: {
+          useCount: Number(usageStats?.useCount || 0),
+          totalCostToStudio: Number(usageStats?.totalCostToStudio || 0),
+          firstUse: usageStats?.firstUse,
+          lastUse: usageStats?.lastUse,
+          orderCount: Number(usageStats?.orderCount || 0),
+        }
       });
     }
 
@@ -91,8 +110,8 @@ router.get('/:id', async (req, res) => {
 router.post('/', adminRequired, async (req, res) => {
   try {
     const user = req.user;
-    const { code, description, discountType, discountValue, applicationType, expirationDate, 
-            isOneTimeUse, maxUsages, isActive, applicableProductIds } = req.body;
+            const { code, description, discountType, discountValue, applicationType, startDate, expirationDate, 
+              isOneTimeUse, maxUsages, isActive, applicableProductIds, couponLogic, couponParams } = req.body;
 
     let studioId = user?.role === 'super_admin' ? (req.body.studioId || null) : user?.studio_id;
     if (!studioId) {
@@ -101,8 +120,8 @@ router.post('/', adminRequired, async (req, res) => {
 
     const result = await queryRow(`
       INSERT INTO discount_codes (code, description, discount_type, discount_value, application_type, 
-                                  expiration_date, is_one_time_use, max_usages, is_active, studio_id)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                                  start_date, expiration_date, is_one_time_use, max_usages, is_active, studio_id, coupon_logic, coupon_params)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
       RETURNING id
     `, [
       code,
@@ -110,11 +129,14 @@ router.post('/', adminRequired, async (req, res) => {
       discountType,
       discountValue,
       applicationType,
+      startDate || null,
       expirationDate || null,
       !!isOneTimeUse,
       maxUsages || null,
       !!isActive,
-      studioId
+      studioId,
+      couponLogic || null,
+      couponParams ? JSON.stringify(couponParams) : null
     ]);
 
     const codeId = result.id;

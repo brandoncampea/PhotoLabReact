@@ -4,11 +4,13 @@
 
 import React, { useEffect, useState } from 'react';
 import DashboardChart from '../../components/DashboardChart';
+import { superAdminService } from '../../services/adminService';
 import api from '../../services/api';
-// import { orderService } from '../../services/orderService';
-// import { userAdminService } from '../../services/adminService';
 
 const SuperAdminDashboard: React.FC = () => {
+  // Studio revenue/cost drill-down
+  const [studioDetails, setStudioDetails] = useState<any[]>([]);
+  const [expandedStudio, setExpandedStudio] = useState<number | null>(null);
 
   // Chart range state
   const [revenueRange, setRevenueRange] = useState<'day' | 'week' | 'month'>('month');
@@ -28,6 +30,18 @@ const SuperAdminDashboard: React.FC = () => {
     totalCustomers: 0,
     pendingOrders: 0,
   });
+
+  useEffect(() => {
+    const fetchStudioDetails = async () => {
+      try {
+        const data = await superAdminService.getStudioRevenueDetails();
+        setStudioDetails(data || []);
+      } catch (err) {
+        setStudioDetails([]);
+      }
+    };
+    fetchStudioDetails();
+  }, []);
 
   // Fetch chart data from analyticsService
   useEffect(() => {
@@ -173,6 +187,108 @@ const SuperAdminDashboard: React.FC = () => {
         </div>
       </div>
 
+
+      {/* Studio Revenue/Cost Drill-down */}
+      <div className="dashboard-card tallydark-card" style={{ marginTop: 32, width: '100%' }}>
+        <h2 style={{ marginBottom: 12 }}>Studio Revenue & Cost Drill-down</h2>
+        <table className="admin-table" style={{ fontSize: 15, width: '100%' }}>
+          <thead>
+            <tr>
+              <th>Studio</th>
+              <th>Orders</th>
+              <th>Revenue</th>
+              <th>Subtotal</th>
+              <th>Tax</th>
+              <th>Shipping</th>
+              <th>Studio Shipping</th>
+              <th>Shipping Margin</th>
+              <th>Stripe Fees</th>
+              <th>Discounts</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {studioDetails.map(({ studio, summary, orders }: any) => (
+              <React.Fragment key={studio.id}>
+                <tr style={{ background: expandedStudio === studio.id ? '#ede9fe' : undefined }}>
+                  <td><b>{studio.name}</b></td>
+                  <td>{summary.orderCount}</td>
+                  <td>${Number(summary.totalRevenue).toFixed(2)}</td>
+                  <td>${Number(summary.totalSubtotal).toFixed(2)}</td>
+                  <td>${Number(summary.totalTax).toFixed(2)}</td>
+                  <td>${Number(summary.totalShipping).toFixed(2)}</td>
+                  <td>${Number(summary.totalStudioShipping).toFixed(2)}</td>
+                  <td>${Number(summary.totalShippingMargin).toFixed(2)}</td>
+                  <td>${Number(summary.totalStripeFees).toFixed(2)}</td>
+                  <td>${Number(summary.totalDiscounts).toFixed(2)}</td>
+                  <td>
+                    <button onClick={() => setExpandedStudio(expandedStudio === studio.id ? null : studio.id)} style={{ fontSize: 14 }}>
+                      {expandedStudio === studio.id ? 'Hide' : 'Drill Down'}
+                    </button>
+                  </td>
+                </tr>
+                {expandedStudio === studio.id && (
+                  <tr>
+                    <td colSpan={11}>
+                      <div style={{ maxHeight: 320, overflow: 'auto', background: '#f8fafc', borderRadius: 8, padding: 8 }}>
+                        <table className="admin-table" style={{ fontSize: 14, width: '100%' }}>
+                          <thead>
+                            <tr>
+                              <th>Order ID</th>
+                              <th>Date</th>
+                              <th>Status</th>
+                              <th>Total</th>
+                              <th>Subtotal</th>
+                              <th>Tax</th>
+                              <th>Shipping</th>
+                              <th>Studio Shipping</th>
+                              <th>Shipping Margin</th>
+                              <th>Stripe Fee</th>
+                              <th>Discount Code</th>
+                              <th>Items</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {orders.map((order: any) => (
+                              <tr key={order.id}>
+                                <td>{order.id}</td>
+                                <td>{order.created_at ? new Date(order.created_at).toLocaleString() : ''}</td>
+                                <td>{order.status}</td>
+                                <td>${Number(order.total).toFixed(2)}</td>
+                                <td>${Number(order.subtotal).toFixed(2)}</td>
+                                <td>${Number(order.tax_amount).toFixed(2)}</td>
+                                <td>${Number(order.shipping_cost).toFixed(2)}</td>
+                                <td>${Number(order.studio_shipping_cost).toFixed(2)}</td>
+                                <td>${Number(order.shipping_margin).toFixed(2)}</td>
+                                <td>${Number(order.stripe_fee_amount).toFixed(2)}</td>
+                                <td>{order.discount_code || ''}</td>
+                                <td>
+                                  {order.items && order.items.length > 0 ? (
+                                    <details>
+                                      <summary style={{ cursor: 'pointer' }}>{order.items.length} item(s)</summary>
+                                      <ul style={{ margin: 0, paddingLeft: 18 }}>
+                                        {order.items.map((item: any) => (
+                                          <li key={item.id}>
+                                            Product: {item.product_id}, Size: {item.product_size_id}, Qty: {item.quantity}, Price: ${Number(item.price).toFixed(2)}
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    </details>
+                                  ) : '—'}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 };

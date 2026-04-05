@@ -26,6 +26,44 @@ interface AdminPackagesProps {
 
 const AdminPackages: React.FC<AdminPackagesProps> = ({ products }) => {
   const [packages, setPackages] = useState<Package[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
+  // Example common packages for photography studios
+  const suggestedPackages: Omit<Package, 'id'>[] = [
+    {
+      name: 'Basic Print Package',
+      price: 29.99,
+      items: [
+        { productId: products[0]?.id, sizeId: products[0]?.sizes[0]?.id, quantity: 2 },
+        { productId: products[1]?.id, sizeId: products[1]?.sizes[0]?.id, quantity: 1 },
+      ].filter(i => i.productId && i.sizeId),
+    },
+    {
+      name: 'Family Value Package',
+      price: 49.99,
+      items: [
+        { productId: products[0]?.id, sizeId: products[0]?.sizes[0]?.id, quantity: 4 },
+        { productId: products[2]?.id, sizeId: products[2]?.sizes[0]?.id, quantity: 2 },
+      ].filter(i => i.productId && i.sizeId),
+    },
+    {
+      name: 'Premium Wall Package',
+      price: 89.99,
+      items: [
+        { productId: products[3]?.id, sizeId: products[3]?.sizes[0]?.id, quantity: 1 },
+        { productId: products[4]?.id, sizeId: products[4]?.sizes[0]?.id, quantity: 1 },
+      ].filter(i => i.productId && i.sizeId),
+    },
+  ];
+
+  // Show suggestions if no packages exist
+  React.useEffect(() => {
+    if (packages.length === 0 && products.length > 0) {
+      setShowSuggestions(true);
+    } else {
+      setShowSuggestions(false);
+    }
+  }, [packages, products]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<{ name: string; price: number; items: PackageItem[] }>({ name: '', price: 0, items: [] });
   const [productFilter, setProductFilter] = useState('');
@@ -88,8 +126,40 @@ const AdminPackages: React.FC<AdminPackagesProps> = ({ products }) => {
     if (editingId === id) setEditingId(null);
   };
 
+  const handleAcceptSuggestion = (pkg: Omit<Package, 'id'>) => {
+    setPackages(pkgs => [...pkgs, { ...pkg, id: Date.now().toString() }]);
+    setShowSuggestions(false);
+  };
+
+  const handleIgnoreSuggestions = () => setShowSuggestions(false);
+
   return (
     <div>
+      {showSuggestions && (
+        <div style={{ background: '#f9f9f9', border: '1px solid #ccc', padding: 16, borderRadius: 8, marginBottom: 24 }}>
+          <h4>Suggested Packages</h4>
+          <p style={{ color: '#666', marginBottom: 12 }}>No packages found. Here are some common packages offered by other photography studios. You can accept, modify, or ignore these suggestions.</p>
+          <ul style={{ marginBottom: 12 }}>
+            {suggestedPackages.map((pkg, idx) => (
+              <li key={pkg.name + idx} style={{ marginBottom: 10 }}>
+                <strong>{pkg.name}</strong> — ${pkg.price.toFixed(2)}
+                <ul style={{ margin: '4px 0 0 18px' }}>
+                  {pkg.items.map((item, i) => {
+                    const product = products.find(p => p.id === item.productId);
+                    const size = product?.sizes.find((s: any) => s.id === item.sizeId);
+                    return (
+                      <li key={i}>{product?.name || 'Product'}{size ? ` - ${size.name}` : ''} (x{item.quantity})</li>
+                    );
+                  })}
+                </ul>
+                <button style={{ marginRight: 8 }} onClick={() => handleAcceptSuggestion(pkg)}>Accept</button>
+                <button onClick={() => { setForm({ name: pkg.name, price: pkg.price, items: pkg.items }); setEditingId(null); }}>Modify</button>
+              </li>
+            ))}
+          </ul>
+          <button onClick={handleIgnoreSuggestions}>Ignore Suggestions</button>
+        </div>
+      )}
       <h3>{editingId ? 'Edit Package' : 'Create Package'}</h3>
       <div style={{ border: '1px solid #ccc', padding: 16, marginBottom: 24, borderRadius: 8 }}>
         <div style={{ marginBottom: 8 }}>

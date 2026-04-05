@@ -1,9 +1,60 @@
 import express from 'express';
+import express from 'express';
 import mssql from '../mssql.cjs';
 import { adminRequired } from '../middleware/auth.js';
 
 const { queryRow, queryRows } = mssql;
 const router = express.Router();
+
+// Super admin: Get all studio revenue/costs with drill-down
+router.get('/studio-revenue-details', adminRequired, async (req, res) => {
+    try {
+        // Only super admins
+        if (req.user?.role !== 'super_admin') {
+            return res.status(403).json({ error: 'Forbidden' });
+        }
+        // Get all studios
+        const studios = await queryRows('SELECT id, name FROM studios ORDER BY name');
+        // For each studio, get revenue/costs summary and all orders
+        const studioDetails = [];
+        for (const studio of studios) {
+            // Revenue/costs summary
+            const summary = await queryRow(`
+                SELECT COUNT(*) as orderCount,
+                             COALESCE(SUM(total),0) as totalRevenue,
+                             COALESCE(SUM(subtotal),0) as totalSubtotal,
+                             COALESCE(SUM(tax_amount),0) as totalTax,
+                             COALESCE(SUM(shipping_cost),0) as totalShipping,
+                             COALESCE(SUM(studio_shipping_cost),0) as totalStudioShipping,
+                             COALESCE(SUM(shipping_margin),0) as totalShippingMargin,
+                             COALESCE(SUM(stripe_fee_amount),0) as totalStripeFees,
+                             COALESCE(SUM(total - subtotal),0) as totalDiscounts
+                FROM orders WHERE studio_id = $1
+            `, [studio.id]);
+            // All orders for this studio
+            const orders = await queryRows(`
+                SELECT id, user_id, total, subtotal, tax_amount, shipping_cost, studio_shipping_cost, shipping_margin, stripe_fee_amount, discount_code, created_at, status
+                FROM orders WHERE studio_id = $1 ORDER BY created_at DESC
+            `, [studio.id]);
+            // For each order, get line items
+            for (const order of orders) {
+                order.items = await queryRows(`
+                    SELECT id, product_id, product_size_id, quantity, price, photo_id
+                    FROM order_items WHERE order_id = $1
+                `, [order.id]);
+            }
+            studioDetails.push({
+                studio,
+                summary,
+                orders
+            });
+        }
+        res.json(studioDetails);
+    } catch (err) {
+        console.error('Error fetching studio revenue details:', err);
+        res.status(500).json({ error: 'Failed to fetch studio revenue details' });
+    }
+});
 
 router.get('/dashboard-stats', adminRequired, async (req, res) => {
     try {
@@ -303,4 +354,5 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
     }
 });
 
+console.log('[adminDashboard.js] Router loaded');
 export default router;

@@ -278,12 +278,15 @@ export async function initializeDatabase() {
         discount_type TEXT NOT NULL,
         discount_value REAL NOT NULL,
         application_type TEXT NOT NULL,
+        start_date TIMESTAMP,
         expiration_date TIMESTAMP,
         is_one_time_use BOOLEAN DEFAULT false,
         usage_count INTEGER DEFAULT 0,
         max_usages INTEGER,
         is_active BOOLEAN DEFAULT true,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        coupon_logic TEXT,
+        coupon_params JSONB
       )
     `);
 

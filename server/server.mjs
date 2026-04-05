@@ -1,3 +1,4 @@
+console.log('[server.mjs] Server entrypoint loaded');
 // Load environment variables from .env.local (for WHCC and other secrets)
 import '../server/env-loader.mjs';
 import adminDashboardRoutes from './routes/adminDashboard.js';

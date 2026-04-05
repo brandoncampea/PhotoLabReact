@@ -168,3 +168,10 @@ export const userAdminService = {
     } as UserAccount;
   },
 };
+
+export const superAdminService = {
+  async getStudioRevenueDetails() {
+    const response = await api.get('/admin/studio-revenue-details');
+    return response.data;
+  },
+};
