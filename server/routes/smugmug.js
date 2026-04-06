@@ -1,16 +1,35 @@
+import express from 'express';
+import { authRequired } from '../middleware/auth.js';
+import { query, queryRow, queryRows } from '../mssql.cjs';
+import * as crypto from 'crypto';
+const router = express.Router();
+
 // --- SmugMug OAuth 1.0a Callback Endpoint ---
-router.get('/oauth/callback', authRequired, async (req, res) => {
+// NOTE: This route must NOT require authentication, as the callback from SmugMug will not have a session or JWT.
+// If you need to verify the studio, use a state parameter or look up by oauth_token/requestTokenSecret.
+router.get('/oauth/callback', async (req, res) => {
   try {
-    if (req.user.role !== 'studio_admin' && req.user.role !== 'super_admin') {
-      return res.status(403).json({ error: 'Unauthorized' });
-    }
-    const studioId = getStudioIdFromRequest(req);
-    if (!studioId) return res.status(400).json({ error: 'Studio context is required' });
+    console.log('[SmugMug OAuth] Callback hit. Query:', req.query);
     await ensureSmugMugConfigTable();
 
     const { oauth_token, oauth_verifier, requestTokenSecret } = req.query;
+    console.log('[SmugMug OAuth] Extracted params:', { oauth_token, oauth_verifier, requestTokenSecret });
     if (!oauth_token || !oauth_verifier || !requestTokenSecret) {
+      console.error('[SmugMug OAuth] Missing OAuth parameters:', req.query);
       return res.status(400).json({ error: 'Missing OAuth parameters' });
+    }
+
+    // Look up studioId using the oauth_token and requestTokenSecret
+    // (Assumes you stored the request token and studioId mapping when starting the OAuth flow)
+    const tokenRow = await queryRow(
+      `SELECT studio_id FROM studio_smugmug_config WHERE access_token = $1 OR access_token_secret = $2`,
+      [oauth_token, requestTokenSecret]
+    );
+    const studioId = tokenRow?.studio_id;
+    console.log('[SmugMug OAuth] Looked up studioId:', studioId, 'for oauth_token:', oauth_token);
+    if (!studioId) {
+      console.error('[SmugMug OAuth] Could not determine studioId from oauth_token/requestTokenSecret');
+      return res.status(400).json({ error: 'Could not determine studio context from OAuth token.' });
     }
 
     // Get API key/secret for this studio
@@ -18,14 +37,16 @@ router.get('/oauth/callback', authRequired, async (req, res) => {
       `SELECT api_key as apiKey, api_secret as apiSecret FROM studio_smugmug_config WHERE studio_id = $1`,
       [studioId]
     );
+    console.log('[SmugMug OAuth] DB config:', config);
     const apiKey = String(config?.apiKey || process.env.SMUGMUG_API_KEY || '').trim();
     const apiSecret = String(config?.apiSecret || process.env.SMUGMUG_API_SECRET || '').trim();
+    console.log('[SmugMug OAuth] Using apiKey:', apiKey, 'apiSecret:', apiSecret ? '[REDACTED]' : null);
     if (!apiKey || !apiSecret) {
+      console.error('[SmugMug OAuth] API key/secret missing for studio', studioId);
       return res.status(400).json({ error: 'SmugMug API key/secret not configured for this studio.' });
     }
 
     const OAuth = (await import('oauth-1.0a')).default || require('oauth-1.0a');
-    const crypto = (await import('crypto')).default || require('crypto');
     const oauth = OAuth({
       consumer: { key: apiKey, secret: apiSecret },
       signature_method: 'HMAC-SHA1',
@@ -45,6 +66,11 @@ router.get('/oauth/callback', authRequired, async (req, res) => {
     };
     const headers = oauth.toHeader(oauth.authorize(request_data, token));
     const params = new URLSearchParams({ oauth_token, oauth_verifier });
+    console.log('[SmugMug OAuth] Requesting access token from SmugMug...', {
+      url: request_data.url,
+      headers,
+      params: params.toString(),
+    });
     const response = await fetch(request_data.url, {
       method: 'POST',
       headers: {
@@ -55,6 +81,8 @@ router.get('/oauth/callback', authRequired, async (req, res) => {
       body: params.toString(),
     });
     const text = await response.text();
+    console.log('[SmugMug OAuth] Response status:', response.status, response.statusText);
+    console.log('[SmugMug OAuth] Response text:', text);
     if (!response.ok) {
       console.error('[SmugMug OAuth] Failed to get access token:', {
         status: response.status,
@@ -64,29 +92,29 @@ router.get('/oauth/callback', authRequired, async (req, res) => {
       return res.status(500).json({ error: 'Failed to get access token', details: text });
     }
     const result = Object.fromEntries(new URLSearchParams(text));
+    console.log('[SmugMug OAuth] Parsed token result:', result);
     if (!result.oauth_token || !result.oauth_token_secret) {
+      console.error('[SmugMug OAuth] No access token in response:', result);
       return res.status(500).json({ error: 'No access token in response', details: result });
     }
     // Store access token/secret in DB
-    await query(
+    console.log('[SmugMug OAuth] Saving access token for studio', studioId, {
+      access_token: result.oauth_token,
+      access_token_secret: result.oauth_token_secret
+    });
+    const updateResult = await query(
       `UPDATE studio_smugmug_config SET access_token = $1, access_token_secret = $2, updated_at = CURRENT_TIMESTAMP WHERE studio_id = $3`,
       [result.oauth_token, result.oauth_token_secret, studioId]
     );
+    console.log('[SmugMug OAuth] Update result:', updateResult);
     // Optionally, redirect to admin UI with success message
     res.redirect('/admin/smugmug?connected=1');
   } catch (error) {
     console.error('SmugMug OAuth callback error:', error);
-    res.status(500).json({ error: 'Failed to complete SmugMug OAuth', details: error?.message });
+    res.status(500).json({ error: 'Failed to complete SmugMug OAuth', details: error?.message, stack: error?.stack });
   }
 });
-import express from 'express';
-import crypto from 'crypto';
-import mssql from '../mssql.cjs';
-const { queryRow, queryRows, query, columnExists } = mssql;
-import { authRequired } from '../middleware/auth.js';
-import { uploadImageBufferToAzure } from '../services/azureStorage.js';
 
-const router = express.Router();
 const smugMugImportJobs = new Map();
 const getSmugMugStorageMode = () => (process.env.AZURE_STORAGE_CONNECTION_STRING ? 'azure' : 'smugmug-source');
 
@@ -523,14 +551,19 @@ router.get('/config', authRequired, async (req, res) => {
     await ensureSmugMugConfigTable();
     await ensureSmugMugImportTable();
     const config = await queryRow(
-      `SELECT studio_id as studioId, nickname, api_key as apiKey, api_secret as apiSecret
+      `SELECT studio_id as studioId, nickname, api_key as apiKey, api_secret as apiSecret, access_token as accessToken, access_token_secret as accessTokenSecret
        FROM studio_smugmug_config
        WHERE studio_id = $1`,
       [studioId]
     );
-
+    console.log('[SmugMug Config] Returning config for studio', studioId, {
+      accessToken: config?.accessToken,
+      accessTokenSecret: config?.accessTokenSecret,
+      nickname: config?.nickname,
+      apiKey: config?.apiKey
+    });
     res.json({
-      ...(config || { studioId, nickname: '', apiKey: '', apiSecret: '' }),
+      ...(config || { studioId, nickname: '', apiKey: '', apiSecret: '', accessToken: '', accessTokenSecret: '' }),
       storageMode: getSmugMugStorageMode(),
     });
   } catch (error) {
@@ -717,22 +750,7 @@ router.post('/import', authRequired, async (req, res) => {
       const albumKey = String(selected?.albumKey || '').trim();
       const albumName = String(selected?.name || '').trim() || 'SmugMug Album';
       const albumDescription = String(selected?.description || '').trim() || null;
-      if (!albumKey) continue;
-
-      const albumProgress = getAlbumProgress(importJob, albumKey);
-      if (albumProgress) {
-        albumProgress.status = 'preparing';
-      }
-      importJob.currentAlbumKey = albumKey;
-      importJob.currentAlbumName = albumName;
-      touchImportJob(importJob);
-
-      const existingImport = await queryRow(
-        `SELECT local_album_id as localAlbumId
-         FROM studio_smugmug_imports
-         WHERE studio_id = $1 AND smugmug_album_key = $2`,
-        [studioId, albumKey]
-      );
+            // ...existing code...
 
       let album = null;
       if (existingImport?.localAlbumId) {
