@@ -27,6 +27,59 @@ const toApiDateTimeValue = (value: string) => {
 
 
 const SuperAdminShipping = () => {
+    const [rubric, setRubric] = useState(null);
+    const [rubricDraft, setRubricDraft] = useState(null);
+    const [rubricLoading, setRubricLoading] = useState(true);
+    const [rubricError, setRubricError] = useState('');
+    const [rubricMessage, setRubricMessage] = useState('');
+    // Load rubric
+    useEffect(() => {
+      const loadRubric = async () => {
+        setRubricLoading(true);
+        setRubricError('');
+        try {
+          const data = await shippingService.getRubric();
+          setRubric(data);
+          setRubricDraft(JSON.parse(JSON.stringify(data.matrix)));
+        } catch (e) {
+          setRubricError('Failed to load shipping rubric');
+        } finally {
+          setRubricLoading(false);
+        }
+      };
+      loadRubric();
+    }, []);
+    const handleRubricInput = (group, dest, value) => {
+      setRubricDraft((prev) => {
+        const next = { ...prev };
+        if (!next[group]) next[group] = {};
+        next[group][dest] = value;
+        return next;
+      });
+    };
+
+    const handleSaveRubric = async () => {
+      setRubricMessage('');
+      try {
+        await shippingService.updateRubric({ matrix: rubricDraft });
+        setRubricMessage('✓ Shipping rubric updated!');
+        // Reload rubric from server
+        const data = await shippingService.getRubric();
+        setRubric(data);
+        setRubricDraft(JSON.parse(JSON.stringify(data.matrix)));
+      } catch (e) {
+        setRubricMessage('✗ Failed to update rubric');
+      }
+      setTimeout(() => setRubricMessage(''), 2000);
+    };
+    // Add updateRubric to shippingService if not present
+    if (!shippingService.updateRubric) {
+      shippingService.updateRubric = async (body) => {
+        const response = await shippingService.__api.put('/shipping/rubric', body);
+        return response.data;
+      };
+      shippingService.__api = require('../../services/api').default;
+    }
   // Removed unused config state
   const [batchDeadline, setBatchDeadline] = useState('');
   const [directShippingCharge, setDirectShippingCharge] = useState('');
@@ -114,6 +167,49 @@ const SuperAdminShipping = () => {
           </form>
         )}
         {message && <div className="success-message">{message}</div>}
+
+        <div style={{ marginTop: 40 }}>
+          <h2>WHCC Shipping Rubric (Super Admin Editable)</h2>
+          {rubricLoading ? (
+            <div>Loading rubric…</div>
+          ) : rubricError ? (
+            <div style={{ color: 'red' }}>{rubricError}</div>
+          ) : rubric && rubricDraft ? (
+            <form onSubmit={e => { e.preventDefault(); handleSaveRubric(); }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, marginBottom: 16 }}>
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: 'left', padding: 10, borderBottom: '1px solid #ccc' }}>Product Group</th>
+                    {Object.values(rubric.destinations).map(dest => (
+                      <th key={dest} style={{ textAlign: 'right', padding: 10, borderBottom: '1px solid #ccc' }}>{dest}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(rubricDraft).map(([group, groupRules]) => (
+                    <tr key={group}>
+                      <td style={{ padding: 10, borderBottom: '1px solid #eee', fontWeight: 600 }}>{group}</td>
+                      {Object.values(rubric.destinations).map(dest => (
+                        <td key={group + '-' + dest} style={{ padding: 10, borderBottom: '1px solid #eee', textAlign: 'right' }}>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={groupRules[dest] ?? ''}
+                            onChange={e => handleRubricInput(group, dest, e.target.value === '' ? '' : Number(e.target.value))}
+                            style={{ width: 80, textAlign: 'right' }}
+                          />
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <button type="submit" className="btn btn-primary">Save Rubric</button>
+              {rubricMessage && <div style={{ marginTop: 10, color: rubricMessage.startsWith('✓') ? 'green' : 'red' }}>{rubricMessage}</div>}
+            </form>
+          ) : null}
+        </div>
       </div>
     </>
   );

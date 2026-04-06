@@ -1,3 +1,84 @@
+// --- SmugMug OAuth 1.0a Callback Endpoint ---
+router.get('/oauth/callback', authRequired, async (req, res) => {
+  try {
+    if (req.user.role !== 'studio_admin' && req.user.role !== 'super_admin') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    const studioId = getStudioIdFromRequest(req);
+    if (!studioId) return res.status(400).json({ error: 'Studio context is required' });
+    await ensureSmugMugConfigTable();
+
+    const { oauth_token, oauth_verifier, requestTokenSecret } = req.query;
+    if (!oauth_token || !oauth_verifier || !requestTokenSecret) {
+      return res.status(400).json({ error: 'Missing OAuth parameters' });
+    }
+
+    // Get API key/secret for this studio
+    const config = await queryRow(
+      `SELECT api_key as apiKey, api_secret as apiSecret FROM studio_smugmug_config WHERE studio_id = $1`,
+      [studioId]
+    );
+    const apiKey = String(config?.apiKey || process.env.SMUGMUG_API_KEY || '').trim();
+    const apiSecret = String(config?.apiSecret || process.env.SMUGMUG_API_SECRET || '').trim();
+    if (!apiKey || !apiSecret) {
+      return res.status(400).json({ error: 'SmugMug API key/secret not configured for this studio.' });
+    }
+
+    const OAuth = (await import('oauth-1.0a')).default || require('oauth-1.0a');
+    const crypto = (await import('crypto')).default || require('crypto');
+    const oauth = OAuth({
+      consumer: { key: apiKey, secret: apiSecret },
+      signature_method: 'HMAC-SHA1',
+      hash_function(base_string, key) {
+        return crypto.createHmac('sha1', key).update(base_string).digest('base64');
+      },
+    });
+    const request_data = {
+      url: 'https://api.smugmug.com/services/oauth/1.0a/getAccessToken',
+      method: 'POST',
+      data: { oauth_token, oauth_verifier },
+    };
+    const fetch = (await import('node-fetch')).default;
+    const token = {
+      key: oauth_token,
+      secret: requestTokenSecret,
+    };
+    const headers = oauth.toHeader(oauth.authorize(request_data, token));
+    const params = new URLSearchParams({ oauth_token, oauth_verifier });
+    const response = await fetch(request_data.url, {
+      method: 'POST',
+      headers: {
+        ...headers,
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Accept: 'application/json',
+      },
+      body: params.toString(),
+    });
+    const text = await response.text();
+    if (!response.ok) {
+      console.error('[SmugMug OAuth] Failed to get access token:', {
+        status: response.status,
+        statusText: response.statusText,
+        responseText: text,
+      });
+      return res.status(500).json({ error: 'Failed to get access token', details: text });
+    }
+    const result = Object.fromEntries(new URLSearchParams(text));
+    if (!result.oauth_token || !result.oauth_token_secret) {
+      return res.status(500).json({ error: 'No access token in response', details: result });
+    }
+    // Store access token/secret in DB
+    await query(
+      `UPDATE studio_smugmug_config SET access_token = $1, access_token_secret = $2, updated_at = CURRENT_TIMESTAMP WHERE studio_id = $3`,
+      [result.oauth_token, result.oauth_token_secret, studioId]
+    );
+    // Optionally, redirect to admin UI with success message
+    res.redirect('/admin/smugmug?connected=1');
+  } catch (error) {
+    console.error('SmugMug OAuth callback error:', error);
+    res.status(500).json({ error: 'Failed to complete SmugMug OAuth', details: error?.message });
+  }
+});
 import express from 'express';
 import crypto from 'crypto';
 import mssql from '../mssql.cjs';
@@ -96,11 +177,106 @@ const ensureSmugMugConfigTable = async () => {
         studio_id INT NOT NULL UNIQUE FOREIGN KEY REFERENCES studios(id) ON DELETE CASCADE,
         nickname NVARCHAR(255) NULL,
         api_key NVARCHAR(255) NULL,
+        api_secret NVARCHAR(255) NULL,
+        access_token NVARCHAR(255) NULL,
+        access_token_secret NVARCHAR(255) NULL,
         updated_at DATETIME2 DEFAULT CURRENT_TIMESTAMP
       )
     END
+    IF COL_LENGTH('studio_smugmug_config', 'api_secret') IS NULL
+      ALTER TABLE studio_smugmug_config ADD api_secret NVARCHAR(255) NULL;
+    IF COL_LENGTH('studio_smugmug_config', 'access_token') IS NULL
+      ALTER TABLE studio_smugmug_config ADD access_token NVARCHAR(255) NULL;
+    IF COL_LENGTH('studio_smugmug_config', 'access_token_secret') IS NULL
+      ALTER TABLE studio_smugmug_config ADD access_token_secret NVARCHAR(255) NULL;
   `);
 };
+import OAuth from 'oauth-1.0a';
+import dotenv from 'dotenv';
+import fs from 'fs';
+
+// Load SmugMug OAuth credentials from .env.smugmug if present
+if (fs.existsSync(process.cwd() + '/.env.smugmug')) {
+  dotenv.config({ path: process.cwd() + '/.env.smugmug' });
+}
+
+const SMUGMUG_API_KEY = process.env.SMUGMUG_API_KEY;
+const SMUGMUG_API_SECRET = process.env.SMUGMUG_API_SECRET;
+
+// --- SmugMug OAuth 1.0a Initiation Endpoint ---
+router.post('/oauth/request-token', authRequired, async (req, res) => {
+  try {
+    // Only allow studio_admin or super_admin
+    if (req.user.role !== 'studio_admin' && req.user.role !== 'super_admin') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    const studioId = getStudioIdFromRequest(req);
+    if (!studioId) return res.status(400).json({ error: 'Studio context is required' });
+    await ensureSmugMugConfigTable();
+    // Fetch per-studio API key/secret
+    const config = await queryRow(
+      `SELECT api_key as apiKey, api_secret as apiSecret FROM studio_smugmug_config WHERE studio_id = $1`,
+      [studioId]
+    );
+    const apiKey = String(config?.apiKey || process.env.SMUGMUG_API_KEY || '').trim();
+    const apiSecret = String(config?.apiSecret || process.env.SMUGMUG_API_SECRET || '').trim();
+    if (!apiKey || !apiSecret) {
+      return res.status(400).json({ error: 'SmugMug API key/secret not configured for this studio.' });
+    }
+    const callbackUrl = req.body.callbackUrl || process.env.SMUGMUG_OAUTH_CALLBACK || 'http://localhost:3004/admin/smugmug';
+    const oauth = OAuth({
+      consumer: { key: apiKey, secret: apiSecret },
+      signature_method: 'HMAC-SHA1',
+      hash_function(base_string, key) {
+        return crypto.createHmac('sha1', key).update(base_string).digest('base64');
+      },
+    });
+    const request_data = {
+      url: 'https://api.smugmug.com/services/oauth/1.0a/getRequestToken',
+      method: 'POST',
+      data: { oauth_callback: callbackUrl },
+    };
+    const fetch = (await import('node-fetch')).default;
+    const headers = oauth.toHeader(oauth.authorize(request_data));
+    const params = new URLSearchParams({ oauth_callback: callbackUrl });
+    const response = await fetch(request_data.url, {
+      method: 'POST',
+      headers: {
+        ...headers,
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Accept: 'application/json',
+      },
+      body: params.toString(),
+    });
+    const text = await response.text();
+    if (!response.ok) {
+      console.error('[SmugMug OAuth] Failed to get request token:', {
+        status: response.status,
+        statusText: response.statusText,
+        responseText: text,
+        apiKey,
+        apiSecret,
+        callbackUrl,
+      });
+      return res.status(500).json({ error: 'Failed to get request token', details: text });
+    }
+    const result = Object.fromEntries(new URLSearchParams(text));
+    if (!result.oauth_token) {
+      console.error('[SmugMug OAuth] No oauth_token in response:', { result, text });
+      return res.status(500).json({ error: 'No oauth_token in response', details: result });
+    }
+    const authorizeUrl = `https://secure.smugmug.com/services/oauth/1.0a/authorize?oauth_token=${encodeURIComponent(result.oauth_token)}`;
+    res.json({
+      requestToken: result.oauth_token,
+      requestTokenSecret: result.oauth_token_secret,
+      authorizeUrl,
+      callbackUrl,
+    });
+  } catch (error) {
+    console.error('SmugMug OAuth request-token error:', error);
+    res.status(500).json({ error: 'Failed to initiate SmugMug OAuth', details: error?.message });
+  }
+});
 
 const ensureSmugMugImportTable = async () => {
   await query(`
@@ -347,14 +523,14 @@ router.get('/config', authRequired, async (req, res) => {
     await ensureSmugMugConfigTable();
     await ensureSmugMugImportTable();
     const config = await queryRow(
-      `SELECT studio_id as studioId, nickname, api_key as apiKey
+      `SELECT studio_id as studioId, nickname, api_key as apiKey, api_secret as apiSecret
        FROM studio_smugmug_config
        WHERE studio_id = $1`,
       [studioId]
     );
 
     res.json({
-      ...(config || { studioId, nickname: '', apiKey: '' }),
+      ...(config || { studioId, nickname: '', apiKey: '', apiSecret: '' }),
       storageMode: getSmugMugStorageMode(),
     });
   } catch (error) {
@@ -374,6 +550,7 @@ router.put('/config', authRequired, async (req, res) => {
 
     const nickname = String(req.body?.nickname || '').trim();
     const apiKey = String(req.body?.apiKey || '').trim();
+    const apiSecret = String(req.body?.apiSecret || '').trim();
 
     await ensureSmugMugConfigTable();
 
@@ -383,18 +560,19 @@ router.put('/config', authRequired, async (req, res) => {
          UPDATE studio_smugmug_config
          SET nickname = $2,
              api_key = $3,
+             api_secret = $4,
              updated_at = CURRENT_TIMESTAMP
          WHERE studio_id = $1
        END
        ELSE
        BEGIN
-         INSERT INTO studio_smugmug_config (studio_id, nickname, api_key)
-         VALUES ($1, $2, $3)
+         INSERT INTO studio_smugmug_config (studio_id, nickname, api_key, api_secret)
+         VALUES ($1, $2, $3, $4)
        END`,
-      [studioId, nickname || null, apiKey || null]
+      [studioId, nickname || null, apiKey || null, apiSecret || null]
     );
 
-    res.json({ studioId, nickname, apiKey, storageMode: getSmugMugStorageMode() });
+    res.json({ studioId, nickname, apiKey, apiSecret, storageMode: getSmugMugStorageMode() });
   } catch (error) {
     console.error('SmugMug config save error:', error);
     res.status(500).json({ error: 'Failed to save SmugMug config' });

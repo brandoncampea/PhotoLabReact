@@ -59,6 +59,54 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
 
   const [smugmugNickname, setSmugmugNickname] = useState('');
   const [smugmugApiKey, setSmugmugApiKey] = useState('');
+  const [smugmugApiSecret, setSmugmugApiSecret] = useState('');
+    // --- OAuth Connect Flow ---
+    const [smugmugOAuthLoading, setSmugmugOAuthLoading] = useState(false);
+    const [smugmugOAuthError, setSmugmugOAuthError] = useState('');
+    const [smugmugConnected, setSmugmugConnected] = useState(false);
+
+
+    // Check if already connected (look for access token in config or ?connected=1)
+    useEffect(() => {
+      // Check for ?connected=1 in URL (after OAuth callback)
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('connected') === '1') {
+        setSmugmugConnected(true);
+        // Optionally, remove the query param from the URL
+        window.history.replaceState({}, document.title, window.location.pathname);
+        return;
+      }
+      // Otherwise, will be set by fetchSmugmugConfig
+      setSmugmugConnected(false);
+    }, [effectiveStudioId]);
+
+    // Start OAuth flow
+    const startSmugmugOAuth = async () => {
+      setSmugmugOAuthLoading(true);
+      setSmugmugOAuthError('');
+      try {
+        const callbackUrl = `${window.location.origin}/admin/smugmug`;
+        const response = await fetch('/api/smugmug/oauth/request-token', {
+          method: 'POST',
+          headers: {
+            ...getAuthHeaders(),
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ callbackUrl }),
+        });
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(data.error || 'Failed to start SmugMug OAuth');
+        }
+        const data = await response.json();
+        // Store requestTokenSecret in URL for callback (not secure, but demo)
+        const url = `${data.authorizeUrl}&requestTokenSecret=${encodeURIComponent(data.requestTokenSecret)}`;
+        window.location.href = url;
+      } catch (err) {
+        setSmugmugOAuthError(err.message || 'Failed to start SmugMug OAuth');
+        setSmugmugOAuthLoading(false);
+      }
+    };
   const [smugmugAlbums, setSmugmugAlbums] = useState<SmugMugAlbumOption[]>([]);
   const [selectedSmugmugAlbums, setSelectedSmugmugAlbums] = useState<Record<string, boolean>>({});
   const [smugmugLoading, setSmugmugLoading] = useState(false);
@@ -97,7 +145,12 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
       const data = await response.json();
       setSmugmugNickname(data.nickname || '');
       setSmugmugApiKey(data.apiKey || '');
+      setSmugmugApiSecret(data.apiSecret || '');
       setStorageMode(data.storageMode === 'smugmug-source' ? 'smugmug-source' : 'azure');
+      // Set connected if access token is present
+      if (data.accessToken || data.access_token) {
+        setSmugmugConnected(true);
+      }
     } catch (err) {
       console.error('Failed to load SmugMug config:', err);
     }
@@ -117,7 +170,7 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
           ...getAuthHeaders(),
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ nickname: smugmugNickname, apiKey: smugmugApiKey }),
+        body: JSON.stringify({ nickname: smugmugNickname, apiKey: smugmugApiKey, apiSecret: smugmugApiSecret }),
       });
 
       if (!response.ok) {
@@ -272,7 +325,7 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
     smugmugAlbums.forEach((album) => {
       next[album.albumKey] = !album.imported;
     });
-    setSelectedSmugmugAlbums(next);
+            // removed stray line causing syntax error
   };
 
   const handleClearAllAlbums = () => {
@@ -291,6 +344,26 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
     return (
       <div className="admin-container">
         <h1>SmugMug Import</h1>
+        <div>
+          <div style={{ marginBottom: 16 }}>
+            <label>SmugMug Nickname</label>
+            <input type="text" value={smugmugNickname} onChange={e => setSmugmugNickname(e.target.value)} />
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <label>API Key</label>
+            <input type="text" value={smugmugApiKey} onChange={e => setSmugmugApiKey(e.target.value)} />
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <label>API Secret</label>
+            <input type="password" value={smugmugApiSecret} onChange={e => setSmugmugApiSecret(e.target.value)} />
+          </div>
+          <button onClick={saveSmugmugConfig} disabled={smugmugSaving}>Save SmugMug Settings</button>
+          <button onClick={startSmugmugOAuth} disabled={smugmugOAuthLoading || smugmugConnected} style={{ marginLeft: 12 }}>
+            {smugmugOAuthLoading ? 'Connecting...' : smugmugConnected ? 'Connected' : 'Connect SmugMug'}
+          </button>
+          {smugmugOAuthError && <div style={{ color: 'red', marginTop: 8 }}>{smugmugOAuthError}</div>}
+          {smugmugNotice && <div style={{ marginTop: 8 }}>{smugmugNotice}</div>}
+        </div>
         <div
           style={{
             backgroundColor: 'rgba(59, 130, 246, 0.12)',
@@ -312,6 +385,7 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
       <p style={{ color: 'var(--text-secondary)', marginBottom: '16px' }}>
         Connect your SmugMug account, load albums, then choose exactly which albums to import.
       </p>
+
 
       <div
         style={{
@@ -343,6 +417,16 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
               style={{ width: '100%' }}
             />
           </div>
+          <div>
+            <label style={{ display: 'block', marginBottom: '6px' }}>API Secret</label>
+            <input
+              type="password"
+              value={smugmugApiSecret}
+              onChange={(e) => setSmugmugApiSecret(e.target.value)}
+              placeholder="SmugMug API Secret"
+              style={{ width: '100%' }}
+            />
+          </div>
         </div>
 
         <div style={{ display: 'flex', gap: '10px', marginTop: '12px', flexWrap: 'wrap' }}>
@@ -355,11 +439,13 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
           <button className="btn btn-success" onClick={importSelectedSmugmugAlbums} disabled={smugmugImporting || smugmugAlbums.length === 0}>
             {smugmugImporting ? 'Importing...' : 'Import Selected Albums'}
           </button>
+          <button className="btn btn-primary" onClick={startSmugmugOAuth} disabled={smugmugOAuthLoading || smugmugConnected}>
+            {smugmugOAuthLoading ? 'Connecting...' : smugmugConnected ? 'Connected' : 'Connect SmugMug'}
+          </button>
         </div>
 
-        {smugmugNotice && (
-          <div style={{ marginTop: '10px', color: 'var(--text-secondary)' }}>{smugmugNotice}</div>
-        )}
+        {smugmugOAuthError && <div style={{ color: 'red', marginTop: 8 }}>{smugmugOAuthError}</div>}
+        {smugmugNotice && <div style={{ marginTop: '10px', color: 'var(--text-secondary)' }}>{smugmugNotice}</div>}
 
         {storageMode === 'smugmug-source' && (
           <div

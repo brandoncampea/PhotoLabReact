@@ -2,7 +2,7 @@ import express from 'express';
 import mssql from '../mssql.cjs';
 const { queryRow, queryRows, query } = mssql;
 import { authRequired } from '../middleware/auth.js';
-import { calculateWhccShippingQuote, getWhccRubricSummary } from '../services/whccShippingCostService.js';
+import { calculateWhccShippingQuote, getWhccRubricSummary, setWhccShippingRubric } from '../services/whccShippingCostService.js';
 
 const router = express.Router();
 
@@ -235,10 +235,30 @@ router.put('/config', async (req, res) => {
   }
 });
 
+
 // Get rubric summary (for super admin/lab config UI)
 router.get('/rubric', async (_req, res) => {
   try {
-    res.json(getWhccRubricSummary());
+    const rubric = await getWhccRubricSummary();
+    res.json(rubric);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update rubric (super admin only)
+router.put('/rubric', async (req, res) => {
+  try {
+    if (req.user?.role !== 'super_admin') {
+      return res.status(403).json({ error: 'Super admin only' });
+    }
+    const { matrix } = req.body;
+    if (!matrix || typeof matrix !== 'object') {
+      return res.status(400).json({ error: 'Missing or invalid rubric matrix' });
+    }
+    await setWhccShippingRubric(matrix);
+    const rubric = await getWhccRubricSummary();
+    res.json(rubric);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

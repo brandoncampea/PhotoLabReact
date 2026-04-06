@@ -13,7 +13,9 @@ const DROP_SHIP_LOWEST_COST_PRODUCT_GROUP = 'Drop Ship Lowest Cost';
 
 // Derived from "WHCC Shipping Rubric.xlsx" using only
 // the "Drop Ship Lowest Cost" rules by destination.
-const DROP_SHIP_LOWEST_COSTS = {
+
+// Default rubric (used if DB is empty)
+const DEFAULT_DROP_SHIP_LOWEST_COSTS = {
   [DESTINATION_LABELS.LOWER_48]: 9.95,
   [DESTINATION_LABELS.ALASKA]: 16.4425,
   [DESTINATION_LABELS.HAWAII]: 17.4425,
@@ -23,6 +25,19 @@ const DROP_SHIP_LOWEST_COSTS = {
   [DESTINATION_LABELS.CANADA]: 10.945,
   [DESTINATION_LABELS.INTERNATIONAL]: 9.95,
 };
+
+import mssql from '../mssql.cjs';
+const { getWhccShippingRubric, setWhccShippingRubric } = mssql;
+
+// Async rubric loader
+export async function loadDropShipLowestCosts() {
+  const matrix = await getWhccShippingRubric();
+  // If DB is empty, use default
+  if (!matrix || !matrix[DROP_SHIP_LOWEST_COST_PRODUCT_GROUP]) {
+    return { [DROP_SHIP_LOWEST_COST_PRODUCT_GROUP]: DEFAULT_DROP_SHIP_LOWEST_COSTS };
+  }
+  return matrix;
+}
 
 const toNumber = (value, fallback = 0) => {
   const n = Number(value);
@@ -77,27 +92,30 @@ export const resolveWhccProductGroup = (productCategories = []) => {
   return DROP_SHIP_LOWEST_COST_PRODUCT_GROUP;
 };
 
-export const lookupWhccRubricCost = ({ productGroup, destinationLabel }) => {
-  const directHit = DROP_SHIP_LOWEST_COSTS[destinationLabel];
+
+export async function lookupWhccRubricCost({ productGroup, destinationLabel }) {
+  const matrix = await loadDropShipLowestCosts();
+  const group = matrix[productGroup] || {};
+  const directHit = group[destinationLabel];
   if (Number.isFinite(directHit)) return roundCurrency(directHit);
+  // fallback to Lower 48
+  return roundCurrency((group[DESTINATION_LABELS.LOWER_48]) ?? DEFAULT_DROP_SHIP_LOWEST_COSTS[DESTINATION_LABELS.LOWER_48]);
+}
 
-  return roundCurrency(DROP_SHIP_LOWEST_COSTS[DESTINATION_LABELS.LOWER_48]);
-};
 
-export const calculateWhccShippingQuote = ({
+export async function calculateWhccShippingQuote({
   shippingOption,
   destinationAddress,
   productCategories,
   studioConfig,
-}) => {
+}) {
   const destinationLabel = classifyDestinationFromAddress(destinationAddress || {});
   const productGroup = DROP_SHIP_LOWEST_COST_PRODUCT_GROUP;
-  const whccShippingCost = lookupWhccRubricCost({ productGroup, destinationLabel });
+  const whccShippingCost = await lookupWhccRubricCost({ productGroup, destinationLabel });
 
   const directPricingMode = String(studioConfig?.directPricingMode || 'flat_fee').toLowerCase() === 'flat_fee'
     ? 'flat_fee'
     : 'pass_through';
-
 
   // Force flat $7.95 shipping for all direct (non-batch) orders
   const FLAT_WHCC_SHIPPING = 7.95;
@@ -119,12 +137,16 @@ export const calculateWhccShippingQuote = ({
     directFlatFee: FLAT_WHCC_SHIPPING,
     rubricSource: 'WHCC Shipping Rubric.xlsx',
   };
-};
+}
 
-export const getWhccRubricSummary = () => ({
-  source: 'WHCC Shipping Rubric.xlsx',
-  matrix: {
-    [DROP_SHIP_LOWEST_COST_PRODUCT_GROUP]: DROP_SHIP_LOWEST_COSTS,
-  },
-  destinations: DESTINATION_LABELS,
-});
+
+export async function getWhccRubricSummary() {
+  const matrix = await loadDropShipLowestCosts();
+  return {
+    source: 'WHCC Shipping Rubric.xlsx',
+    matrix,
+    destinations: DESTINATION_LABELS,
+  };
+}
+
+export { setWhccShippingRubric };

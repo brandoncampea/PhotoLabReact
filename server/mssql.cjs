@@ -185,6 +185,48 @@ async function transaction(callback) {
 async function initializeDatabase() {
 	// Create all required tables if they do not exist
 	await query(`
+		IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'whcc_shipping_rubric')
+		BEGIN
+			CREATE TABLE whcc_shipping_rubric (
+				id INT IDENTITY(1,1) PRIMARY KEY,
+				product_group NVARCHAR(255) NOT NULL,
+				destination_label NVARCHAR(255) NOT NULL,
+				cost FLOAT NOT NULL,
+				updated_at DATETIME2 DEFAULT GETDATE()
+			)
+		END
+	`);
+	// CRUD for WHCC shipping rubric
+	async function getWhccShippingRubric() {
+		const rows = await queryRows('SELECT product_group, destination_label, cost FROM whcc_shipping_rubric', []);
+		const matrix = {};
+		for (const row of rows) {
+			if (!matrix[row.product_group]) matrix[row.product_group] = {};
+			matrix[row.product_group][row.destination_label] = row.cost;
+		}
+		return matrix;
+	}
+
+	async function setWhccShippingRubric(matrix) {
+		// matrix: { [product_group]: { [destination_label]: cost } }
+		await query('DELETE FROM whcc_shipping_rubric', []);
+		const entries = [];
+		for (const [product_group, destinations] of Object.entries(matrix)) {
+			for (const [destination_label, cost] of Object.entries(destinations)) {
+				entries.push({ product_group, destination_label, cost });
+			}
+		}
+		for (const entry of entries) {
+			await query(
+				'INSERT INTO whcc_shipping_rubric (product_group, destination_label, cost) VALUES ($1, $2, $3)',
+				[entry.product_group, entry.destination_label, entry.cost]
+			);
+		}
+	}
+
+	module.exports.getWhccShippingRubric = getWhccShippingRubric;
+	module.exports.setWhccShippingRubric = setWhccShippingRubric;
+	await query(`
 		IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'studios')
 		BEGIN
 			CREATE TABLE studios (

@@ -1,5 +1,4 @@
 import express from 'express';
-import express from 'express';
 import mssql from '../mssql.cjs';
 import { adminRequired } from '../middleware/auth.js';
 
