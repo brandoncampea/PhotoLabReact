@@ -1,3 +1,22 @@
+import { fetchPhotoExif } from '../services/exifService';
+  const [showExifModal, setShowExifModal] = useState(false);
+  const [exifLoading, setExifLoading] = useState(false);
+  const [exifError, setExifError] = useState('');
+  const [exifData, setExifData] = useState<any>(null);
+  const handleShowExif = async () => {
+    if (!selectedPhoto) return;
+    setExifLoading(true);
+    setExifError('');
+    setShowExifModal(true);
+    try {
+      const data = await fetchPhotoExif(selectedPhoto.id);
+      setExifData(data);
+    } catch (err: any) {
+      setExifError(err?.message || 'Failed to load EXIF');
+    } finally {
+      setExifLoading(false);
+    }
+  };
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import Cropper from 'react-cropper';
@@ -478,6 +497,45 @@ const AlbumDetails: React.FC = () => {
               📋 Photo Details
             </summary>
             <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #3a3656', display: 'grid', gap: 10 }}>
+                            <button
+                              className="btn btn-secondary"
+                              style={{ marginBottom: 10, width: 'fit-content', fontSize: 13 }}
+                              onClick={handleShowExif}
+                            >
+                              Show EXIF Metadata
+                            </button>
+                    {/* EXIF Modal */}
+                    {showExifModal && (
+                      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <div style={{ background: '#181c24', borderRadius: 12, border: '1px solid #2a2740', maxWidth: 600, width: '90vw', maxHeight: 600, overflow: 'auto', padding: 24, color: '#fff', position: 'relative' }}>
+                          <button
+                            className="btn btn-secondary"
+                            style={{ position: 'absolute', top: 16, right: 16, zIndex: 10 }}
+                            onClick={() => setShowExifModal(false)}
+                          >
+                            Close
+                          </button>
+                          <h2 style={{ marginTop: 0, marginBottom: 18, color: '#b7aaff', fontSize: 22 }}>EXIF Metadata</h2>
+                          {exifLoading && <div>Loading EXIF...</div>}
+                          {exifError && <div style={{ color: '#ff9a9a' }}>{exifError}</div>}
+                          {exifData && exifData.exif && (
+                            <table style={{ width: '100%', borderCollapse: 'collapse', color: '#fff', fontSize: 15 }}>
+                              <tbody>
+                                {Object.entries(exifData.exif).filter(([k]) => typeof exifData.exif[k] !== 'object').map(([key, value]) => (
+                                  <tr key={key}>
+                                    <td style={{ fontWeight: 600, padding: '4px 8px', color: '#b7aaff', textAlign: 'right', minWidth: 120 }}>{key}</td>
+                                    <td style={{ padding: '4px 8px', color: '#fff' }}>{String(value)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          )}
+                          {!exifLoading && !exifError && (!exifData || !exifData.exif) && (
+                            <div style={{ color: '#aaa' }}>No EXIF metadata found for this photo.</div>
+                          )}
+                        </div>
+                      </div>
+                    )}
               {/* Filename */}
               {selectedPhoto.fileName && (
                 <div>

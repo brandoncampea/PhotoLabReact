@@ -1,3 +1,59 @@
+// GET /:id/exif - Return EXIF metadata for a photo
+router.get('/:id/exif', async (req, res) => {
+  try {
+    const photo = await queryRow(
+      `SELECT id, file_name as fileName, full_image_url as fullImageUrl FROM photos WHERE id = $1`,
+      [req.params.id]
+    );
+    if (!photo) {
+      return res.status(404).json({ error: 'Photo not found' });
+    }
+    let imageBuffer = null;
+    if (photo.fullImageUrl && photo.fullImageUrl.startsWith('http')) {
+      const fetch = (await import('node-fetch')).default;
+      const imgRes = await fetch(photo.fullImageUrl);
+      if (!imgRes.ok) throw new Error('Failed to download image');
+      imageBuffer = Buffer.from(await imgRes.arrayBuffer());
+    } else if (photo.fullImageUrl) {
+      // Local or Azure blob
+      const download = await downloadBlob(photo.fullImageUrl);
+      if (download?.readableStreamBody) {
+        const chunks = [];
+        await new Promise((resolve, reject) => {
+          download.readableStreamBody.on('data', (c) => chunks.push(c));
+          download.readableStreamBody.on('end', resolve);
+          download.readableStreamBody.on('error', reject);
+        });
+        imageBuffer = Buffer.concat(chunks);
+      }
+    }
+    if (!imageBuffer) {
+      return res.status(404).json({ error: 'Image data not found' });
+    }
+    // Write buffer to temp file for exiftool
+    const os = await import('os');
+    const fs = await import('fs');
+    const path = await import('path');
+    const { exiftool } = await import('exiftool-vendored');
+    const tmpDir = os.tmpdir();
+    const tmpFile = path.join(tmpDir, `exif-read-${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`);
+    try {
+      fs.writeFileSync(tmpFile, imageBuffer);
+      const tags = await exiftool.read(tmpFile);
+      res.json({
+        fileName: photo.fileName,
+        photoId: photo.id,
+        exif: tags,
+      });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to extract EXIF', detail: err?.message });
+    } finally {
+      try { fs.unlinkSync(tmpFile); } catch {}
+    }
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 import express from 'express';
 import multer from 'multer';
 import path from 'path';

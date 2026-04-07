@@ -1,3 +1,10 @@
+import axios from 'axios';
+
+// Fetch EXIF metadata for a photo by ID from backend
+export async function fetchPhotoExif(photoId: number) {
+  const res = await axios.get(`/api/photos/${photoId}/exif`);
+  return res.data;
+}
 import { PhotoMetadata } from '../types';
 
 // Simulated EXIF reading - in production, use a library like exifr or exif-js

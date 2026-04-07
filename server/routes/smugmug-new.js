@@ -1,5 +1,8 @@
-
 import express from 'express';
+import { exiftool } from 'exiftool-vendored';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 
 
 
@@ -26,18 +29,27 @@ router.get('/import-progress/:jobId', authRequired, async (req, res) => {
       await ensureSmugMugConfigTable();
       await ensureSmugMugImportTable();
 
+
       const config = await queryRow(
-        `SELECT nickname, api_key as apiKey FROM studio_smugmug_config WHERE studio_id = $1`,
+        `SELECT nickname, api_key as apiKey, api_secret as apiSecret, access_token as accessToken, access_token_secret as accessTokenSecret FROM studio_smugmug_config WHERE studio_id = $1`,
         [studioId]
       );
 
       const nickname = String(req.body?.nickname || config?.nickname || '').trim();
       const apiKey = String(req.body?.apiKey || config?.apiKey || process.env.SMUGMUG_API_KEY || '').trim();
+      const apiSecret = String(req.body?.apiSecret || config?.apiSecret || process.env.SMUGMUG_API_SECRET || '').trim();
+      const accessToken = String(req.body?.accessToken || config?.accessToken || '').trim();
+      const accessTokenSecret = String(req.body?.accessTokenSecret || config?.accessTokenSecret || '').trim();
       const selectedAlbums = Array.isArray(req.body?.albums) ? req.body.albums : [];
       const requestedJobId = String(req.body?.jobId || '').trim();
 
-      if (!nickname) {
-        return res.status(400).json({ error: 'SmugMug nickname is required' });
+      // If any required SmugMug credentials are missing, force re-authentication
+      if (!nickname || !apiKey || !apiSecret || !accessToken || !accessTokenSecret) {
+        return res.status(401).json({
+          error: 'SmugMug authentication required',
+          reauth: true,
+          message: 'Please re-authenticate with SmugMug before importing.'
+        });
       }
       if (!selectedAlbums.length) {
         return res.status(400).json({ error: 'Select at least one album to import' });
@@ -54,6 +66,9 @@ router.get('/import-progress/:jobId', authRequired, async (req, res) => {
         const albumKey = String(selected?.albumKey || '').trim();
         const albumName = String(selected?.name || '').trim() || 'SmugMug Album';
         const albumDescription = String(selected?.description || '').trim() || null;
+
+        // Track first imported photo URL for cover
+        let firstImportedPhotoUrl = null;
 
         // Check if already imported
         const existingImport = await queryRow(
@@ -91,11 +106,50 @@ router.get('/import-progress/:jobId', authRequired, async (req, res) => {
           let width = null;
           let height = null;
           try {
-            // Download image
+            // Always prefer OriginalUrl if available
+            let downloadUrl = image.OriginalUrl || image.sourceUrl;
+            if (!downloadUrl) throw new Error('No valid image URL');
+            console.log('[SMUGMUG IMPORT] Downloading image:', {
+              fileName: image.fileName,
+              downloadUrl,
+              importMethod: image.importMethod,
+            });
             const fetch = (await import('node-fetch')).default;
-            const imgRes = await fetch(image.sourceUrl);
+            const imgRes = await fetch(downloadUrl);
             if (!imgRes.ok) throw new Error('Failed to download image');
             imageBuffer = Buffer.from(await imgRes.arrayBuffer());
+            console.log('[SMUGMUG IMPORT] Downloaded image', image.fileName, 'size:', imageBuffer.length, 'url:', downloadUrl);
+
+            // --- EXIF ANNOTATION AND PRESERVATION ---
+            // Write import method to EXIF and preserve all EXIF data
+            const tmpDir = os.tmpdir();
+            const tmpFile = path.join(tmpDir, `smugmug-import-${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`);
+            let exifWritten = false;
+            try {
+              fs.writeFileSync(tmpFile, imageBuffer);
+              // Compose EXIF update: annotate ImageDescription, preserve all else
+              const origDescription = image?.Caption || image?.Title || '';
+              const importMethod = image?.importMethod || 'SmugMug';
+              const description = `[Imported via ${importMethod}] ${origDescription}`.trim();
+              await exiftool.write(tmpFile, {
+                ImageDescription: description,
+                XPComment: description,
+                UserComment: description,
+              });
+              const exifBuffer = fs.readFileSync(tmpFile);
+              if (exifBuffer && exifBuffer.length > 0) {
+                imageBuffer = exifBuffer;
+                exifWritten = true;
+                console.log('[SMUGMUG IMPORT] EXIF written for', image.fileName, 'size:', imageBuffer.length);
+              }
+            } catch (exifErr) {
+              console.error('[SMUGMUG IMPORT] Failed to write EXIF', exifErr);
+            } finally {
+              try { fs.unlinkSync(tmpFile); } catch {}
+            }
+            if (!exifWritten) {
+              console.warn('[SMUGMUG IMPORT] EXIF not written, using original buffer for', image.fileName);
+            }
             // Optionally, get image dimensions
           } catch (error) {
             importJob.totals.photosProcessed += 1;
@@ -112,6 +166,11 @@ router.get('/import-progress/:jobId', authRequired, async (req, res) => {
           }
 
           const uploadedImage = await uploadImportedImage(albumId, image, imageBuffer);
+          // Set first imported photo URL for cover
+          if (!firstImportedPhotoUrl && uploadedImage && uploadedImage.url) {
+            firstImportedPhotoUrl = uploadedImage.url;
+            console.log('[SMUGMUG IMPORT] Set firstImportedPhotoUrl for cover:', firstImportedPhotoUrl);
+          }
           console.log('[SMUGMUG IMPORT] Inserting photo:', {
             albumId,
             fileName: image.fileName,
@@ -157,6 +216,16 @@ router.get('/import-progress/:jobId', authRequired, async (req, res) => {
           `UPDATE albums SET photo_count = (SELECT COUNT(*) FROM photos WHERE album_id = $1) WHERE id = $1`,
           [albumId]
         );
+        // Set cover image if not already set and at least one photo imported
+        if (firstImportedPhotoUrl) {
+          const coverRow = await queryRow('SELECT cover_image_url FROM albums WHERE id = $1', [albumId]);
+          if (!coverRow?.cover_image_url) {
+            await query('UPDATE albums SET cover_image_url = $1 WHERE id = $2', [firstImportedPhotoUrl, albumId]);
+            console.log('[SMUGMUG IMPORT] Set album cover_image_url:', { albumId, cover_image_url: firstImportedPhotoUrl });
+          } else {
+            console.log('[SMUGMUG IMPORT] Album already has cover_image_url:', { albumId, cover_image_url: coverRow.cover_image_url });
+          }
+        }
         await query(
           `IF EXISTS (SELECT 1 FROM studio_smugmug_imports WHERE studio_id = $1 AND smugmug_album_key = $2)
              BEGIN
@@ -289,16 +358,46 @@ const listAlbumImages = async (albumKey, apiKey) => {
   );
   const out = [];
   for (const image of rows) {
-    // Use best available URL
-    const sourceUrl = image?.OriginalUrl || image?.Url || image?.ThumbnailUrl || null;
-    if (!sourceUrl) continue;
+    if (!image?.OriginalUrl) {
+      console.warn('[SMUGMUG IMPORT] Skipping image without OriginalUrl:', {
+        fileName: image?.FileName || image?.Name || image?.ImageKey || image?.Key,
+        availableKeys: Object.keys(image || {}),
+        imageKeys: {
+          SmallUrl: image?.SmallUrl,
+          MediumUrl: image?.MediumUrl,
+          LargeUrl: image?.LargeUrl,
+          XLargeUrl: image?.XLargeUrl,
+          ThumbnailUrl: image?.ThumbnailUrl,
+          TinyUrl: image?.TinyUrl,
+        },
+      });
+      continue;
+    }
+    const sourceUrl = image.OriginalUrl;
+    const importMethod = 'OriginalUrl';
+    const origDescription = image?.Caption || image?.Title || '';
+    const description = `[Imported via ${importMethod}] ${origDescription}`.trim();
+    console.log('[SMUGMUG IMPORT] Preparing image for import:', {
+      id: image?.ImageKey || image?.Key,
+      fileName: image?.FileName || image?.Name,
+      sourceUrl,
+      importMethod,
+      Caption: image?.Caption,
+      Title: image?.Title,
+      OriginalUrl: image?.OriginalUrl,
+    });
     out.push({
       id: image?.ImageKey || image?.Key || crypto.randomUUID(),
       fileName: image?.FileName || image?.Name || `smugmug-${Date.now()}.jpg`,
-      description: image?.Caption || image?.Title || '',
+      description,
       sourceUrl,
+      importMethod,
+      Caption: image?.Caption,
+      Title: image?.Title,
+      OriginalUrl: image?.OriginalUrl,
     });
   }
+  console.log(`[SMUGMUG IMPORT] Total images prepared for import: ${out.length}`);
   return out;
 };
 
@@ -355,8 +454,11 @@ router.get('/config', authRequired, async (req, res) => {
     if (req.user.role !== 'studio_admin' && req.user.role !== 'super_admin') {
       return res.status(403).json({ error: 'Unauthorized' });
     }
+
+    // Helper to get studioId from request (reuse from smugmug.js if available)
     const studioId = req.user.studio_id || req.user.studioId || req.user.id;
     if (!studioId) return res.status(400).json({ error: 'Studio context is required' });
+
     await ensureSmugMugConfigTable();
     const config = await queryRow(
       `SELECT studio_id as studioId, nickname, api_key as apiKey, api_secret as apiSecret, access_token as accessToken, access_token_secret as accessTokenSecret
@@ -366,7 +468,7 @@ router.get('/config', authRequired, async (req, res) => {
     );
     res.json({
       ...(config || { studioId, nickname: '', apiKey: '', apiSecret: '', accessToken: '', accessTokenSecret: '' }),
-      storageMode: 'db',
+      storageMode: 'db', // or use a helper if needed
     });
   } catch (error) {
     console.error('SmugMug config get error:', error);
