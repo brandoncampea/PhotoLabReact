@@ -46,7 +46,7 @@ import subscriptionPlansRoutes from './routes/subscriptionPlans.js';
 import invoicesRoutes from './routes/invoices.js';
 import publicSearchRoutes from './routes/publicSearch.js';
 import playerWatchlistRoutes from './routes/playerWatchlist.js';
-import smugmugRoutes from './routes/smugmug.js';
+import smugmugRoutes from './routes/smugmug-new.js';
 import whccEditorRoutes from './routes/whccEditor.js';
 
 const __filename = fileURLToPath(import.meta.url);

@@ -270,9 +270,10 @@ const AdminPhotos: React.FC = () => {
     if (!albumId) return;
     try {
       const data = await photoService.getPhotosByAlbum(albumId);
-      setPhotos(data);
+      setPhotos(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Failed to load photos:', error);
+      setPhotos([]);
     } finally {
       setLoading(false);
     }
@@ -1167,7 +1168,7 @@ const AdminPhotos: React.FC = () => {
         marginTop: '2rem',
         justifyItems: 'center',
       }}>
-        {photos.map((photo) => (
+        {Array.isArray(photos) && photos.map((photo) => (
           <div key={photo.id} className="admin-photo-card">
             <div style={{ cursor: 'pointer' }}
                  onClick={() => window.open(photo.fullImageUrl || photo.thumbnailUrl, '_blank')}

@@ -235,10 +235,18 @@ const AdminPriceLists: React.FC = () => {
 			superPriceListService.getLists(),
 		])
 			.then(([studioLists, supers]) => {
-				setPriceLists(studioLists || []);
-				setSuperLists((supers || []).filter((s: any) => !!s.isActive));
+				// Debug log the raw responses
+				// eslint-disable-next-line no-console
+				console.log('studioLists:', studioLists, 'superLists:', supers);
+				// Defensive fallback to arrays
+				setPriceLists(Array.isArray(studioLists) ? studioLists : []);
+				setSuperLists(Array.isArray(supers) ? supers.filter((s: any) => !!s.isActive) : []);
 			})
-			.catch(() => setError('Failed to load price lists'))
+			.catch((err) => {
+				setError('Failed to load price lists');
+				// eslint-disable-next-line no-console
+				console.error('Error loading price lists:', err);
+			})
 			.finally(() => setLoading(false));
 	}, [effectiveStudioId]);
 

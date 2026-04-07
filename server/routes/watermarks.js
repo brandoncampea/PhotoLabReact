@@ -100,6 +100,7 @@ router.get('/public-default', async (req, res) => {
     if (!watermark) return res.status(404).json({ error: 'No default watermark found for this studio' });
     res.json(await normalizeWatermarkImageUrl(watermark));
   } catch (error) {
+    console.error('GET /api/watermarks error:', error);
     res.status(500).json({ error: error.message });
   }
 });

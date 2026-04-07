@@ -3,7 +3,20 @@ import { authRequired } from '../middleware/auth.js';
 import { query, queryRow, queryRows } from '../mssql.cjs';
 import * as crypto from 'crypto';
 const router = express.Router();
-
+// Temporary table for mapping oauth_token to requestTokenSecret and studioId
+const ensureSmugMugTokenMapTable = async () => {
+  await query(`
+    IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'studio_smugmug_token_map')
+    BEGIN
+      CREATE TABLE studio_smugmug_token_map (
+        oauth_token NVARCHAR(255) PRIMARY KEY,
+        request_token_secret NVARCHAR(255) NOT NULL,
+        studio_id INT NOT NULL,
+        created_at DATETIME2 DEFAULT CURRENT_TIMESTAMP
+      )
+    END
+  `);
+};
 // --- SmugMug OAuth 1.0a Callback Endpoint ---
 // NOTE: This route must NOT require authentication, as the callback from SmugMug will not have a session or JWT.
 // If you need to verify the studio, use a state parameter or look up by oauth_token/requestTokenSecret.
@@ -12,25 +25,30 @@ router.get('/oauth/callback', async (req, res) => {
     console.log('[SmugMug OAuth] Callback hit. Query:', req.query);
     await ensureSmugMugConfigTable();
 
-    const { oauth_token, oauth_verifier, requestTokenSecret } = req.query;
-    console.log('[SmugMug OAuth] Extracted params:', { oauth_token, oauth_verifier, requestTokenSecret });
-    if (!oauth_token || !oauth_verifier || !requestTokenSecret) {
+const { oauth_token, oauth_verifier } = req.query;
+console.log('[SmugMug OAuth] Extracted params:', { oauth_token, oauth_verifier });
+if (!oauth_token || !oauth_verifier) {
       console.error('[SmugMug OAuth] Missing OAuth parameters:', req.query);
       return res.status(400).json({ error: 'Missing OAuth parameters' });
     }
 
     // Look up studioId using the oauth_token and requestTokenSecret
     // (Assumes you stored the request token and studioId mapping when starting the OAuth flow)
-    const tokenRow = await queryRow(
-      `SELECT studio_id FROM studio_smugmug_config WHERE access_token = $1 OR access_token_secret = $2`,
-      [oauth_token, requestTokenSecret]
-    );
-    const studioId = tokenRow?.studio_id;
-    console.log('[SmugMug OAuth] Looked up studioId:', studioId, 'for oauth_token:', oauth_token);
-    if (!studioId) {
-      console.error('[SmugMug OAuth] Could not determine studioId from oauth_token/requestTokenSecret');
-      return res.status(400).json({ error: 'Could not determine studio context from OAuth token.' });
-    }
+    // Look up requestTokenSecret and studioId using oauth_token
+await ensureSmugMugTokenMapTable();
+const tokenMapRow = await queryRow(
+  `SELECT request_token_secret, studio_id FROM studio_smugmug_token_map WHERE oauth_token = $1`,
+  [oauth_token]
+);
+if (!tokenMapRow) {
+  console.error('[SmugMug OAuth] No token map found for oauth_token:', oauth_token);
+  return res.status(400).json({ error: 'Could not find token mapping for oauth_token.' });
+}
+const requestTokenSecret = tokenMapRow.request_token_secret;
+const studioId = tokenMapRow.studio_id;
+console.log('[SmugMug OAuth] Looked up studioId:', studioId, 'requestTokenSecret:', requestTokenSecret, 'for oauth_token:', oauth_token);
+
+
 
     // Get API key/secret for this studio
     const config = await queryRow(
@@ -92,6 +110,11 @@ router.get('/oauth/callback', async (req, res) => {
       return res.status(500).json({ error: 'Failed to get access token', details: text });
     }
     const result = Object.fromEntries(new URLSearchParams(text));
+    await ensureSmugMugTokenMapTable();
+await query(
+  'INSERT INTO studio_smugmug_token_map (oauth_token, request_token_secret, studio_id) VALUES ($1, $2, $3)',
+  [result.oauth_token, result.oauth_token_secret, studioId]
+);
     console.log('[SmugMug OAuth] Parsed token result:', result);
     if (!result.oauth_token || !result.oauth_token_secret) {
       console.error('[SmugMug OAuth] No access token in response:', result);

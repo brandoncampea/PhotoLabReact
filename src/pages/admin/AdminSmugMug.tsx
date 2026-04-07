@@ -87,8 +87,12 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
       setSmugmugOAuthLoading(true);
       setSmugmugOAuthError('');
       try {
-        const callbackUrl = `${window.location.origin}/admin/smugmug`;
-        const response = await fetch('/api/smugmug/oauth/request-token', {
+        // Always use backend API URL for OAuth endpoints (prevents port mismatch)
+        let apiBase = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+        // Remove trailing /api if present
+        apiBase = apiBase.replace(/\/api\/?$/, '');
+        const callbackUrl = `${apiBase}/api/smugmug/oauth/callback`;
+        const response = await fetch(`/api/smugmug/oauth/request-token`, {
           method: 'POST',
           headers: {
             ...getAuthHeaders(),
@@ -104,39 +108,51 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
         // Store requestTokenSecret in URL for callback (not secure, but demo)
         const url = `${data.authorizeUrl}&requestTokenSecret=${encodeURIComponent(data.requestTokenSecret)}`;
         // Open OAuth in a popup window
+        console.log('[SmugMug OAuth] Opening popup:', url);
         const popup = window.open(url, '_blank', 'width=600,height=700');
-        // Poll for connection state after popup opens
-        setOauthPolling(true);
-        if (oauthPollingRef.current) clearInterval(oauthPollingRef.current);
-        oauthPollingRef.current = window.setInterval(async () => {
-          await fetchSmugmugConfig();
-        }, 1500);
-        // Listen for popup close
-        const popupInterval = window.setInterval(() => {
-          if (popup && popup.closed) {
-            clearInterval(popupInterval);
-            setSmugmugOAuthLoading(false);
-            setOauthPolling(false);
-            if (oauthPollingRef.current) {
-              clearInterval(oauthPollingRef.current);
-              oauthPollingRef.current = null;
+        if (!popup) {
+          console.error('[SmugMug OAuth] Failed to open popup window');
+          return;
+        }
+        let completed = false;
+        // Listen for message from popup (OAuth callback)
+        const handleMessage = (event: MessageEvent) => {
+          const allowedOrigins = [
+            window.location.origin,
+            (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
+          ];
+          console.log('[SmugMug OAuth] Received postMessage:', event.data, 'from', event.origin);
+          if (allowedOrigins.includes(event.origin)) {
+            completed = true;
+            if (event.data === 'smugmug-oauth-success') {
+              console.log('[SmugMug OAuth] Received success postMessage, waiting 1s before fetching config...');
+              setSmugmugOAuthLoading(false);
+              setOauthPolling(false);
+              if (oauthPollingRef.current) {
+                clearInterval(oauthPollingRef.current);
+                oauthPollingRef.current = null;
+              }
+              setTimeout(() => {
+                console.log('[SmugMug OAuth] Fetching config after delay...');
+                fetchSmugmugConfig();
+              }, 1000);
+              if (popup && !popup.closed) popup.close();
+            } else if (event.data === 'smugmug-oauth-error') {
+              setSmugmugOAuthError('SmugMug OAuth failed');
+              setSmugmugOAuthLoading(false);
+              setOauthPolling(false);
+              if (oauthPollingRef.current) {
+                clearInterval(oauthPollingRef.current);
+                oauthPollingRef.current = null;
+              }
+              if (popup && !popup.closed) popup.close();
             }
-            // Final fetch to update state
-            fetchSmugmugConfig();
+            window.removeEventListener('message', handleMessage);
           }
-        }, 500);
-        // Listen for message from popup (if implemented in future)
-        window.addEventListener('message', (event) => {
-          if (event.data === 'smugmug-oauth-success') {
-            setSmugmugOAuthLoading(false);
-            setOauthPolling(false);
-            if (oauthPollingRef.current) {
-              clearInterval(oauthPollingRef.current);
-              oauthPollingRef.current = null;
-            }
-            fetchSmugmugConfig();
-          }
-        }, { once: true });
+        };
+        window.addEventListener('message', handleMessage);
+
+        // (Removed popup close polling: unreliable for cross-origin popups. Only rely on postMessage for completion.)
       } catch (err) {
         setSmugmugOAuthError(err.message || 'Failed to start SmugMug OAuth');
         setSmugmugOAuthLoading(false);

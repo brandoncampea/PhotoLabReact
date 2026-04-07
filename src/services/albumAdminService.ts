@@ -4,7 +4,7 @@ import api from './api';
 export const albumAdminService = {
   async getPriceLists(): Promise<PriceList[]> {
     const response = await api.get<PriceList[]>('/price-lists');
-    return response.data;
+    return Array.isArray(response.data) ? response.data : [];
   },
 
   async createAlbum(data: Partial<Album>): Promise<Album> {

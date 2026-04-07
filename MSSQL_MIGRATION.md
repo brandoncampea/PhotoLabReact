@@ -7,15 +7,15 @@ Project has been successfully converted from PostgreSQL to Microsoft SQL Server 
 
 ### Database Helper
 - **New file**: [server/mssql.js](server/mssql.js) - MSSQL connection pool and query helpers
-- **Removed**: PostgreSQL helper (postgres.js - kept for reference but not used)
+- **Removed**: PostgreSQL helper (postgres.js - removed, only MSSQL used)
 - **Migration script**: [server/migrateSqliteToMssql.js](server/migrateSqliteToMssql.js) - Converts SQLite data to MSSQL
 
 ### Core Updates
 1. **Server startup** - Updated to use MSSQL initialization
-2. **All route files** - Switched from postgres.js to mssql.js imports
+2. **All route files** - Switched to mssql.js imports only
 3. **Middleware** - Updated auth.js to use MSSQL helpers
 4. **Seed scripts** - Updated to use MSSQL async/transaction API
-5. **SQL compatibility** - Replaced PostgreSQL-specific SQL:
+5. **SQL compatibility** - Replaced all non-MSSQL SQL:
    - `NOW()` → `CURRENT_TIMESTAMP`
    - `INTERVAL '1 month'` → `DATEADD(month, 1, CURRENT_TIMESTAMP)`
    - `RETURNING id` → `INSERT...OUTPUT INSERTED.id`
@@ -43,7 +43,7 @@ MSSQL_TRUST_CERT=false
 
 ### Dependencies
 - Added: `mssql` (^11.0.1)
-- Removed: `pg` (PostgreSQL), `@types/better-sqlite3`, `better-sqlite3`, `sqlite3`
+- Removed: `pg`, `@types/better-sqlite3`, `better-sqlite3`, `sqlite3`
 
 ### Migration Script
 Run MSSQL data migration from SQLite:
@@ -68,7 +68,7 @@ After MSSQL setup:
 4. Seed data: `npm run seed:products`, `npm run seed:photos`
 5. Run tests: `npm run test:e2e`
 
-## Known Differences from PostgreSQL
+## Known Differences from Previous DBs
 - No native JSON aggregation (handled in application layer)
 - UPSERTs replaced with IF EXISTS/ELSE logic
 - Date arithmetic uses DATEADD/DATEDIFF instead of INTERVAL

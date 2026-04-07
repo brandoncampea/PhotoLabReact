@@ -4,7 +4,8 @@ import { Album } from '../types';
 export const albumService = {
   async getAlbums(): Promise<Album[]> {
     const response = await api.get<Album[]>('/albums');
-    return response.data;
+    // Defensive: always return an array
+    return Array.isArray(response.data) ? response.data : [];
   },
 
   async getAlbum(id: number): Promise<Album> {

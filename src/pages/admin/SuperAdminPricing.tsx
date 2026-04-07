@@ -8,6 +8,10 @@ import { PriceList } from '../../types/index';
 import { superPriceListService } from '../../services/superPriceListService';
 import { whccService } from '../../services/whccService';
 
+// ...existing code...
+
+
+
 type SuperPriceListRow = PriceList & { linkedStudioCount?: number };
 
 // Indeterminate checkbox helper
@@ -1049,14 +1053,14 @@ const SuperAdminPricing: React.FC = () => {
                                           Active
                                         </label>
                                         <div className="spl-field-group">
-                                          <label>Cost $</label>
-                                          <input
-                                            className={`spl-num-input${autoSaving[item.id] ? ' spl-saving' : ''}`}
-                                            type="number" min={0} step="0.01"
-                                            value={itemDrafts[item.id]?.base_cost ?? ''}
-                                            onChange={e => setItemDrafts(p => ({ ...p, [item.id]: { ...p[item.id], base_cost: e.target.value } }))}
-                                            onBlur={() => autoSaveItem(item.id)}
-                                          />
+                                          <label>Cost $ (no markup)</label>
+                                          <div style={{ minWidth: 60 }}>
+                                            {(() => {
+                                              const cost = parseFloat(itemDrafts[item.id]?.base_cost ?? item.base_cost ?? 0);
+                                              if (isNaN(cost)) return '—';
+                                              return cost.toFixed(2);
+                                            })()}
+                                          </div>
                                         </div>
                                         <div className="spl-field-group">
                                           <label>Markup %</label>
@@ -1067,6 +1071,29 @@ const SuperAdminPricing: React.FC = () => {
                                             onChange={e => setItemDrafts(p => ({ ...p, [item.id]: { ...p[item.id], markup_percent: e.target.value } }))}
                                             onBlur={() => autoSaveItem(item.id)}
                                           />
+                                        </div>
+                                        <div className="spl-field-group">
+                                          <label>Markup $</label>
+                                          <div style={{ minWidth: 60 }}>
+                                            {(() => {
+                                              const cost = parseFloat(itemDrafts[item.id]?.base_cost ?? item.base_cost ?? 0);
+                                              const percent = parseFloat(itemDrafts[item.id]?.markup_percent ?? item.markup_percent ?? 0);
+                                              if (isNaN(cost) || isNaN(percent)) return '—';
+                                              return (cost * percent / 100).toFixed(2);
+                                            })()}
+                                          </div>
+                                        </div>
+                                        <div className="spl-field-group">
+                                          <label>Total $</label>
+                                          <div style={{ minWidth: 60 }}>
+                                            {(() => {
+                                              const cost = parseFloat(itemDrafts[item.id]?.base_cost ?? item.base_cost ?? 0);
+                                              const percent = parseFloat(itemDrafts[item.id]?.markup_percent ?? item.markup_percent ?? 0);
+                                              if (isNaN(cost) || isNaN(percent)) return '—';
+                                              const markup = cost * percent / 100;
+                                              return (cost + markup).toFixed(2);
+                                            })()}
+                                          </div>
                                         </div>
                                         <div className="spl-field-group">
                                           <label>WHCC Product UID</label>

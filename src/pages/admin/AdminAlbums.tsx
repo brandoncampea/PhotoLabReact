@@ -45,6 +45,11 @@ const AdminAlbums: React.FC = () => {
         const res = await api.get('/albums');
         console.log('Albums API response:', res.data);
         setAlbums(res.data || []);
+        // Extract unique categories from albums
+        if (Array.isArray(res.data)) {
+          const uniqueCategories = Array.from(new Set(res.data.map((album: any) => album.category).filter(Boolean)));
+          setCategories(uniqueCategories);
+        }
         setLoading(false);
       } catch (error) {
         setLoading(false);
@@ -280,7 +285,7 @@ const AdminAlbums: React.FC = () => {
             />
             <button className="add-category-btn" onClick={handleAddCategory} style={{ padding: '8px 16px', borderRadius: 8, background: 'var(--primary, #7b61ff)', color: '#fff', border: 'none', fontWeight: 500 }}>Add</button>
           </div>
-          {categories.length > 0 && (
+          {Array.isArray(categories) && categories.length > 0 && (
             <div className="category-tags" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {categories.map((category) => (
                 <div key={category} className="category-tag" style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#19192a', borderRadius: 8, padding: '4px 12px', color: '#fff', fontWeight: 500 }}>

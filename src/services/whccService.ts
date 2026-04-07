@@ -143,12 +143,12 @@ class WhccService {
   getDefaultWebhookCallbackUri(): string {
     const envBase = String(import.meta.env.VITE_API_URL || '').trim();
     if (envBase.startsWith('http://') || envBase.startsWith('https://')) {
-      return envBase.replace(/\/api\/?$/, '') + '/api/webhooks/whcc';
+      return envBase.replace(/\/api\/?$/, '') + '/webhooks/whcc';
     }
 
     const current = new URL(window.location.origin);
     if (current.port === '3004') current.port = '3000';
-    return `${current.toString().replace(/\/$/, '')}/api/webhooks/whcc`;
+    return `${current.toString().replace(/\/$/, '')}/webhooks/whcc`;
   }
 
   /**

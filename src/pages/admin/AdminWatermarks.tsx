@@ -2,14 +2,28 @@ import React, { useEffect, useState } from 'react';
 import { useSasUrl } from '../../hooks/useSasUrl';
 import { Watermark } from '../../types';
 import { watermarkService } from '../../services/watermarkService';
-
-
+import './AdminWatermarks.css';
 import AdminLayout from '../../components/AdminLayout';
 
 // Helper component for SAS-protected watermark images
 function WatermarkSasImage({ src, alt }: { src: string, alt: string }) {
-  const sasUrl = useSasUrl(src);
-  return <img src={sasUrl || ''} alt={alt} style={{ width: '56px', height: '56px', objectFit: 'cover', borderRadius: '6px', border: '1px solid var(--border-color)' }} />;
+  // Extract blob name from Azure or local URL
+  let blobName = '';
+  if (src?.startsWith('http') && src.includes('/watermarks/')) {
+    blobName = src.split('/watermarks/')[1]?.split('?')[0] || '';
+    blobName = `watermarks/${blobName}`;
+  } else if (src?.startsWith('/uploads/')) {
+    blobName = src.replace(/^\//, '');
+  }
+  const sasUrl = useSasUrl(blobName || src);
+  return (
+    <img
+      src={sasUrl || ''}
+      alt={alt}
+      className="watermark-image"
+      style={{ width: '72px', height: '72px', objectFit: 'contain', borderRadius: '8px', background: '#181825', border: '1px solid #393552', marginBottom: '0.75rem' }}
+    />
+  );
 }
 
 type WatermarkFormData = {

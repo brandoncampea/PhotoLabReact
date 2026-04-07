@@ -56,7 +56,7 @@ export const watermarkService = {
 
   async deleteWatermark(id: number): Promise<void> {
     try {
-      await api.delete(`/watermarks/${id}`);
+      await api.delete(`/api/watermarks/${id}`);
     } catch (error) {
       console.error('Error deleting watermark:', error);
       throw error;
@@ -97,7 +97,7 @@ export const discountCodeService = {
 
   async deleteDiscountCode(id: number): Promise<void> {
     try {
-      await api.delete(`/discount-codes/${id}`);
+      await api.delete(`/api/discount-codes/${id}`);
     } catch (error) {
       console.error('Error deleting discount code:', error);
       throw error;
@@ -171,7 +171,7 @@ export const userAdminService = {
 
 export const superAdminService = {
   async getStudioRevenueDetails() {
-    const response = await api.get('/admin/studio-revenue-details');
+    const response = await api.get('/api/admin/studio-revenue-details');
     return response.data;
   },
 };
