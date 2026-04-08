@@ -5,6 +5,7 @@ const { queryRow } = mssql;
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
 export const authRequired = async (req, res, next) => {
+    console.log('[AUTH REQUIRED] Called for', req.method, req.originalUrl, 'headers:', req.headers);
   try {
     const auth = req.headers.authorization || '';
     const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;

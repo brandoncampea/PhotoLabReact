@@ -548,7 +548,7 @@ async function initializeDatabase() {
 	// (price_list_products, product_sizes, packages, etc.)
 }
 
-module.exports = {
+const mssqlExports = {
 	query,
 	queryRow,
 	queryRows,
@@ -558,3 +558,5 @@ module.exports = {
 	initializeDatabase,
 	poolPromise: getPoolPromise(),
 };
+module.exports = mssqlExports;
+module.exports.default = mssqlExports;
