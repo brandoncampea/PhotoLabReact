@@ -1,23 +1,5 @@
-import { fetchPhotoExif } from '../services/exifService';
-  const [showExifModal, setShowExifModal] = useState(false);
-  const [exifLoading, setExifLoading] = useState(false);
-  const [exifError, setExifError] = useState('');
-  const [exifData, setExifData] = useState<any>(null);
-  const handleShowExif = async () => {
-    if (!selectedPhoto) return;
-    setExifLoading(true);
-    setExifError('');
-    setShowExifModal(true);
-    try {
-      const data = await fetchPhotoExif(selectedPhoto.id);
-      setExifData(data);
-    } catch (err: any) {
-      setExifError(err?.message || 'Failed to load EXIF');
-    } finally {
-      setExifLoading(false);
-    }
-  };
 import React, { useEffect, useMemo, useState } from 'react';
+import { fetchPhotoExif } from '../services/exifService';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import Cropper from 'react-cropper';
 import 'cropperjs/dist/cropper.css';
@@ -35,6 +17,25 @@ type ProductWithMatch = Product & {
 };
 
 const AlbumDetails: React.FC = () => {
+    // EXIF modal state and handlers (moved to top level)
+    const [showExifModal, setShowExifModal] = useState(false);
+    const [exifLoading, setExifLoading] = useState(false);
+    const [exifError, setExifError] = useState('');
+    const [exifData, setExifData] = useState<any>(null);
+    const handleShowExif = async () => {
+      if (!selectedPhoto) return;
+      setExifLoading(true);
+      setExifError('');
+      setShowExifModal(true);
+      try {
+        const data = await fetchPhotoExif(selectedPhoto.id);
+        setExifData(data);
+      } catch (err: any) {
+        setExifError(err?.message || 'Failed to load EXIF');
+      } finally {
+        setExifLoading(false);
+      }
+    };
   const { albumId, studioSlug } = useParams();
   const [searchParams] = useSearchParams();
   const [album, setAlbum] = useState<Album | null>(null);

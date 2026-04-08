@@ -64,7 +64,7 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
     const [smugmugOAuthLoading, setSmugmugOAuthLoading] = useState(false);
     const [smugmugOAuthError, setSmugmugOAuthError] = useState('');
     const [smugmugConnected, setSmugmugConnected] = useState(false);
-    const [oauthPolling, setOauthPolling] = useState(false);
+    // Removed unused oauthPolling state
     const oauthPollingRef = useRef<NodeJS.Timeout | null>(null);
 
 
@@ -114,7 +114,7 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
           console.error('[SmugMug OAuth] Failed to open popup window');
           return;
         }
-        let completed = false;
+        // Removed unused completed variable
         // Listen for message from popup (OAuth callback)
         const handleMessage = (event: MessageEvent) => {
           const allowedOrigins = [
@@ -123,11 +123,9 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
           ];
           console.log('[SmugMug OAuth] Received postMessage:', event.data, 'from', event.origin);
           if (allowedOrigins.includes(event.origin)) {
-            completed = true;
             if (event.data === 'smugmug-oauth-success') {
               console.log('[SmugMug OAuth] Received success postMessage, waiting 1s before fetching config...');
               setSmugmugOAuthLoading(false);
-              setOauthPolling(false);
               if (oauthPollingRef.current) {
                 clearInterval(oauthPollingRef.current);
                 oauthPollingRef.current = null;
@@ -140,7 +138,6 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
             } else if (event.data === 'smugmug-oauth-error') {
               setSmugmugOAuthError('SmugMug OAuth failed');
               setSmugmugOAuthLoading(false);
-              setOauthPolling(false);
               if (oauthPollingRef.current) {
                 clearInterval(oauthPollingRef.current);
                 oauthPollingRef.current = null;
@@ -153,10 +150,9 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
         window.addEventListener('message', handleMessage);
 
         // (Removed popup close polling: unreliable for cross-origin popups. Only rely on postMessage for completion.)
-      } catch (err) {
-        setSmugmugOAuthError(err.message || 'Failed to start SmugMug OAuth');
+      } catch (err: any) {
+        setSmugmugOAuthError((err as Error)?.message || 'Failed to start SmugMug OAuth');
         setSmugmugOAuthLoading(false);
-        setOauthPolling(false);
         if (oauthPollingRef.current) {
           clearInterval(oauthPollingRef.current);
           oauthPollingRef.current = null;
@@ -207,7 +203,6 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
       if (data.accessToken || data.access_token) {
         setSmugmugConnected(true);
         // Stop polling if connected
-        setOauthPolling(false);
         if (oauthPollingRef.current) {
           clearInterval(oauthPollingRef.current);
           oauthPollingRef.current = null;

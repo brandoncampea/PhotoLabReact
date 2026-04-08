@@ -27,8 +27,8 @@ const toApiDateTimeValue = (value: string) => {
 
 
 const SuperAdminShipping = () => {
-    const [rubric, setRubric] = useState(null);
-    const [rubricDraft, setRubricDraft] = useState(null);
+    const [rubric, setRubric] = useState<any>(null);
+    const [rubricDraft, setRubricDraft] = useState<any>(null);
     const [rubricLoading, setRubricLoading] = useState(true);
     const [rubricError, setRubricError] = useState('');
     const [rubricMessage, setRubricMessage] = useState('');
@@ -49,9 +49,9 @@ const SuperAdminShipping = () => {
       };
       loadRubric();
     }, []);
-    const handleRubricInput = (group, dest, value) => {
-      setRubricDraft((prev) => {
-        const next = { ...prev };
+    const handleRubricInput = (group: string, dest: string, value: any) => {
+      setRubricDraft((prev: any) => {
+        const next = { ...(prev || {}) };
         if (!next[group]) next[group] = {};
         next[group][dest] = value;
         return next;
@@ -61,7 +61,7 @@ const SuperAdminShipping = () => {
     const handleSaveRubric = async () => {
       setRubricMessage('');
       try {
-        await shippingService.updateRubric({ matrix: rubricDraft });
+        await (shippingService as any).updateRubric({ matrix: rubricDraft });
         setRubricMessage('✓ Shipping rubric updated!');
         // Reload rubric from server
         const data = await shippingService.getRubric();
@@ -73,12 +73,12 @@ const SuperAdminShipping = () => {
       setTimeout(() => setRubricMessage(''), 2000);
     };
     // Add updateRubric to shippingService if not present
-    if (!shippingService.updateRubric) {
-      shippingService.updateRubric = async (body) => {
-        const response = await shippingService.__api.put('/shipping/rubric', body);
+    if (!(shippingService as any).updateRubric) {
+      (shippingService as any).updateRubric = async (body: any) => {
+        const response = await (shippingService as any).__api.put('/shipping/rubric', body);
         return response.data;
       };
-      shippingService.__api = require('../../services/api').default;
+      (shippingService as any).__api = require('../../services/api').default;
     }
   // Removed unused config state
   const [batchDeadline, setBatchDeadline] = useState('');
@@ -180,22 +180,22 @@ const SuperAdminShipping = () => {
                 <thead>
                   <tr>
                     <th style={{ textAlign: 'left', padding: 10, borderBottom: '1px solid #ccc' }}>Product Group</th>
-                    {Object.values(rubric.destinations).map(dest => (
-                      <th key={dest} style={{ textAlign: 'right', padding: 10, borderBottom: '1px solid #ccc' }}>{dest}</th>
+                    {Object.values((rubric as any).destinations ?? {}).map((dest: any) => (
+                      <th key={String(dest)} style={{ textAlign: 'right', padding: 10, borderBottom: '1px solid #ccc' }}>{String(dest)}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {Object.entries(rubricDraft).map(([group, groupRules]) => (
+                  {Object.entries(rubricDraft ?? {}).map(([group, groupRules]) => (
                     <tr key={group}>
                       <td style={{ padding: 10, borderBottom: '1px solid #eee', fontWeight: 600 }}>{group}</td>
-                      {Object.values(rubric.destinations).map(dest => (
-                        <td key={group + '-' + dest} style={{ padding: 10, borderBottom: '1px solid #eee', textAlign: 'right' }}>
+                      {Object.values((rubric as any).destinations ?? {}).map((dest: any) => (
+                        <td key={group + '-' + String(dest)} style={{ padding: 10, borderBottom: '1px solid #eee', textAlign: 'right' }}>
                           <input
                             type="number"
                             min="0"
                             step="0.01"
-                            value={groupRules[dest] ?? ''}
+                            value={(groupRules as any)[dest] ?? ''}
                             onChange={e => handleRubricInput(group, dest, e.target.value === '' ? '' : Number(e.target.value))}
                             style={{ width: 80, textAlign: 'right' }}
                           />

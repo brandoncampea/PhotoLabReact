@@ -1,3 +1,17 @@
+import express from 'express';
+import multer from 'multer';
+import path from 'path';
+import mssql from '../mssql.cjs';
+const { queryRow, queryRows, query } = mssql;
+import csv from 'csv-parser';
+import sharp from 'sharp';
+import exifReader from 'exif-reader';
+import { createWorker } from 'tesseract.js';
+import { uploadImageBufferToAzure, deleteBlobByUrl, downloadBlob } from '../services/azureStorage.js';
+import { requireActiveSubscription, enforceStorageQuotaForStudio } from '../middleware/subscription.js';
+import orderReceiptService from '../services/orderReceiptService.js';
+
+const router = express.Router();
 // GET /:id/exif - Return EXIF metadata for a photo
 router.get('/:id/exif', async (req, res) => {
   try {
@@ -54,19 +68,6 @@ router.get('/:id/exif', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-import express from 'express';
-import multer from 'multer';
-import path from 'path';
-import mssql from '../mssql.cjs';
-const { queryRow, queryRows, query } = mssql;
-import csv from 'csv-parser';
-import sharp from 'sharp';
-import exifReader from 'exif-reader';
-import { createWorker } from 'tesseract.js';
-import { uploadImageBufferToAzure, deleteBlobByUrl, downloadBlob } from '../services/azureStorage.js';
-import { requireActiveSubscription, enforceStorageQuotaForStudio } from '../middleware/subscription.js';
-import orderReceiptService from '../services/orderReceiptService.js';
-const router = express.Router();
 
 const getPhotoAssetUrl = (photoId, variant = 'full') => `/api/photos/${photoId}/asset?variant=${variant}`;
 const getProxySourceUrl = (source) => `/api/photos/proxy?source=${encodeURIComponent(source)}`;
