@@ -61,7 +61,6 @@ const Navbar: React.FC = () => {
         <Link to={studioSlug ? `/albums?studioSlug=${encodeURIComponent(studioSlug)}` : '/albums'} className={styles.navbarLink}>Albums</Link>
         <Link to="/orders" className={styles.navbarLink}>Orders</Link>
         <Link to="/cart" className={styles.navbarLink}>Cart</Link>
-        <Link to="/tickets" className={styles.navbarLink}>Help</Link>
         {isLoggedIn ? (
           <>
             <Link
@@ -96,4 +95,15 @@ const Navbar: React.FC = () => {
   );
 };
 
-export default Navbar;
+
+// Add floating ticket button to all pages
+import TicketFab from '../TicketFab';
+
+const NavbarWithFab: React.FC = (props) => (
+  <>
+    <Navbar {...props} />
+    <TicketFab />
+  </>
+);
+
+export default NavbarWithFab;

@@ -1,5 +1,5 @@
 import React from 'react';
-import Navbar from './Navbar';
+import NavbarWithFab from './Navbar';
 import Sidebar from './Sidebar';
 
 interface LayoutProps {
@@ -8,7 +8,7 @@ interface LayoutProps {
 
 const Layout: React.FC<LayoutProps> = ({ children }) => (
   <div style={{ minHeight: '100vh', background: '#181829' }}>
-    <Navbar />
+    <NavbarWithFab />
     <div style={{ display: 'flex' }}>
       <Sidebar />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', marginLeft: 0 }}>

@@ -2230,10 +2230,15 @@ router.get('/:id/recommendations', async (req, res) => {
     const products = await queryRows('SELECT * FROM products ORDER BY category, name');
     
     // Recommendation algorithm
+    let bestFitPrint = null;
+    let bestFitPrintDiff = Infinity;
+    let bestFitPrintProduct = null;
     const recommendations = products.map(product => {
       let score = 0;
       let reasons = [];
-      
+      let isBestFitPrint = false;
+      let isPackage = false;
+
       // Parse product options to find dimensions
       let productOptions = null;
       try {
@@ -2241,34 +2246,37 @@ router.get('/:id/recommendations', async (req, res) => {
       } catch (e) {
         // ignore
       }
-      
+
       // Check if product has size information
       if (productOptions && productOptions.sizes) {
         let closestMatch = null;
         let closestDiff = Infinity;
-        
+
         productOptions.sizes.forEach(size => {
           if (size.width && size.height) {
             const sizeRatio = size.width / size.height;
             const ratioDiff = Math.abs(sizeRatio - aspectRatio);
-            
-            // Find the closest match (within 50% tolerance)
             if (ratioDiff < closestDiff && ratioDiff < 0.5) {
               closestMatch = size;
               closestDiff = ratioDiff;
             }
           }
         });
-        
+
         if (closestMatch) {
+          // Track best fit paper print
+          if ((product.category && product.category.toLowerCase().includes('print')) && closestDiff < bestFitPrintDiff) {
+            bestFitPrintDiff = closestDiff;
+            bestFitPrint = { ...product, options: productOptions, closestMatch, recommendationScore: score, reasons: [...reasons], matchQuality: '' };
+            bestFitPrintProduct = product;
+          }
           // Score based on how close the match is (0-50 points)
-          // Perfect match (diff=0) = 50pts, at tolerance (diff=0.5) = 0pts
           const matchScore = Math.max(0, 50 * (1 - closestDiff / 0.5));
           score += Math.round(matchScore);
           reasons.push(`${closestMatch.width}x${closestMatch.height} is close to your photo ratio`);
         }
       }
-      
+
       // Category-based recommendations
       if (product.category === 'Print') {
         if (isLandscape && product.name.toLowerCase().includes('landscape')) {
@@ -2284,28 +2292,25 @@ router.get('/:id/recommendations', async (req, res) => {
           reasons.push('Perfect for square format');
         }
       }
-      
+
       // Common aspect ratios
       if (Math.abs(aspectRatio - 1.5) < 0.1) {
-        // 3:2 ratio (standard DSLR)
         if (product.name.match(/4x6|6x4|8x12|12x8|12x18|18x12/)) {
           score += 40;
           reasons.push('Matches standard 3:2 camera ratio');
         }
       } else if (Math.abs(aspectRatio - 1.33) < 0.1) {
-        // 4:3 ratio
         if (product.name.match(/4x3|8x6|6x8|12x9|16x12/)) {
           score += 40;
           reasons.push('Matches 4:3 aspect ratio');
         }
       } else if (Math.abs(aspectRatio - 1.0) < 0.1) {
-        // 1:1 ratio (square)
         if (product.name.match(/5x5|8x8|10x10|12x12/)) {
           score += 40;
           reasons.push('Perfect square format');
         }
       }
-      
+
       // Resolution-based recommendations
       const megapixels = (photo.width * photo.height) / 1000000;
       if (megapixels > 12) {
@@ -2319,24 +2324,59 @@ router.get('/:id/recommendations', async (req, res) => {
           reasons.push('Resolution best suited for smaller prints');
         }
       }
-      
+
       // Digital download always applicable
       if (product.category.toLowerCase().includes('digital')) {
         score += 10;
         reasons.push('Always available for digital use');
       }
-      
+
+      // Mark as package if category or name includes 'package'
+      if ((product.category && product.category.toLowerCase().includes('package')) || (product.name && product.name.toLowerCase().includes('package'))) {
+        isPackage = true;
+      }
+
       return {
         ...product,
         options: productOptions,
         recommendationScore: score,
         reasons: reasons,
-        matchQuality: score > 60 ? 'excellent' : score > 30 ? 'good' : 'fair'
+        matchQuality: score > 60 ? 'excellent' : score > 30 ? 'good' : 'fair',
+        isBestFitPrint,
+        isPackage
       };
     });
-    
+
+    // Always include best fit paper print (if not already in recommendations)
+    let recs = [...recommendations];
+    if (bestFitPrint && !recs.some(r => r.id === bestFitPrintProduct.id)) {
+      recs.push({
+        ...bestFitPrintProduct,
+        options: bestFitPrint.options,
+        recommendationScore: 100,
+        reasons: [
+          ...(bestFitPrint.reasons || []),
+          'Best fit paper print for your photo'
+        ],
+        matchQuality: 'excellent',
+        isBestFitPrint: true
+      });
+    }
+
+    // Always include all packages
+    const packageProducts = recommendations.filter(r => r.isPackage && !recs.some(x => x.id === r.id));
+    for (const pkg of packageProducts) {
+      recs.push({
+        ...pkg,
+        recommendationScore: Math.max(pkg.recommendationScore, 80),
+        reasons: [...(pkg.reasons || []), 'Popular package option'],
+        matchQuality: 'excellent',
+        isPackage: true
+      });
+    }
+
     // Sort by score, show all products
-    const sortedRecommendations = recommendations.sort((a, b) => b.recommendationScore - a.recommendationScore);
+    const sortedRecommendations = recs.sort((a, b) => b.recommendationScore - a.recommendationScore);
     res.json({
       photo: {
         id: photo.id,

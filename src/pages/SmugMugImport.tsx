@@ -1,9 +1,9 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import SmugMugConnect from "../components/SmugMugConnect";
 import { getSmugMugAlbums, importSmugMugAlbum } from "../services/smugmugService";
 
 export default function SmugMugImportPage() {
-  const [account, setAccount] = useState(null);
+  const [account, setAccount] = useState<{ nickname: string } | null>(null);
   const [albums, setAlbums] = useState([]);
   const [loading, setLoading] = useState(false);
   const [importing, setImporting] = useState<string | null>(null);
@@ -36,10 +36,12 @@ export default function SmugMugImportPage() {
     }
   };
 
+  const handleConnected = (acc: { nickname: string }) => setAccount(acc);
+
   return (
     <div style={{ maxWidth: 800, margin: "0 auto" }}>
       <h2>Import from SmugMug</h2>
-      <SmugMugConnect onConnected={setAccount} />
+      <SmugMugConnect onConnected={handleConnected} />
       {account && (
         <div>
           <button onClick={fetchAlbums} disabled={loading} style={{ marginBottom: 16 }}>

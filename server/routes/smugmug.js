@@ -188,6 +188,7 @@ const getStudioIdFromRequest = (req) => {
 };
 
 const ensureSmugMugConfigTable = async () => {
+  await loadMssql();
   await query(`
     IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'studio_smugmug_config')
     BEGIN
@@ -961,4 +962,4 @@ router.post('/import', authRequired, async (req, res) => {
 
   }
 });
-export default router;
+

@@ -5,6 +5,7 @@ import { packageService } from '../../services/packageService';
 import { superPriceListService } from '../../services/superPriceListService';
 import { useAuth } from '../../contexts/AuthContext';
 import './AdminPriceLists.css';
+import ProductPriceSuggestionIcon from '../../components/ProductPriceSuggestionIcon';
 
 const baseProductName = (name: string) => {
 	return String(name || 'Unknown Product')
@@ -670,7 +671,10 @@ const AdminPriceLists: React.FC = () => {
 																		/>
 																		<span style={{ fontSize: 12 }}>Offer</span>
 																	</label>
-																	<div>{item._sizeLabel || item.size_name || '—'}</div>
+																	<div>
+																		{item._sizeLabel || item.size_name || '—'}
+																		<ProductPriceSuggestionIcon productName={item.product_name} sizeLabel={item._sizeLabel || item.size_name || ''} />
+																	</div>
 																	<div>{toCurrency(item.base_cost)}</div>
 																	<input
 																		type="number"

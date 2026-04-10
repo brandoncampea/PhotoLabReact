@@ -26,7 +26,8 @@ const TicketSchema = new mongoose.Schema({
   comments: [TicketCommentSchema],
   history: [TicketHistorySchema],
   createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date, default: Date.now }
+  updatedAt: { type: Date, default: Date.now },
+  meta: { type: mongoose.Schema.Types.Mixed, default: {} }
 });
 
 export default mongoose.model('Ticket', TicketSchema);

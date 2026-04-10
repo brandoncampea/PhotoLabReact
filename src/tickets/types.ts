@@ -25,4 +25,11 @@ export type Ticket = {
   history: TicketHistoryEntry[];
   createdAt: string;
   updatedAt: string;
+  meta?: {
+    page?: string;
+    user?: any;
+    studio?: string;
+    browser?: string;
+    [key: string]: any;
+  };
 };

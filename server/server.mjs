@@ -1,3 +1,4 @@
+import priceSuggestionsRoutes from './routes/priceSuggestions.js';
 console.log('[server.mjs] Server entrypoint loaded');
 // Load environment variables from .env.local (for WHCC and other secrets)
 import '../server/env-loader.mjs';
@@ -46,7 +47,7 @@ import subscriptionPlansRoutes from './routes/subscriptionPlans.js';
 import invoicesRoutes from './routes/invoices.js';
 import publicSearchRoutes from './routes/publicSearch.js';
 import playerWatchlistRoutes from './routes/playerWatchlist.js';
-import smugmugRoutes from './routes/smugmug.js';
+import smugmugRoutes from './routes/smugmug-new.js';
 
 import whccEditorRoutes from './routes/whccEditor.js';
 import ticketRoutes from './tickets/routes.js';
@@ -167,6 +168,7 @@ if (hasClientBuild) {
   app.get('/', (req, res) => {
     res.json({
       status: 'ok',
+app.use('/api/price-suggestions', priceSuggestionsRoutes);
       message: 'Photo Lab API root',
       docs: '/api/health'
     });

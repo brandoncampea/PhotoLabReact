@@ -7,7 +7,7 @@ export async function startSmugMugOAuth() {
 }
 
 // Complete OAuth flow (exchange verifier for access token)
-export async function completeSmugMugOAuth(params) {
+export async function completeSmugMugOAuth(params: Record<string, any>) {
   const res = await axios.post("/api/smugmug-new/oauth/callback", params);
   return res.data;
 }
@@ -19,7 +19,7 @@ export async function getSmugMugAlbums() {
 }
 
 // Import an album by key
-export async function importSmugMugAlbum(albumKey) {
+export async function importSmugMugAlbum(albumKey: string) {
   const res = await axios.post("/api/smugmug-new/import", { albumKey });
   return res.data;
 }

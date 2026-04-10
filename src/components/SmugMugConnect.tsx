@@ -1,9 +1,12 @@
-import React, { useState } from "react";
+import { useState } from "react";
 
-export default function SmugMugConnect({ onConnected }) {
+type SmugMugConnectProps = {
+  onConnected?: (account: { nickname: string }) => void;
+};
+export default function SmugMugConnect({ onConnected }: SmugMugConnectProps) {
   const [isConnecting, setIsConnecting] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
-  const [account, setAccount] = useState(null);
+  const [account, setAccount] = useState<{ nickname: string } | null>(null);
   const [error, setError] = useState("");
 
   // Placeholder for OAuth logic
