@@ -150,7 +150,7 @@ const ensureSmugMugConfigTable = async () => {
     if (!apiKey || !apiSecret) {
       return res.status(400).json({ error: 'SmugMug API key/secret not configured for this studio.' });
     }
-    const callbackUrl = req.body.callbackUrl || process.env.SMUGMUG_OAUTH_CALLBACK || 'http://localhost:3004/admin/smugmug';
+    const callbackUrl = req.body.callbackUrl || process.env.SMUGMUG_OAUTH_CALLBACK || 'http://localhost:3000/admin/smugmug';
     const oauth = OAuth({
       consumer: { key: apiKey, secret: apiSecret },
       signature_method: 'HMAC-SHA1',

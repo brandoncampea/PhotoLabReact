@@ -194,10 +194,10 @@ router.post('/session/create', authRequired, async (req, res) => {
 
     const fallbackComplete = appBase
       ? `${appBase}/cart?whccEditorComplete=1&editorId=%EDITOR_ID%`
-      : 'http://localhost:3004/cart?whccEditorComplete=1&editorId=%EDITOR_ID%';
+      : 'http://localhost:3000/cart?whccEditorComplete=1&editorId=%EDITOR_ID%';
     const fallbackCancel = appBase
       ? `${appBase}/cart?whccEditorCancel=1`
-      : 'http://localhost:3004/cart?whccEditorCancel=1';
+      : 'http://localhost:3000/cart?whccEditorCancel=1';
 
     const editorResponse = await axios.post(
       `${apiBase}/editors`,
