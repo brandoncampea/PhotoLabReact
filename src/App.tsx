@@ -1,4 +1,5 @@
 import { Suspense, lazy } from 'react';
+const TicketsPage = lazy(() => import('./pages/Tickets'));
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { CartProvider } from './contexts/CartContext';
@@ -66,6 +67,7 @@ function App() {
               <Route path="/checkout" element={<Checkout />} />
               <Route path="/orders" element={<Orders />} />
               <Route path="/account" element={<CustomerAccount />} />
+              <Route path="/tickets" element={<TicketsPage />} />
               <Route path="/search" element={<SearchPage />} />
               <Route path="/studio/:studioSlug" element={<StudioPublicPage />} />
               <Route path="/s/:studioSlug/albums/:albumId" element={<AlbumDetails />} />

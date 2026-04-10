@@ -54,6 +54,7 @@
     "face-api.js": "^0.20.0",
     "jsonwebtoken": "^9.0.3",
     "mailtrap": "^4.5.1",
+    "mongoose": "^9.4.1",
     "mssql": "^11.0.1",
     "multer": "^2.0.2",
     "nodemailer": "^8.0.4",

@@ -47,7 +47,9 @@ import invoicesRoutes from './routes/invoices.js';
 import publicSearchRoutes from './routes/publicSearch.js';
 import playerWatchlistRoutes from './routes/playerWatchlist.js';
 // import smugmugRoutes from './routes/smugmug-new.js';
+
 import whccEditorRoutes from './routes/whccEditor.js';
+import ticketRoutes from './tickets/routes.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -122,7 +124,9 @@ app.use('/api/publicSearch', publicSearchRoutes);
 app.use('/api/player-watchlist', playerWatchlistRoutes);
 app.use('/api/blob-sas', blobSasRoutes);
 // app.use('/api/smugmug', smugmugRoutes);
+
 app.use('/api/whcc-editor', whccEditorRoutes);
+app.use('/api/tickets', ticketRoutes);
 
 // Health check
 // Read version from package.json

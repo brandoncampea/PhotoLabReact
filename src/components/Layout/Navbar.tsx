@@ -61,6 +61,7 @@ const Navbar: React.FC = () => {
         <Link to={studioSlug ? `/albums?studioSlug=${encodeURIComponent(studioSlug)}` : '/albums'} className={styles.navbarLink}>Albums</Link>
         <Link to="/orders" className={styles.navbarLink}>Orders</Link>
         <Link to="/cart" className={styles.navbarLink}>Cart</Link>
+        <Link to="/tickets" className={styles.navbarLink}>Help</Link>
         {isLoggedIn ? (
           <>
             <Link
