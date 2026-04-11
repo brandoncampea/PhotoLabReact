@@ -1,5 +1,4 @@
 // Seed a super admin price list and items
-import Database from 'better-sqlite3';
 import path from 'path';
 import { fileURLToPath } from 'url';
 

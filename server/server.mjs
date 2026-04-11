@@ -168,12 +168,15 @@ if (hasClientBuild) {
   app.get('/', (req, res) => {
     res.json({
       status: 'ok',
-app.use('/api/price-suggestions', priceSuggestionsRoutes);
       message: 'Photo Lab API root',
       docs: '/api/health'
     });
   });
 }
+
+
+// Register price suggestions route outside of the root handler
+app.use('/api/price-suggestions', priceSuggestionsRoutes);
 
 
 console.log('==============================');

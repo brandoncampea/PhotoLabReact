@@ -1,5 +1,6 @@
 import { Suspense, lazy } from 'react';
-const TicketsPage = lazy(() => import('./pages/Tickets'));
+const StudioTickets = lazy(() => import('./pages/admin/StudioTickets'));
+const AdminTickets = lazy(() => import('./pages/admin/AdminTickets'));
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { CartProvider } from './contexts/CartContext';
@@ -67,7 +68,6 @@ function App() {
               <Route path="/checkout" element={<Checkout />} />
               <Route path="/orders" element={<Orders />} />
               <Route path="/account" element={<CustomerAccount />} />
-              <Route path="/tickets" element={<TicketsPage />} />
               <Route path="/search" element={<SearchPage />} />
               <Route path="/studio/:studioSlug" element={<StudioPublicPage />} />
               <Route path="/s/:studioSlug/albums/:albumId" element={<AlbumDetails />} />
@@ -97,6 +97,12 @@ function App() {
               <Route path="/admin/configuration" element={<AdminProtectedRoute><AdminConfiguration /></AdminProtectedRoute>} />
               <Route path="/admin/vendor-integrations" element={<AdminProtectedRoute><AdminVendorIntegrations /></AdminProtectedRoute>} />
               <Route path="/admin/users" element={<AdminProtectedRoute><AdminUsers /></AdminProtectedRoute>} />
+
+              {/* Studio: My Tickets */}
+              <Route path="/admin/studio-tickets" element={<AdminProtectedRoute><StudioTickets /></AdminProtectedRoute>} />
+              {/* Super Admin: All Tickets */}
+              <Route path="/admin/tickets" element={<AdminProtectedRoute><AdminTickets /></AdminProtectedRoute>} />
+
               <Route path="/admin/studio-admins" element={<AdminProtectedRoute><AdminStudioAdmins /></AdminProtectedRoute>} />
               <Route path="/admin/subscription" element={<AdminProtectedRoute><AdminSubscription /></AdminProtectedRoute>} />
               <Route path="/admin/subscription-gateway" element={<AdminProtectedRoute><AdminSubscriptionGateway /></AdminProtectedRoute>} />

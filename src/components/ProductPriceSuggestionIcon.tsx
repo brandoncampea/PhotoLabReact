@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 
 
 // Compact icon + tooltip for price suggestions
-const ProductPriceSuggestionIcon: React.FC<{ productName: string; sizeLabel: string }> = ({ productName, sizeLabel }) => {
+const ProductPriceSuggestionIcon: React.FC<{ productName: string; sizeLabel: string; baseCost?: number }> = ({ productName, sizeLabel, baseCost }) => {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<Array<{ source: string; price: string; url: string }>>([]);
@@ -14,7 +14,9 @@ const ProductPriceSuggestionIcon: React.FC<{ productName: string; sizeLabel: str
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(`/api/price-suggestions?productName=${encodeURIComponent(productName)}&sizeLabel=${encodeURIComponent(sizeLabel)}`);
+        const apiBase = import.meta.env.VITE_API_URL || '';
+        const url = `${apiBase.replace(/\/$/, '')}/price-suggestions?productName=${encodeURIComponent(productName)}&sizeLabel=${encodeURIComponent(sizeLabel)}`;
+        const res = await fetch(url);
         if (!res.ok) throw new Error('Failed to fetch');
         const data = await res.json();
         setSuggestions(data.suggestions || []);
@@ -53,13 +55,30 @@ const ProductPriceSuggestionIcon: React.FC<{ productName: string; sizeLabel: str
           {!loading && !error && suggestions.length === 0 && <div>No suggestions found.</div>}
           {!loading && suggestions.length > 0 && (
             <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
-              {suggestions.map((s, i) => (
-                <li key={i} style={{ marginBottom: 6 }}>
-                  <a href={s.url} target="_blank" rel="noopener noreferrer" style={{ color: '#1976d2', textDecoration: 'underline' }}>
-                    {s.source}
-                  </a>: <b>{s.price}</b>
-                </li>
-              ))}
+
+              {suggestions.map((s, i) => {
+                // Extract numeric price value
+                const priceNum = Number((s.price || '').replace(/[^\d.]/g, ''));
+                let markupPercent: string | null = null;
+                let percent: number | null = null;
+                if (baseCost && priceNum > 0) {
+                  percent = ((priceNum - baseCost) / baseCost) * 100;
+                  markupPercent = `${percent > 0 ? '+' : ''}${percent.toFixed(0)}%`;
+                }
+                return (
+                  <li key={i} style={{ marginBottom: 6 }}>
+                    <a href={s.url} target="_blank" rel="noopener noreferrer" style={{ color: '#1976d2', textDecoration: 'underline' }}>
+                      {s.source}
+                    </a>: <b>{s.price}</b>
+                    {markupPercent && percent !== null && (
+                      <span style={{ color: percent > 0 ? '#79d279' : percent < 0 ? '#ff9a9a' : '#aaa', marginLeft: 6, fontWeight: 500 }}>
+                        ({markupPercent})
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
+
             </ul>
           )}
         </div>

@@ -1,5 +1,5 @@
 import express from 'express';
-import { fetchProductPriceSuggestions } from '../../utils/productPriceSuggest.js';
+import { fetchProductPriceSuggestions } from '../utils/productPriceSuggest.js';
 
 const router = express.Router();
 
@@ -10,10 +10,14 @@ router.get('/', async (req, res) => {
     return res.status(400).json({ error: 'Missing productName or sizeLabel' });
   }
   try {
-    const suggestions = await fetchProductPriceSuggestions(String(productName), String(sizeLabel));
+    // Set a hard timeout for the whole request (10s)
+    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 10000));
+    const suggestionsPromise = fetchProductPriceSuggestions(String(productName), String(sizeLabel));
+    const suggestions = await Promise.race([suggestionsPromise, timeoutPromise]);
     res.json({ suggestions });
   } catch (e) {
-    res.status(500).json({ error: 'Failed to fetch suggestions' });
+    console.error('[price-suggestions] Error:', e.message);
+    res.status(500).json({ error: 'Failed to fetch suggestions', details: e.message });
   }
 });
 

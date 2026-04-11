@@ -11,6 +11,7 @@ const superAdminLinks = [
 	{ to: '/admin/super-pricing', label: 'Super Admin Pricing' },
 	{ to: '/admin/users', label: 'Users' },
 	{ to: '/admin/studio-admins', label: 'Studio Admins' },
+	{ to: '/admin/tickets', label: 'All Tickets' },
 	{ to: '/admin/profile', label: 'Profile' },
 	{ to: '/admin/stripe', label: 'Payment Methods' },
 	{ to: '/admin/subscription-gateway', label: 'Studio Subscription Payment Gateway' },
@@ -47,6 +48,13 @@ const Sidebar: React.FC = () => {
 						{inStudioAdminMenu ? 'Vendor Integrations' : 'Lab Configuration'}
 					</Link>
 				</li>
+				{/* Ticketing menu items */}
+				{isStudioAdmin && (
+					<li><Link to="/admin/studio-tickets" className={styles.sidebarLink}>My Tickets</Link></li>
+				)}
+				{isSuperAdmin && (
+					<li><Link to="/admin/tickets" className={styles.sidebarLink}>All Tickets</Link></li>
+				)}
 				{isStudioAdmin && (
 					<li><Link to="/admin/profile" className={styles.sidebarLink}>Subscription</Link></li>
 				)}

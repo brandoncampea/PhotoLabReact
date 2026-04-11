@@ -1,0 +1,16 @@
+.ticketBadge {
+  display: inline-block;
+  min-width: 18px;
+  padding: 0 6px;
+  height: 18px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #fff;
+  background: #e11d48;
+  border-radius: 12px;
+  margin-left: 6px;
+  line-height: 18px;
+  text-align: center;
+  vertical-align: middle;
+  box-shadow: 0 1px 4px #e11d4822;
+}

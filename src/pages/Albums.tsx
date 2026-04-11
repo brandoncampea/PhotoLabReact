@@ -29,6 +29,8 @@ const Albums: React.FC = () => {
   const [studios, setStudios] = useState<PublicStudio[]>([]);
   const [selectedStudio, setSelectedStudio] = useState<PublicStudio | null>(null);
   const [albums, setAlbums] = useState<PublicAlbum[]>([]);
+  const [albumQuery, setAlbumQuery] = useState('');
+  const [albumSort, setAlbumSort] = useState<'recent' | 'oldest'>('recent');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [shareNotification, setShareNotification] = useState('');
@@ -106,6 +108,25 @@ const Albums: React.FC = () => {
     }
   };
 
+
+  // Filtering and sorting for albums
+  const filteredAlbums = React.useMemo(() => {
+    let filtered = albums;
+    const query = albumQuery.trim().toLowerCase();
+    if (query) {
+      filtered = filtered.filter((album) =>
+        album.name.toLowerCase().includes(query) ||
+        (album.description || '').toLowerCase().includes(query)
+      );
+    }
+    filtered = [...filtered].sort((a, b) => {
+      const aDate = new Date(a.createdDate).getTime();
+      const bDate = new Date(b.createdDate).getTime();
+      return albumSort === 'recent' ? bDate - aDate : aDate - bDate;
+    });
+    return filtered;
+  }, [albums, albumQuery, albumSort]);
+
   if (loading) {
     return <div className="loading">Loading...</div>;
   }
@@ -160,6 +181,27 @@ const Albums: React.FC = () => {
             </button>
             <h2 className={styles.albumsH2}>{selectedStudio.name} Albums</h2>
           </div>
+          {/* Filtering and sorting UI */}
+          <div style={{ display: 'flex', gap: 12, marginBottom: 18, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input
+              type="text"
+              value={albumQuery}
+              onChange={e => setAlbumQuery(e.target.value)}
+              placeholder="Filter albums by name or description..."
+              style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #3a3656', background: '#141320', color: '#fff', minWidth: 220 }}
+            />
+            <select
+              value={albumSort}
+              onChange={e => setAlbumSort(e.target.value as 'recent' | 'oldest')}
+              style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #3a3656', background: '#141320', color: '#fff', minWidth: 140 }}
+            >
+              <option value="recent">Most Recent First</option>
+              <option value="oldest">Oldest First</option>
+            </select>
+            <span style={{ color: '#aaa', fontSize: 13 }}>
+              Showing {filteredAlbums.length} of {albums.length} album{albums.length === 1 ? '' : 's'}
+            </span>
+          </div>
           {albums.some((album) => album.batchShippingActive) && (
             <div className={styles.albumsBatchNotice}>
               <strong>Batch shipping is active for this studio.</strong>
@@ -174,8 +216,10 @@ const Albums: React.FC = () => {
           <div className="albums-grid">
             {albums.length === 0 ? (
               <p className="empty-state">No albums available for this studio</p>
+            ) : filteredAlbums.length === 0 ? (
+              <p className="empty-state">No albums match your filter.</p>
             ) : (
-              albums.map((album) => (
+              filteredAlbums.map((album) => (
                 <Link to={`/albums/${album.id}?studioSlug=${encodeURIComponent(selectedStudio.publicSlug)}`} key={album.id} className="album-card">
                   <div className="album-cover">
                     <AlbumCoverCarousel

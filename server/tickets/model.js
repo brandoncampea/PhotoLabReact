@@ -1,33 +1,20 @@
-// Ticketing system Mongoose model (replace with Sequelize if using SQL)
-import mongoose from 'mongoose';
 
-const TicketCommentSchema = new mongoose.Schema({
-  authorId: String,
-  authorType: String, // 'customer', 'studio', 'admin'
-  message: String,
-  createdAt: { type: Date, default: Date.now }
-});
+// MSSQL Ticket schema (for reference/documentation)
+// Table: tickets
+// Columns:
+// id INT PRIMARY KEY IDENTITY(1,1)
+// subject NVARCHAR(255)
+// description NVARCHAR(MAX)
+// created_by INT (user id)
+// created_for_studio INT (studio id, nullable)
+// assigned_to INT (admin id, nullable)
+// status NVARCHAR(32) DEFAULT 'open'
+// escalated BIT DEFAULT 0
+// comments NVARCHAR(MAX) (JSON array)
+// history NVARCHAR(MAX) (JSON array)
+// meta NVARCHAR(MAX) (JSON object)
+// created_at DATETIME2 DEFAULT GETDATE()
+// updated_at DATETIME2 DEFAULT GETDATE()
 
-const TicketHistorySchema = new mongoose.Schema({
-  action: String, // 'created', 'comment', 'status', 'escalate', etc.
-  by: String,
-  timestamp: { type: Date, default: Date.now },
-  details: String
-});
-
-const TicketSchema = new mongoose.Schema({
-  subject: String,
-  description: String,
-  createdBy: String, // user id
-  createdForStudio: String, // studio id (optional)
-  assignedTo: String, // admin id (optional)
-  status: { type: String, enum: ['open', 'pending', 'closed'], default: 'open' },
-  escalated: { type: Boolean, default: false },
-  comments: [TicketCommentSchema],
-  history: [TicketHistorySchema],
-  createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date, default: Date.now },
-  meta: { type: mongoose.Schema.Types.Mixed, default: {} }
-});
-
-export default mongoose.model('Ticket', TicketSchema);
+// Helper functions for tickets will be implemented in routes.js using mssql.cjs
+// This file is now a stub.

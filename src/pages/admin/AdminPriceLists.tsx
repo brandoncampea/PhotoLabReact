@@ -610,33 +610,74 @@ const AdminPriceLists: React.FC = () => {
 								{(() => {
 									const firstProduct = Object.keys(filteredGroupedItems[cat] || {})[0];
 									const firstItem = firstProduct ? filteredGroupedItems[cat][firstProduct]?.[0] : null;
-									const categoryImageUrl = firstItem?.category_image_url;
-									return (
-								<div
-									style={{ background: '#1f1b35', padding: '6px 10px', cursor: 'pointer', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}
-									onClick={() => setCatCollapsed(prev => ({ ...prev, [cat]: !prev[cat] }))}
-								>
-									<span>{catCollapsed[cat] ? '▶' : '▼'}</span>
-									{categoryImageUrl ? (
-										<img
-											src={categoryImageUrl}
-											alt={cat}
-											style={{ width: 24, height: 24, borderRadius: 4, objectFit: 'cover', border: '1px solid #444' }}
-										/>
-									) : (
-										<span style={{ fontSize: 14, opacity: 0.7 }}>🖼</span>
-									)}
-									<span>{cat}</span>
-									<label style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }} onClick={e => e.stopPropagation()}>
-										<input
-											type="checkbox"
-											checked={isAllOffered(getCategoryItemIds(cat))}
-											onChange={e => handleToggleOfferedBulk(getCategoryItemIds(cat), e.target.checked)}
-										/>
-										<span style={{ fontSize: 12 }}>Offer Category</span>
-									</label>
-								</div>
-									);
+								const [uploadingCat, setUploadingCat] = useState<string | null>(null);
+								const [catImagePreview, setCatImagePreview] = useState<{ [cat: string]: string }>({});
+								async function handleCategoryImageUpload(e: React.ChangeEvent<HTMLInputElement>, cat: string) {
+									const file = e.target.files?.[0];
+									if (!file) return;
+									setUploadingCat(cat);
+									const reader = new FileReader();
+									reader.onload = ev => {
+										setCatImagePreview(prev => ({ ...prev, [cat]: ev.target?.result as string }));
+									};
+									reader.readAsDataURL(file);
+									// Upload to backend
+									const formData = new FormData();
+									formData.append('image', file);
+									formData.append('category_name', cat);
+									// Find the super price list id (firstItem?.super_price_list_id or from selectedSuperListId)
+									const superListId = firstItem?.super_price_list_id || selectedSuperListId;
+									await fetch(`/api/super-price-lists/${superListId}/category-image`, {
+										method: 'POST',
+										body: formData,
+										headers: user?.token ? { Authorization: `Bearer ${user.token}` } : undefined,
+									})
+										.then(res => res.json())
+										.then(data => {
+											if (data.image_url) {
+												setCatImagePreview(prev => ({ ...prev, [cat]: data.image_url }));
+											}
+										})
+										.finally(() => setUploadingCat(null));
+								}
+								return (
+									<div
+										style={{ background: '#1f1b35', padding: '6px 10px', cursor: 'pointer', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}
+										onClick={() => setCatCollapsed(prev => ({ ...prev, [cat]: !prev[cat] }))}
+									>
+										<span>{catCollapsed[cat] ? '▶' : '▼'}</span>
+										{(catImagePreview[cat] || categoryImageUrl) ? (
+											<img
+												src={catImagePreview[cat] || categoryImageUrl}
+												alt={cat}
+												style={{ width: 24, height: 24, borderRadius: 4, objectFit: 'cover', border: '1px solid #444' }}
+											/>
+										) : (
+											<span style={{ fontSize: 14, opacity: 0.7 }}>🖼</span>
+										)}
+										<span>{cat}</span>
+										<label style={{ marginLeft: 12, cursor: 'pointer', fontSize: 12, color: '#aaf', display: 'flex', alignItems: 'center', gap: 4 }} onClick={e => e.stopPropagation()}>
+											<input
+												type="file"
+												accept="image/*"
+												style={{ display: 'none' }}
+												onChange={e => handleCategoryImageUpload(e, cat)}
+												disabled={uploadingCat === cat}
+											/>
+											<span style={{ border: '1px solid #444', borderRadius: 4, padding: '2px 8px', background: '#23223a' }}>
+												{uploadingCat === cat ? 'Uploading...' : 'Upload Image'}
+											</span>
+										</label>
+										<label style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }} onClick={e => e.stopPropagation()}>
+											<input
+												type="checkbox"
+												checked={isAllOffered(getCategoryItemIds(cat))}
+												onChange={e => handleToggleOfferedBulk(getCategoryItemIds(cat), e.target.checked)}
+											/>
+											<span style={{ fontSize: 12 }}>Offer Category</span>
+										</label>
+									</div>
+								);
 								})()}
 								{!catCollapsed[cat] && (
 									<div style={{ padding: '4px 6px' }}>
@@ -673,7 +714,7 @@ const AdminPriceLists: React.FC = () => {
 																	</label>
 																	<div>
 																		{item._sizeLabel || item.size_name || '—'}
-																		<ProductPriceSuggestionIcon productName={item.product_name} sizeLabel={item._sizeLabel || item.size_name || ''} />
+																		<ProductPriceSuggestionIcon productName={item.product_name} sizeLabel={item._sizeLabel || item.size_name || ''} baseCost={item.base_cost} />
 																	</div>
 																	<div>{toCurrency(item.base_cost)}</div>
 																	<input

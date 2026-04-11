@@ -1,5 +1,4 @@
 // Seed labs, products, and product sizes for initial setup
-import Database from 'better-sqlite3';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
