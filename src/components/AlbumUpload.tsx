@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { getSelectedPlayerNamesForPhoto, isPlayerSelectedForPhoto } from '../utils/playerTagging';
 import Papa from 'papaparse';
 import * as faceapi from 'face-api.js';
 import Tesseract from 'tesseract.js';
@@ -45,10 +46,11 @@ export default function AlbumUpload() {
     });
   };
 
-  // Match images to players by filename
+  // Match images to players by filename (centralized logic)
   const matchImagesToPlayers = () => {
     return images.map(img => {
       const baseName = img.file.name.replace(/\.[^.]+$/, '');
+      // Use a simple match for demo; in a real app, this could be a shared util
       const player = players.find(p => baseName.includes(p.number) || baseName.includes(p.name));
       return { ...img, player };
     });

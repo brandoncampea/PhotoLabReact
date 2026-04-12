@@ -718,14 +718,16 @@ const resolvePlayerTagForFile = ({ fileName, rosterRows, fileNameTagMap }) => {
   const direct = fileNameTagMap.get(normalizeToken(fileName));
   if (direct) return direct;
 
-  const baseName = String(fileName || '').replace(/\.[^.]+$/, '').toLowerCase();
+  // Normalize: remove all non-alphanumeric chars and lowercase
+  const normalizeForMatch = (str) => String(str || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+  const baseName = normalizeForMatch(fileName).replace(/\.[^.]+$/, '');
   const roster = Array.isArray(rosterRows) ? rosterRows : [];
   for (const row of roster) {
     const playerName = String(row.playerName || '').trim();
     const playerNumber = String(row.playerNumber || '').trim();
     if (!playerName && !playerNumber) continue;
-    const nameToken = normalizeToken(playerName).replace(/\s+/g, '');
-    const numberToken = normalizeToken(playerNumber);
+    const nameToken = normalizeForMatch(playerName);
+    const numberToken = normalizeForMatch(playerNumber);
     const nameMatch = nameToken && baseName.includes(nameToken);
     const numberMatch = numberToken && baseName.includes(numberToken);
     if (nameMatch || numberMatch) {

@@ -171,7 +171,7 @@ export const userAdminService = {
 
 export const superAdminService = {
   async getStudioRevenueDetails() {
-    const response = await api.get('/api/admin/studio-revenue-details');
+    const response = await api.get('/admin/studio-revenue-details');
     return response.data;
   },
 };

@@ -84,7 +84,7 @@ export const watermarkService = {
       
       // Create a new axios instance for this request without transformRequest
       const instance = axios.create({
-        baseURL: process.env.VITE_API_URL || '/api',
+        baseURL: import.meta.env.VITE_API_URL || '/api',
         timeout: 30000,
       });
       
@@ -116,7 +116,7 @@ export const watermarkService = {
       
       // Create a new axios instance for this request without transformRequest
       const instance = axios.create({
-        baseURL: process.env.VITE_API_URL || '/api',
+        baseURL: import.meta.env.VITE_API_URL || '/api',
         timeout: 30000,
       });
       

@@ -41,28 +41,25 @@ const isUrlAvailable = async (url) => {
 const normalizeWatermarkImageUrl = async (watermark) => {
   if (!watermark) return watermark;
   const imageUrl = String(watermark.imageUrl || '');
-  if (!imageUrl || imageUrl.startsWith('http://') || imageUrl.startsWith('https://') || imageUrl.startsWith('/api/')) {
-    return watermark;
-  }
+  if (!imageUrl) return watermark;
 
+  // Always return Azure Blob Storage URL if possible
   if (imageUrl.startsWith('/uploads/')) {
     const filename = imageUrl.split('/').pop();
-    const localPath = path.join(__dirname, '../uploads', filename || '');
-    const localExists = Boolean(filename) && fs.existsSync(localPath);
-    if (localExists) return watermark;
-
     const account = process.env.AZURE_STORAGE_ACCOUNT;
     const container = process.env.AZURE_CONTAINER_NAME;
     if (account && container && filename) {
       const azureWatermarkUrl = `https://${account}.blob.core.windows.net/${container}/watermarks/${filename}`;
-      const existsInAzure = await isUrlAvailable(azureWatermarkUrl);
       return {
         ...watermark,
-        imageUrl: existsInAzure ? azureWatermarkUrl : '',
+        imageUrl: azureWatermarkUrl,
       };
     }
   }
-
+  // If already an Azure or http(s) URL, return as is
+  if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://') || imageUrl.startsWith('/api/')) {
+    return watermark;
+  }
   return watermark;
 };
 

@@ -8,6 +8,7 @@ import { photoService } from '../../services/photoService';
 import { albumService } from '../../services/albumService';
 import { albumAdminService } from '../../services/albumAdminService';
 import { detectPlayersFromFilenames, extractPotentialPlayerNamesFromFilenames } from '../../services/filenamePlayerDetection';
+import { getSelectedPlayerNamesForPhoto, isPlayerSelectedForPhoto, upsertPhotoInState, handleTogglePlayerTag as sharedHandleTogglePlayerTag } from '../../utils/playerTagging';
 
 
 
@@ -18,6 +19,8 @@ type FaceTagBox = {
   topPct: number;
   widthPct: number;
   heightPct: number;
+
+
   playerName?: string | null;
   playerNumber?: string | null;
 };
@@ -39,7 +42,7 @@ const getBlazeFaceModel = async () => {
     blazeFaceModelPromise = blazeface.load();
   }
   return blazeFaceModelPromise;
-};
+// ...existing code...
 
 const resolvePhotoImageUrl = async (photo: Photo): Promise<string | null> => {
   const source = photo.fullImageUrl || photo.thumbnailUrl;
@@ -616,84 +619,17 @@ const AdminPhotos: React.FC = () => {
     }
   };
 
-  const handleSetCover = async (photo: Photo) => {
-    if (!albumId) return;
-    try {
-      setCoverLoadingId(photo.id);
-      // Use the actual photo's full image URL as the cover
-      const coverUrl = photo.fullImageUrl || photo.thumbnailUrl;
-      if (!coverUrl) {
-        setCoverMessage('Photo URL not available');
-        setTimeout(() => setCoverMessage(null), 2500);
-        return;
-      }
-      await albumAdminService.updateAlbum(albumId, { coverImageUrl: coverUrl, coverPhotoId: photo.id });
-      await loadAlbums();
-      setCoverMessage('Cover updated');
-      setCoverSuccessId(photo.id);
-      setTimeout(() => setCoverMessage(null), 2000);
-      setTimeout(() => setCoverSuccessId(null), 1500);
-    } catch (error) {
-      console.error('Failed to set album cover:', error);
-      setCoverMessage('Failed to update cover');
-      setTimeout(() => setCoverMessage(null), 2500);
-    } finally {
-      setCoverLoadingId(null);
-    }
-  };
-
-  const handleAlbumChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
-    const nextAlbumId = Number(event.target.value);
-    if (!Number.isInteger(nextAlbumId) || nextAlbumId <= 0) return;
-    setAlbumId(nextAlbumId);
-    navigate(`/admin/photos?album=${nextAlbumId}`, { replace: true });
-  };
-
-  const getSelectedPlayerNamesForPhoto = (photo: Photo) => {
-    return String((photo as any).playerNames || '')
-      .split(',')
-      .map((name) => name.trim())
-      .filter(Boolean);
-  };
-
-  const isPlayerSelectedForPhoto = (photo: Photo, playerName: string) => {
-    const key = String(playerName || '').trim().toLowerCase();
-    return getSelectedPlayerNamesForPhoto(photo).some((name) => name.toLowerCase() === key);
-  };
-
-  const upsertPhotoInState = (updatedPhoto: Photo) => {
-    setPhotos((prev) => prev.map((photo) => (Number(photo.id) === Number(updatedPhoto.id) ? { ...photo, ...updatedPhoto } : photo)));
-  };
-
-  const handleTogglePlayerTag = async (photo: Photo, player: { playerName: string; playerNumber?: string }) => {
-    const selectedNames = [...getSelectedPlayerNamesForPhoto(photo)];
-    const clickedName = String(player.playerName || '').trim();
-    const clickedNameKey = clickedName.toLowerCase();
-    const existingIndex = selectedNames.findIndex((name) => name.trim().toLowerCase() === clickedNameKey);
-
-    if (existingIndex >= 0) {
-      selectedNames.splice(existingIndex, 1);
-    } else {
-      selectedNames.push(clickedName);
-    }
-
-    const selectedPlayers = selectedNames.map((name) => {
-      const match = rosterPlayers.find((p) => p.playerName === name);
-      return {
-        playerName: name,
-        playerNumber: match?.playerNumber || (name === player.playerName ? (player.playerNumber || null) : null),
-      };
+  // Use shared handleTogglePlayerTag
+  const handleTogglePlayerTag = (photo: Photo, player: { playerName: string; playerNumber?: string }) => {
+    return sharedHandleTogglePlayerTag({
+      photo,
+      player,
+      rosterPlayers,
+      setPhotos,
+      photoService,
+      setUploadMessage,
     });
-
-    const newPlayerNames = selectedPlayers.map((sp) => sp.playerName).join(', ') || undefined;
-    const newPlayerNumbers = selectedPlayers.map((sp) => sp.playerNumber).filter(Boolean).join(', ') || undefined;
-
-    const optimisticPhoto: Photo = {
-      ...photo,
-      playerNames: newPlayerNames,
-      playerNumbers: newPlayerNumbers,
-    };
-
+  };
     // Optimistic update so chip highlight changes immediately in the UI.
     upsertPhotoInState(optimisticPhoto);
 
