@@ -30,25 +30,17 @@ const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop, onOpenWhccEditor,
   // Calculate crop preview overlay position (as percentage of image)
   const getCropStyle = () => {
     if (!item.cropData) return null;
-
-    let { x, y, width, height } = item.cropData;
+    const { x, y, width, height } = item.cropData;
     const naturalWidth = Number(item.photo?.width || item.photo?.metadata?.width || 0);
     const naturalHeight = Number(item.photo?.height || item.photo?.metadata?.height || 0);
+    if (naturalWidth === 0 || naturalHeight === 0) return null;
 
-    const looksPixelBased = x > 100 || y > 100 || width > 100 || height > 100;
-    if (looksPixelBased && naturalWidth > 0 && naturalHeight > 0) {
-      x = (x / naturalWidth) * 100;
-      y = (y / naturalHeight) * 100;
-      width = (width / naturalWidth) * 100;
-      height = (height / naturalHeight) * 100;
-    }
+    // Always treat cropData as pixel values and convert to percent for overlay
+    const left = (x / naturalWidth) * 100;
+    const top = (y / naturalHeight) * 100;
+    const boxWidth = (width / naturalWidth) * 100;
+    const boxHeight = (height / naturalHeight) * 100;
 
-    const clamp = (value: number) => Math.max(0, Math.min(100, value));
-    const left = clamp(x);
-    const top = clamp(y);
-    const boxWidth = clamp(width);
-    const boxHeight = clamp(height);
-    
     return {
       position: 'absolute' as const,
       left: `${left}%`,
@@ -99,11 +91,7 @@ const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop, onOpenWhccEditor,
             <div style={{ textAlign: 'center', fontSize: 12, color: '#aaa', marginBottom: 12 }}>
               {item.photo?.fileName || `Photo ${item.photoId}`}
             </div>
-            {cropDebugText && (
-              <div style={{ fontSize: 11, color: '#9aa3c7', marginBottom: 10, textAlign: 'center' }}>
-                Crop: {cropDebugText}
-              </div>
-            )}
+            {/* Crop debug info removed for customers; only overlay box is shown */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {onEditCrop && (
                 <button 

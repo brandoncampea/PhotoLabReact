@@ -94,6 +94,62 @@ interface StudioPayoutHistoryItem {
 }
 
 export default function StudioAdminDashboard() {
+    // Editable shipping address state
+    const [shipFrom, setShipFrom] = useState({
+      ship_from_name: '',
+      ship_from_address1: '',
+      ship_from_address2: '',
+      ship_from_city: '',
+      ship_from_state: '',
+      ship_from_zip: '',
+      ship_from_country: ''
+    });
+    const [shipFromLoading, setShipFromLoading] = useState(false);
+    const [shipFromSaved, setShipFromSaved] = useState(false);
+
+    // Populate shipping address state when subscription loads
+    useEffect(() => {
+      if (subscription?.studio) {
+        setShipFrom({
+          ship_from_name: subscription.studio.ship_from_name || '',
+          ship_from_address1: subscription.studio.ship_from_address1 || '',
+          ship_from_address2: subscription.studio.ship_from_address2 || '',
+          ship_from_city: subscription.studio.ship_from_city || '',
+          ship_from_state: subscription.studio.ship_from_state || '',
+          ship_from_zip: subscription.studio.ship_from_zip || '',
+          ship_from_country: subscription.studio.ship_from_country || ''
+        });
+      }
+    }, [subscription]);
+
+    const handleShipFromChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const { name, value } = e.target;
+      setShipFrom((prev) => ({ ...prev, [name]: value }));
+      setShipFromSaved(false);
+    };
+
+    const handleSaveShipFrom = async () => {
+      setShipFromLoading(true);
+      setShipFromSaved(false);
+      try {
+        const response = await fetch(`/api/studios/${effectiveStudioId}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            ...getAuthHeaders(),
+          },
+          body: JSON.stringify(shipFrom),
+        });
+        if (response.ok) {
+          setShipFromSaved(true);
+          fetchSubscriptionInfo(); // Refresh data
+        }
+      } catch (err) {
+        // Optionally handle error
+      } finally {
+        setShipFromLoading(false);
+      }
+    };
   const { user } = useAuth();
   const effectiveStudioId = studioFeatureService.getEffectiveStudioId(user);
   const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null);
@@ -664,6 +720,121 @@ export default function StudioAdminDashboard() {
             </div>
           </div>
 
+          {/* Ship From Address Section */}
+          <div style={{
+            backgroundColor: 'var(--bg-tertiary)',
+            padding: '20px',
+            borderRadius: '8px',
+            marginBottom: '30px',
+            border: '1px solid var(--border-color)'
+          }}>
+            <h3 style={{ marginTop: 0 }}>📦 Ship From Address</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+              <div>
+                <div style={{ fontWeight: 'bold', fontSize: '15px' }}>Name</div>
+                <input
+                  type="text"
+                  name="ship_from_name"
+                  value={shipFrom.ship_from_name}
+                  onChange={handleShipFromChange}
+                  className="form-control"
+                  placeholder="Sender Name"
+                  style={{ width: '100%' }}
+                  disabled={shipFromLoading}
+                />
+              </div>
+              <div>
+                <div style={{ fontWeight: 'bold', fontSize: '15px' }}>Address 1</div>
+                <input
+                  type="text"
+                  name="ship_from_address1"
+                  value={shipFrom.ship_from_address1}
+                  onChange={handleShipFromChange}
+                  className="form-control"
+                  placeholder="Street Address 1"
+                  style={{ width: '100%' }}
+                  disabled={shipFromLoading}
+                />
+              </div>
+              <div>
+                <div style={{ fontWeight: 'bold', fontSize: '15px' }}>Address 2</div>
+                <input
+                  type="text"
+                  name="ship_from_address2"
+                  value={shipFrom.ship_from_address2}
+                  onChange={handleShipFromChange}
+                  className="form-control"
+                  placeholder="Street Address 2 (optional)"
+                  style={{ width: '100%' }}
+                  disabled={shipFromLoading}
+                />
+              </div>
+              <div>
+                <div style={{ fontWeight: 'bold', fontSize: '15px' }}>City</div>
+                <input
+                  type="text"
+                  name="ship_from_city"
+                  value={shipFrom.ship_from_city}
+                  onChange={handleShipFromChange}
+                  className="form-control"
+                  placeholder="City"
+                  style={{ width: '100%' }}
+                  disabled={shipFromLoading}
+                />
+              </div>
+              <div>
+                <div style={{ fontWeight: 'bold', fontSize: '15px' }}>State</div>
+                <input
+                  type="text"
+                  name="ship_from_state"
+                  value={shipFrom.ship_from_state}
+                  onChange={handleShipFromChange}
+                  className="form-control"
+                  placeholder="State/Province"
+                  style={{ width: '100%' }}
+                  disabled={shipFromLoading}
+                />
+              </div>
+              <div>
+                <div style={{ fontWeight: 'bold', fontSize: '15px' }}>ZIP</div>
+                <input
+                  type="text"
+                  name="ship_from_zip"
+                  value={shipFrom.ship_from_zip}
+                  onChange={handleShipFromChange}
+                  className="form-control"
+                  placeholder="ZIP/Postal Code"
+                  style={{ width: '100%' }}
+                  disabled={shipFromLoading}
+                />
+              </div>
+              <div>
+                <div style={{ fontWeight: 'bold', fontSize: '15px' }}>Country</div>
+                <input
+                  type="text"
+                  name="ship_from_country"
+                  value={shipFrom.ship_from_country}
+                  onChange={handleShipFromChange}
+                  className="form-control"
+                  placeholder="Country"
+                  style={{ width: '100%' }}
+                  disabled={shipFromLoading}
+                />
+              </div>
+            </div>
+            <div style={{ marginTop: '18px', display: 'flex', gap: '12px', alignItems: 'center' }}>
+              <button
+                className="btn btn-primary"
+                onClick={handleSaveShipFrom}
+                disabled={shipFromLoading}
+                style={{ minWidth: 120 }}
+              >
+                {shipFromLoading ? 'Saving...' : 'Save Shipping Address'}
+              </button>
+              {shipFromSaved && <span style={{ color: '#22c55e' }}>Saved!</span>}
+            </div>
+          </div>
+
           {/* Product Fees Info */}
           {studioFees && (
             <div style={{
@@ -767,6 +938,12 @@ export default function StudioAdminDashboard() {
                   <div className="muted-text" style={{ fontSize: '12px' }}>Stripe Fees</div>
                   <div style={{ fontSize: '22px', fontWeight: 'bold', color: '#fca5a5' }}>
                     ${Number(profitSummary.totalStripeFees || 0).toFixed(2)}
+                  </div>
+                </div>
+                <div className="admin-summary-box">
+                  <div className="muted-text" style={{ fontSize: '12px' }}>Discounts</div>
+                  <div style={{ fontSize: '22px', fontWeight: 'bold', color: '#a5b4fc' }}>
+                    ${Number(profitSummary.totalDiscounts || 0).toFixed(2)}
                   </div>
                 </div>
                 <div className="admin-summary-box">

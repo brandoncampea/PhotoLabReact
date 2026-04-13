@@ -307,6 +307,7 @@ export interface ShippingConfig {
   directFlatFee?: number | null;
   isActive: boolean;
   batchShippingAddress?: ShippingAddress | null;
+  batchShippingNote?: string;
 }
 
 export interface ShippingQuote {

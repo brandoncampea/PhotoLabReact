@@ -23,6 +23,9 @@ function OrderItemWithSas({ item }: { item: any }) {
     ? `x:${Math.round(cropData.x)} y:${Math.round(cropData.y)} w:${Math.round(cropData.width)} h:${Math.round(cropData.height)} sx:${Number(cropData.scaleX || 1).toFixed(2)} sy:${Number(cropData.scaleY || 1).toFixed(2)}`
     : null;
 
+  // Only show crop debug info for studio/admin users (not customers)
+  // Assume a prop or context isAdminOrStudio, fallback to hiding for customers
+  const isAdminOrStudio = false; // Set to true if you have a way to detect admin/studio
   return (
     <div className="order-item">
       <div className="item-image-container">
@@ -42,7 +45,8 @@ function OrderItemWithSas({ item }: { item: any }) {
         <div>
           <span className="item-quantity">Qty: {item.quantity}</span>
         </div>
-        {cropDebugText && <p className="item-size-name">Crop: {cropDebugText}</p>}
+        {/* Only show crop debug for admin/studio */}
+        {isAdminOrStudio && cropDebugText && <p className="item-size-name">Crop: {cropDebugText}</p>}
         <p className="item-price">${(item.price * item.quantity).toFixed(2)}</p>
       </div>
     </div>

@@ -9,6 +9,12 @@ const router = express.Router();
 router.use(authRequired);
 
 const ensureShippingConfigSchema = async () => {
+    await query(`
+      IF COL_LENGTH('shipping_config', 'batch_shipping_note') IS NULL
+      BEGIN
+        ALTER TABLE shipping_config ADD batch_shipping_note NVARCHAR(MAX) NULL
+      END
+    `);
   await query(`
     IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'shipping_config')
     BEGIN
@@ -75,6 +81,7 @@ const mapConfigRowToResponse = (config, studioId) => {
     directFlatFee: config.direct_flat_fee == null ? null : Number(config.direct_flat_fee),
     isActive: Boolean(config.is_active),
     batchShippingAddress: config.batch_shipping_address ? JSON.parse(config.batch_shipping_address) : null,
+    batchShippingNote: config.batch_shipping_note || '',
   };
 };
 
@@ -182,7 +189,7 @@ router.put('/config', async (req, res) => {
       return res.status(403).json({ error: 'Studio ID required' });
     }
     const current = await queryRow('SELECT * FROM shipping_config WHERE id = $1', [studioId]);
-    const { batchDeadline, directShippingCharge, directPricingMode, directFlatFee, isActive, batchShippingAddress } = req.body;
+    const { batchDeadline, directShippingCharge, directPricingMode, directFlatFee, isActive, batchShippingAddress, batchShippingNote } = req.body;
     const nextBatchDeadline = batchDeadline ?? current?.batch_deadline ?? '';
     const nextDirectShippingCharge = directShippingCharge ?? current?.direct_shipping_charge ?? 0;
     const nextDirectPricingMode = String(
@@ -210,13 +217,14 @@ router.put('/config', async (req, res) => {
             direct_flat_fee = $5,
             is_active = $6,
             batch_shipping_address = $7,
+            batch_shipping_note = $8,
             updated_at = CURRENT_TIMESTAMP
         WHERE id = $1
       END
       ELSE
       BEGIN
-        INSERT INTO shipping_config (id, batch_deadline, direct_shipping_charge, direct_pricing_mode, direct_flat_fee, is_active, batch_shipping_address)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        INSERT INTO shipping_config (id, batch_deadline, direct_shipping_charge, direct_pricing_mode, direct_flat_fee, is_active, batch_shipping_address, batch_shipping_note)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       END
     `, [
       studioId,
@@ -226,6 +234,7 @@ router.put('/config', async (req, res) => {
       nextDirectFlatFee,
       !!nextIsActive,
       nextBatchShippingAddress,
+      batchShippingNote || '',
     ]);
     const updated = await queryRow('SELECT * FROM shipping_config WHERE id = $1', [studioId]);
     res.json(mapConfigRowToResponse(updated, studioId));

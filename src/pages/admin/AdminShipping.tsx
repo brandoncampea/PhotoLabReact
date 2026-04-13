@@ -38,6 +38,7 @@ const AdminShipping: React.FC = () => {
   const [directPricingMode, setDirectPricingMode] = useState<'pass_through' | 'flat_fee'>('pass_through');
   const [directFlatFee, setDirectFlatFee] = useState('');
   const [isActive, setIsActive] = useState(true);
+  const [batchShippingNote, setBatchShippingNote] = useState('');
   const [batchShippingAddress, setBatchShippingAddress] = useState<ShippingAddress>({
     fullName: '',
     addressLine1: '',
@@ -75,6 +76,7 @@ const AdminShipping: React.FC = () => {
         setDirectPricingMode(data.directPricingMode === 'flat_fee' ? 'flat_fee' : 'pass_through');
         setDirectFlatFee(data.directFlatFee == null ? '' : String(data.directFlatFee));
         setIsActive(!!data.isActive);
+        setBatchShippingNote(data.batchShippingNote || '');
         setBatchShippingAddress({
           fullName: data.batchShippingAddress?.fullName || '',
           addressLine1: data.batchShippingAddress?.addressLine1 || '',
@@ -106,6 +108,7 @@ const AdminShipping: React.FC = () => {
         directFlatFee: directFlatFee === '' ? null : parseFloat(directFlatFee),
         isActive,
         batchShippingAddress,
+        batchShippingNote,
       });
       // Removed unused setConfig
       setMessage('Shipping config updated!');
@@ -155,6 +158,18 @@ const AdminShipping: React.FC = () => {
         ) : (
           <form className="admin-shipping-form" onSubmit={handleSubmit}>
             <section className="admin-shipping-section">
+              <div className="form-group admin-shipping-field admin-shipping-field--wide">
+                <label htmlFor="batchShippingNote">Batch Shipping Note</label>
+                <textarea
+                  id="batchShippingNote"
+                  className="input"
+                  value={batchShippingNote}
+                  onChange={e => setBatchShippingNote(e.target.value)}
+                  rows={3}
+                  placeholder="This note will be shown to customers who select batch shipping."
+                />
+                <small>This note will be displayed in the cart when batch shipping is selected.</small>
+              </div>
               <div className="admin-shipping-section-heading">
                 <h2>Pricing & Availability</h2>
                 <p>Define when batch shipments are released and how direct WHCC shipping is charged.</p>

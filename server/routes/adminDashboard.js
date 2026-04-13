@@ -27,7 +27,7 @@ router.get('/studio-revenue-details', adminRequired, async (req, res) => {
                              COALESCE(SUM(studio_shipping_cost),0) as totalStudioShipping,
                              COALESCE(SUM(shipping_margin),0) as totalShippingMargin,
                              COALESCE(SUM(stripe_fee_amount),0) as totalStripeFees,
-                             COALESCE(SUM(total - subtotal),0) as totalDiscounts
+                             COALESCE(SUM(CASE WHEN discount_code IS NOT NULL AND discount_code <> '' THEN (subtotal + tax + shipping - total) ELSE 0 END),0) as totalDiscounts
                 FROM orders WHERE studio_id = $1
             `, [studio.id]);
             // All orders for this studio

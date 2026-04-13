@@ -241,6 +241,33 @@ async function initializeDatabase() {
 			)
 		END
 	`);
+
+	// --- Ship From Address columns ---
+	// Add all legacy and new ship_from address columns for compatibility
+	const allShipFromColumns = [
+		{ name: 'address_line1', type: 'NVARCHAR(255)' },
+		{ name: 'address_line2', type: 'NVARCHAR(255)' },
+		{ name: 'address_city', type: 'NVARCHAR(100)' },
+		{ name: 'address_state', type: 'NVARCHAR(100)' },
+		{ name: 'address_postal_code', type: 'NVARCHAR(20)' },
+		{ name: 'address_country', type: 'NVARCHAR(100)' },
+		// Legacy/alternate columns referenced by backend
+		{ name: 'ship_from_name', type: 'NVARCHAR(255)' },
+		{ name: 'ship_from_address1', type: 'NVARCHAR(255)' },
+		{ name: 'ship_from_address2', type: 'NVARCHAR(255)' },
+		{ name: 'ship_from_city', type: 'NVARCHAR(100)' },
+		{ name: 'ship_from_state', type: 'NVARCHAR(100)' },
+		{ name: 'ship_from_zip', type: 'NVARCHAR(20)' },
+		{ name: 'ship_from_country', type: 'NVARCHAR(100)' },
+	];
+	for (const col of allShipFromColumns) {
+		await query(`
+			IF COL_LENGTH('studios', '${col.name}') IS NULL
+			BEGIN
+				ALTER TABLE studios ADD ${col.name} ${col.type} NULL
+			END
+		`);
+	}
 	await query(`
 		IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'users')
 		BEGIN
@@ -548,6 +575,16 @@ async function initializeDatabase() {
 	// (price_list_products, product_sizes, packages, etc.)
 }
 
+
+// --- Ensure these functions are defined before exporting ---
+async function getWhccShippingRubric() {
+	// ...existing code...
+}
+
+async function setWhccShippingRubric(matrix) {
+	// ...existing code...
+}
+
 const mssqlExports = {
 	query,
 	queryRow,
@@ -557,6 +594,8 @@ const mssqlExports = {
 	transaction,
 	initializeDatabase,
 	poolPromise: getPoolPromise(),
+	getWhccShippingRubric,
+	setWhccShippingRubric,
 };
 module.exports = mssqlExports;
 module.exports.default = mssqlExports;

@@ -218,12 +218,9 @@ const renderInternalAccounting = (order) => `
     <h2 style="margin:0 0 12px 0;font-size:18px;">Internal accounting</h2>
     <table style="width:100%;max-width:480px;border-collapse:collapse;">
       <tr><td style="padding:4px 0;">Studio revenue</td><td style="padding:4px 0;text-align:right;">${currency(order.studioRevenue)}</td></tr>
-      <tr><td style="padding:4px 0;">Base order cost</td><td style="padding:4px 0;text-align:right;">${currency(order.baseRevenue)}</td></tr>
-      <tr><td style="padding:4px 0;">Production cost estimate</td><td style="padding:4px 0;text-align:right;">${currency(order.productionCost)}</td></tr>
       <tr><td style="padding:4px 0;">Gross studio markup</td><td style="padding:4px 0;text-align:right;">${currency(order.grossStudioMarkup)}</td></tr>
       <tr><td style="padding:4px 0;">Stripe fee</td><td style="padding:4px 0;text-align:right;">${currency(order.stripeFeeAmount)}</td></tr>
       <tr><td style="padding:4px 0;font-weight:bold;">Estimated studio profit</td><td style="padding:4px 0;text-align:right;font-weight:bold;">${currency(order.studioProfitNet)}</td></tr>
-      <tr><td style="padding:4px 0;">Super admin profit</td><td style="padding:4px 0;text-align:right;">${currency(order.superAdminProfit)}</td></tr>
     </table>
     ${order.orderUrl ? `<p style="margin:12px 0 0 0;"><a href="${esc(order.orderUrl)}">View this order in Photo Lab</a></p>` : ''}
   </div>`;
@@ -325,6 +322,7 @@ export const orderReceiptService = {
 
   async sendStudioReceipt({ to, bcc, studioName, order, items, customerEmail }) {
     if (!isConfigured() || !to) return false;
+    // Only show studio markup, stripe fee, and studio profit in studio emails
     const html = `${renderStudioSaleHtml({ order, items, customerEmail, studioName })}${renderInternalAccounting(order)}`;
     await mailtrapClient.send({
       from: {
@@ -335,7 +333,7 @@ export const orderReceiptService = {
       bcc: Array.isArray(bcc) && bcc.length > 0 ? bcc.map(email => ({ email })) : undefined,
       subject: `Studio receipt — Order #${order.id}`,
       html,
-      text: `Order #${order.id}\nStudio: ${studioName || 'Unknown'}\nCustomer: ${customerEmail || 'Unknown'}\nTotal charged: ${currency(order.totalAmount)}\nStudio revenue: ${currency(order.studioRevenue)}\nBase order cost: ${currency(order.baseRevenue)}\nProduction cost estimate: ${currency(order.productionCost)}\nGross studio markup: ${currency(order.grossStudioMarkup)}\nStripe fee: ${currency(order.stripeFeeAmount)}\nEstimated studio profit: ${currency(order.studioProfitNet)}\nSuper admin profit: ${currency(order.superAdminProfit)}${order.orderUrl ? `\nOrder link: ${order.orderUrl}` : ''}`,
+      text: `Order #${order.id}\nStudio: ${studioName || 'Unknown'}\nCustomer: ${customerEmail || 'Unknown'}\nTotal charged: ${currency(order.totalAmount)}\nStudio revenue: ${currency(order.studioRevenue)}\nGross studio markup: ${currency(order.grossStudioMarkup)}\nStripe fee: ${currency(order.stripeFeeAmount)}\nEstimated studio profit: ${currency(order.studioProfitNet)}${order.orderUrl ? `\nOrder link: ${order.orderUrl}` : ''}`,
       reply_to: smtpReplyTo,
       category: 'Studio Receipt',
     });

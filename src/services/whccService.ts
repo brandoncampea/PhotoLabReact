@@ -223,6 +223,21 @@ class WhccService {
     customer: any,
     orderId: string
   ): WhccOrderRequest {
+
+    // Centralize mapping of cropData to cropX/cropY/zoomX/zoomY for WHCC
+    const mappedCartItems = cartItems.map((item) => {
+      if (item.cropData) {
+        return {
+          ...item,
+          cropX: typeof item.cropData.x === 'number' ? Math.round(item.cropData.x) : 0,
+          cropY: typeof item.cropData.y === 'number' ? Math.round(item.cropData.y) : 0,
+          zoomX: typeof item.cropData.width === 'number' ? Math.round(item.cropData.width) : 100,
+          zoomY: typeof item.cropData.height === 'number' ? Math.round(item.cropData.height) : 100,
+        };
+      }
+      return item;
+    });
+
     const config = this.getConfig();
 
     // Default ship from address (customize this)
@@ -275,7 +290,7 @@ class WhccService {
             },
           ],
           // Convert cart items
-          OrderItems: cartItems.map((item, idx) => ({
+          OrderItems: mappedCartItems.map((item, idx) => ({
             ProductUID: item.whccProductUID || 2, // Default to 5x7 print if not specified
             Quantity: item.quantity || 1,
             LineItemID: item.id || `item-${idx}`,

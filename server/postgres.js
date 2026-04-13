@@ -96,19 +96,23 @@ export async function initializeDatabase() {
       )
     `);
 
-    // Add columns if they do not exist (for migrations)
+    // Add columns if they do not exist (for migrations, SQL Server compatible)
     const addressColumns = [
-      'ship_from_name TEXT',
-      'ship_from_address1 TEXT',
-      'ship_from_address2 TEXT',
-      'ship_from_city TEXT',
-      'ship_from_state TEXT',
-      'ship_from_zip TEXT',
-      'ship_from_country TEXT'
+      { name: 'ship_from_name', type: 'NVARCHAR(255)' },
+      { name: 'ship_from_address1', type: 'NVARCHAR(255)' },
+      { name: 'ship_from_address2', type: 'NVARCHAR(255)' },
+      { name: 'ship_from_city', type: 'NVARCHAR(255)' },
+      { name: 'ship_from_state', type: 'NVARCHAR(255)' },
+      { name: 'ship_from_zip', type: 'NVARCHAR(50)' },
+      { name: 'ship_from_country', type: 'NVARCHAR(100)' }
     ];
     for (const col of addressColumns) {
-      const colName = col.split(' ')[0];
-      await query(`ALTER TABLE studios ADD COLUMN IF NOT EXISTS ${col}`);
+      await query(`
+        IF COL_LENGTH('studios', '${col.name}') IS NULL
+        BEGIN
+          ALTER TABLE studios ADD ${col.name} ${col.type} NULL
+        END
+      `);
     }
     await query(`
       CREATE TABLE IF NOT EXISTS users (

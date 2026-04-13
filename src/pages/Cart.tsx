@@ -238,16 +238,20 @@ const Cart: React.FC = () => {
     });
   };
 
-  const getShippingCost = () => {
-    if (hasOnlyDigitalProducts()) return 0; // No shipping for digital-only orders
-    if (shippingQuote && shippingQuote.shippingOption === shippingOption) {
+  // Returns the shipping cost for the given option ('batch' or 'direct')
+  const getShippingCostFor = (option: 'batch' | 'direct') => {
+    if (hasOnlyDigitalProducts()) return 0;
+    if (shippingQuote && shippingQuote.shippingOption === option) {
       return Number(shippingQuote.customerShippingCost || 0);
     }
-    if (shippingOption === 'direct') {
+    if (option === 'direct') {
       return shippingConfig?.directShippingCharge || 15.00;
     }
-    return 0; // Batch shipping is free
+    return 0;
   };
+
+  // For backward compatibility in other usages
+  const getShippingCost = () => getShippingCostFor(shippingOption);
 
   const handleApplyDiscount = async () => {
     if (!discountCode.trim()) return;
@@ -804,6 +808,12 @@ const Cart: React.FC = () => {
                       Included with the next available batch shipment.
                     </p>
                   )}
+                  {/* Show batch shipping note if present and batch is selected */}
+                  {shippingOption === 'batch' && shippingConfig?.batchShippingNote && (
+                    <div style={{ marginTop: 8, background: '#232336', color: '#bdbdbd', borderRadius: 6, padding: '8px 12px', fontSize: '0.98em' }}>
+                      {shippingConfig.batchShippingNote}
+                    </div>
+                  )}
                 </label>
               )}
 
@@ -815,15 +825,12 @@ const Cart: React.FC = () => {
                   checked={shippingOption === 'direct'}
                   onChange={() => setShippingOption('direct')}
                 />
-                <strong>Direct Shipping - ${getShippingCost().toFixed(2)}</strong>
-                <p>
+                <span style={{ fontWeight: 600, fontSize: '1.1em', color: '#fff' }}>
+                  Direct Shipping - ${getShippingCostFor('direct').toFixed(2)}
+                </span>
+                <p style={{ color: '#bdbdbd', margin: 0 }}>
                   Ships immediately (2-3 business days)
                 </p>
-                {shippingQuote && shippingOption === 'direct' && (
-                  <p style={{ marginTop: '0.35rem', fontSize: '0.85rem', color: '#9ad1ff' }}>
-                    WHCC: ${Number(shippingQuote.whccShippingCost || 0).toFixed(2)} · Pricing: {shippingQuote.directPricingMode === 'flat_fee' ? 'Flat fee' : 'Pass-through'}
-                  </p>
-                )}
               </label>
 
               {!isBatchAvailable() && shippingOption === 'batch' && (
