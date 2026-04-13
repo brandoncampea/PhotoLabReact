@@ -1,3 +1,91 @@
+import { Photo } from '../types';
+
+/**
+ * Associates a detected face with a tagged player if only one face and one player are present.
+ * Updates the photo metadata to link the face box to the player.
+ */
+export function autoAssociateSingleFaceWithPlayer(photo: Photo, faceBoxes: any[]): any[] {
+  const playerNames = (photo.playerNames || '').split(',').map((n: string) => n.trim()).filter(Boolean);
+  if (faceBoxes.length === 1 && playerNames.length === 1) {
+    return [{ ...faceBoxes[0], playerName: playerNames[0] }];
+  }
+  return faceBoxes;
+}
+
+/**
+ * Returns detection overlays (faces, numbers) for a photo, ensuring overlays are only on the main photo object.
+ * Optionally auto-associates a single detected face with a tagged player.
+ */
+export function getDetectionOverlaysForPhoto(photo: Photo, faceBoxes: any[]): any[] {
+  return autoAssociateSingleFaceWithPlayer(photo, faceBoxes);
+}
+// Tag a photo with player names extracted from its filename, regardless of roster
+import { Photo } from '../types';
+
+/**
+ * Extracts player names from a filename and returns them as an array of strings.
+ * Example: "ADDISON_RICE_20.jpg" => ["Addison Rice"]
+ */
+export function extractPlayerNamesFromFilename(filename: string): string[] {
+  const base = filename.replace(/\.[^.]+$/, '');
+  const normalized = base.replace(/[-]+/g, '_');
+  let parts = normalized.split('_').filter(Boolean);
+  if (parts.length < 2) return [];
+  // Remove trailing number if present
+  if (/^\d+$/.test(parts[parts.length - 1])) parts = parts.slice(0, -1);
+  // Join all as name, capitalize
+  const name = parts
+    .map(
+      (part) =>
+        part
+          .replace(/[^a-zA-Z]/g, ' ')
+          .toLowerCase()
+          .replace(/\b\w/g, (c) => c.toUpperCase())
+    )
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return name ? [name] : [];
+}
+
+/**
+ * Tags a photo object with player names extracted from its filename.
+ * Returns a new photo object with playerNames set.
+ */
+export function tagPhotoWithFilenamePlayers(photo: Photo): Photo {
+  if (!photo.fileName) return photo;
+  const playerNames = extractPlayerNamesFromFilename(photo.fileName);
+  if (playerNames.length === 0) return photo;
+  return {
+    ...photo,
+    playerNames: playerNames.join(', '),
+  };
+}
+// Centralized function: extract player from filename, add to roster if missing, and tag image
+export function extractAndTagPlayerFromFilename({ file, player }: { file: File; player?: { name: string; number?: string } }, roster: Array<{ name: string; number: string }>): { updatedImage: { file: File; player?: { name: string; number?: string } }, updatedRoster: Array<{ name: string; number: string }> } {
+  // If already tagged, skip extraction
+  if (player && player.name) {
+    return { updatedImage: { file, player }, updatedRoster: addPlayerToRosterIfMissing(roster, player) };
+  }
+  const extracted = extractPlayerNameFromFilename(file.name);
+  if (!extracted) {
+    return { updatedImage: { file }, updatedRoster: roster };
+  }
+  const updatedRoster = addPlayerToRosterIfMissing(roster, extracted);
+  return { updatedImage: { file, player: extracted }, updatedRoster };
+}
+
+// Deduplicate images by file name, updating the original image with new tags (no duplicates)
+export function deduplicateAndTagImages<T extends { file: File; player?: { name: string; number?: string } }>(images: T[], roster: Array<{ name: string; number: string }>): { images: T[]; roster: Array<{ name: string; number: string }> } {
+  const seen = new Map<string, T>();
+  let updatedRoster = roster;
+  for (const img of images) {
+    const { updatedImage, updatedRoster: newRoster } = extractAndTagPlayerFromFilename(img, updatedRoster);
+    updatedRoster = newRoster;
+    seen.set(img.file.name, { ...img, ...updatedImage });
+  }
+  return { images: Array.from(seen.values()), roster: updatedRoster };
+}
 // Deduplicate images by file name (last occurrence wins)
 export function deduplicateImagesByFileName<T extends { file: File }>(images: T[]): T[] {
   const seen = new Map<string, T>();

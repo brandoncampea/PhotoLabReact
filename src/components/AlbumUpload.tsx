@@ -1,6 +1,8 @@
-
-import { useState } from 'react';
-import { deduplicateImagesByFileName } from '../utils/playerTagging';
+import React, { useState } from 'react';
+import {
+  deduplicateAndTagImages
+} from '../utils/playerTagging';
+import Papa from 'papaparse';
 import * as faceapi from 'face-api.js';
 import Tesseract from 'tesseract.js';
 
@@ -16,13 +18,44 @@ interface ImageUpload {
 
 export default function AlbumUpload() {
   const [images, setImages] = useState<ImageUpload[]>([]);
-  const [players] = useState<Player[]>([]);
-  const [csvFile] = useState<File | null>(null);
+    const [players, setPlayers] = useState<Player[]>([]);
+    const [csvFile, setCsvFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
-  const [csvError] = useState<string>('');
+  const [csvError, setCsvError] = useState<string>('');
 
-  // Match images to players by filename (centralized logic)
-  const matchImagesToPlayers = () => images;
+  // Handle image drag-and-drop
+  const handleImageDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+    setImages(prev => [...prev, ...files.map(file => ({ file }))]);
+  };
+
+  // Handle CSV upload
+  const handleCsvUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+      setCsvFile(file);
+      Papa.parse(file, {
+      header: true,
+      complete: (results: Papa.ParseResult<Player>) => {
+        if (results.errors.length) {
+          setCsvError('CSV parsing error');
+          return;
+        }
+        setPlayers(results.data as Player[]);
+        setCsvError('');
+      },
+    });
+  };
+
+
+  // Match and tag images using centralized utility
+  const matchImagesToPlayers = () => {
+    // Convert players to the format expected by playerTagging utils
+    const roster = players.map(p => ({ name: p.name, number: p.number }));
+    const { images: taggedImages } = deduplicateAndTagImages(images, roster);
+    return taggedImages;
+  };
 
   // Load face-api models
   const loadModels = async () => {
@@ -37,9 +70,9 @@ export default function AlbumUpload() {
     setUploadProgress(0);
     const formData = new FormData();
     let detectedPlayers: Player[] = [];
-    let newImages: ImageUpload[] = [];
-    for (let i = 0; i < images.length; i++) {
-      const img = images[i];
+    const taggedImages = matchImagesToPlayers();
+    for (let i = 0; i < taggedImages.length; i++) {
+      const img = taggedImages[i];
       // Read image as HTMLImageElement
       const url = URL.createObjectURL(img.file);
       const imageElement = document.createElement('img');
@@ -47,29 +80,29 @@ export default function AlbumUpload() {
       await new Promise(res => {
         imageElement.onload = res;
       });
-      // Detect faces
-      const detections = await faceapi.detectAllFaces(imageElement).withFaceLandmarks().withFaceDescriptors();
-      // OCR for jersey number
-      const ocrResult = await Tesseract.recognize(img.file, 'eng');
-      const numberMatch = ocrResult.data.text.match(/\d{1,3}/);
-      let player: Player | undefined;
-      if (numberMatch && players.length) {
-        player = players.find(p => p.number === numberMatch[0]);
-      }
-      if (!player && detections.length && players.length) {
-        player = { name: 'Face detected', number: '' };
-      }
+      // Use tagged player if available, otherwise fallback to detection logic
+      let player: Player | undefined = img.player;
       if (!player) {
-        player = undefined;
+        // Detect faces
+        const detections = await faceapi.detectAllFaces(imageElement).withFaceLandmarks().withFaceDescriptors();
+        // OCR for jersey number
+        const ocrResult = await Tesseract.recognize(img.file, 'eng');
+        const numberMatch = ocrResult.data.text.match(/\d{1,3}/);
+        if (numberMatch && players.length) {
+          player = players.find(p => p.number === numberMatch[0]);
+        }
+        // If not found by number, try face matching (simple demo)
+        if (!player && detections.length && players.length) {
+          // In production, you'd compare face descriptors to known player descriptors
+          // Here, just tag as 'Face detected' for demo
+          player = { name: 'Face detected', number: '' };
+        }
       }
-      detectedPlayers.push(player || { name: 'No Player Detected', number: '' });
-      newImages.push({ ...img, player });
+      detectedPlayers.push(player || { name: 'Unknown', number: '' });
       formData.append('photos', img.file);
       URL.revokeObjectURL(url);
       setUploadProgress(Math.round(((i + 1) / images.length) * 100));
     }
-    // Deduplicate by file name after upload (centralized)
-    setImages(deduplicateImagesByFileName(newImages));
     if (csvFile) {
       formData.append('csv', csvFile);
     }
@@ -91,38 +124,25 @@ export default function AlbumUpload() {
 
   return (
     <div>
-      <div className="album-upload-dropzone">
+      <h2>Album Upload</h2>
+      <div
+        onDrop={handleImageDrop}
+        onDragOver={e => e.preventDefault()}
+        className="album-upload-dropzone"
+      >
         Drag and drop images here
       </div>
-      <input type="file" accept=".csv" onChange={handleUpload} />
+      <input type="file" accept=".csv" onChange={handleCsvUpload} />
       {csvError && <div className="album-upload-csv-error">{csvError}</div>}
-      {/* Duplicate handling UI removed due to missing processFiles function */}
+      <button onClick={handleUpload} disabled={!images.length || !players.length}>Upload Album</button>
+      <div>Upload Progress: {uploadProgress}%</div>
       <ul>
         {matchImagesToPlayers().map((img, idx) => (
           <li key={idx}>
-            <div>
-              <strong>{img.file.name}</strong>
-              {img.player && (
-                <span style={{ marginLeft: 8, color: '#f5b041' }}>
-                  → Tagged: {img.player.name} {img.player.number ? `(#${img.player.number})` : ''}
-                </span>
-              )}
-            </div>
-            {/* Show tagged player above progress bar if present */}
-            {img.player && (
-              <div style={{ color: '#f5b041', marginBottom: 4 }}>
-                Tagged Player: {img.player.name} {img.player.number ? `(#${img.player.number})` : ''}
-              </div>
-            )}
-            {/* Example progress bar UI (replace with your actual progress logic) */}
-            <div style={{ background: '#222', height: 6, borderRadius: 3, margin: '4px 0', width: '100%' }}>
-              <div style={{ background: '#a78bfa', height: 6, borderRadius: 3, width: uploadProgress === 100 ? '100%' : `${uploadProgress}%` }} />
-            </div>
+            {img.file.name} {img.player ? `→ ${img.player.name} (#${img.player.number})` : '(no match)'}
           </li>
         ))}
       </ul>
-      <button onClick={handleUpload} disabled={!images.length || !players.length}>Upload Album</button>
-      <div>Upload Progress: {uploadProgress}%</div>
     </div>
   );
 }
