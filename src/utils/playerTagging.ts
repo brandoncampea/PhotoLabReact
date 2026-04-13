@@ -1,4 +1,68 @@
+// Deduplicate images by file name (last occurrence wins)
+export function deduplicateImagesByFileName<T extends { file: File }>(images: T[]): T[] {
+  const seen = new Map<string, T>();
+  for (const img of images) {
+    seen.set(img.file.name, img);
+  }
+  return Array.from(seen.values());
+}
 import { Photo } from '../types';
+
+// Extracts player name from a filename like AJAH_HELM_87.jpg -> Ajah Helm
+export function extractPlayerNameFromFilename(filename: string): { name: string; number?: string } | null {
+  // Remove extension
+  const base = filename.replace(/\.[^.]+$/, '');
+  // Replace hyphens with underscores for uniformity
+  const normalized = base.replace(/[-]+/g, '_');
+  // Split by underscores
+  let parts = normalized.split('_').filter(Boolean);
+  if (parts.length === 0) return null;
+
+  // Try to extract number from last part, or from the end of the name
+  let number: string | undefined = undefined;
+  let nameParts = parts;
+  // If last part is a number, pop it
+  if (/^\d+$/.test(parts[parts.length - 1])) {
+    number = parts.pop();
+    nameParts = parts;
+  } else {
+    // If last part ends with digits, split them off
+    const match = parts[parts.length - 1].match(/^(.*?)(\d{1,3})$/);
+    if (match) {
+      nameParts = [...parts.slice(0, -1), match[1]];
+      number = match[2];
+    }
+  }
+  // Join remaining as name, capitalize
+  const name = nameParts
+    .filter(Boolean)
+    .map(
+      (part) =>
+        part
+          .replace(/[^a-zA-Z]/g, ' ')
+          .toLowerCase()
+          .replace(/\b\w/g, (c) => c.toUpperCase())
+    )
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!name) return null;
+  return { name, number };
+}
+
+// Adds player to roster if not already present (case-insensitive)
+export function addPlayerToRosterIfMissing(players: Array<{ name: string; number: string }>, player: { name: string; number?: string }): Array<{ name: string; number: string }> {
+  const exists = players.some(
+    (p) => p.name.trim().toLowerCase() === player.name.trim().toLowerCase() && (!player.number || p.number === player.number)
+  );
+  if (exists) return players;
+  return [...players, { name: player.name, number: player.number || '' }];
+}
+
+// Tags an image upload with a player (for use in upload UIs)
+export function tagImageWithPlayer(img: { file: File; player?: { name: string; number?: string } }, player: { name: string; number?: string }) {
+  return { ...img, player };
+}
 
 export function getSelectedPlayerNamesForPhoto(photo: Photo): string[] {
   return String((photo as any).playerNames || '')
@@ -12,9 +76,24 @@ export function isPlayerSelectedForPhoto(photo: Photo, playerName: string): bool
   return getSelectedPlayerNamesForPhoto(photo).some((name) => name.toLowerCase() === key);
 }
 
+/**
+ * Upserts a photo in the photos state array by id. If the photo exists, it is updated; otherwise, it is added.
+ * @param setPhotos The setPhotos state setter from useState
+ * @param updatedPhoto The photo object to upsert
+ */
 export function upsertPhotoInState(setPhotos: Function, updatedPhoto: Photo) {
-  setPhotos((prev: Photo[]) => prev.map((photo) => (Number(photo.id) === Number(updatedPhoto.id) ? { ...photo, ...updatedPhoto } : photo)));
+  setPhotos((prev: Photo[]) => {
+    const idx = prev.findIndex((photo) => Number(photo.id) === Number(updatedPhoto.id));
+    if (idx !== -1) {
+      // Update existing photo
+      return prev.map((photo) => (Number(photo.id) === Number(updatedPhoto.id) ? { ...photo, ...updatedPhoto } : photo));
+    } else {
+      // Add new photo
+      return [...prev, updatedPhoto];
+    }
+  });
 }
+
 
 export async function handleTogglePlayerTag({
   photo,
@@ -77,4 +156,3 @@ export async function handleTogglePlayerTag({
   }
 }
 
-// Add more shared tagging helpers as needed

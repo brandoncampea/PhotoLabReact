@@ -29,7 +29,7 @@ const PhotoTaggingCard: React.FC<PhotoTaggingCardProps> = ({
   onClearPhotoTags,
   onTogglePlayerTag,
   onAssignPlayerToSelectedFace,
-  onSelectFaceBox,
+  // Removed unused onSelectFaceBox prop
   onPlayerSearchChange,
 }) => {
   // Helper to check if a player is selected for a photo

@@ -646,9 +646,9 @@ const AdminPriceLists: React.FC = () => {
 										onClick={() => setCatCollapsed(prev => ({ ...prev, [cat]: !prev[cat] }))}
 									>
 										<span>{catCollapsed[cat] ? '▶' : '▼'}</span>
-										{(catImagePreview[cat] || categoryImageUrl) ? (
+										  {catImagePreview[cat] ? (
 											<img
-												src={catImagePreview[cat] || categoryImageUrl}
+												src={catImagePreview[cat]}
 												alt={cat}
 												style={{ width: 24, height: 24, borderRadius: 4, objectFit: 'cover', border: '1px solid #444' }}
 											/>

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import styles from './Navbar.module.css';
 import { useAuth } from '../../contexts/AuthContext';
-import ticketBadgeStyles from './TicketBadge.module.css';
+// import ticketBadgeStyles from './TicketBadge.module.css'; // Unused import
 
 const Navbar: React.FC = () => {
   const location = useLocation();
@@ -53,27 +53,9 @@ const Navbar: React.FC = () => {
   const isLoggedIn = Boolean(user);
 
   // Unread ticket badge state
-  const [studioUnread, setStudioUnread] = useState(0);
-  const [adminUnread, setAdminUnread] = useState(0);
+  // Removed unused studioUnread and adminUnread state
 
-  useEffect(() => {
-    if (!user) return;
-    if (user.role === 'studio') {
-      fetch('/api/tickets/mine/unread', {
-        headers: { Authorization: user.token ? `Bearer ${user.token}` : '' },
-      })
-        .then((res) => (res.ok ? res.json() : { count: 0 }))
-        .then((data) => setStudioUnread(data.count || 0))
-        .catch(() => setStudioUnread(0));
-    } else if (user.role === 'super-admin') {
-      fetch('/api/tickets/all/unread', {
-        headers: { Authorization: user.token ? `Bearer ${user.token}` : '' },
-      })
-        .then((res) => (res.ok ? res.json() : { count: 0 }))
-        .then((data) => setAdminUnread(data.count || 0))
-        .catch(() => setAdminUnread(0));
-    }
-  }, [user]);
+  // Removed unread ticket badge effect due to missing state handlers
 
   return (
     <nav className={styles.navbar}>

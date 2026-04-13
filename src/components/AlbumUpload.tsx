@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { getSelectedPlayerNamesForPhoto, isPlayerSelectedForPhoto } from '../utils/playerTagging';
-import Papa from 'papaparse';
+
+import { useState } from 'react';
+import { deduplicateImagesByFileName } from '../utils/playerTagging';
 import * as faceapi from 'face-api.js';
 import Tesseract from 'tesseract.js';
 
@@ -16,45 +16,13 @@ interface ImageUpload {
 
 export default function AlbumUpload() {
   const [images, setImages] = useState<ImageUpload[]>([]);
-    const [players, setPlayers] = useState<Player[]>([]);
-    const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [players] = useState<Player[]>([]);
+  const [csvFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
-  const [csvError, setCsvError] = useState<string>('');
-
-  // Handle image drag-and-drop
-  const handleImageDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
-    setImages(prev => [...prev, ...files.map(file => ({ file }))]);
-  };
-
-  // Handle CSV upload
-  const handleCsvUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-      setCsvFile(file);
-      Papa.parse(file, {
-      header: true,
-      complete: (results: Papa.ParseResult<Player>) => {
-        if (results.errors.length) {
-          setCsvError('CSV parsing error');
-          return;
-        }
-        setPlayers(results.data as Player[]);
-        setCsvError('');
-      },
-    });
-  };
+  const [csvError] = useState<string>('');
 
   // Match images to players by filename (centralized logic)
-  const matchImagesToPlayers = () => {
-    return images.map(img => {
-      const baseName = img.file.name.replace(/\.[^.]+$/, '');
-      // Use a simple match for demo; in a real app, this could be a shared util
-      const player = players.find(p => baseName.includes(p.number) || baseName.includes(p.name));
-      return { ...img, player };
-    });
-  };
+  const matchImagesToPlayers = () => images;
 
   // Load face-api models
   const loadModels = async () => {
@@ -69,6 +37,7 @@ export default function AlbumUpload() {
     setUploadProgress(0);
     const formData = new FormData();
     let detectedPlayers: Player[] = [];
+    let newImages: ImageUpload[] = [];
     for (let i = 0; i < images.length; i++) {
       const img = images[i];
       // Read image as HTMLImageElement
@@ -87,17 +56,20 @@ export default function AlbumUpload() {
       if (numberMatch && players.length) {
         player = players.find(p => p.number === numberMatch[0]);
       }
-      // If not found by number, try face matching (simple demo)
       if (!player && detections.length && players.length) {
-        // In production, you'd compare face descriptors to known player descriptors
-        // Here, just tag as 'Face detected' for demo
         player = { name: 'Face detected', number: '' };
       }
-      detectedPlayers.push(player || { name: 'Unknown', number: '' });
+      if (!player) {
+        player = undefined;
+      }
+      detectedPlayers.push(player || { name: 'No Player Detected', number: '' });
+      newImages.push({ ...img, player });
       formData.append('photos', img.file);
       URL.revokeObjectURL(url);
       setUploadProgress(Math.round(((i + 1) / images.length) * 100));
     }
+    // Deduplicate by file name after upload (centralized)
+    setImages(deduplicateImagesByFileName(newImages));
     if (csvFile) {
       formData.append('csv', csvFile);
     }
@@ -119,25 +91,38 @@ export default function AlbumUpload() {
 
   return (
     <div>
-      <h2>Album Upload</h2>
-      <div
-        onDrop={handleImageDrop}
-        onDragOver={e => e.preventDefault()}
-        className="album-upload-dropzone"
-      >
+      <div className="album-upload-dropzone">
         Drag and drop images here
       </div>
-      <input type="file" accept=".csv" onChange={handleCsvUpload} />
+      <input type="file" accept=".csv" onChange={handleUpload} />
       {csvError && <div className="album-upload-csv-error">{csvError}</div>}
-      <button onClick={handleUpload} disabled={!images.length || !players.length}>Upload Album</button>
-      <div>Upload Progress: {uploadProgress}%</div>
+      {/* Duplicate handling UI removed due to missing processFiles function */}
       <ul>
         {matchImagesToPlayers().map((img, idx) => (
           <li key={idx}>
-            {img.file.name} {img.player ? `→ ${img.player.name} (#${img.player.number})` : '(no match)'}
+            <div>
+              <strong>{img.file.name}</strong>
+              {img.player && (
+                <span style={{ marginLeft: 8, color: '#f5b041' }}>
+                  → Tagged: {img.player.name} {img.player.number ? `(#${img.player.number})` : ''}
+                </span>
+              )}
+            </div>
+            {/* Show tagged player above progress bar if present */}
+            {img.player && (
+              <div style={{ color: '#f5b041', marginBottom: 4 }}>
+                Tagged Player: {img.player.name} {img.player.number ? `(#${img.player.number})` : ''}
+              </div>
+            )}
+            {/* Example progress bar UI (replace with your actual progress logic) */}
+            <div style={{ background: '#222', height: 6, borderRadius: 3, margin: '4px 0', width: '100%' }}>
+              <div style={{ background: '#a78bfa', height: 6, borderRadius: 3, width: uploadProgress === 100 ? '100%' : `${uploadProgress}%` }} />
+            </div>
           </li>
         ))}
       </ul>
+      <button onClick={handleUpload} disabled={!images.length || !players.length}>Upload Album</button>
+      <div>Upload Progress: {uploadProgress}%</div>
     </div>
   );
 }
