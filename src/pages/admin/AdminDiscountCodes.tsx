@@ -9,14 +9,61 @@
 import React from 'react';
 import AdminLayout from '../../components/AdminLayout';
 
-type DiscountCode = any;
+type DiscountCode = {
+  id: number;
+  code: string;
+  description: string;
+  discountType: string;
+  discountValue: number;
+  applicationType: string;
+  expirationDate: string;
+  isOneTimeUse: boolean;
+  usageCount: number;
+  maxUsages: number | null;
+  isActive: boolean;
+  createdDate: string;
+  studioId?: number;
+  applicableProductIds: number[];
+  couponStats?: {
+    useCount: number;
+    totalCostToStudio: number;
+    firstUse?: string;
+    lastUse?: string;
+    orderCount: number;
+  };
+};
+
 const AdminDiscountCodes: React.FC = () => {
-  // Minimal state for rendering only
-  const discountCodes: DiscountCode[] = [];
-  const showModal = false;
-  const editingCode = null;
-  // Handler stubs
-  const handleCreate = () => {};
+  const [discountCodes, setDiscountCodes] = React.useState<DiscountCode[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [showModal, setShowModal] = React.useState(false);
+  const [editingCode, setEditingCode] = React.useState<DiscountCode | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    fetchDiscountCodes();
+  }, []);
+
+  const fetchDiscountCodes = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/discount-codes');
+      if (!res.ok) throw new Error(`Error ${res.status}: ${res.statusText}`);
+      const data = await res.json();
+      setDiscountCodes(Array.isArray(data) ? data : []);
+    } catch (err: any) {
+      setDiscountCodes([]);
+      setError(err?.message || 'Failed to load discount codes.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreate = () => {
+    setEditingCode(null);
+    setShowModal(true);
+  };
   // Handler stubs removed for clean build
   // const handleEdit = (code: DiscountCode) => {};
   // const handleDelete = (id: number) => {};
@@ -34,6 +81,9 @@ const AdminDiscountCodes: React.FC = () => {
         </button>
       </div>
 
+      {error && (
+        <div className="error-message" style={{ color: 'red', marginBottom: 16 }}>{error}</div>
+      )}
       <div className="table-container">
         <table className="admin-table">
           <thead>
@@ -53,7 +103,7 @@ const AdminDiscountCodes: React.FC = () => {
             </tr>
           </thead>
           <tbody>
-            {discountCodes.map((code: DiscountCode) => (
+            {(Array.isArray(discountCodes) ? discountCodes : []).map((code: DiscountCode) => (
               <tr key={code.id} style={{ opacity: !code.isActive || isExpired(code.expirationDate) ? 0.6 : 1 }}>
                 <td><strong>{code.code}</strong></td>
                 <td>{code.description}</td>
@@ -122,6 +172,9 @@ const AdminDiscountCodes: React.FC = () => {
             <h2>{editingCode ? 'Edit Discount Code' : 'Create Discount Code'}</h2>
             <form onSubmit={handleSubmit}>
               {/* ...existing code for modal form... */}
+              <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)} style={{ marginTop: 16 }}>
+                Cancel
+              </button>
             </form>
           </div>
         </div>

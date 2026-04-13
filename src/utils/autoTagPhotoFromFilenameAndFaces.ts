@@ -27,8 +27,8 @@ function extractNameFromFilename(filename: string): string | null {
   return name.trim() || null;
 }
 
-function addPlayerToRosterIfMissing(roster, playerName) {
-  if (!roster.some(p => p.playerName.toLowerCase() === playerName.toLowerCase())) {
+function addPlayerToRosterIfMissing(roster: any[], playerName: string) {
+  if (!roster.some((p: any) => p.playerName.toLowerCase() === playerName.toLowerCase())) {
     roster.push({ playerName });
   }
 }
@@ -39,7 +39,7 @@ export async function autoTagPhotoFromFilenameAndFaces({
   photoService,
   handleDetectPlayers,
   detectionByPhotoId,
-  setDetectionByPhotoId,
+  // setDetectionByPhotoId, // removed unused variable
   setUploadMessage,
 }: {
   photo: Photo,
@@ -51,7 +51,7 @@ export async function autoTagPhotoFromFilenameAndFaces({
   setUploadMessage: Function,
 }) {
   // Dynamically import to avoid circular deps
-  const { extractPotentialPlayerNamesFromFilenames, detectPlayersFromFilenames } = await import('../services/filenamePlayerDetection');
+  const { detectPlayersFromFilenames } = await import('../services/filenamePlayerDetection'); // removed unused extractPotentialPlayerNamesFromFilenames
 
 
   // 1. Robustly extract a player name from the filename

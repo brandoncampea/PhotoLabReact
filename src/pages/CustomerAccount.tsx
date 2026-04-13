@@ -1,25 +1,15 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import playerWatchlistService, { RosterPlayer, WatchlistEntry } from '../services/playerWatchlistService';
+import playerWatchlistService, { WatchlistEntry } from '../services/playerWatchlistService';
 import './CustomerAccount.css';
 
 const CustomerAccount: React.FC = () => {
   const { user } = useAuth();
-  const location = useLocation();
-
-  // Derive studioSlug from the URL query (?studioSlug=...)
-  const studioSlug = useMemo(() => {
-    const params = new URLSearchParams(location.search);
-    return params.get('studioSlug') || undefined;
-  }, [location.search]);
 
   const [watchlist, setWatchlist] = useState<WatchlistEntry[]>([]);
-  const [roster, setRoster] = useState<RosterPlayer[]>([]);
   const [loadingWatchlist, setLoadingWatchlist] = useState(true);
-  const [loadingRoster, setLoadingRoster] = useState(true);
   const [search, setSearch] = useState('');
-  const [actionInProgress, setActionInProgress] = useState<string | null>(null);
+  const [actionInProgress, setActionInProgress] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const showMessage = (type: 'success' | 'error', text: string) => {
@@ -39,61 +29,25 @@ const CustomerAccount: React.FC = () => {
     }
   }, []);
 
-  const loadRoster = useCallback(async () => {
-    setLoadingRoster(true);
-    try {
-      const data = await playerWatchlistService.getRoster(studioSlug);
-      setRoster(data);
-    } catch {
-      // silently ignore
-    } finally {
-      setLoadingRoster(false);
-    }
-  }, [studioSlug]);
-
   useEffect(() => {
     loadWatchlist();
-    loadRoster();
-  }, [loadWatchlist, loadRoster]);
+  }, [loadWatchlist]);
 
-  const handleToggleWatch = async (player: RosterPlayer) => {
-    const key = player.playerName.toLowerCase();
-    setActionInProgress(key);
+  const handleAddWatch = async () => {
+    const name = search.trim();
+    if (!name) return;
+    setActionInProgress(true);
     try {
-      if (player.isWatching) {
-        // Find the watchlist entry to delete
-        const entry = watchlist.find(
-          (w) => w.playerName.toLowerCase() === key
-        );
-        if (entry) {
-          await playerWatchlistService.removePlayer(entry.id);
-          showMessage('success', `Stopped watching ${player.playerName}`);
-        }
-      } else {
-        await playerWatchlistService.addPlayer(
-          player.playerName,
-          player.playerNumber ?? undefined
-        );
-        showMessage('success', `Now watching ${player.playerName}! You'll get an email when new photos are added.`);
-      }
-      await Promise.all([loadWatchlist(), loadRoster()]);
+      await playerWatchlistService.addPlayer(name);
+      showMessage('success', `Now watching ${name}! You'll get an email when new photos are added.`);
+      setSearch('');
+      await loadWatchlist();
     } catch (err: any) {
       showMessage('error', err?.response?.data?.error || 'Something went wrong. Please try again.');
     } finally {
-      setActionInProgress(null);
+      setActionInProgress(false);
     }
   };
-
-  const filteredRoster = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return roster;
-    return roster.filter(
-      (p) =>
-        p.playerName.toLowerCase().includes(q) ||
-        (p.playerNumber ?? '').toLowerCase().includes(q) ||
-        (p.rosterName ?? '').toLowerCase().includes(q)
-    );
-  }, [roster, search]);
 
   if (!user) {
     return (
@@ -176,61 +130,30 @@ const CustomerAccount: React.FC = () => {
           )}
         </section>
 
-        {/* ── Roster ────────────────────────────────────────────────── */}
+        {/* ── Watch Any Player ─────────────────────────────────────── */}
         <section className="account-section">
-          <h2 className="account-section-title">
-            👤 Studio Roster
-          </h2>
+          <h2 className="account-section-title">👤 Watch a Player</h2>
           <p className="account-section-desc">
-            Search for a player and tap <strong>Watch</strong> to get notified when their photos are added.
+            Enter a player name to get notified when their photos are added—even if they're not on the roster yet.
           </p>
-
-          <input
-            className="account-search-input"
-            type="text"
-            placeholder="Search by name or number…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-
-          {loadingRoster ? (
-            <p className="account-loading">Loading roster…</p>
-          ) : roster.length === 0 ? (
-            <p className="account-empty">
-              No roster found for this studio. Ask the studio to upload a player roster.
-            </p>
-          ) : filteredRoster.length === 0 ? (
-            <p className="account-empty">No players match "{search}".</p>
-          ) : (
-            <ul className="roster-list">
-              {filteredRoster.map((player) => {
-                const busy = actionInProgress === player.playerName.toLowerCase();
-                return (
-                  <li
-                    key={player.id}
-                    className={`roster-item ${player.isWatching ? 'roster-item--watching' : ''}`}
-                  >
-                    <div className="roster-item-info">
-                      <span className="roster-player-name">{player.playerName}</span>
-                      {player.playerNumber && (
-                        <span className="roster-player-number">#{player.playerNumber}</span>
-                      )}
-                      {player.rosterName && (
-                        <span className="roster-team-name">{player.rosterName}</span>
-                      )}
-                    </div>
-                    <button
-                      className={`roster-watch-btn ${player.isWatching ? 'roster-watch-btn--watching' : ''}`}
-                      disabled={busy}
-                      onClick={() => handleToggleWatch(player)}
-                    >
-                      {busy ? '…' : player.isWatching ? '✓ Watching' : '+ Watch'}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              className="account-search-input"
+              type="text"
+              placeholder="Enter player name…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleAddWatch(); }}
+              disabled={actionInProgress}
+            />
+            <button
+              className="roster-watch-btn"
+              onClick={handleAddWatch}
+              disabled={actionInProgress || !search.trim()}
+            >
+              {actionInProgress ? '…' : '+ Watch'}
+            </button>
+          </div>
         </section>
       </div>
     </div>

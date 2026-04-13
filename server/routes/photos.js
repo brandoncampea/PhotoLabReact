@@ -483,6 +483,18 @@ const saveRosterPlayers = async (studioId, rosterRows = [], options = {}) => {
        VALUES ($1, $2, $3, $4, $5)`,
       [studioId, row.playerName, row.playerNumber || null, rosterName, sourceAlbumId]
     );
+    // --- Connect pending watch requests for this player name (case-insensitive, trimmed) ---
+    const pendingWatches = await queryRows(
+      `SELECT id, user_id FROM customer_player_watchlist
+       WHERE studio_id = $1 AND LOWER(player_name) = LOWER($2)`,
+      [studioId, row.playerName.trim()]
+    );
+    for (const watch of pendingWatches) {
+      // TODO: Trigger notification logic here (email, in-app, etc.)
+      // Example: await notifyUserPlayerNowExists(watch.user_id, row.playerName, studioId);
+      // For now, just log:
+      console.log(`[Watchlist] User ${watch.user_id} is now watching new player '${row.playerName}' in studio ${studioId}`);
+    }
     saved += 1;
   }
 
