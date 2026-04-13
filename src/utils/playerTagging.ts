@@ -20,7 +20,6 @@ export function getDetectionOverlaysForPhoto(photo: Photo, faceBoxes: any[]): an
   return autoAssociateSingleFaceWithPlayer(photo, faceBoxes);
 }
 // Tag a photo with player names extracted from its filename, regardless of roster
-import { Photo } from '../types';
 
 /**
  * Extracts player names from a filename and returns them as an array of strings.
@@ -94,7 +93,6 @@ export function deduplicateImagesByFileName<T extends { file: File }>(images: T[
   }
   return Array.from(seen.values());
 }
-import { Photo } from '../types';
 
 // Extracts player name from a filename like AJAH_HELM_87.jpg -> Ajah Helm
 export function extractPlayerNameFromFilename(filename: string): { name: string; number?: string } | null {

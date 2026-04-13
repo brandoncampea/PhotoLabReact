@@ -8,12 +8,6 @@ import { photoService } from '../../services/photoService';
 import { albumService } from '../../services/albumService';
 import { albumAdminService } from '../../services/albumAdminService';
 import { detectPlayersFromFilenames, extractPotentialPlayerNamesFromFilenames } from '../../services/filenamePlayerDetection';
-import {
-  getSelectedPlayerNamesForPhoto,
-  isPlayerSelectedForPhoto,
-  upsertPhotoInState,
-  handleTogglePlayerTag
-} from '../../utils/playerTagging';
 
 
 
@@ -655,23 +649,92 @@ const AdminPhotos: React.FC = () => {
     navigate(`/admin/photos?album=${nextAlbumId}`, { replace: true });
   };
 
+  const getSelectedPlayerNamesForPhoto = (photo: Photo) => {
+    return String((photo as any).playerNames || '')
+      .split(',')
+      .map((name) => name.trim())
+      .filter(Boolean);
+  };
 
-  // Wrapper to use the shared handleTogglePlayerTag utility
-  const sharedHandleTogglePlayerTag = async (photo: Photo, player: { playerName: string; playerNumber?: string }) => {
-    await handleTogglePlayerTag({
-      photo,
-      player,
-      rosterPlayers,
-      setPhotos,
-      photoService,
-      setUploadMessage,
+  const isPlayerSelectedForPhoto = (photo: Photo, playerName: string) => {
+    const key = String(playerName || '').trim().toLowerCase();
+    return getSelectedPlayerNamesForPhoto(photo).some((name) => name.toLowerCase() === key);
+  };
+
+  const upsertPhotoInState = (updatedPhoto: Photo) => {
+    setPhotos((prev) => prev.map((photo) => (Number(photo.id) === Number(updatedPhoto.id) ? { ...photo, ...updatedPhoto } : photo)));
+  };
+
+  const handleTogglePlayerTag = async (photo: Photo, player: { playerName: string; playerNumber?: string }) => {
+    const selectedNames = [...getSelectedPlayerNamesForPhoto(photo)];
+    const clickedName = String(player.playerName || '').trim();
+    const clickedNameKey = clickedName.toLowerCase();
+    const existingIndex = selectedNames.findIndex((name) => name.trim().toLowerCase() === clickedNameKey);
+
+    if (existingIndex >= 0) {
+      selectedNames.splice(existingIndex, 1);
+    } else {
+      selectedNames.push(clickedName);
+    }
+
+    const selectedPlayers = selectedNames.map((name) => {
+      const match = rosterPlayers.find((p) => p.playerName === name);
+      return {
+        playerName: name,
+        playerNumber: match?.playerNumber || (name === player.playerName ? (player.playerNumber || null) : null),
+      };
     });
+
+    const newPlayerNames = selectedPlayers.map((sp) => sp.playerName).join(', ') || undefined;
+    const newPlayerNumbers = selectedPlayers.map((sp) => sp.playerNumber).filter(Boolean).join(', ') || undefined;
+
+    const optimisticPhoto: Photo = {
+      ...photo,
+      playerNames: newPlayerNames,
+      playerNumbers: newPlayerNumbers,
+    };
+
+    // Optimistic update so chip highlight changes immediately in the UI.
+    upsertPhotoInState(optimisticPhoto);
+
+    try {
+      const updated = await photoService.updatePhotoPlayers(photo.id, selectedPlayers);
+      
+      // Create a completely new photo object, explicitly setting playerNames and playerNumbers
+      const updatedPhoto: Photo = {
+        ...optimisticPhoto,
+        ...updated,
+        playerNames: newPlayerNames,
+        playerNumbers: newPlayerNumbers,
+      };
+
+      upsertPhotoInState(updatedPhoto);
+
+      const autoTaggedCount = Number(updated.autoTaggedCount || 0);
+      const faceMatches = Number(updated.autoTagMatches?.face || 0);
+      const numberMatches = Number(updated.autoTagMatches?.number || 0);
+      const trainedFaceSamples = Number((updated as any).trainedFaceSamples || 0);
+
+      setUploadMessage({
+        type: 'success',
+        text: `Auto-tag results: ${autoTaggedCount} additional photo${autoTaggedCount === 1 ? '' : 's'} tagged (face: ${faceMatches}, number: ${numberMatches}). Trained ${trainedFaceSamples} face sample${trainedFaceSamples === 1 ? '' : 's'} from this tag.`,
+      });
+
+      if (autoTaggedCount > 0) {
+        await loadPhotos();
+      }
+    } catch (error) {
+      console.error('Failed to update photo player tags:', error);
+      // Roll back optimistic change on failure.
+      upsertPhotoInState(photo);
+      setUploadMessage({ type: 'error', text: 'Failed to update player tag.' });
+    }
   };
 
   const handleAssignPlayerToSelectedFace = async (photo: Photo, player: { playerName: string; playerNumber?: string }) => {
     const selectedFaceId = selectedFaceBoxByPhotoId[photo.id];
     if (!selectedFaceId) {
-      await sharedHandleTogglePlayerTag(photo, player);
+      await handleTogglePlayerTag(photo, player);
       return;
     }
 
@@ -684,7 +747,7 @@ const AdminPhotos: React.FC = () => {
         ...prev,
         [photo.id]: null,
       }));
-      await sharedHandleTogglePlayerTag(photo, player);
+      await handleTogglePlayerTag(photo, player);
       return;
     }
 
@@ -730,7 +793,7 @@ const AdminPhotos: React.FC = () => {
       playerNumbers: selectedPlayerNumbers.join(', ') || undefined,
     };
 
-    upsertPhotoInState(setPhotos, optimisticPhoto);
+    upsertPhotoInState(optimisticPhoto);
 
     try {
       const updated = await photoService.updatePhoto(photo.id, {
@@ -742,7 +805,7 @@ const AdminPhotos: React.FC = () => {
         playerNumbers: selectedPlayerNumbers,
       });
 
-      upsertPhotoInState(setPhotos, {
+      upsertPhotoInState({
         ...optimisticPhoto,
         ...updated,
         metadata: {
@@ -770,7 +833,7 @@ const AdminPhotos: React.FC = () => {
       setUploadMessage({ type: 'success', text: `Tagged ${player.playerName} on ${selectedFace.id}.` });
     } catch (error) {
       console.error('Failed to tag selected face box:', error);
-      upsertPhotoInState(setPhotos, photo);
+      upsertPhotoInState(photo);
       setUploadMessage({ type: 'error', text: 'Failed to save the face-box tag.' });
     }
   };
@@ -1143,7 +1206,7 @@ const AdminPhotos: React.FC = () => {
                             e.preventDefault();
                             e.stopPropagation();
                             console.log('Clicked existing tag:', playerName, 'with number:', player?.playerNumber);
-                            sharedHandleTogglePlayerTag(photo, { playerName, playerNumber: player?.playerNumber || undefined });
+                            handleTogglePlayerTag(photo, { playerName, playerNumber: player?.playerNumber || undefined });
                           }}
                           style={{
                             border: '1px solid var(--primary-color)',
@@ -1242,7 +1305,7 @@ const AdminPhotos: React.FC = () => {
                               type="button"
                               onClick={() => selectedFaceBoxId
                                 ? handleAssignPlayerToSelectedFace(photo, { playerName: suggestion.playerName, playerNumber: suggestion.playerNumber || undefined })
-                                : sharedHandleTogglePlayerTag(photo, { playerName: suggestion.playerName, playerNumber: suggestion.playerNumber || undefined })}
+                                : handleTogglePlayerTag(photo, { playerName: suggestion.playerName, playerNumber: suggestion.playerNumber || undefined })}
                               style={{
                                 border: '1px dashed var(--border-color)',
                                 borderRadius: '999px',
@@ -1400,7 +1463,7 @@ const AdminPhotos: React.FC = () => {
                           if (selectedFaceBoxId) {
                             handleAssignPlayerToSelectedFace(photo, player);
                           } else {
-                            sharedHandleTogglePlayerTag(photo, player);
+                            handleTogglePlayerTag(photo, player);
                           }
                           setPlayerSearchByPhotoId((prev) => ({ ...prev, [photo.id]: '' }));
                         }
@@ -1436,7 +1499,7 @@ const AdminPhotos: React.FC = () => {
                             if (selectedFaceBoxId) {
                               handleAssignPlayerToSelectedFace(photo, player);
                             } else {
-                              sharedHandleTogglePlayerTag(photo, player);
+                              handleTogglePlayerTag(photo, player);
                             }
                             setPlayerSearchByPhotoId((prev) => ({ ...prev, [photo.id]: '' }));
                           }}
@@ -1480,7 +1543,7 @@ const AdminPhotos: React.FC = () => {
                               if (selectedFaceBoxId) {
                                 handleAssignPlayerToSelectedFace(photo, player);
                               } else {
-                                sharedHandleTogglePlayerTag(photo, player);
+                                handleTogglePlayerTag(photo, player);
                               }
                               setPlayerSearchByPhotoId((prev) => ({ ...prev, [photo.id]: '' }));
                             }}

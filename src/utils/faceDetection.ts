@@ -20,7 +20,21 @@ const loadImageElement = (src: string) => new Promise<HTMLImageElement>((resolve
   image.src = src;
 });
 
+
+import * as tf from '@tensorflow/tfjs';
+
 const getBlazeFaceModel = async () => {
+  // Ensure tf is ready and backend is set
+  await tf.ready();
+  const backend = tf.getBackend();
+  if (backend !== 'webgl' && backend !== 'cpu') {
+    // Try to set to webgl, fallback to cpu
+    try {
+      await tf.setBackend('webgl');
+    } catch {
+      await tf.setBackend('cpu');
+    }
+  }
   // @ts-ignore
   if (!window._blazeFaceModelPromise) {
     // @ts-ignore
@@ -30,35 +44,14 @@ const getBlazeFaceModel = async () => {
   return window._blazeFaceModelPromise;
 };
 
-export async function detectFaceBoxes(photo: Photo, resolvePhotoImageUrl: (photo: Photo) => Promise<string | null>): Promise<{ faceBoxes: FaceTagBox[]; error?: string | null }> {
+export async function detectFaceBoxesFromImageElement(image: HTMLImageElement): Promise<{ faceBoxes: FaceTagBox[]; error?: string | null }> {
   try {
-    const imageUrl = await resolvePhotoImageUrl(photo);
-    if (!imageUrl) {
-      return { faceBoxes: [], error: 'Could not load image for face detection.' };
-    }
-    const image = await loadImageElement(imageUrl);
     const width = Number(image.naturalWidth || image.width || 0);
     const height = Number(image.naturalHeight || image.height || 0);
     if (!width || !height) {
       return { faceBoxes: [], error: 'Image dimensions were unavailable for face detection.' };
     }
-    const FaceDetectorCtor = (window as any).FaceDetector;
-    if (FaceDetectorCtor) {
-      const detector = new FaceDetectorCtor({ maxDetectedFaces: 20, fastMode: true });
-      const detections: Array<{ boundingBox?: { x?: number; y?: number; width?: number; height?: number } }> = await detector.detect(image);
-      return {
-        faceBoxes: detections
-          .map((detection: { boundingBox?: { x?: number; y?: number; width?: number; height?: number } }, index: number) => ({
-            id: `face-${index + 1}`,
-            leftPct: clampPercent((Number(detection?.boundingBox?.x || 0) / width) * 100),
-            topPct: clampPercent((Number(detection?.boundingBox?.y || 0) / height) * 100),
-            widthPct: clampPercent((Number(detection?.boundingBox?.width || 0) / width) * 100),
-            heightPct: clampPercent((Number(detection?.boundingBox?.height || 0) / height) * 100),
-          }))
-          .filter((box: FaceTagBox) => box.widthPct > 0 && box.heightPct > 0),
-        error: null,
-      };
-    }
+
     const model = await getBlazeFaceModel();
     const predictions = await model.estimateFaces(image, false);
     const mappedFaceBoxes: FaceTagBox[] = (predictions || []).map((prediction: any, index: number): FaceTagBox => {
@@ -82,11 +75,23 @@ export async function detectFaceBoxes(photo: Photo, resolvePhotoImageUrl: (photo
         heightPct: clampPercent((boxHeight / height) * 100),
       };
     });
+
     const faceBoxes: FaceTagBox[] = mappedFaceBoxes.filter((box) => box.widthPct > 0 && box.heightPct > 0);
-    return {
-      faceBoxes,
-      error: null,
-    };
+    return { faceBoxes, error: null };
+  } catch (error) {
+    console.error('Client-side face box detection failed:', error);
+    return { faceBoxes: [], error: 'Face boxes could not be detected for this image.' };
+  }
+}
+
+export async function detectFaceBoxes(photo: Photo, resolvePhotoImageUrl: (photo: Photo) => Promise<string | null>): Promise<{ faceBoxes: FaceTagBox[]; error?: string | null }> {
+  try {
+    const imageUrl = await resolvePhotoImageUrl(photo);
+    if (!imageUrl) {
+      return { faceBoxes: [], error: 'Could not load image for face detection.' };
+    }
+    const image = await loadImageElement(imageUrl);
+    return detectFaceBoxesFromImageElement(image);
   } catch (error) {
     console.error('Client-side face box detection failed:', error);
     return { faceBoxes: [], error: 'Face boxes could not be detected for this image.' };
