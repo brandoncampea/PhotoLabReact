@@ -2,7 +2,7 @@ import express from 'express';
 import mssql from '../mssql.cjs';
 const { queryRow, queryRows, query } = mssql;
 import { authRequired } from '../middleware/auth.js';
-import { calculateWhccShippingQuote, getWhccRubricSummary, setWhccShippingRubric } from '../services/whccShippingCostService.js';
+import { calculateWhccShippingQuote, getWhccRubricSummary, setWhccShippingRubricProxy } from '../services/whccShippingCostService.js';
 
 const router = express.Router();
 
@@ -256,7 +256,7 @@ router.put('/rubric', async (req, res) => {
     if (!matrix || typeof matrix !== 'object') {
       return res.status(400).json({ error: 'Missing or invalid rubric matrix' });
     }
-    await setWhccShippingRubric(matrix);
+    await setWhccShippingRubricProxy(matrix);
     const rubric = await getWhccRubricSummary();
     res.json(rubric);
   } catch (error) {

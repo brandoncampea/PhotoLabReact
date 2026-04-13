@@ -85,10 +85,31 @@ export async function initializeDatabase() {
         billing_cycle TEXT DEFAULT 'monthly',
         is_free_subscription BOOLEAN DEFAULT false,
         cancellation_requested BOOLEAN DEFAULT false,
-        cancellation_date TIMESTAMP
+        cancellation_date TIMESTAMP,
+        ship_from_name TEXT,
+        ship_from_address1 TEXT,
+        ship_from_address2 TEXT,
+        ship_from_city TEXT,
+        ship_from_state TEXT,
+        ship_from_zip TEXT,
+        ship_from_country TEXT
       )
     `);
 
+    // Add columns if they do not exist (for migrations)
+    const addressColumns = [
+      'ship_from_name TEXT',
+      'ship_from_address1 TEXT',
+      'ship_from_address2 TEXT',
+      'ship_from_city TEXT',
+      'ship_from_state TEXT',
+      'ship_from_zip TEXT',
+      'ship_from_country TEXT'
+    ];
+    for (const col of addressColumns) {
+      const colName = col.split(' ')[0];
+      await query(`ALTER TABLE studios ADD COLUMN IF NOT EXISTS ${col}`);
+    }
     await query(`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,

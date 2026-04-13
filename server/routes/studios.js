@@ -1099,11 +1099,18 @@ router.get('/:studioId', authRequired, async (req, res) => {
           s.cancellation_requested,
           s.cancellation_date,
           s.created_at,
+          s.ship_from_name,
+          s.ship_from_address1,
+          s.ship_from_address2,
+          s.ship_from_city,
+          s.ship_from_state,
+          s.ship_from_zip,
+          s.ship_from_country,
           COUNT(DISTINCT u.id) as userCount
         FROM studios s
         LEFT JOIN users u ON u.studio_id = s.id AND u.role IN ('studio_admin', 'super_admin')
         WHERE s.id = $1
-        GROUP BY s.id, s.name, s.email, s.subscription_plan, s.subscription_status, s.subscription_start, s.subscription_end, s.stripe_customer_id, s.stripe_subscription_id, s.fee_type, s.fee_value, s.billing_cycle, s.is_free_subscription, s.cancellation_requested, s.cancellation_date, s.created_at
+        GROUP BY s.id, s.name, s.email, s.subscription_plan, s.subscription_status, s.subscription_start, s.subscription_end, s.stripe_customer_id, s.stripe_subscription_id, s.fee_type, s.fee_value, s.billing_cycle, s.is_free_subscription, s.cancellation_requested, s.cancellation_date, s.created_at, s.ship_from_name, s.ship_from_address1, s.ship_from_address2, s.ship_from_city, s.ship_from_state, s.ship_from_zip, s.ship_from_country
       `, [studioId]);
     } catch (error) {
       if (!isMissingColumnError(error)) throw error;
@@ -1125,11 +1132,18 @@ router.get('/:studioId', authRequired, async (req, res) => {
           CAST(0 AS BIT) as cancellation_requested,
           CAST(NULL AS DATETIME2) as cancellation_date,
           s.created_at,
+          s.ship_from_name,
+          s.ship_from_address1,
+          s.ship_from_address2,
+          s.ship_from_city,
+          s.ship_from_state,
+          s.ship_from_zip,
+          s.ship_from_country,
           COUNT(DISTINCT u.id) as userCount
         FROM studios s
         LEFT JOIN users u ON u.studio_id = s.id AND u.role IN ('studio_admin', 'super_admin')
         WHERE s.id = $1
-        GROUP BY s.id, s.name, s.email, s.subscription_plan, s.subscription_status, s.subscription_start, s.subscription_end, s.stripe_customer_id, s.stripe_subscription_id, s.fee_type, s.fee_value, s.created_at
+        GROUP BY s.id, s.name, s.email, s.subscription_plan, s.subscription_status, s.subscription_start, s.subscription_end, s.stripe_customer_id, s.stripe_subscription_id, s.fee_type, s.fee_value, s.created_at, s.ship_from_name, s.ship_from_address1, s.ship_from_address2, s.ship_from_city, s.ship_from_state, s.ship_from_zip, s.ship_from_country
       `, [studioId]);
     }
 
@@ -1138,6 +1152,55 @@ router.get('/:studioId', authRequired, async (req, res) => {
     }
 
     res.json(studio);
+
+  // Update ship-from address fields for a studio
+  router.put('/:studioId/ship-from-address', authRequired, async (req, res) => {
+    try {
+      const { studioId } = req.params;
+      const {
+        ship_from_name = '',
+        ship_from_address1 = '',
+        ship_from_address2 = '',
+        ship_from_city = '',
+        ship_from_state = '',
+        ship_from_zip = '',
+        ship_from_country = ''
+      } = req.body || {};
+
+      // Only super_admin or the studio's own admin can update
+      if (req.user.role !== 'super_admin' && req.user.studio_id !== parseInt(studioId)) {
+        return res.status(403).json({ error: 'Unauthorized' });
+      }
+
+      await query(
+        `UPDATE studios SET
+          ship_from_name = $1,
+          ship_from_address1 = $2,
+          ship_from_address2 = $3,
+          ship_from_city = $4,
+          ship_from_state = $5,
+          ship_from_zip = $6,
+          ship_from_country = $7
+        WHERE id = $8`,
+        [
+          ship_from_name,
+          ship_from_address1,
+          ship_from_address2,
+          ship_from_city,
+          ship_from_state,
+          ship_from_zip,
+          ship_from_country,
+          studioId
+        ]
+      );
+
+      const updated = await queryRow('SELECT * FROM studios WHERE id = $1', [studioId]);
+      res.json({ success: true, studio: updated });
+    } catch (error) {
+      console.error('Update ship-from address error:', error);
+      res.status(500).json({ error: 'Failed to update ship-from address' });
+    }
+  });
   } catch (error) {
     console.error('Get studio error:', error);
     res.status(500).json({ error: 'Failed to fetch studio' });

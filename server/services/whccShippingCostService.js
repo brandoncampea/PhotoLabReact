@@ -26,12 +26,17 @@ const DEFAULT_DROP_SHIP_LOWEST_COSTS = {
   [DESTINATION_LABELS.INTERNATIONAL]: 9.95,
 };
 
-import mssql from '../mssql.cjs';
-const getWhccShippingRubric = mssql.getWhccShippingRubric;
-const setWhccShippingRubric = mssql.setWhccShippingRubric;
+
+// Helper to dynamically import CommonJS mssql.cjs in ES module context
+async function getMssqlExports() {
+  const mssql = await import('../mssql.cjs');
+  // Node v24+ places all exports under .default for CJS modules
+  return mssql.default;
+}
 
 // Async rubric loader
 export async function loadDropShipLowestCosts() {
+  const { getWhccShippingRubric } = await getMssqlExports();
   const matrix = await getWhccShippingRubric();
   // If DB is empty, use default
   if (!matrix || !matrix[DROP_SHIP_LOWEST_COST_PRODUCT_GROUP]) {
@@ -40,6 +45,8 @@ export async function loadDropShipLowestCosts() {
   return matrix;
 }
 
+// If you use setWhccShippingRubric elsewhere, use the same pattern:
+// const { setWhccShippingRubric } = await getMssqlExports();
 const toNumber = (value, fallback = 0) => {
   const n = Number(value);
   return Number.isFinite(n) ? n : fallback;
@@ -150,4 +157,9 @@ export async function getWhccRubricSummary() {
   };
 }
 
-export { setWhccShippingRubric };
+
+// Proxy export for setWhccShippingRubric
+export async function setWhccShippingRubricProxy(...args) {
+  const { setWhccShippingRubric } = await getMssqlExports();
+  return setWhccShippingRubric(...args);
+}
