@@ -145,19 +145,27 @@ const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop, onOpenWhccEditor,
                 <div style={{ color: '#aaa', fontSize: 13 }}>Item Total</div>
                 <div style={{ textAlign: 'right', fontWeight: 600 }}>${item.price.toFixed(2)}</div>
                 <div style={{ textAlign: 'right', width: 40 }}>
-                  <input 
-                    type="number" 
-                    min="1" 
-                    value={item.quantity}
-                    onChange={(e) => handleQuantityChange(parseInt(e.target.value) || 1)}
+                  <input
+                    type="number"
+                    min={1}
+                    max={item.isDigital ? 1 : undefined}
+                    value={item.isDigital ? 1 : item.quantity}
+                    disabled={item.isDigital}
+                    onChange={(e) => {
+                      if (!item.isDigital) {
+                        handleQuantityChange(parseInt(e.target.value) || 1);
+                      }
+                    }}
                     style={{
                       width: '100%',
                       padding: '4px 6px',
-                      background: '#0f0f16',
+                      background: item.isDigital ? '#22223a' : '#0f0f16',
                       border: '1px solid #2a2740',
                       borderRadius: 3,
                       color: '#fff',
-                      textAlign: 'center'
+                      textAlign: 'center',
+                      opacity: item.isDigital ? 0.6 : 1,
+                      cursor: item.isDigital ? 'not-allowed' : 'pointer',
                     }}
                   />
                 </div>

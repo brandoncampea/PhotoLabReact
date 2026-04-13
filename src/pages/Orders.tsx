@@ -48,6 +48,23 @@ function OrderItemWithSas({ item }: { item: any }) {
         {/* Only show crop debug for admin/studio */}
         {isAdminOrStudio && cropDebugText && <p className="item-size-name">Crop: {cropDebugText}</p>}
         <p className="item-price">${(item.price * item.quantity).toFixed(2)}</p>
+        {/* Show download link for digital products */}
+        {item.isDigital && Array.isArray(item.downloadUrls) && item.downloadUrls.length > 0 && (
+          <div className="digital-download-link">
+            {item.downloadUrls.map((dl: any, idx: number) => (
+              <a
+                key={dl.url || idx}
+                href={dl.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn btn-primary"
+                style={{ display: 'block', marginBottom: 4 }}
+              >
+                Download Digital File{item.downloadUrls.length > 1 ? ` #${idx + 1}` : ''}
+              </a>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -177,9 +194,10 @@ const Orders: React.FC = () => {
                     ) : (
                       <>
                         <div className="order-items">
-                          {(order.items || []).map((item) => (
-                            <OrderItemWithSas key={item.id} item={item} />
-                          ))}
+                          {(order.items || []).map((item) => {
+                            // No need to compute downloadUrl; use item.downloadUrls directly
+                            return <OrderItemWithSas key={item.id} item={item} />;
+                          })}
                         </div>
                         <div className="order-pricing-summary">
                           {order.subtotal != null && (

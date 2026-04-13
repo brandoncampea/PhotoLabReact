@@ -55,11 +55,16 @@ const AlbumDetails: React.FC = () => {
 
   const selectedPhotoId = Number(searchParams.get('photo') || 0);
   const studioSlugFromQuery = searchParams.get('studioSlug');
-  const backToAlbumsHref = studioSlug
-    ? `/studio/${studioSlug}`
-    : studioSlugFromQuery
-    ? `/albums?studioSlug=${encodeURIComponent(studioSlugFromQuery)}`
-    : '/albums';
+  // Prefer query string studioSlug, then param
+  const effectiveStudioSlug = studioSlugFromQuery || studioSlug;
+  // If viewing a specific photo, show 'Back to Album', else 'Back to All Albums'
+  const viewingPhoto = !!selectedPhotoId;
+  let backButtonHref = effectiveStudioSlug ? `/albums?studioSlug=${encodeURIComponent(effectiveStudioSlug)}` : '/albums';
+  let backButtonText = '← Back to All Albums';
+  if (viewingPhoto && albumId) {
+    backButtonHref = `/albums/${albumId}`;
+    backButtonText = '← Back to Album';
+  }
 
   useEffect(() => {
     const id = Number(albumId);
@@ -452,7 +457,7 @@ const AlbumDetails: React.FC = () => {
       <div className="page-header" style={{ marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
           <Link
-            to={backToAlbumsHref}
+            to={backButtonHref}
             className="btn btn-secondary"
             style={{
               marginBottom: 0,
@@ -465,7 +470,7 @@ const AlbumDetails: React.FC = () => {
               fontWeight: 600,
             }}
           >
-            ← Back to Albums
+            {backButtonText}
           </Link>
         </div>
         <h1 className="gradient-text" style={{ marginBottom: 6, lineHeight: 1.15 }}>{album.name}</h1>

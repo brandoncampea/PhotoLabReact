@@ -2103,6 +2103,7 @@ router.get('/details/:orderId', async (req, res) => {
     );
 
     const itemsWithPhotos = [];
+    const appBase = String(process.env.APP_BASE_URL || '').trim().replace(/\/$/, '');
     for (const item of items) {
       const photo = await queryRow(
         `SELECT id, album_id as albumId, file_name as fileName, thumbnail_url as thumbnailUrl, full_image_url as fullImageUrl, width, height
@@ -2131,6 +2132,30 @@ router.get('/details/:orderId', async (req, res) => {
         unitCost = Number(product?.price) || 0;
         productName = product?.name || null;
       }
+      // Digital product detection and download URL
+      const options = safeJsonParse(item.productOptions, {}) || {};
+      const category = String(item.productCategory || '').toLowerCase();
+      const name = String(productName || '').toLowerCase();
+      const isDigital = options?.isDigital === true || options?.is_digital_only === true || options?.digitalOnly === true || category.includes('digital') || name.includes('digital');
+      let downloadUrls = [];
+      if (isDigital) {
+        // Support multiple photoIds for digital products
+        const photoIds = safeJsonParse(item.photoIds, item.photoId ? [item.photoId] : []);
+        downloadUrls = (photoIds || []).map((pid) => {
+          const token = createDigitalDownloadToken({
+            orderId: order.id,
+            userId: order.userId,
+            orderItemId: item.id,
+            photoId: pid,
+          });
+          const relativeUrl = `/api/orders/digital-download/${token}`;
+          return {
+            orderItemId: item.id,
+            photoId: pid,
+            url: appBase ? `${appBase}${relativeUrl}` : relativeUrl,
+          };
+        });
+      }
       itemsWithPhotos.push({
         ...item,
         price: item.price || 0,
@@ -2154,6 +2179,8 @@ router.get('/details/:orderId', async (req, res) => {
           thumbnailUrl: `https://picsum.photos/seed/photo${item.photoId}/300/300`,
           url: `https://picsum.photos/seed/photo${item.photoId}/1200/900`,
         },
+        isDigital,
+        downloadUrls,
       });
     }
 
