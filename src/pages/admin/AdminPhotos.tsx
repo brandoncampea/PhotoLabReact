@@ -7,7 +7,8 @@ import { Photo, Album, PhotoMetadata } from '../../types';
 import { photoService } from '../../services/photoService';
 import { albumService } from '../../services/albumService';
 import { albumAdminService } from '../../services/albumAdminService';
-import { detectPlayersFromFilenames, extractPotentialPlayerNamesFromFilenames } from '../../services/filenamePlayerDetection';
+
+import { autoTagPhotoFromFilenameAndFaces } from '../../utils/autoTagPhotoFromFilenameAndFaces';
 
 
 
@@ -201,6 +202,7 @@ const AdminPhotos: React.FC = () => {
     attempts?: number;
     metadata?: PhotoMetadata;
     error?: string;
+    taggedPlayer?: string | null;
   };
 
   const [searchParams] = useSearchParams();
@@ -301,6 +303,18 @@ const AdminPhotos: React.FC = () => {
     // Clean up previous previews
     uploadItems.forEach((item) => URL.revokeObjectURL(item.previewUrl));
 
+    const extractNameFromFilename = (filename: string): string | null => {
+      const base = filename.replace(/\.[^.]+$/, '');
+      const normalized = base.replace(/[-]+/g, '_');
+      let parts = normalized.split('_').filter(Boolean);
+      if (parts.length === 0) return null;
+      if (/^\d+$/.test(parts[parts.length - 1])) parts = parts.slice(0, -1);
+      if (parts.length === 0) return null;
+      const name = parts.map(
+        (part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()
+      ).join(' ');
+      return name.trim() || null;
+    };
     const items: UploadItem[] = workingFiles.map((file, idx) => ({
       id: `${Date.now()}-${idx}-${file.name}`,
       file,
@@ -309,6 +323,7 @@ const AdminPhotos: React.FC = () => {
       status: 'queued',
       duplicateMode,
       attempts: 0,
+      taggedPlayer: extractNameFromFilename(file.name),
     }));
 
     setUploadItems(items);
@@ -397,35 +412,18 @@ const AdminPhotos: React.FC = () => {
       for (let i = 0; i < items.length; i += 1) {
         const current = items[i];
         const result = await uploadSingleItem(current, 2);
-        if (result.ok) {
+        if (result.ok && result.uploadedPhoto?.id) {
+          // Centralized utility handles all filename-based auto-tagging and face association
+          await autoTagPhotoFromFilenameAndFaces({
+            photo: result.uploadedPhoto,
+            rosterPlayers,
+            photoService,
+            handleDetectPlayers,
+            detectionByPhotoId,
+            setDetectionByPhotoId,
+            setUploadMessage,
+          });
           completed += 1;
-          if (result.uploadedPhoto?.id) {
-            // If we have a roster, auto-tag from filename using roster names
-            if (rosterPlayers.length > 0) {
-              const detectedPlayers = detectPlayersFromFilenames(
-                [result.uploadedPhoto.fileName],
-                rosterPlayers
-              );
-              
-              if (detectedPlayers.length > 0) {
-                try {
-                  console.log(`Auto-tagging ${result.uploadedPhoto.fileName} with players from filename:`, detectedPlayers);
-                  await photoService.updatePhotoPlayers(result.uploadedPhoto.id, detectedPlayers);
-                } catch (error) {
-                  console.error('Failed to auto-tag from filename:', error);
-                }
-              }
-            } else {
-              // No roster yet - extract potential names and log them
-              const potentialNames = extractPotentialPlayerNamesFromFilenames([result.uploadedPhoto.fileName]);
-              if (potentialNames.length > 0) {
-                console.log(`Potential player names detected in ${result.uploadedPhoto.fileName}:`, potentialNames);
-              }
-            }
-            
-            // Then run face/number detection
-            await handleDetectPlayers(result.uploadedPhoto, { silent: true });
-          }
         } else {
           failed += 1;
         }
@@ -1087,12 +1085,17 @@ const AdminPhotos: React.FC = () => {
                   style={{ width: '56px', height: '56px', objectFit: 'cover', borderRadius: '0.5rem', border: '1px solid var(--border-color)' }}
                 />
                 <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem', alignItems: 'center' }}>
                     <span style={{ fontSize: '0.9rem' }}>{item.file.name}</span>
                     <span className={item.status === 'error' ? 'danger-text' : item.status === 'done' ? 'success-text' : 'muted-text'} style={{ fontSize: '0.8rem' }}>
                       {item.status === 'uploading' ? `${item.progress}%` : item.status}
                     </span>
                   </div>
+                  {item.taggedPlayer && (
+                    <div style={{ fontSize: '0.8rem', color: 'var(--primary-color)', margin: '0.15rem 0 0.15rem 0' }}>
+                      Tagged player: <b>{item.taggedPlayer}</b>
+                    </div>
+                  )}
                   <div style={{ height: '8px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '999px', overflow: 'hidden', marginTop: '0.35rem' }}>
                     <div style={{ width: `${item.progress}%`, height: '100%', backgroundColor: item.status === 'error' ? 'var(--error-color)' : 'var(--primary-color)', transition: 'width 0.2s' }} />
                   </div>
@@ -1168,13 +1171,26 @@ const AdminPhotos: React.FC = () => {
 
       <div className="photos-grid" style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))',
-        gap: '2rem',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+        gap: '2.2rem 2.2rem',
         marginTop: '2rem',
-        justifyItems: 'center',
+        justifyItems: 'stretch',
+        width: '100%',
+        boxSizing: 'border-box',
       }}>
         {Array.isArray(photos) && photos.map((photo) => (
-          <div key={photo.id} className="admin-photo-card">
+          <div key={photo.id} className="admin-photo-card" style={{
+            border: '1.5px solid rgba(180,180,200,0.22)',
+            borderRadius: '18px',
+            boxShadow: '0 2px 8px 0 rgba(30,30,60,0.04)',
+            padding: '1.2rem 1.2rem 1.5rem 1.2rem',
+            background: 'rgba(255,255,255,0.03)',
+            marginBottom: '0.5rem',
+            width: '100%',
+            maxWidth: 440,
+            boxSizing: 'border-box',
+            position: 'relative',
+          }}>
             <div style={{ cursor: 'pointer', position: 'relative' }}
                  onClick={() => window.open(photo.fullImageUrl || photo.thumbnailUrl, '_blank')}
                  title="Click to view full size">
@@ -1203,42 +1219,33 @@ const AdminPhotos: React.FC = () => {
                   i
                 </button>
               </div>
+              {/* Show auto-tag chips (current tags on the photo) */}
               {!!(photo as any).playerNames && (
                 <div style={{ margin: '0.35rem 0 0 0' }}>
                   <p style={{ margin: '0 0 0.25rem 0', fontSize: '0.82rem', color: '#f5b041', fontWeight: 600 }}>
                     👤 {(photo as any).playerNames}
                   </p>
-                  {/* Existing tags as clickable chips for easy removal */}
+                  {/* Existing tags as chips, not clickable */}
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
-                    {getSelectedPlayerNamesForPhoto(photo).map((playerName) => {
-                      const player = rosterPlayers.find((p) => p.playerName === playerName);
-                      return (
-                        <button
-                          key={`existing-${playerName}`}
-                          type="button"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            console.log('Clicked existing tag:', playerName, 'with number:', player?.playerNumber);
-                            handleTogglePlayerTag(photo, { playerName, playerNumber: player?.playerNumber || undefined });
-                          }}
-                          style={{
-                            border: '1px solid var(--primary-color)',
-                            borderRadius: '999px',
-                            padding: '0.2rem 0.55rem',
-                            fontSize: '0.74rem',
-                            cursor: 'pointer',
-                            background: 'var(--primary-color)',
-                            color: '#fff',
-                            zIndex: 10,
-                            position: 'relative',
-                          }}
-                          title={`Click to remove ${playerName}`}
-                        >
-                          {player?.playerNumber ? `${playerName} #${player.playerNumber}` : playerName} ✕
-                        </button>
-                      );
-                    })}
+                    {String((photo as any).playerNames || '').split(',').map((playerName: string) => (
+                      <span
+                        key={`existing-${playerName}`}
+                        style={{
+                          border: '1px solid var(--primary-color)',
+                          borderRadius: '999px',
+                          padding: '0.2rem 0.55rem',
+                          fontSize: '0.74rem',
+                          background: 'var(--primary-color)',
+                          color: '#fff',
+                          zIndex: 10,
+                          position: 'relative',
+                          marginBottom: '0.15rem',
+                        }}
+                        title={playerName.trim()}
+                      >
+                        {playerName.trim()}
+                      </span>
+                    ))}
                   </div>
                 </div>
               )}
@@ -1526,51 +1533,7 @@ const AdminPhotos: React.FC = () => {
                     })()}
                   </div>
 
-                  {/* Filtered roster chips */}
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
-                    {(() => {
-                      const q = (playerSearchByPhotoId[photo.id] ?? '').toLowerCase().trim();
-                      const filtered = q
-                        ? rosterPlayers.filter(
-                            (p) =>
-                              p.playerName.toLowerCase().includes(q) ||
-                              (p.playerNumber ?? '').includes(q)
-                          )
-                        : rosterPlayers;
-                      return filtered.map((player, idx) => {
-                        const selected = isPlayerSelectedForPhoto(photo, player.playerName);
-                        const selectedFaceBoxId = selectedFaceBoxByPhotoId[photo.id];
-                        return (
-                          <button
-                            key={`${player.playerName}-${player.playerNumber || ''}-${idx}`}
-                            type="button"
-                            onClick={() => {
-                              if (selectedFaceBoxId) {
-                                handleAssignPlayerToSelectedFace(photo, player);
-                              } else {
-                                handleTogglePlayerTag(photo, player);
-                              }
-                              setPlayerSearchByPhotoId((prev) => ({ ...prev, [photo.id]: '' }));
-                            }}
-                            style={{
-                              border: `1px solid ${selected ? 'var(--primary-color)' : 'var(--border-color)'}`,
-                              borderRadius: '999px',
-                              padding: '0.2rem 0.55rem',
-                              fontSize: '0.78rem',
-                              cursor: 'pointer',
-                              background: selected ? 'var(--primary-color)' : 'var(--bg-tertiary)',
-                              color: selected ? '#fff' : 'var(--text-primary)',
-                            }}
-                            title={selectedFaceBoxId
-                              ? `Assign ${player.playerName} to selected face box`
-                              : (selected ? 'Click to untag' : 'Click to tag')}
-                          >
-                            {player.playerNumber ? `${player.playerName} #${player.playerNumber}` : player.playerName}
-                          </button>
-                        );
-                      });
-                    })()}
-                  </div>
+                  {/* Filtered roster chips removed: only search/manual entry is available. */}
 
                   {rosterPlayers.length === 0 && (
                     <div style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>

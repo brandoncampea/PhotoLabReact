@@ -46,41 +46,33 @@ const PhotoTaggingCard: React.FC<PhotoTaggingCardProps> = ({
 
   return (
     <div className="photo-info">
+      {/* Show auto-tag chips (current tags on the photo) */}
       {!!(photo as any).playerNames && (
         <div style={{ margin: '0.35rem 0 0 0' }}>
           <p style={{ margin: '0 0 0.25rem 0', fontSize: '0.82rem', color: '#f5b041', fontWeight: 600 }}>
             👤 {(photo as any).playerNames}
           </p>
-          {/* Existing tags as clickable chips for easy removal */}
+          {/* Existing tags as chips, not clickable */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
-            {getSelectedPlayerNamesForPhoto(photo).map((playerName) => {
-              const player = rosterPlayers.find((p) => p.playerName === playerName);
-              return (
-                <button
-                  key={`existing-${playerName}`}
-                  type="button"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    onTogglePlayerTag(photo, { playerName, playerNumber: player?.playerNumber || undefined });
-                  }}
-                  style={{
-                    border: '1px solid var(--primary-color)',
-                    borderRadius: '999px',
-                    padding: '0.2rem 0.55rem',
-                    fontSize: '0.74rem',
-                    cursor: 'pointer',
-                    background: 'var(--primary-color)',
-                    color: '#fff',
-                    zIndex: 10,
-                    position: 'relative',
-                  }}
-                  title={`Click to remove ${playerName}`}
-                >
-                  {player?.playerNumber ? `${playerName} #${player.playerNumber}` : playerName} ✕
-                </button>
-              );
-            })}
+            {getSelectedPlayerNamesForPhoto(photo).map((playerName) => (
+              <span
+                key={`existing-${playerName}`}
+                style={{
+                  border: '1px solid var(--primary-color)',
+                  borderRadius: '999px',
+                  padding: '0.2rem 0.55rem',
+                  fontSize: '0.74rem',
+                  background: 'var(--primary-color)',
+                  color: '#fff',
+                  zIndex: 10,
+                  position: 'relative',
+                  marginBottom: '0.15rem',
+                }}
+                title={playerName}
+              >
+                {playerName}
+              </span>
+            ))}
           </div>
         </div>
       )}
@@ -279,55 +271,14 @@ const PhotoTaggingCard: React.FC<PhotoTaggingCardProps> = ({
               );
             })()}
           </div>
-          {/* Filtered roster chips */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
-            {(() => {
-              const q = (playerSearch ?? '').toLowerCase().trim();
-              const filtered = q
-                ? rosterPlayers.filter(
-                    (p) =>
-                      p.playerName.toLowerCase().includes(q) ||
-                      (p.playerNumber ?? '').includes(q)
-                  )
-                : rosterPlayers;
-              return filtered.map((player, idx) => {
-                const selected = isPlayerSelectedForPhoto(photo, player.playerName);
-                return (
-                  <button
-                    key={`${player.playerName}-${player.playerNumber || ''}-${idx}`}
-                    type="button"
-                    onClick={() => {
-                      if (selectedFaceBoxId) {
-                        onAssignPlayerToSelectedFace(photo, player);
-                      } else {
-                        onTogglePlayerTag(photo, player);
-                      }
-                      onPlayerSearchChange('');
-                    }}
-                    style={{
-                      border: `1px solid ${selected ? 'var(--primary-color)' : 'var(--border-color)'}`,
-                      borderRadius: '999px',
-                      padding: '0.2rem 0.55rem',
-                      fontSize: '0.78rem',
-                      cursor: 'pointer',
-                      background: selected ? 'var(--primary-color)' : 'var(--bg-tertiary)',
-                      color: selected ? '#fff' : 'var(--text-primary)',
-                    }}
-                    title={selectedFaceBoxId
-                      ? `Assign ${player.playerName} to selected face box`
-                      : (selected ? 'Click to untag' : 'Click to tag')}
-                  >
-                    {player.playerNumber ? `${player.playerName} #${player.playerNumber}` : player.playerName}
-                  </button>
-                );
-              });
-            })()}
-          </div>
+          {/* Only search/manual entry is available. Roster chips are not rendered. */}
           {rosterPlayers.length === 0 && (
             <div style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
               No roster loaded. Type a name above and press Enter to tag.
             </div>
           )}
+
+          {/* REMOVE: Roster chips block below search box (full list of player names as chips) */}
         </div>
       </div>
     </div>

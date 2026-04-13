@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useCart } from '../contexts/CartContext';
 import { ShippingAddress } from '../types';
 import { processCheckout } from '../services/checkoutService';
+import { Album } from '../types';
 
 const Checkout: React.FC = () => {
   const { user } = useAuth();
@@ -71,6 +72,18 @@ const Checkout: React.FC = () => {
     }));
   };
 
+  // Determine shipping mode based on all cart items' albums
+  const getShippingMode = () => {
+    if (!cart || cart.length === 0) return 'direct';
+    // If every cart item's photo.album has batchShippingActive true, use batch, else direct
+    const allBatch = cart.every((item: any) => {
+      // Defensive: support both item.photo.album and item.photo.albumId lookups
+      const album: Album | undefined = item.photo?.album || item.album;
+      return album && album.batchShippingActive;
+    });
+    return allBatch ? 'batch' : 'direct';
+  };
+
   const handleSubmitOrder = async () => {
     if (!user) {
       setError('You must be logged in to place an order');
@@ -86,6 +99,9 @@ const Checkout: React.FC = () => {
     setError('');
 
     try {
+
+      const shippingMode = getShippingMode();
+
       const checkoutRequest = {
         customer: {
           firstName: user.firstName,
@@ -103,6 +119,7 @@ const Checkout: React.FC = () => {
         },
         cartItems: cart,
         shippingAddress: shippingInfo,
+        shippingMode,
       };
 
       const result = await processCheckout(checkoutRequest);

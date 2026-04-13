@@ -37,6 +37,7 @@ const AdminAlbums: React.FC = () => {
       coverType: '',
       paperType: '',
       albumSize: '',
+      batchShippingActive: false,
     };
 
     // Load albums from API
@@ -132,6 +133,7 @@ const AdminAlbums: React.FC = () => {
         coverType: '',
         paperType: '',
         albumSize: '',
+        batchShippingActive: !!album.batchShippingActive,
       });
       setShowModal(true);
     };
@@ -146,6 +148,7 @@ const AdminAlbums: React.FC = () => {
         isPasswordProtected: !!formData.isPasswordProtected,
         password: formData.isPasswordProtected ? formData.password : undefined,
         passwordHint: formData.isPasswordProtected ? formData.passwordHint : undefined,
+        batchShippingActive: !!formData.batchShippingActive,
       };
 
       if (!payload.name) {
@@ -424,6 +427,13 @@ const AdminAlbums: React.FC = () => {
                   </div>
                 </>
               )}
+              <div className="form-group">
+                <label>Batch Shipping</label>
+                <input type="checkbox" checked={!!formData.batchShippingActive} onChange={e => setFormData(f => ({ ...f, batchShippingActive: e.target.checked }))} />
+                <span style={{ marginLeft: 8, fontSize: '0.92em', color: '#aaa' }}>
+                  Enable batch shipping for this album
+                </span>
+              </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24 }}>
                 <button type="button" className="btn" onClick={() => setShowModal(false)}>Cancel</button>
                 <button type="submit" className="btn btn-primary">Save</button>

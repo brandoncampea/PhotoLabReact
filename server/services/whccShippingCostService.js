@@ -27,7 +27,8 @@ const DEFAULT_DROP_SHIP_LOWEST_COSTS = {
 };
 
 import mssql from '../mssql.cjs';
-const { getWhccShippingRubric, setWhccShippingRubric } = mssql;
+const getWhccShippingRubric = mssql.getWhccShippingRubric;
+const setWhccShippingRubric = mssql.setWhccShippingRubric;
 
 // Async rubric loader
 export async function loadDropShipLowestCosts() {
