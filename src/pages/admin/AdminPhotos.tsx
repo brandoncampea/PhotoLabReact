@@ -171,6 +171,11 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
 
 
 const AdminPhotos: React.FC = () => {
+    // Store refs to main image elements by photo id (must be inside component)
+    const imageRefs = React.useRef<Record<number, HTMLImageElement | null>>({});
+    const setImageRef = (photoId: number, el: HTMLImageElement | null) => {
+      imageRefs.current[photoId] = el;
+    };
   type DuplicateMode = 'allow' | 'skip' | 'overwrite';
   type DetectionResult = {
     detectedNumbers: string[];
@@ -1170,10 +1175,19 @@ const AdminPhotos: React.FC = () => {
       }}>
         {Array.isArray(photos) && photos.map((photo) => (
           <div key={photo.id} className="admin-photo-card">
-            <div style={{ cursor: 'pointer' }}
+            <div style={{ cursor: 'pointer', position: 'relative' }}
                  onClick={() => window.open(photo.fullImageUrl || photo.thumbnailUrl, '_blank')}
                  title="Click to view full size">
-              <PhotoSasThumbnail src={photo.thumbnailUrl} alt={photo.fileName} />
+              <FaceBoxPreview
+                photo={photo}
+                faceBoxes={detectionByPhotoId[photo.id]?.faceBoxes || []}
+                selectedFaceBoxId={selectedFaceBoxByPhotoId[photo.id] || null}
+                onSelectFaceBox={(faceBoxId) => setSelectedFaceBoxByPhotoId((prev) => ({
+                  ...prev,
+                  [photo.id]: faceBoxId,
+                }))}
+                setImageRef={setImageRef}
+              />
             </div>
             <div className="photo-info">
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
@@ -1335,15 +1349,6 @@ const AdminPhotos: React.FC = () => {
                         <div style={{ fontSize: '0.72rem', color: '#7ee0b7', marginBottom: '0.35rem' }}>
                           Detected faces: click a box, then click a player to tag that face.
                         </div>
-                        <FaceBoxPreview
-                          photo={photo}
-                          faceBoxes={detectionByPhotoId[photo.id].faceBoxes}
-                          selectedFaceBoxId={selectedFaceBoxByPhotoId[photo.id] || null}
-                          onSelectFaceBox={(faceBoxId) => setSelectedFaceBoxByPhotoId((prev) => ({
-                            ...prev,
-                            [photo.id]: faceBoxId,
-                          }))}
-                        />
                         <div style={{ marginTop: '0.35rem', fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
                           Selected face: {selectedFaceBoxByPhotoId[photo.id] || 'none'}
                         </div>
@@ -1689,11 +1694,13 @@ function FaceBoxPreview({
   faceBoxes,
   selectedFaceBoxId,
   onSelectFaceBox,
+  setImageRef,
 }: {
   photo: Photo;
   faceBoxes: FaceTagBox[];
   selectedFaceBoxId: string | null;
   onSelectFaceBox: (faceBoxId: string) => void;
+  setImageRef: (photoId: number, el: HTMLImageElement | null) => void;
 }) {
   const source = photo.fullImageUrl || photo.thumbnailUrl;
   const isBlobName = !!source && !source.startsWith('/') && !source.startsWith('http');
@@ -1718,6 +1725,7 @@ function FaceBoxPreview({
       <img
         src={resolvedSrc}
         alt={photo.fileName}
+        ref={el => setImageRef(photo.id, el)}
         style={{
           width: '100%',
           height: '100%',
