@@ -19,7 +19,7 @@ export const packageService = {
   },
 
   async create(data: any): Promise<any> {
-    const response = await api.post('/api/packages', data);
+    const response = await api.post('/packages', data);
     return response.data;
   },
 

@@ -1,6 +1,16 @@
 import api from './api';
 
 export const superPriceListService = {
+  async getProductImages(listId: number) {
+    const res = await api.get(`/super-price-lists/${listId}/product-images`);
+    return res.data;
+  },
+  async uploadProductImage(listId: number, formData: FormData) {
+    const res = await api.post(`/super-price-lists/${listId}/product-image`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return res.data.image_url as string;
+  },
   async getLists() {
     const res = await api.get('/super-price-lists');
     return res.data;

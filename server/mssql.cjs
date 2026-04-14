@@ -352,20 +352,27 @@ async function initializeDatabase() {
 			)
 		END
 	`);
-	await query(`
-		IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'products')
-		BEGIN
-			CREATE TABLE products (
-				id INT IDENTITY(1,1) PRIMARY KEY,
-				name NVARCHAR(255) NOT NULL,
-				category NVARCHAR(255) NOT NULL,
-				price FLOAT NOT NULL,
-				description NVARCHAR(MAX),
-				cost FLOAT,
-				options NVARCHAR(MAX)
-			)
-		END
-	`);
+	       await query(`
+		       IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'products')
+		       BEGIN
+			       CREATE TABLE products (
+				       id INT IDENTITY(1,1) PRIMARY KEY,
+				       name NVARCHAR(255) NOT NULL,
+				       category NVARCHAR(255) NOT NULL,
+				       price FLOAT NOT NULL,
+				       description NVARCHAR(MAX),
+				       cost FLOAT,
+				       options NVARCHAR(MAX)
+			       )
+		       END
+	       `);
+	       // Ensure image_url column exists in products table
+	       await query(`
+		       IF COL_LENGTH('products', 'image_url') IS NULL
+		       BEGIN
+			       ALTER TABLE products ADD image_url NVARCHAR(1024) NULL
+		       END
+	       `);
 	await query(`
 		IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'price_lists')
 		BEGIN

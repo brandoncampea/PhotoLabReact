@@ -100,6 +100,8 @@ export interface CartItem {
   productSizeId?: number;
   productName?: string;
   productSizeName?: string;
+  product_image_url?: string;
+  category_image_url?: string;
 }
 
 export interface CropData {

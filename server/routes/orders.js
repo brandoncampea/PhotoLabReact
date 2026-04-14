@@ -311,6 +311,7 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
               p.category as productCategory,
               ps.size_name as sizeName,
               p.options as productOptions,
+              p.image_url as productImageUrl,
               ph.file_name as fileName,
               ph.full_image_url as fullImageUrl,
               ph.thumbnail_url as thumbnailUrl
@@ -1399,10 +1400,35 @@ router.post('/', requireActiveSubscription, async (req, res) => {
       }
     }
 
+    // Calculate studio_shipping_cost and shipping_margin
+    let studioShippingCost = 0;
+    let shippingMargin = 0;
+    // Studio shipping cost: sum of base cost for each item (from product_sizes or products)
+    for (const item of items) {
+      let baseCost = 0;
+      if (item.productSizeId) {
+        const sizeRow = await queryRow(
+          'SELECT cost FROM product_sizes WHERE id = $1',
+          [item.productSizeId]
+        );
+        baseCost = Number(sizeRow?.cost) || 0;
+      } else if (item.productId) {
+        const prodRow = await queryRow(
+          'SELECT cost FROM products WHERE id = $1',
+          [item.productId]
+        );
+        baseCost = Number(prodRow?.cost) || 0;
+      }
+      studioShippingCost += baseCost * (Number(item.quantity) || 1);
+    }
+    // Margin = what customer paid for shipping minus studio base cost
+    shippingMargin = (Number(shippingCost) || 0) - studioShippingCost;
+
     const nextStatus = directOrder ? 'processing' : 'pending';
     const shouldMarkLabSubmitted = directOrder ? false : !!labSubmitted;
 
     // Insert order and get the returned id
+
     const orderResult = await queryRow(`
       INSERT INTO orders (
         studio_id,
@@ -1415,6 +1441,8 @@ router.post('/', requireActiveSubscription, async (req, res) => {
         shipping_address, 
         shipping_option, 
         shipping_cost,
+        studio_shipping_cost,
+        shipping_margin,
         discount_code,
         is_batch,
         batch_shipping_address,
@@ -1424,10 +1452,12 @@ router.post('/', requireActiveSubscription, async (req, res) => {
         lab_submitted,
         lab_submitted_at,
         payment_intent_id,
-        stripe_charge_id,
-        stripe_fee_amount
+        stripe_fee_amount,
+        stripe_charge_id
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, CASE WHEN $17 = 1 THEN CURRENT_TIMESTAMP ELSE NULL END, $18, $19, $20)
+      VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, CASE WHEN $19 = 1 THEN CURRENT_TIMESTAMP ELSE NULL END, $20, $21, $22
+      )
       RETURNING id
     `, [
       orderStudioId,
@@ -1440,6 +1470,8 @@ router.post('/', requireActiveSubscription, async (req, res) => {
       JSON.stringify(shippingAddress),
       shippingOption || 'direct',
       shippingCost || 0,
+      studioShippingCost,
+      shippingMargin,
       discountCode || null,
       batchOrder,
       batchShippingAddress ? JSON.stringify(batchShippingAddress) : null,
@@ -1448,8 +1480,8 @@ router.post('/', requireActiveSubscription, async (req, res) => {
       batchLabVendor || null,
       shouldMarkLabSubmitted,
       paymentAccounting.paymentIntentId,
-      paymentAccounting.chargeId,
       paymentAccounting.stripeFeeAmount,
+      paymentAccounting.chargeId,
     ]);
 
     const orderId = orderResult.id;

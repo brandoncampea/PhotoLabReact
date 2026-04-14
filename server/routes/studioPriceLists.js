@@ -89,7 +89,7 @@ router.get('/:id/items', async (req, res) => {
       SELECT spi.id,
              spi.studio_price_list_id,
              spi.product_size_id,
-              ps.product_id,
+             ps.product_id,
              spi.price,
              spi.markup_percent,
              spi.is_offered,
@@ -97,6 +97,7 @@ router.get('/:id/items', async (req, res) => {
              ps.size_name,
              p.name as product_name,
              p.category as product_category,
+             p.image_url as product_image_url,
              spci.image_url as category_image_url,
              sspi.is_active as source_is_active
       FROM studio_price_list_items spi

@@ -9,7 +9,61 @@ import { uploadImageBufferToAzure } from '../services/azureStorage.js';
 import { superAdminRequired } from '../middleware/auth.js';
 const router = express.Router();
 
+
+const imageUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
 const categoryImageUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
+
+const ensureProductImagesTable = async () => {
+  try {
+    await mssql.query(`
+      IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'super_price_list_product_images')
+      CREATE TABLE super_price_list_product_images (
+        id INT IDENTITY(1,1) PRIMARY KEY,
+        super_price_list_id INT NOT NULL,
+        product_id INT NOT NULL,
+        image_url NVARCHAR(2048),
+        updated_at DATETIME DEFAULT GETDATE()
+      )
+    `);
+  } catch (_) { /* table may already exist */ }
+};
+// GET product images for a price list (by product_id)
+router.get('/:id/product-images', async (req, res) => {
+  const { id } = req.params;
+  await ensureProductImagesTable();
+  try {
+    const rows = await mssql.query('SELECT product_id, image_url FROM super_price_list_product_images WHERE super_price_list_id = @p1', [id]);
+    // Return as an object: { [product_id]: image_url }
+    const result = {};
+    rows.forEach(row => { result[row.product_id] = row.image_url; });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST upload/replace a product image (by product_id)
+router.post('/:id/product-image', imageUpload.single('image'), async (req, res) => {
+  const { id } = req.params;
+  const { product_id } = req.body;
+  if (!req.file || !product_id) return res.status(400).json({ error: 'image and product_id required' });
+  await ensureProductImagesTable();
+  try {
+    const blobName = `price-list-products/${id}/${product_id}/${Date.now()}-${req.file.originalname}`;
+    const imageUrl = await uploadImageBufferToAzure(req.file.buffer, blobName, req.file.mimetype);
+    const existing = await mssql.query('SELECT TOP 1 id FROM super_price_list_product_images WHERE super_price_list_id = @p1 AND product_id = @p2', [id, product_id]);
+    if (existing.length) {
+      await mssql.query('UPDATE super_price_list_product_images SET image_url = @p1, updated_at = GETDATE() WHERE super_price_list_id = @p2 AND product_id = @p3', [imageUrl, id, product_id]);
+    } else {
+      await mssql.query('INSERT INTO super_price_list_product_images (super_price_list_id, product_id, image_url) VALUES (@p1, @p2, @p3)', [id, product_id, imageUrl]);
+    }
+    // Also update the products table so image is available everywhere
+    await mssql.query('UPDATE products SET image_url = @p1 WHERE id = @p2', [imageUrl, product_id]);
+    res.json({ success: true, image_url: imageUrl });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 const ensureCategoryImagesTable = async () => {
   try {

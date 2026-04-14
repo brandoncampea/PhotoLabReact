@@ -38,144 +38,24 @@ const estimateProfit = (baseCost: unknown, priceInput: unknown) => {
 
 
 const AdminPriceLists: React.FC = () => {
-	const { user } = useAuth();
-	const effectiveStudioId = Number(localStorage.getItem('viewAsStudioId') || user?.studioId || 0);
+const { user } = useAuth();
+const effectiveStudioId = Number(localStorage.getItem('viewAsStudioId') || user?.studioId || 0);
 
-	const [priceLists, setPriceLists] = useState<any[]>([]);
-	const [superLists, setSuperLists] = useState<any[]>([]);
-	const [selectedPriceList, setSelectedPriceList] = useState<any | null>(null);
-	const [items, setItems] = useState<any[]>([]);
-	const [loading, setLoading] = useState(false);
-	const [error, setError] = useState<string | null>(null);
-	const [showCreateForm, setShowCreateForm] = useState(false);
-	const [newListName, setNewListName] = useState('');
-	const [newListDesc, setNewListDesc] = useState('');
-	const [selectedSuperListId, setSelectedSuperListId] = useState<number | ''>('');
-	const [draftPrices, setDraftPrices] = useState<Record<number, string>>({});
-	const [markupPercent, setMarkupPercent] = useState('');
-	const [applyingMarkup, setApplyingMarkup] = useState(false);
-	const [packages, setPackages] = useState<any[]>([]);
-	const [packagesLoading, setPackagesLoading] = useState(false);
-	const [showPackageForm, setShowPackageForm] = useState(false);
-	const [newPackageName, setNewPackageName] = useState('');
-	const [newPackageDescription, setNewPackageDescription] = useState('');
-	const [newPackagePrice, setNewPackagePrice] = useState('');
-	const [packageSelections, setPackageSelections] = useState<Record<number, number>>({});
-	const [savingPackage, setSavingPackage] = useState(false);
-	const [showSuggestions, setShowSuggestions] = useState(false);
+const [priceLists, setPriceLists] = useState<any[]>([]);
+const [superLists, setSuperLists] = useState<any[]>([]);
+const [selectedPriceList, setSelectedPriceList] = useState<any | null>(null);
+const [items, setItems] = useState<any[]>([]);
+const [loading, setLoading] = useState(false);
+const [error, setError] = useState<string | null>(null);
+const [showCreateForm, setShowCreateForm] = useState(false);
+const [newListName, setNewListName] = useState('');
+const [newListDesc, setNewListDesc] = useState('');
+const [selectedSuperListId, setSelectedSuperListId] = useState<number | ''>('');
+const [draftPrices, setDraftPrices] = useState<Record<number, string>>({});
+const [markupPercent, setMarkupPercent] = useState('');
+const [applyingMarkup, setApplyingMarkup] = useState(false);
 
 
-	const offeredItems = useMemo(() => (items || []).filter((i: any) => !!i.is_offered), [items]);
-	// Suggest common packages based on offered items
-	const suggestedPackages = useMemo(() => {
-		// Helper to find a product/size by name/label
-		const findProduct = (keywords: string[], sizeKeywords: string[]) => {
-			return offeredItems.find((oi: any) => {
-				const name = (oi.product_name || '').toLowerCase();
-				const size = (oi._sizeLabel || oi.size_name || '').toLowerCase();
-				return keywords.some(k => name.includes(k)) && sizeKeywords.some(sk => size.includes(sk));
-			});
-		};
-
-		// Find product/size combos
-		const photoPrint_8x10 = findProduct(['photo'], ['8x10']);
-		const photoPrint_5x7 = findProduct(['photo'], ['5x7']);
-		const photoPrint_4x5 = findProduct(['photo'], ['4x5']);
-		const wallets = findProduct(['wallet'], ['wallet']);
-		const button = findProduct(['button'], ['button']);
-		const magnet = findProduct(['magnet'], ['magnet']);
-		const keychain = findProduct(['keychain'], ['keychain']);
-
-		// Build package suggestions
-		const pkgs = [
-			{
-				name: 'Photo Print Starter',
-				price: 19.99,
-				items: [
-					photoPrint_8x10 && { productId: photoPrint_8x10.product_id, productSizeId: photoPrint_8x10.product_size_id, quantity: 1 },
-					photoPrint_5x7 && { productId: photoPrint_5x7.product_id, productSizeId: photoPrint_5x7.product_size_id, quantity: 2 },
-				].filter(Boolean),
-			},
-			{
-				name: 'Family Photo Value',
-				price: 34.99,
-				items: [
-					photoPrint_8x10 && { productId: photoPrint_8x10.product_id, productSizeId: photoPrint_8x10.product_size_id, quantity: 2 },
-					photoPrint_5x7 && { productId: photoPrint_5x7.product_id, productSizeId: photoPrint_5x7.product_size_id, quantity: 4 },
-					photoPrint_4x5 && { productId: photoPrint_4x5.product_id, productSizeId: photoPrint_4x5.product_size_id, quantity: 4 },
-				].filter(Boolean),
-			},
-			{
-				name: 'Wallets & Magnets',
-				price: 24.99,
-				items: [
-					wallets && { productId: wallets.product_id, productSizeId: wallets.product_size_id, quantity: 8 },
-					magnet && { productId: magnet.product_id, productSizeId: magnet.product_size_id, quantity: 2 },
-				].filter(Boolean),
-			},
-			{
-				name: 'Keepsake Combo',
-				price: 29.99,
-				items: [
-					button && { productId: button.product_id, productSizeId: button.product_size_id, quantity: 2 },
-					keychain && { productId: keychain.product_id, productSizeId: keychain.product_size_id, quantity: 2 },
-					magnet && { productId: magnet.product_id, productSizeId: magnet.product_size_id, quantity: 2 },
-				].filter(Boolean),
-			},
-		];
-
-		// Only include packages with all items present and non-negative profit
-		return pkgs.filter(pkg => {
-			if (!pkg.items.length) return false;
-			// Calculate base cost
-			let baseCost = 0;
-			pkg.items.forEach((item: any) => {
-				const match = offeredItems.find((oi: any) => Number(oi.product_id) === Number(item.productId) && Number(oi.product_size_id) === Number(item.productSizeId));
-				if (match) baseCost += Number(match.base_cost || 0) * item.quantity;
-			});
-			return pkg.price - baseCost >= 0;
-		});
-	}, [offeredItems]);
-
-	const handleAcceptSuggestedPackage = async (pkg: any) => {
-		if (!selectedPriceList) return;
-		setSavingPackage(true);
-		setError(null);
-		try {
-			await packageService.create({
-				priceListId: selectedPriceList.id,
-				name: pkg.name,
-				description: '',
-				packagePrice: pkg.price,
-				isActive: true,
-				items: pkg.items,
-			});
-			const refreshed = await packageService.getAll(selectedPriceList.id);
-			setPackages(refreshed || []);
-			setShowSuggestions(false);
-		} catch {
-			setError('Failed to create package');
-		} finally {
-			setSavingPackage(false);
-		}
-	};
-
-	const handleModifySuggestedPackage = (pkg: any) => {
-		setShowPackageForm(true);
-		setNewPackageName(pkg.name);
-		setNewPackageDescription('');
-		setNewPackagePrice(pkg.price.toString());
-		// Set packageSelections for offeredItems
-		const nextSelections: Record<number, number> = {};
-		pkg.items.forEach((item: any) => {
-			const match = offeredItems.find((oi: any) => Number(oi.product_id) === Number(item.productId) && Number(oi.product_size_id) === Number(item.productSizeId));
-			if (match) nextSelections[match.id] = item.quantity;
-		});
-		setPackageSelections(nextSelections);
-		setShowSuggestions(false);
-	};
-
-	const handleIgnoreSuggestions = () => setShowSuggestions(false);
 	const [catCollapsed, setCatCollapsed] = useState<Record<string, boolean>>({});
 	const [prodCollapsed, setProdCollapsed] = useState<Record<string, boolean>>({});
 	const [itemFilterText, setItemFilterText] = useState('');
@@ -250,22 +130,6 @@ const AdminPriceLists: React.FC = () => {
 			.finally(() => setLoading(false));
 	}, [effectiveStudioId]);
 
-	useEffect(() => {
-		if (selectedPriceList) {
-			setPackagesLoading(true);
-			setShowPackageForm(false);
-			setNewPackageName('');
-			setNewPackageDescription('');
-			setNewPackagePrice('');
-			setPackageSelections({});
-			packageService.getAll(selectedPriceList.id)
-				.then(setPackages)
-				.catch(() => setError('Failed to load packages'))
-				.finally(() => setPackagesLoading(false));
-		} else {
-			setPackages([]);
-		}
-	}, [selectedPriceList]);
 
 	const handleSelectList = async (list: any) => {
 		setSelectedPriceList(list);
@@ -418,84 +282,6 @@ const AdminPriceLists: React.FC = () => {
 	};
 
 
-	const selectedPackageRows = useMemo(() => {
-		return offeredItems
-			.filter((item: any) => Number(packageSelections[item.id] || 0) > 0)
-			.map((item: any) => ({ ...item, _qty: Number(packageSelections[item.id] || 0) }));
-	}, [offeredItems, packageSelections]);
-
-	const packageBaseCostTotal = useMemo(() => {
-		return selectedPackageRows.reduce((sum: number, row: any) => sum + (Number(row.base_cost || 0) * Number(row._qty || 0)), 0);
-	}, [selectedPackageRows]);
-
-	const packageProfit = useMemo(() => {
-		if (newPackagePrice === '') return 0;
-		return Number(newPackagePrice) - packageBaseCostTotal;
-	}, [newPackagePrice, packageBaseCostTotal]);
-
-	const togglePackageItem = (itemId: number, checked: boolean) => {
-		setPackageSelections(prev => {
-			if (checked) return { ...prev, [itemId]: Math.max(1, Number(prev[itemId] || 1)) };
-			const next = { ...prev };
-			delete next[itemId];
-			return next;
-		});
-	};
-
-	const setPackageQty = (itemId: number, qty: number) => {
-		setPackageSelections(prev => ({ ...prev, [itemId]: Math.max(1, Math.floor(qty || 1)) }));
-	};
-
-	const handleCreatePackage = async () => {
-		if (!selectedPriceList) return;
-		if (!newPackageName.trim()) {
-			setError('Package name is required');
-			return;
-		}
-		if (newPackagePrice === '' || !Number.isFinite(Number(newPackagePrice)) || Number(newPackagePrice) < 0) {
-			setError('Package price must be a non-negative number');
-			return;
-		}
-		if (selectedPackageRows.length === 0) {
-			setError('Select at least one offered product/size for the package');
-			return;
-		}
-
-		const payloadItems = selectedPackageRows.map((row: any) => ({
-			productId: Number(row.product_id),
-			productSizeId: Number(row.product_size_id),
-			quantity: Number(row._qty),
-		}));
-
-		if (payloadItems.some((r: any) => !Number.isInteger(r.productId) || !Number.isInteger(r.productSizeId) || r.quantity <= 0)) {
-			setError('One or more selected package rows is invalid. Refresh list and try again.');
-			return;
-		}
-
-		setSavingPackage(true);
-		setError(null);
-		try {
-			await packageService.create({
-				priceListId: selectedPriceList.id,
-				name: newPackageName.trim(),
-				description: newPackageDescription.trim() || null,
-				packagePrice: Number(newPackagePrice),
-				isActive: true,
-				items: payloadItems,
-			});
-			const refreshed = await packageService.getAll(selectedPriceList.id);
-			setPackages(refreshed || []);
-			setShowPackageForm(false);
-			setNewPackageName('');
-			setNewPackageDescription('');
-			setNewPackagePrice('');
-			setPackageSelections({});
-		} catch {
-			setError('Failed to create package');
-		} finally {
-			setSavingPackage(false);
-		}
-	};
 
 	return (
 		<div className="admin-orders-container admin-price-lists-page">
@@ -641,6 +427,11 @@ const AdminPriceLists: React.FC = () => {
 									<div style={{ padding: '4px 6px' }}>
 										{Object.keys(filteredGroupedItems[cat]).map((product) => {
 											const productKey = `${cat}||${product}`;
+											// Find the first item for this product group to get image info
+											const firstItem = filteredGroupedItems[cat][product][0];
+											// Prefer product image, fallback to category image, else nothing
+											const productImageUrl = firstItem?.product_image_url;
+											const categoryImageUrl = firstItem?.category_image_url;
 											return (
 												<div key={productKey} style={{ border: '1px solid #2a2740', borderRadius: 6, marginBottom: 6, overflow: 'hidden' }}>
 													<div
@@ -648,6 +439,20 @@ const AdminPriceLists: React.FC = () => {
 														onClick={() => setProdCollapsed(prev => ({ ...prev, [productKey]: !prev[productKey] }))}
 													>
 														<span>{prodCollapsed[productKey] ? '▶' : '▼'}</span>
+														{/* Show product image if available, else category image, else nothing */}
+														{productImageUrl ? (
+															<img
+																src={productImageUrl}
+																alt={product}
+																style={{ width: 32, height: 32, borderRadius: 4, objectFit: 'cover', border: '1px solid #444' }}
+															/>
+														) : categoryImageUrl ? (
+															<img
+																src={categoryImageUrl}
+																alt={cat}
+																style={{ width: 32, height: 32, borderRadius: 4, objectFit: 'cover', border: '1px solid #444', opacity: 0.5 }}
+															/>
+														) : null}
 														<span>{product}</span>
 														<label style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }} onClick={e => e.stopPropagation()}>
 															<input
@@ -703,164 +508,7 @@ const AdminPriceLists: React.FC = () => {
 					</div>
 
 
-					<h3 style={{ marginTop: 32 }}>Packages</h3>
-					<div style={{ marginBottom: 10, display: 'flex', gap: 12 }}>
-						<button className="btn btn-primary btn-sm" onClick={() => setShowPackageForm(v => !v)}>
-							{showPackageForm ? 'Cancel Package' : '+ Add Package'}
-						</button>
-						<button className="btn btn-secondary btn-sm" onClick={() => setShowSuggestions(true)}>
-							Suggest Packages
-						</button>
-					</div>
-
-					{showSuggestions && suggestedPackages.length > 0 && (
-						<div style={{
-							background: '#fff',
-							border: '2px solid #7c3aed',
-							boxShadow: '0 4px 24px 0 rgba(124,58,237,0.10)',
-							padding: 28,
-							borderRadius: 16,
-							marginBottom: 32,
-							maxWidth: 600,
-							marginLeft: 'auto',
-							marginRight: 'auto',
-							color: '#18181b',
-						}}>
-							<h4 style={{ color: '#7c3aed', fontWeight: 700, marginBottom: 8, fontSize: 22, letterSpacing: 0.2 }}>Suggested Packages</h4>
-							<p style={{ color: '#444', marginBottom: 18, fontSize: 16 }}>Here are some common packages offered by other photography studios. You can accept, modify, or ignore these suggestions.</p>
-							<ul style={{ marginBottom: 18, paddingLeft: 0 }}>
-								{suggestedPackages.map((pkg, idx) => {
-									// Calculate base cost and retail value for this package
-									let baseCost = 0;
-									let retailValue = 0;
-									pkg.items.forEach((item: any) => {
-										const match = offeredItems.find((oi: any) => Number(oi.product_id) === Number(item.productId) && Number(oi.product_size_id) === Number(item.productSizeId));
-										if (match) {
-											baseCost += Number(match.base_cost || 0) * item.quantity;
-											retailValue += Number(match.price || 0) * item.quantity;
-										}
-									});
-									const profit = pkg.price - baseCost;
-									const savings = retailValue > 0 ? retailValue - pkg.price : 0;
-									return (
-										<li key={pkg.name + idx} style={{
-											marginBottom: 18,
-											background: '#f3f0ff',
-											border: '1px solid #e9d5ff',
-											borderRadius: 10,
-											padding: 16,
-											listStyle: 'none',
-											boxShadow: '0 2px 8px 0 rgba(124,58,237,0.04)',
-										}}>
-											<div style={{ fontWeight: 600, fontSize: 18, color: '#5b21b6', marginBottom: 4 }}>{pkg.name} <span style={{ color: '#7c3aed', fontWeight: 400, fontSize: 16 }}>— ${pkg.price.toFixed(2)}</span></div>
-											<ul style={{ margin: '6px 0 12px 18px', color: '#444', fontSize: 15 }}>
-												{pkg.items.map((item: any, i: number) => {
-													const match = offeredItems.find((oi: any) => Number(oi.product_id) === Number(item.productId) && Number(oi.product_size_id) === Number(item.productSizeId));
-													return (
-														<li key={i} style={{ marginBottom: 2 }}>{match ? <span><span style={{ color: '#7c3aed', fontWeight: 500 }}>{match.product_name}</span> <span style={{ color: '#a78bfa' }}>- {match._sizeLabel || match.size_name || '—'}</span></span> : 'Product'} <span style={{ color: '#a1a1aa' }}>(x{item.quantity})</span></li>
-													);
-												})}
-											</ul>
-											<div style={{ display: 'flex', gap: 24, alignItems: 'center', marginBottom: 10 }}>
-												<span style={{ color: profit >= 0 ? '#059669' : '#dc2626', fontWeight: 600, fontSize: 15 }}>Est. Profit: ${profit.toFixed(2)}</span>
-												<span style={{ color: '#2563eb', fontWeight: 600, fontSize: 15 }}>Customer Savings: ${savings.toFixed(2)}</span>
-											</div>
-											<div style={{ display: 'flex', gap: 12 }}>
-												<button style={{ background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 18px', fontWeight: 600, fontSize: 15, cursor: 'pointer', boxShadow: '0 1px 4px 0 #ede9fe' }} onClick={() => handleAcceptSuggestedPackage(pkg)}>Accept</button>
-												<button style={{ background: '#ede9fe', color: '#5b21b6', border: 'none', borderRadius: 6, padding: '6px 18px', fontWeight: 600, fontSize: 15, cursor: 'pointer', boxShadow: '0 1px 4px 0 #ede9fe' }} onClick={() => handleModifySuggestedPackage(pkg)}>Modify</button>
-											</div>
-										</li>
-									);
-								})}
-							</ul>
-							<button style={{ background: '#ede9fe', color: '#7c3aed', border: 'none', borderRadius: 6, padding: '7px 22px', fontWeight: 600, fontSize: 15, cursor: 'pointer', marginTop: 6 }} onClick={handleIgnoreSuggestions}>Ignore Suggestions</button>
-						</div>
-					)}
-
-					{showPackageForm && (
-						<div style={{ border: '1px solid #2c2c3a', borderRadius: 8, padding: 10, marginBottom: 12 }}>
-							<div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 140px auto', gap: 8, marginBottom: 10 }}>
-								<input
-									type="text"
-									placeholder="Package name"
-									value={newPackageName}
-									onChange={e => setNewPackageName(e.target.value)}
-								/>
-								<input
-									type="text"
-									placeholder="Description (optional)"
-									value={newPackageDescription}
-									onChange={e => setNewPackageDescription(e.target.value)}
-								/>
-								<input
-									type="number"
-									min={0}
-									step="0.01"
-									placeholder="Package price"
-									value={newPackagePrice}
-									onChange={e => setNewPackagePrice(e.target.value)}
-								/>
-								<button className="btn btn-success btn-sm" onClick={handleCreatePackage} disabled={savingPackage}>
-									{savingPackage ? 'Saving...' : 'Save Package'}
-								</button>
-							</div>
-
-							<div style={{ maxHeight: 250, overflow: 'auto', border: '1px solid #2a2740', borderRadius: 6 }}>
-								{offeredItems.map((item: any) => {
-									const checked = Number(packageSelections[item.id] || 0) > 0;
-									const qty = Number(packageSelections[item.id] || 1);
-									const base = Number(item.base_cost || 0);
-									return (
-										<div key={item.id} style={{ display: 'grid', gridTemplateColumns: '24px 1fr 130px 72px 130px', gap: 8, alignItems: 'center', padding: '6px 8px', borderTop: '1px solid #232036' }}>
-											<input type="checkbox" checked={checked} onChange={e => togglePackageItem(item.id, e.target.checked)} />
-											<div>{item.product_name} - {item._sizeLabel || item.size_name || '—'}</div>
-											<div>Base: ${base.toFixed(2)}</div>
-											<input
-												type="number"
-												min={1}
-												step={1}
-												disabled={!checked}
-												value={qty}
-												onChange={e => setPackageQty(item.id, Number(e.target.value))}
-											/>
-											<div>Total: ${(base * qty).toFixed(2)}</div>
-										</div>
-									);
-								})}
-								{offeredItems.length === 0 && (
-									<div style={{ color: '#999', padding: 8 }}>No offered products/sizes available. Offer items first.</div>
-								)}
-							</div>
-
-							<div style={{ marginTop: 10, display: 'flex', gap: 20 }}>
-								<div><strong>Total Base Cost:</strong> ${packageBaseCostTotal.toFixed(2)}</div>
-								<div style={{ color: packageProfit >= 0 ? '#79d279' : '#ff9a9a' }}><strong>Profit:</strong> ${packageProfit.toFixed(2)}</div>
-							</div>
-						</div>
-					)}
-
-					{packagesLoading ? (
-						<div>Loading packages...</div>
-					) : (
-						<ul>
-							{packages.map(pkg => {
-								const packagePrice = Number(pkg.packagePrice || 0);
-								const totalBase = (pkg.items || []).reduce((sum: number, item: any) => {
-									const match = items.find((i: any) => Number(i.product_size_id) === Number(item.productSizeId));
-									return sum + (Number(match?.base_cost || 0) * Number(item.quantity || 0));
-								}, 0);
-								const profit = packagePrice - totalBase;
-								return (
-									<li key={pkg.id}>
-										{pkg.name} - ${packagePrice.toFixed(2)}
-										<span style={{ marginLeft: 8, color: '#aaa' }}>base ${totalBase.toFixed(2)}</span>
-										<span style={{ marginLeft: 8, color: profit >= 0 ? '#79d279' : '#ff9a9a' }}>profit ${profit.toFixed(2)}</span>
-									</li>
-								);
-							})}
-							{packages.length === 0 && <li style={{ color: '#999' }}>No packages yet.</li>}
-						</ul>
-					)}
+					{/* Packages and suggestions UI removed */}
 				</div>
 			)}
 		</div>

@@ -45,11 +45,37 @@ router.get('/', async (req, res) => {
       'SELECT TOP 1 cart_data as cartData FROM user_cart WHERE user_id = $1',
       [userId]
     );
+    let items = [];
     if (cart && cart.cartData) {
-      res.json(JSON.parse(cart.cartData));
-    } else {
-      res.json([]);
+      try {
+        items = JSON.parse(cart.cartData);
+      } catch {}
     }
+
+    // Enrich each cart item with product_image_url and category_image_url
+    for (const item of items) {
+      if (item.productId) {
+        // Get product image and category image
+        const productRow = await queryRow(
+          `SELECT p.id, p.category, p.image_url as product_image_url, c.image_url as category_image_url
+           FROM products p
+           LEFT JOIN categories c ON c.name = p.category
+           WHERE p.id = $1`,
+          [item.productId]
+        );
+        if (productRow) {
+          item.product_image_url = productRow.product_image_url || null;
+          item.category_image_url = productRow.category_image_url || null;
+        } else {
+          item.product_image_url = null;
+          item.category_image_url = null;
+        }
+      } else {
+        item.product_image_url = null;
+        item.category_image_url = null;
+      }
+    }
+    res.json(items);
   } catch (error) {
     console.error('Cart GET error:', error);
     res.status(500).json({ error: error.message });

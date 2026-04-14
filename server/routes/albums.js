@@ -52,7 +52,7 @@ const signAlbumForResponse = (album) => ({
   ...album,
   batchShippingActive: Boolean(album?.batchShippingActive),
   coverImageUrl: album?.coverPhotoId
-    ? `/api/photos/${album.coverPhotoId}/asset?variant=full`
+    ? `/api/photos/${album.coverPhotoId}/asset?variant=thumbnail`
     : album?.coverImageUrl
       ? `/api/photos/proxy?source=${encodeURIComponent(album.coverImageUrl)}`
       : album?.coverImageUrl,
@@ -87,7 +87,7 @@ const addAlbumPreviewImages = async (albums) => {
   const previewMap = new Map();
   previewRows.forEach((row) => {
     const current = previewMap.get(row.albumId) || [];
-    current.push(`/api/photos/${row.id}/asset?variant=full`);
+    current.push(`/api/photos/${row.id}/asset?variant=thumbnail`);
     previewMap.set(row.albumId, current);
   });
 

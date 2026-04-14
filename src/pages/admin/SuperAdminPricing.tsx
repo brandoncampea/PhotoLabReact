@@ -241,8 +241,24 @@ const SuperAdminPricing: React.FC = () => {
   const [applyingMarkup, setApplyingMarkup] = useState(false);
   // category images
   const [categoryImages, setCategoryImages] = useState<Record<string, string>>({});
+  const [productImages, setProductImages] = useState<Record<number, string>>({});
   const [uploadingCategory, setUploadingCategory] = useState<string | null>(null);
+  const [uploadingProduct, setUploadingProduct] = useState<number | null>(null);
   const catImgInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const prodImgInputRefs = useRef<Record<number, HTMLInputElement | null>>({});
+    // Product image upload
+    // Upload product image at the product group (product_id) level
+    const handleProductImageUpload = async (productId: number, file: File) => {
+      setUploadingProduct(productId);
+      try {
+        const formData = new FormData();
+        formData.append('image', file);
+        formData.append('product_id', String(productId));
+        const url = await superPriceListService.uploadProductImage(viewList!.id, formData);
+        setProductImages(prev => ({ ...prev, [productId]: url }));
+      } catch { setViewError('Failed to upload product image.'); }
+      finally { setUploadingProduct(null); }
+    };
   // manual add inputs
   const [manualProductName, setManualProductName] = useState('');
   const [manualSizeName, setManualSizeName] = useState('');
@@ -305,18 +321,26 @@ const SuperAdminPricing: React.FC = () => {
     setWhccReportRows([]);
     setWhccReportVisible(false);
     try {
-      const [items, images] = await Promise.all([
+      const [items, images, prodImgs] = await Promise.all([
         superPriceListService.getItems(list.id),
         superPriceListService.getCategoryImages(list.id).catch(() => []),
+        superPriceListService.getProductImages ? superPriceListService.getProductImages(list.id).catch(() => []) : Promise.resolve([]),
       ]);
       const arr: any[] = Array.isArray(items) ? items : [];
       setViewItems(arr);
-      // init drafts
       setItemDrafts(buildItemDrafts(arr));
       // init category images
       const imgMap: Record<string, string> = {};
       if (Array.isArray(images)) images.forEach((img: any) => { imgMap[img.category_name] = img.image_url; });
       setCategoryImages(imgMap);
+      // init product images (by product_id)
+      const prodImgMap: Record<number, string> = {};
+      if (prodImgs && typeof prodImgs === 'object' && !Array.isArray(prodImgs)) {
+        Object.entries(prodImgs).forEach(([productId, imageUrl]) => {
+          prodImgMap[Number(productId)] = imageUrl as string;
+        });
+      }
+      setProductImages(prodImgMap);
       // collapse all categories by default
       const cats: Record<string, boolean> = {};
       groupItems(arr) && Object.keys(groupItems(arr)).forEach(cat => { cats[cat] = true; });
@@ -1029,6 +1053,32 @@ const SuperAdminPricing: React.FC = () => {
                               <div key={prod} className="spl-product-block">
                                 <div className="spl-product-header" onClick={() => setProdCollapsed(p => ({ ...p, [prodKey]: !p[prodKey] }))}>
                                   <button className="spl-collapse-btn">{prodCollapsed[prodKey] ? '▶' : '▼'}</button>
+                                  {/* Product image upload and display at product group level */}
+                                  {(() => {
+                                    // Find the first item in this product group to get product_id and product_name
+                                    const firstItem = viewGrouped[cat][prod][0];
+                                    if (!firstItem) return null;
+                                    return (
+                                      <div className="spl-prod-img-wrap" title="Click to upload product image"
+                                        style={{ cursor: 'pointer', width: 36, height: 36, position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginRight: 8 }}
+                                        onClick={e => { e.stopPropagation(); prodImgInputRefs.current[firstItem.product_id]?.click(); }}>
+                                        {productImages[firstItem.product_id] ? (
+                                          <img src={productImages[firstItem.product_id]} alt={firstItem.product_name} style={{ width: 32, height: 32, borderRadius: 4, objectFit: 'cover', border: '1px solid #444' }} />
+                                        ) : categoryImages[cat] ? (
+                                          <img src={categoryImages[cat]} alt={cat} style={{ width: 32, height: 32, borderRadius: 4, objectFit: 'cover', border: '1px solid #444', opacity: 0.5 }} />
+                                        ) : (
+                                          <span style={{ fontSize: 18, opacity: 0.5 }}>🖼</span>
+                                        )}
+                                        <div className="spl-prod-img-overlay" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', background: uploadingProduct === firstItem.product_id ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.15)', fontSize: 16, borderRadius: 4 }}>
+                                          {uploadingProduct === firstItem.product_id ? '⏳' : '📷'}
+                                        </div>
+                                        <input type="file" accept="image/*" style={{ display: 'none' }}
+                                          ref={el => { prodImgInputRefs.current[firstItem.product_id] = el; }}
+                                          onChange={e => { const f = e.target.files?.[0]; if (f) handleProductImageUpload(firstItem.product_id, f); e.target.value = ''; }}
+                                        />
+                                      </div>
+                                    );
+                                  })()}
                                   <span>{prod}</span>
                                   <label className="spl-toggle-label" onClick={e => e.stopPropagation()}>
                                     <IndeterminateCheckbox
@@ -1045,7 +1095,8 @@ const SuperAdminPricing: React.FC = () => {
                                 {!prodCollapsed[prodKey] && (
                                   <div className="spl-size-list">
                                     {viewGrouped[cat][prod].filter(item => !showZeroCostOnly || isZeroCostItem(item)).map(item => (
-                                      <div key={item.id} className={`spl-size-row${item.is_active ? '' : ' spl-inactive-row'}`}>
+                                      <div key={item.id} className={`spl-size-row${item.is_active ? '' : ' spl-inactive-row'}`} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                        {/* No product image upload/display at size level */}
                                         <span className="spl-size-name">{item._sizeLabel || item.size_name || '—'}</span>
                                         <label className="spl-toggle-label">
                                           <input type="checkbox" checked={!!item.is_active} disabled={togglingActive}

@@ -1,4 +1,12 @@
-import React, { useState } from 'react';
+// Helper to extract base product name (removes trailing size info)
+const baseProductName = (name: string) => {
+  return String(name || 'Unknown Product')
+    .replace(/\s+\d+(?:\.\d+)?x\d+(?:\.\d+)?(?:x\d+(?:\.\d+)?)?\s*$/i, '')
+    .replace(/\s*[-–]\s*\d+(?:\.\d+)?x\d+(?:\.\d+)?\s*$/i, '')
+    .replace(/\s*\(\d+(?:\.\d+)?x\d+(?:\.\d+)?\)\s*$/i, '')
+    .trim() || String(name || 'Unknown Product');
+};
+import React, { useState, useEffect } from 'react';
 
 
 interface Product {
@@ -22,48 +30,98 @@ interface Package {
 
 interface AdminPackagesProps {
   products: Product[];
+  priceListId: number;
 }
 
-const AdminPackages: React.FC<AdminPackagesProps> = ({ products }) => {
+import { packageService } from '../services/packageService';
+
+const AdminPackages: React.FC<AdminPackagesProps> = ({ products, priceListId }) => {
   const [packages, setPackages] = useState<Package[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [loadingPackages, setLoadingPackages] = useState(true);
+  // Add state for expand/contract
+  const [catCollapsed, setCatCollapsed] = useState<Record<string, boolean>>({});
+  const [prodCollapsed, setProdCollapsed] = useState<Record<string, boolean>>({});
 
-  // Example common packages for photography studios
+  useEffect(() => {
+    const fetchPackages = async () => {
+      setLoadingPackages(true);
+      try {
+        const pkgs = await packageService.getAll(priceListId);
+        setPackages(Array.isArray(pkgs) ? pkgs : []);
+      } catch {
+        setPackages([]);
+      } finally {
+        setLoadingPackages(false);
+      }
+    };
+    if (priceListId) fetchPackages();
+  }, [priceListId]);
+
+  // Sports packages: only prints (8x10, 4x5), digital images, buttons, magnets, keychains
+  // Filter out fine art, framed, metal, and wood prints from suggestions
+  const nonSpecialtyProducts = products.filter(p => {
+    const name = p.name?.toLowerCase() || '';
+    return !(
+      name.includes('fine art') ||
+      name.includes('framed') ||
+      name.includes('metal') ||
+      name.includes('wood')
+    );
+  });
+
+
+
   const suggestedPackages: Omit<Package, 'id'>[] = [
     {
-      name: 'Basic Print Package',
+      name: 'Print Starter Package',
+      price: 19.99,
+      items: [
+        { productId: nonSpecialtyProducts.find(p => p.name?.toLowerCase().includes('8x10'))?.id, sizeId: nonSpecialtyProducts.find(p => p.name?.toLowerCase().includes('8x10'))?.sizes[0]?.id, quantity: 1 }, // 8x10 Print
+        { productId: nonSpecialtyProducts.find(p => p.name?.toLowerCase().includes('4x5'))?.id, sizeId: nonSpecialtyProducts.find(p => p.name?.toLowerCase().includes('4x5'))?.sizes[0]?.id, quantity: 2 }, // 4x5 Prints
+      ].filter(i => i.productId && i.sizeId),
+    },
+    {
+      name: 'Digital & Print Combo',
       price: 29.99,
       items: [
-        { productId: products[0]?.id, sizeId: products[0]?.sizes[0]?.id, quantity: 2 },
-        { productId: products[1]?.id, sizeId: products[1]?.sizes[0]?.id, quantity: 1 },
+        { productId: nonSpecialtyProducts.find(p => p.name?.toLowerCase().includes('8x10'))?.id, sizeId: nonSpecialtyProducts.find(p => p.name?.toLowerCase().includes('8x10'))?.sizes[0]?.id, quantity: 1 }, // 8x10 Print
+        { productId: nonSpecialtyProducts.find(p => p.name?.toLowerCase().includes('digital'))?.id, sizeId: nonSpecialtyProducts.find(p => p.name?.toLowerCase().includes('digital'))?.sizes[0]?.id, quantity: 1 }, // Digital Image
       ].filter(i => i.productId && i.sizeId),
     },
     {
-      name: 'Family Value Package',
-      price: 49.99,
+      name: 'Button & Magnet Pack',
+      price: 17.99,
       items: [
-        { productId: products[0]?.id, sizeId: products[0]?.sizes[0]?.id, quantity: 4 },
-        { productId: products[2]?.id, sizeId: products[2]?.sizes[0]?.id, quantity: 2 },
+        { productId: nonSpecialtyProducts.find(p => p.name?.toLowerCase().includes('button'))?.id, sizeId: nonSpecialtyProducts.find(p => p.name?.toLowerCase().includes('button'))?.sizes[0]?.id, quantity: 1 }, // Button
+        { productId: nonSpecialtyProducts.find(p => p.name?.toLowerCase().includes('magnet'))?.id, sizeId: nonSpecialtyProducts.find(p => p.name?.toLowerCase().includes('magnet'))?.sizes[0]?.id, quantity: 1 }, // Magnet
       ].filter(i => i.productId && i.sizeId),
     },
     {
-      name: 'Premium Wall Package',
-      price: 89.99,
+      name: 'Keychain & Print Combo',
+      price: 21.99,
       items: [
-        { productId: products[3]?.id, sizeId: products[3]?.sizes[0]?.id, quantity: 1 },
-        { productId: products[4]?.id, sizeId: products[4]?.sizes[0]?.id, quantity: 1 },
+        { productId: nonSpecialtyProducts.find(p => p.name?.toLowerCase().includes('keychain'))?.id, sizeId: nonSpecialtyProducts.find(p => p.name?.toLowerCase().includes('keychain'))?.sizes[0]?.id, quantity: 1 }, // Keychain
+        { productId: nonSpecialtyProducts.find(p => p.name?.toLowerCase().includes('4x5'))?.id, sizeId: nonSpecialtyProducts.find(p => p.name?.toLowerCase().includes('4x5'))?.sizes[0]?.id, quantity: 2 }, // 4x5 Prints
+      ].filter(i => i.productId && i.sizeId),
+    },
+    {
+      name: 'Digital Deluxe',
+      price: 34.99,
+      items: [
+        { productId: nonSpecialtyProducts.find(p => p.name?.toLowerCase().includes('digital'))?.id, sizeId: nonSpecialtyProducts.find(p => p.name?.toLowerCase().includes('digital'))?.sizes[0]?.id, quantity: 2 }, // Digital Images
       ].filter(i => i.productId && i.sizeId),
     },
   ];
 
-  // Show suggestions if no packages exist
-  React.useEffect(() => {
-    if (packages.length === 0 && products.length > 0) {
+  // Show suggestions if there are products and no saved packages
+  useEffect(() => {
+    if (products.length > 0 && packages.length === 0) {
       setShowSuggestions(true);
     } else {
       setShowSuggestions(false);
     }
-  }, [packages, products]);
+  }, [products, packages]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<{ name: string; price: number; items: PackageItem[] }>({ name: '', price: 0, items: [] });
   const [productFilter, setProductFilter] = useState('');
@@ -105,15 +163,23 @@ const AdminPackages: React.FC<AdminPackagesProps> = ({ products }) => {
     }));
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.name.trim()) return;
-    if (editingId) {
-      setPackages(pkgs => pkgs.map(pkg => pkg.id === editingId ? { ...form, id: editingId } : pkg));
-      setEditingId(null);
-    } else {
-      setPackages(pkgs => [...pkgs, { ...form, id: Date.now().toString() }]);
+    try {
+      if (editingId) {
+        await packageService.update(Number(editingId), { ...form, priceListId });
+        const pkgs = await packageService.getAll(priceListId);
+        setPackages(Array.isArray(pkgs) ? pkgs : []);
+        setEditingId(null);
+      } else {
+        await packageService.create({ ...form, priceListId });
+        const pkgs = await packageService.getAll(priceListId);
+        setPackages(Array.isArray(pkgs) ? pkgs : []);
+      }
+      setForm({ name: '', price: 0, items: [] });
+    } catch {
+      // handle error (optional)
     }
-    setForm({ name: '', price: 0, items: [] });
   };
 
   const handleEdit = (pkg: Package) => {
@@ -121,9 +187,15 @@ const AdminPackages: React.FC<AdminPackagesProps> = ({ products }) => {
     setForm({ name: pkg.name, price: pkg.price, items: pkg.items });
   };
 
-  const handleDelete = (id: string) => {
-    setPackages(pkgs => pkgs.filter(pkg => pkg.id !== id));
-    if (editingId === id) setEditingId(null);
+  const handleDelete = async (id: string) => {
+    try {
+      await packageService.delete(Number(id));
+      const pkgs = await packageService.getAll(priceListId);
+      setPackages(Array.isArray(pkgs) ? pkgs : []);
+      if (editingId === id) setEditingId(null);
+    } catch {
+      // handle error (optional)
+    }
   };
 
   const handleAcceptSuggestion = (pkg: Omit<Package, 'id'>) => {
@@ -133,35 +205,34 @@ const AdminPackages: React.FC<AdminPackagesProps> = ({ products }) => {
 
   const handleIgnoreSuggestions = () => setShowSuggestions(false);
 
+  if (loadingPackages) {
+    return <div>Loading packages...</div>;
+  }
   return (
     <div>
-      {showSuggestions && (
-        <div style={{ background: '#f9f9f9', border: '1px solid #ccc', padding: 16, borderRadius: 8, marginBottom: 24 }}>
-          <h4>Suggested Packages</h4>
-          <p style={{ color: '#666', marginBottom: 12 }}>No packages found. Here are some common packages offered by other photography studios. You can accept, modify, or ignore these suggestions.</p>
-          <ul style={{ marginBottom: 12 }}>
-            {suggestedPackages.map((pkg, idx) => (
-              <li key={pkg.name + idx} style={{ marginBottom: 10 }}>
-                <strong>{pkg.name}</strong> — ${pkg.price.toFixed(2)}
-                <ul style={{ margin: '4px 0 0 18px' }}>
-                  {pkg.items.map((item, i) => {
-                    const product = products.find(p => p.id === item.productId);
-                    const size = product?.sizes.find((s: any) => s.id === item.sizeId);
-                    return (
-                      <li key={i}>{product?.name || 'Product'}{size ? ` - ${size.name}` : ''} (x{item.quantity})</li>
-                    );
-                  })}
-                </ul>
-                <button style={{ marginRight: 8 }} onClick={() => handleAcceptSuggestion(pkg)}>Accept</button>
-                <button onClick={() => { setForm({ name: pkg.name, price: pkg.price, items: pkg.items }); setEditingId(null); }}>Modify</button>
-              </li>
-            ))}
-          </ul>
-          <button onClick={handleIgnoreSuggestions}>Ignore Suggestions</button>
-        </div>
-      )}
-      <h3>{editingId ? 'Edit Package' : 'Create Package'}</h3>
-      <div style={{ border: '1px solid #ccc', padding: 16, marginBottom: 24, borderRadius: 8 }}>
+      <h2>Suggested Packages</h2>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
+        {suggestedPackages.map((pkg, idx) => (
+          <div key={idx} style={{ border: '1px solid #ccc', borderRadius: 8, padding: 16, minWidth: 260 }}>
+            <div style={{ fontWeight: 600, fontSize: 18 }}>{pkg.name}</div>
+            <div style={{ margin: '8px 0' }}>Price: ${pkg.price.toFixed(2)}</div>
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
+              {pkg.items.map((item, i) => {
+                const product = products.find(p => p.id === item.productId);
+                const size = product?.sizes?.find(s => s.id === item.sizeId);
+                return (
+                  <li key={i}>
+                    {item.quantity}x {product?.name} {size?.name ? `(${size.name})` : ''}
+                  </li>
+                );
+              })}
+            </ul>
+            <button style={{ marginTop: 12 }} onClick={() => handleAcceptSuggestion(pkg)}>Add Package</button>
+          </div>
+        ))}
+      </div>
+      <h2 style={{ marginTop: 32 }}>{editingId ? 'Edit Package' : 'Create Package'}</h2>
+      <div className="admin-orders-card" style={{ marginBottom: 24 }}>
         <div style={{ marginBottom: 8 }}>
           <label style={{ marginRight: 8 }}>Package Name:</label>
           <input type="text" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} style={{ width: 200, marginRight: 16 }} />
@@ -169,7 +240,8 @@ const AdminPackages: React.FC<AdminPackagesProps> = ({ products }) => {
           <input type="number" value={form.price} min={0} step={0.01} onChange={e => setForm(f => ({ ...f, price: Number(e.target.value) }))} style={{ width: 100 }} />
         </div>
         {/* Filters */}
-        <div style={{ display: 'flex', gap: 16, marginBottom: 12 }}>
+        <div className="admin-price-lists-filters-row" style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+          <label style={{ color: '#aaa' }}>Filter:</label>
           <input
             type="text"
             placeholder="Filter by product name"
@@ -185,54 +257,119 @@ const AdminPackages: React.FC<AdminPackagesProps> = ({ products }) => {
             style={{ minWidth: 140 }}
           />
         </div>
-        <table style={{ width: '100%', marginBottom: 8 }}>
-          <thead>
-            <tr>
-              <th>Select</th>
-              <th>Product</th>
-              <th>Size</th>
-              <th>Quantity</th>
-              <th>Cost</th>
-            </tr>
-          </thead>
-          <tbody>
-            {products.flatMap(product =>
-              product.sizes
-                .filter((size: any) =>
-                  product.name.toLowerCase().includes(productFilter.toLowerCase()) &&
-                  size.name.toLowerCase().includes(sizeFilter.toLowerCase())
-                )
-                .map((size: any) => {
-                  const checked = form.items.some(item => item.productId === product.id && item.sizeId === size.id);
-                  const quantity = form.items.find(item => item.productId === product.id && item.sizeId === size.id)?.quantity || 1;
-                  return (
-                    <tr key={product.id + '-' + size.id}>
-                      <td>
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={e => handleSelectItem(product.id, size.id, e.target.checked)}
-                        />
+        {/* Expand/Contract Controls */}
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 8 }}>
+          <button className="btn btn-secondary" onClick={() => { setCatCollapsed({}); setProdCollapsed({}); }}>Expand All</button>
+          <button className="btn btn-secondary" onClick={() => {
+            // Collapse all using actual categories and products
+            const grouped: Record<string, Record<string, any[]>> = {};
+            products.forEach(product => {
+              const cat = product.category || 'Uncategorized';
+              if (!grouped[cat]) grouped[cat] = {};
+              if (!grouped[cat][product.name]) grouped[cat][product.name] = [];
+            });
+            const nextCats: Record<string, boolean> = {};
+            const nextProds: Record<string, boolean> = {};
+            Object.keys(grouped).forEach(cat => {
+              nextCats[cat] = true;
+              Object.keys(grouped[cat]).forEach(prod => {
+                nextProds[cat + '||' + prod] = true;
+              });
+            });
+            setCatCollapsed(nextCats);
+            setProdCollapsed(nextProds);
+          }}>Contract All</button>
+        </div>
+        <div className="admin-whcc-table-container" style={{ marginBottom: 8 }}>
+          <table className="admin-whcc-table" style={{ width: '100%' }}>
+            <thead>
+              <tr>
+                <th>Select</th>
+                <th>Product</th>
+                <th>Size</th>
+                <th>Quantity</th>
+                <th>Cost</th>
+              </tr>
+            </thead>
+            <tbody>
+              {/* Group by category, then product, then size */}
+              {(() => {
+                // Build a grouped structure: { [category]: { [baseProductName]: [sizes...] } }
+                const grouped: Record<string, Record<string, any[]>> = {};
+                products.forEach(product => {
+                  const cat = product.category || 'Uncategorized';
+                  const baseName = baseProductName(product.name);
+                  if (!grouped[cat]) grouped[cat] = {};
+                  if (!grouped[cat][baseName]) grouped[cat][baseName] = [];
+                  const productFilterText = productFilter.toLowerCase();
+                  product.sizes.forEach((size: any) => {
+                    // Match filter against both the full product name and the base product name
+                    const matchesProduct = product.name.toLowerCase().includes(productFilterText) || baseName.toLowerCase().includes(productFilterText);
+                    const matchesSize = size.name.toLowerCase().includes(sizeFilter.toLowerCase());
+                    if (matchesProduct && matchesSize) {
+                      grouped[cat][baseName].push({
+                        ...size,
+                        productId: product.id,
+                        productName: product.name,
+                      });
+                    }
+                  });
+                });
+                // Render grouped rows
+                return Object.entries(grouped).map(([cat, productsByName]) => (
+                  <React.Fragment key={cat}>
+                    <tr className="admin-whcc-category-row" style={{ background: '#171428', color: '#fff', fontWeight: 700, fontSize: 16, cursor: 'pointer', borderTop: '2px solid #2a2740' }}
+                      onClick={() => setCatCollapsed(prev => ({ ...prev, [cat]: !prev[cat] }))}>
+                      <td colSpan={5} style={{ padding: '8px 10px' }}>
+                        <span style={{ marginRight: 8 }}>{catCollapsed?.[cat] ? '▶' : '▼'}</span>
+                        {cat}
                       </td>
-                      <td>{product.name}</td>
-                      <td>{size.name}</td>
-                      <td>
-                        <input
-                          type="number"
-                          min={1}
-                          value={quantity}
-                          disabled={!checked}
-                          onChange={e => handleQuantityChange(product.id, size.id, Math.max(1, Number(e.target.value)))}
-                          style={{ width: 60 }}
-                        />
-                      </td>
-                      <td>{((size.cost || 0) * quantity).toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</td>
                     </tr>
-                  );
-                })
-            )}
-          </tbody>
-        </table>
+                    {!catCollapsed?.[cat] && Object.entries(productsByName).map(([prodName, sizes]) => (
+                      <React.Fragment key={prodName}>
+                        <tr className="admin-whcc-product-header" style={{ background: '#23233a', color: '#cbd5e1', fontWeight: 600, fontSize: 15, cursor: 'pointer' }}
+                          onClick={() => setProdCollapsed(prev => ({ ...prev, [cat + '||' + prodName]: !prev[cat + '||' + prodName] }))}>
+                          <td colSpan={5} style={{ padding: '6px 18px' }}>
+                            <span style={{ marginRight: 8 }}>{prodCollapsed?.[cat + '||' + prodName] ? '▶' : '▼'}</span>
+                            {prodName}
+                          </td>
+                        </tr>
+                        {!prodCollapsed?.[cat + '||' + prodName] && sizes.map((size: any) => {
+                          const checked = form.items.some(item => item.productId === size.productId && item.sizeId === size.id);
+                          const quantity = form.items.find(item => item.productId === size.productId && item.sizeId === size.id)?.quantity || 1;
+                          return (
+                            <tr key={size.productId + '-' + size.id} className="admin-whcc-row">
+                              <td>
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={e => handleSelectItem(size.productId, size.id, e.target.checked)}
+                                />
+                              </td>
+                              <td>{size.productName}</td>
+                              <td>{size.name}</td>
+                              <td>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  value={quantity}
+                                  disabled={!checked}
+                                  onChange={e => handleQuantityChange(size.productId, size.id, Math.max(1, Number(e.target.value)))}
+                                  style={{ width: 60 }}
+                                />
+                              </td>
+                              <td>{((size.cost || 0) * quantity).toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</td>
+                            </tr>
+                          );
+                        })}
+                      </React.Fragment>
+                    ))}
+                  </React.Fragment>
+                ));
+              })()}
+            </tbody>
+          </table>
+        </div>
         <div style={{ marginTop: 8 }}>
           <strong>Package Cost:</strong> {getPackageCost(form).toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
           <span style={{ marginLeft: 24, color: getPackageProfit(form) >= 0 ? 'green' : 'red' }}>

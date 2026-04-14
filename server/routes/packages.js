@@ -15,12 +15,13 @@ const parseProductOptions = (options) => {
 };
 
 const ensureStudioAdminRole = (req, res) => {
-  if (req.user?.role !== 'studio_admin') {
-    res.status(403).json({ error: 'Only studio admins can manage packages' });
+  console.log('[DEBUG ensureStudioAdminRole] req.user:', req.user, 'x-acting-studio-id:', req.headers['x-acting-studio-id']);
+  if (req.user?.role !== 'studio_admin' && req.user?.role !== 'super_admin') {
+    res.status(403).json({ error: 'Only studio admins or super admins can manage packages', user: req.user });
     return false;
   }
   if (!req.user?.studio_id) {
-    res.status(400).json({ error: 'Studio context is required' });
+    res.status(400).json({ error: 'Studio context is required', user: req.user });
     return false;
   }
   return true;

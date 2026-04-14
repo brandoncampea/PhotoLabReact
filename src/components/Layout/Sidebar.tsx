@@ -35,29 +35,32 @@ const Sidebar: React.FC = () => {
 		return null;
 	}
 
-	return (
-		<aside className={styles.sidebar}>
-			<ul className={styles.sidebarMenuGroup}>
-				<li><Link to={dashboardPath} className={styles.sidebarLink}>Dashboard</Link></li>
-				<li><Link to="/admin/albums" className={styles.sidebarLink}>Albums</Link></li>
-				<li><Link to="/admin/orders" className={styles.sidebarLink}>Orders</Link></li>
-				<li><Link to="/admin/watermarks" className={styles.sidebarLink}>Watermarks</Link></li>
-							 <li><Link to="/admin/shipping" className={styles.sidebarLink}>Shipping</Link></li>
-							 {inStudioAdminMenu && (
-								<li><Link to="/admin/discount-codes" className={styles.sidebarLink}>Discounts</Link></li>
-							 )}
-				<li>
-					<Link to={inStudioAdminMenu ? '/admin/vendor-integrations' : '/admin/configuration'} className={styles.sidebarLink}>
-						{inStudioAdminMenu ? 'Vendor Integrations' : 'Lab Configuration'}
-					</Link>
-				</li>
-				{/* Ticketing menu items */}
-				{isStudioAdmin && (
-					<li><Link to="/admin/studio-tickets" className={styles.sidebarLink}>My Tickets</Link></li>
-				)}
-				{isSuperAdmin && (
-					<li><Link to="/admin/tickets" className={styles.sidebarLink}>All Tickets</Link></li>
-				)}
+	 return (
+	 	<aside className={styles.sidebar}>
+	 		<ul className={styles.sidebarMenuGroup}>
+	 			<li><Link to={dashboardPath} className={styles.sidebarLink}>Dashboard</Link></li>
+	 			<li><Link to="/admin/albums" className={styles.sidebarLink}>Albums</Link></li>
+	 			<li><Link to="/admin/orders" className={styles.sidebarLink}>Orders</Link></li>
+	 			<li><Link to="/admin/watermarks" className={styles.sidebarLink}>Watermarks</Link></li>
+	 			<li><Link to="/admin/shipping" className={styles.sidebarLink}>Shipping</Link></li>
+	 			{inStudioAdminMenu && (
+	 				<>
+	 					<li><Link to="/admin/packages" className={styles.sidebarLink}>Packages</Link></li>
+	 					<li><Link to="/admin/discount-codes" className={styles.sidebarLink}>Discounts</Link></li>
+	 				</>
+	 			)}
+	 			<li>
+	 				<Link to={inStudioAdminMenu ? '/admin/vendor-integrations' : '/admin/configuration'} className={styles.sidebarLink}>
+	 					{inStudioAdminMenu ? 'Vendor Integrations' : 'Lab Configuration'}
+	 				</Link>
+	 			</li>
+	 			{/* Ticketing menu items */}
+	 			{isStudioAdmin && (
+	 				<li><Link to="/admin/studio-tickets" className={styles.sidebarLink}>My Tickets</Link></li>
+	 			)}
+	 			{isSuperAdmin && (
+	 				<li><Link to="/admin/tickets" className={styles.sidebarLink}>All Tickets</Link></li>
+	 			)}
 				{isStudioAdmin && (
 					<li><Link to="/admin/profile" className={styles.sidebarLink}>Subscription</Link></li>
 				)}

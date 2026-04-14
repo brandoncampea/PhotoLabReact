@@ -22,10 +22,7 @@ const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop, onOpenWhccEditor,
 
   const subtotal = item.price * item.quantity;
 
-  const cropDebugText = (() => {
-    if (!item.cropData) return null;
-    return `x:${Math.round(item.cropData.x)} y:${Math.round(item.cropData.y)} w:${Math.round(item.cropData.width)} h:${Math.round(item.cropData.height)} sx:${Number(item.cropData.scaleX || 1).toFixed(2)} sy:${Number(item.cropData.scaleY || 1).toFixed(2)}`;
-  })();
+  // Removed unused cropDebugText variable
 
   // Calculate crop preview overlay position (as percentage of image)
   const getCropStyle = () => {
@@ -53,6 +50,9 @@ const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop, onOpenWhccEditor,
     };
   };
 
+  // Determine which image to show: product > category > photo > placeholder
+  let displayImageUrl = (item as any).productImageUrl || (item as any).categoryImageUrl || item.photo?.fullImageUrl || item.photo?.thumbnailUrl;
+
   return (
     <div style={{ border: '1px solid #2a2740', borderRadius: 8, marginBottom: 16, overflow: 'hidden', background: '#0f0f16' }}>
       {/* Header with Item Number and actions */}
@@ -73,18 +73,18 @@ const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop, onOpenWhccEditor,
           {/* Photo Preview Section */}
           <div>
             <div style={{ marginBottom: 12, borderRadius: 6, overflow: 'hidden', background: '#000', height: 280, position: 'relative' }}>
-              {item.photo ? (
+              {displayImageUrl ? (
                 <>
                   <WatermarkedImage 
-                    src={item.photo.fullImageUrl || item.photo.thumbnailUrl} 
-                    alt={item.photo.fileName}
+                    src={displayImageUrl}
+                    alt={item.productName || item.photo?.fileName || 'Product'}
                     style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                   />
                   {item.cropData && <div style={getCropStyle()!} />}
                 </>
               ) : (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#666' }}>
-                  Loading...
+                  No Image
                 </div>
               )}
             </div>
@@ -148,24 +148,20 @@ const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop, onOpenWhccEditor,
                   <input
                     type="number"
                     min={1}
-                    max={item.isDigital ? 1 : undefined}
-                    value={item.isDigital ? 1 : item.quantity}
-                    disabled={item.isDigital}
+                    value={item.quantity}
                     onChange={(e) => {
-                      if (!item.isDigital) {
-                        handleQuantityChange(parseInt(e.target.value) || 1);
-                      }
+                      handleQuantityChange(parseInt(e.target.value) || 1);
                     }}
                     style={{
                       width: '100%',
                       padding: '4px 6px',
-                      background: item.isDigital ? '#22223a' : '#0f0f16',
+                      background: '#0f0f16',
                       border: '1px solid #2a2740',
                       borderRadius: 3,
                       color: '#fff',
                       textAlign: 'center',
-                      opacity: item.isDigital ? 0.6 : 1,
-                      cursor: item.isDigital ? 'not-allowed' : 'pointer',
+                      opacity: 1,
+                      cursor: 'pointer',
                     }}
                   />
                 </div>

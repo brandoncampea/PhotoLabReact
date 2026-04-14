@@ -17,6 +17,7 @@ import { downloadService } from '../services/downloadService';
 import { discountCodeService } from '../services/discountCodeService';
 import { taxService } from '../services/taxService';
 import { whccEditorService } from '../services/whccEditorService';
+import { superPriceListService } from '../services/superPriceListService';
 import { ShippingConfig, StripeConfig, Product, DiscountCode, ShippingAddress, CartItem as CartItemType, PaymentIntent, ShippingQuote } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -59,6 +60,9 @@ const Cart: React.FC = () => {
     return loadStripe(stripeConfig.publishableKey);
   }, [stripeConfig?.publishableKey]);
 
+  const [productImages, setProductImages] = useState<Record<number, string>>({});
+  const [categoryImages, setCategoryImages] = useState<Record<string, string>>({});
+
   useEffect(() => {
     loadShippingConfig();
     loadStripeConfig();
@@ -67,6 +71,24 @@ const Cart: React.FC = () => {
 
   useEffect(() => {
     loadProducts();
+    // Fallback: try to get a super price list ID from the first product if available
+    const priceListId = (products[0] as any)?.super_price_list_id;
+    if (priceListId) {
+      superPriceListService.getProductImages(priceListId).then((data) => {
+        const map: Record<number, string> = {};
+        (data || []).forEach((row: any) => {
+          if (row.product_id && row.image_url) map[Number(row.product_id)] = row.image_url;
+        });
+        setProductImages(map);
+      });
+      superPriceListService.getCategoryImages(priceListId).then((data) => {
+        const map: Record<string, string> = {};
+        (data || []).forEach((row: any) => {
+          if (row.category_name && row.image_url) map[String(row.category_name)] = row.image_url;
+        });
+        setCategoryImages(map);
+      });
+    }
   }, [items]);
 
   useEffect(() => {
@@ -380,7 +402,7 @@ const Cart: React.FC = () => {
     return NaN;
   };
 
-  const getResolvedCartItem = (item: CartItemType): CartItemType => {
+  const getResolvedCartItem = (item: CartItemType): any => {
     const itemProductId = Number(item.productId || 0);
     const itemSizeId = Number(item.productSizeId || 0);
 
@@ -397,24 +419,20 @@ const Cart: React.FC = () => {
       ? resolvedProduct?.sizes?.find((s) => Number(s.id) === itemSizeId)
       : undefined;
 
+    // Prefer direct image URLs from item, fallback to mapping
+    let productImageUrl = item.product_image_url || (item.productId ? productImages[item.productId] : undefined);
+    let categoryImageUrl = item.category_image_url || (resolvedProduct?.category ? categoryImages[resolvedProduct.category] : undefined);
+
     return {
       ...item,
       productName: item.productName || resolvedProduct?.name || (item.productId ? `Product #${item.productId}` : 'Product'),
       productSizeName: item.productSizeName || resolvedSize?.name || (item.productSizeId ? `Size #${item.productSizeId}` : 'Size'),
+      productImageUrl,
+      categoryImageUrl,
     };
   };
 
-  const isMultiImageItem = (item: CartItemType): boolean => {
-    const product = products.find((p) => Number(p.id) === Number(item.productId || 0));
-    const category = String(product?.category || '').toLowerCase();
-    const name = String(item.productName || product?.name || '').toLowerCase();
-
-    if (Number(product?.minPhotos || 0) > 1) return true;
-    if (category.includes('albums') || category.includes('books') || category.includes('press printed books')) return true;
-    if (name.includes('album') || name.includes('book')) return true;
-
-    return false;
-  };
+  // Removed unused isMultiImageItem function
 
   const handleOpenWhccEditor = async (item: CartItemType) => {
     try {
@@ -523,18 +541,18 @@ const Cart: React.FC = () => {
       paymentIntentId
     );
 
-    // If we have an orderId and paymentIntentId, update the Stripe fee
-    if (orderResult?.orderId && paymentIntentId) {
+    // If we have an order id and paymentIntentId, update the Stripe fee
+    if (orderResult?.id && paymentIntentId) {
       try {
         const { updateStripeFee } = await import('../services/stripeFeeService');
-        await updateStripeFee(orderResult.orderId);
+        await updateStripeFee(String(orderResult.id));
       } catch (err) {
         console.error('Failed to update Stripe fee:', err);
       }
     }
 
     console.log('📧 Email receipt sent to:', shippingAddress.email);
-    console.log('Order Number:', orderResult?.orderId || 'N/A');
+    console.log('Order Number:', orderResult?.id || 'N/A');
     console.log('Total Amount:', getFinalTotal());
 
     clearCart();
@@ -639,23 +657,14 @@ const Cart: React.FC = () => {
 
       <div className="cart-content cart-layout">
         <div className="cart-items">
-          {items.map((item) => {
-            const resolvedItem = getResolvedCartItem(item);
-            const product = products.find((p) => Number(p.id) === Number(resolvedItem.productId || 0));
-            const isDigitalItem = Boolean(product?.isDigital);
-            return (
-            <CartItem 
-              key={`${item.photoId}-${item.productId || 0}-${item.productSizeId || 0}`}
-              item={resolvedItem} 
-              onEditCrop={isDigitalItem ? undefined : (selectedItem) => {
-                setEditingItem(selectedItem);
-                setCropperRef(null);
-              }}
+          {items.map((item) => (
+            <CartItem
+              key={item.photoId + '-' + (item.productId || '') + '-' + (item.productSizeId || '')}
+              item={getResolvedCartItem(item)}
+              onEditCrop={setEditingItem}
               onOpenWhccEditor={handleOpenWhccEditor}
-              showWhccEditorButton={!isDigitalItem && isMultiImageItem(resolvedItem)}
             />
-            );
-          })}
+          ))}
         </div>
 
         <div className="cart-summary cart-summary-panel">
