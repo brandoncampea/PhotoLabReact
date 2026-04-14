@@ -69,8 +69,12 @@ const AdminLogin: React.FC = () => {
             />
           </div>
           
-          <button type="submit" className="btn btn-primary" disabled={loading}>
+          <button
+            type="submit"
+            className="btn btn-primary"
+            disabled={loading}
             data-testid="admin-login-button"
+          >
             {loading ? 'Signing in...' : 'Admin Sign In'}
           </button>
         </form>

@@ -1,3 +1,4 @@
+
 import express from 'express';
 import jwt from 'jsonwebtoken';
 import mssql from '../mssql.cjs';
@@ -5,8 +6,26 @@ const { queryRow, queryRows, query } = mssql;
 import { authRequired, adminRequired, superAdminRequired } from '../middleware/auth.js';
 import { requireActiveSubscription } from '../middleware/subscription.js';
 import orderReceiptService from '../services/orderReceiptService.js';
-import { calculateWhccShippingQuote } from '../services/whccShippingCostService.js';
 const router = express.Router();
+
+// Update Stripe fee for an order after payment confirmation
+router.patch('/update-stripe-fee/:orderId', authRequired, async (req, res) => {
+  try {
+    const orderId = Number(req.params.orderId);
+    if (!orderId) {
+      return res.status(400).json({ error: 'orderId is required' });
+    }
+    const order = await queryRow('SELECT payment_intent_id FROM orders WHERE id = $1', [orderId]);
+    if (!order || !order.payment_intent_id) {
+      return res.status(404).json({ error: 'Order or payment intent not found' });
+    }
+    const paymentAccounting = await fetchPaymentIntentAccounting(order.payment_intent_id);
+    await query('UPDATE orders SET stripe_fee_amount = $1 WHERE id = $2', [paymentAccounting.stripeFeeAmount, orderId]);
+    res.json({ success: true, stripeFeeAmount: paymentAccounting.stripeFeeAmount });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 const safeJsonParse = (value, fallback = null) => {
   if (!value) return fallback;
@@ -85,116 +104,6 @@ const getOrderStudioIdFromItems = async (items) => {
   }
 
   return studioId;
-};
-
-const getProductCategoriesForItems = async (items) => {
-  const productIds = Array.from(new Set(
-    (items || [])
-      .map((item) => Number(item?.productId || 0))
-      .filter((id) => Number.isInteger(id) && id > 0)
-  ));
-
-  if (!productIds.length) return [];
-
-  const placeholders = productIds.map((_, idx) => `$${idx + 1}`).join(', ');
-  const rows = await queryRows(
-    `SELECT id, category
-     FROM products
-     WHERE id IN (${placeholders})`,
-    productIds
-  );
-
-  return rows.map((row) => row.category).filter(Boolean);
-};
-
-const resolveOrderItemUnitPrice = async ({
-  studioId,
-  albumPriceListId,
-  productId,
-  productSizeId,
-}) => {
-  const sizeId = Number(productSizeId || 0);
-  const parsedStudioId = Number(studioId || 0);
-  const parsedAlbumPriceListId = Number(albumPriceListId || 0);
-  const parsedProductId = Number(productId || 0);
-
-  // Preferred: studio size pricing from studio_price_list_items
-  if (parsedStudioId > 0 && sizeId > 0) {
-    let studioSizePrice = null;
-
-    if (parsedAlbumPriceListId > 0) {
-      studioSizePrice = await queryRow(
-        `SELECT TOP 1 spi.price as unitPrice
-         FROM studio_price_list_items spi
-         WHERE spi.studio_price_list_id = $1
-           AND spi.product_size_id = $2`,
-        [parsedAlbumPriceListId, sizeId]
-      );
-    }
-
-    if (!studioSizePrice?.unitPrice) {
-      studioSizePrice = await queryRow(
-        `SELECT TOP 1 spi.price as unitPrice
-         FROM studio_price_list_items spi
-         INNER JOIN studio_price_lists spl ON spl.id = spi.studio_price_list_id
-         WHERE spl.studio_id = $1
-           AND spi.product_size_id = $2
-         ORDER BY spl.id ASC`,
-        [parsedStudioId, sizeId]
-      );
-    }
-
-    const studioUnitPrice = Number(studioSizePrice?.unitPrice);
-    if (Number.isFinite(studioUnitPrice) && studioUnitPrice > 0) {
-      return studioUnitPrice;
-    }
-  }
-
-  // Legacy fallback: studio product-level offering price
-  if (parsedStudioId > 0 && parsedAlbumPriceListId > 0 && parsedProductId > 0) {
-    const studioOffering = await queryRow(
-      `SELECT TOP 1 price as unitPrice
-       FROM studio_product_offerings
-       WHERE studio_id = $1
-         AND price_list_id = $2
-         AND product_id = $3`,
-      [parsedStudioId, parsedAlbumPriceListId, parsedProductId]
-    );
-    const offeringUnitPrice = Number(studioOffering?.unitPrice);
-    if (Number.isFinite(offeringUnitPrice) && offeringUnitPrice > 0) {
-      return offeringUnitPrice;
-    }
-  }
-
-  // Base fallback: product size price
-  if (sizeId > 0) {
-    const sizePrice = await queryRow(
-      `SELECT price as unitPrice
-       FROM product_sizes
-       WHERE id = $1`,
-      [sizeId]
-    );
-    const baseUnitPrice = Number(sizePrice?.unitPrice);
-    if (Number.isFinite(baseUnitPrice) && baseUnitPrice >= 0) {
-      return baseUnitPrice;
-    }
-  }
-
-  // Final fallback: product price
-  if (parsedProductId > 0) {
-    const productPrice = await queryRow(
-      `SELECT price as unitPrice
-       FROM products
-       WHERE id = $1`,
-      [parsedProductId]
-    );
-    const fallbackProductPrice = Number(productPrice?.unitPrice);
-    if (Number.isFinite(fallbackProductPrice) && fallbackProductPrice >= 0) {
-      return fallbackProductPrice;
-    }
-  }
-
-  return 0;
 };
 
 const resolveOrderAccessStudioId = (req) => {
@@ -286,21 +195,11 @@ const fetchPaymentIntentAccounting = async (paymentIntentId) => {
       expand: ['latest_charge.balance_transaction'],
     });
 
-    let latestCharge = null;
-    if (typeof paymentIntent.latest_charge === 'string') {
-      latestCharge = await stripe.charges.retrieve(paymentIntent.latest_charge, {
-        expand: ['balance_transaction'],
-      });
-    } else {
-      latestCharge = paymentIntent.latest_charge;
-    }
+    const latestCharge = typeof paymentIntent.latest_charge === 'string'
+      ? { id: paymentIntent.latest_charge, balance_transaction: null }
+      : paymentIntent.latest_charge;
 
-    let stripeFeeAmount = Number(latestCharge?.balance_transaction?.fee || 0) / 100;
-
-    if (!stripeFeeAmount && latestCharge?.balance_transaction && typeof latestCharge.balance_transaction === 'string') {
-      const balanceTx = await stripe.balanceTransactions.retrieve(latestCharge.balance_transaction);
-      stripeFeeAmount = Number(balanceTx?.fee || 0) / 100;
-    }
+    const stripeFeeAmount = Number(latestCharge?.balance_transaction?.fee || 0) / 100;
 
     return {
       paymentIntentId: paymentIntent.id,
@@ -1188,11 +1087,6 @@ const sendOrderReceipts = async (orderId) => {
             o.subtotal,
             o.tax_amount as taxAmount,
             o.shipping_cost as shippingCost,
-          o.studio_shipping_cost as studioShippingCost,
-          o.shipping_margin as shippingMargin,
-          o.shipping_destination as shippingDestination,
-          o.shipping_product_group as shippingProductGroup,
-          o.direct_pricing_mode_used as directPricingModeUsed,
             o.stripe_fee_amount as stripeFeeAmount,
             o.shipping_address as shippingAddress,
             o.created_at as createdAt,
@@ -1218,7 +1112,7 @@ const sendOrderReceipts = async (orderId) => {
             a.studio_id as studioId,
             s.name as studioName,
             s.email as studioEmail,
-            COALESCE(sspi.baseCost, ps.price, p.price, 0) as basePrice,
+            COALESCE(ps.price, p.price, 0) as basePrice,
             COALESCE(ps.cost, p.cost, 0) as cost
      FROM order_items oi
      INNER JOIN photos ph ON ph.id = oi.photo_id
@@ -1226,12 +1120,6 @@ const sendOrderReceipts = async (orderId) => {
      INNER JOIN studios s ON s.id = a.studio_id
      LEFT JOIN products p ON p.id = oi.product_id
      LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id
-     LEFT JOIN (
-       SELECT product_size_id as productSizeId, MIN(base_cost) as baseCost
-       FROM super_price_list_items
-       WHERE is_active = 1
-       GROUP BY product_size_id
-     ) sspi ON sspi.productSizeId = oi.product_size_id
      WHERE oi.order_id = $1`,
     [orderId]
   );
@@ -1255,7 +1143,6 @@ const sendOrderReceipts = async (orderId) => {
         url: appBase ? `${appBase}${relativeUrl}` : relativeUrl,
       };
     });
-  const isDigitalOnlyOrder = items.length > 0 && digitalDownloads.length === items.length;
 
   const parsedShippingAddress = safeJsonParse(order.shippingAddress, {});
   const superAdminBcc = await getSuperAdminReceiptBcc();
@@ -1326,42 +1213,15 @@ const sendOrderReceipts = async (orderId) => {
     await new Promise(resolve => setTimeout(resolve, 1000));
   }
 
-  const shouldAutoCompleteDigitalOrder = customerSent && isDigitalOnlyOrder;
-  if (customerSent || anyStudioSent || shouldAutoCompleteDigitalOrder) {
+  if (customerSent || anyStudioSent) {
     await query(
       `UPDATE orders
        SET customer_receipt_sent_at = CASE WHEN $1 = 1 THEN CURRENT_TIMESTAMP ELSE customer_receipt_sent_at END,
-           studio_receipt_sent_at = CASE WHEN $2 = 1 THEN CURRENT_TIMESTAMP ELSE studio_receipt_sent_at END,
-           status = CASE
-             WHEN $3 = 1 AND status IN ('pending', 'processing') THEN 'completed'
-             ELSE status
-           END
-       WHERE id = $4`,
-      [customerSent ? 1 : 0, anyStudioSent ? 1 : 0, shouldAutoCompleteDigitalOrder ? 1 : 0, orderId]
+           studio_receipt_sent_at = CASE WHEN $2 = 1 THEN CURRENT_TIMESTAMP ELSE studio_receipt_sent_at END
+       WHERE id = $3`,
+      [customerSent ? 1 : 0, anyStudioSent ? 1 : 0, orderId]
     );
   }
-};
-
-const buildDigitalDownloadLinks = ({ orderId, userId, items }) => {
-  const appBase = String(process.env.APP_BASE_URL || '').trim().replace(/\/$/, '');
-  return (items || [])
-    .filter((item) => isDigitalProductRow(item))
-    .map((item) => {
-      const token = createDigitalDownloadToken({
-        orderId,
-        userId,
-        orderItemId: item.id,
-        photoId: item.photoId,
-      });
-      const relativeUrl = `/api/orders/digital-download/${token}`;
-      return {
-        orderItemId: item.id,
-        photoId: item.photoId,
-        productName: item.productName,
-        photoFileName: item.photoFileName,
-        url: appBase ? `${appBase}${relativeUrl}` : relativeUrl,
-      };
-    });
 };
 
 // Protect all order routes except tokenized digital download links
@@ -1526,17 +1386,11 @@ router.post('/', requireActiveSubscription, async (req, res) => {
       return res.status(400).json({ error: 'Unable to determine studio for this order' });
     }
     let batchReadyDate = null;
-    const shippingConfig = await queryRow(
-      `SELECT batch_deadline as batchDeadline,
-              direct_shipping_charge as directShippingCharge,
-              direct_pricing_mode as directPricingMode,
-              direct_flat_fee as directFlatFee,
-              batch_shipping_address as batchShippingAddress
-       FROM shipping_config
-       WHERE id = $1`,
-      [orderStudioId]
-    );
     if (batchOrder && orderStudioId) {
+      const shippingConfig = await queryRow(
+        'SELECT batch_deadline as batchDeadline FROM shipping_config WHERE id = $1',
+        [orderStudioId]
+      );
       if (shippingConfig?.batchDeadline) {
         const parsedDate = new Date(shippingConfig.batchDeadline);
         if (!Number.isNaN(parsedDate.getTime())) {
@@ -1544,67 +1398,6 @@ router.post('/', requireActiveSubscription, async (req, res) => {
         }
       }
     }
-
-    const productCategories = await getProductCategoriesForItems(items);
-    const parsedBatchAddress = safeJsonParse(shippingConfig?.batchShippingAddress, null);
-    const shippingQuote = calculateWhccShippingQuote({
-      shippingOption: batchOrder ? 'batch' : 'direct',
-      destinationAddress: batchOrder ? (parsedBatchAddress || shippingAddress || {}) : (shippingAddress || {}),
-      productCategories,
-      studioConfig: {
-        directPricingMode: shippingConfig?.directPricingMode,
-        directFlatFee: shippingConfig?.directFlatFee,
-        directShippingCharge: shippingConfig?.directShippingCharge,
-      },
-    });
-
-    const persistedShippingCost = Number(shippingQuote.customerShippingCost || 0);
-    const persistedStudioShippingCost = Number(shippingQuote.studioShippingCost || 0);
-    const persistedShippingMargin = Number(shippingQuote.studioShippingDelta || 0);
-
-    const pricedItems = [];
-    let computedSubtotal = 0;
-    for (const item of items) {
-      const photoIds = Array.isArray(item.photoIds)
-        ? item.photoIds
-        : item.photoId
-        ? [item.photoId]
-        : [];
-      const primaryPhotoId = photoIds[0];
-      if (!primaryPhotoId) {
-        throw new Error('Order item missing photo');
-      }
-
-      const albumRow = await queryRow(
-        `SELECT a.studio_id as studioId, a.price_list_id as priceListId
-         FROM photos p
-         INNER JOIN albums a ON a.id = p.album_id
-         WHERE p.id = $1`,
-        [primaryPhotoId]
-      );
-
-      const unitPrice = await resolveOrderItemUnitPrice({
-        studioId: albumRow?.studioId || orderStudioId,
-        albumPriceListId: albumRow?.priceListId,
-        productId: item.productId,
-        productSizeId: item.productSizeId,
-      });
-      const quantity = Math.max(1, Number(item.quantity) || 1);
-
-      pricedItems.push({
-        ...item,
-        photoIds,
-        primaryPhotoId,
-        quantity,
-        unitPrice,
-      });
-
-      computedSubtotal += unitPrice * quantity;
-    }
-
-    const persistedTaxAmount = Number(taxAmount || 0);
-    const persistedTotal = Number((computedSubtotal + persistedShippingCost + persistedTaxAmount).toFixed(2));
-    const persistedSubtotalAmount = Number(computedSubtotal.toFixed(2));
 
     const nextStatus = directOrder ? 'processing' : 'pending';
     const shouldMarkLabSubmitted = directOrder ? false : !!labSubmitted;
@@ -1622,12 +1415,6 @@ router.post('/', requireActiveSubscription, async (req, res) => {
         shipping_address, 
         shipping_option, 
         shipping_cost,
-        studio_shipping_cost,
-        shipping_margin,
-        shipping_destination,
-        shipping_product_group,
-        direct_pricing_mode_used,
-        shipping_rubric_source,
         discount_code,
         is_batch,
         batch_shipping_address,
@@ -1640,25 +1427,19 @@ router.post('/', requireActiveSubscription, async (req, res) => {
         stripe_charge_id,
         stripe_fee_amount
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, CASE WHEN $23 = 1 THEN CURRENT_TIMESTAMP ELSE NULL END, $24, $25, $26)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, CASE WHEN $17 = 1 THEN CURRENT_TIMESTAMP ELSE NULL END, $18, $19, $20)
       RETURNING id
     `, [
       orderStudioId,
       userId, 
       nextStatus,
-      persistedTotal,
-      persistedSubtotalAmount,
-      persistedTaxAmount,
+      total,
+      subtotal || 0, 
+      taxAmount || 0,
       taxRate || 0,
       JSON.stringify(shippingAddress),
       shippingOption || 'direct',
-      persistedShippingCost,
-      persistedStudioShippingCost,
-      persistedShippingMargin,
-      shippingQuote.destinationLabel || null,
-      shippingQuote.productGroup || null,
-      shippingQuote.directPricingMode || null,
-      shippingQuote.rubricSource || null,
+      shippingCost || 0,
       discountCode || null,
       batchOrder,
       batchShippingAddress ? JSON.stringify(batchShippingAddress) : null,
@@ -1674,18 +1455,28 @@ router.post('/', requireActiveSubscription, async (req, res) => {
     const orderId = orderResult.id;
 
     // Insert order items
-    for (const item of pricedItems) {
+    for (const item of items) {
+      const photoIds = Array.isArray(item.photoIds)
+        ? item.photoIds
+        : item.photoId
+        ? [item.photoId]
+        : [];
+      const primaryPhotoId = photoIds[0];
+      if (!primaryPhotoId) {
+        throw new Error('Order item missing photo');
+      }
+
       await query(`
         INSERT INTO order_items (order_id, photo_id, photo_ids, product_id, product_size_id, quantity, price, crop_data)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       `, [
         orderId,
-        item.primaryPhotoId,
-        JSON.stringify(item.photoIds),
+        primaryPhotoId,
+        JSON.stringify(photoIds),
         item.productId,
         item.productSizeId || null,
         item.quantity,
-        item.unitPrice,
+        item.price,
         item.cropData ? JSON.stringify(item.cropData) : null,
       ]);
     }
@@ -1695,10 +1486,10 @@ router.post('/', requireActiveSubscription, async (req, res) => {
       // Collect per-studio invoice items
       const studioItemMap = new Map(); // studio_id -> { subscriptionEnd, items: [] }
 
-      for (const item of pricedItems) {
+      for (const item of items) {
         if (!item.productSizeId && !item.productId) continue;
-        const photoIds = Array.isArray(item.photoIds) ? item.photoIds : [];
-        const primaryPhotoId = item.primaryPhotoId;
+        const photoIds = Array.isArray(item.photoIds) ? item.photoIds : item.photoId ? [item.photoId] : [];
+        const primaryPhotoId = photoIds[0];
         if (!primaryPhotoId) continue;
 
         // Resolve studio via photo -> album
@@ -1817,12 +1608,6 @@ router.post('/', requireActiveSubscription, async (req, res) => {
       shippingAddress: createdOrder.shipping_address ? JSON.parse(createdOrder.shipping_address) : null,
       shippingOption: createdOrder.shipping_option,
       shippingCost: createdOrder.shipping_cost,
-      studioShippingCost: createdOrder.studio_shipping_cost,
-      shippingMargin: createdOrder.shipping_margin,
-      shippingDestination: createdOrder.shipping_destination,
-      shippingProductGroup: createdOrder.shipping_product_group,
-      directPricingModeUsed: createdOrder.direct_pricing_mode_used,
-      shippingRubricSource: createdOrder.shipping_rubric_source,
       batchShippingAddress: safeJsonParse(createdOrder.batch_shipping_address),
       batchReadyDate: createdOrder.batch_ready_date,
       batchQueueStatus: createdOrder.batch_queue_status,
@@ -1863,12 +1648,6 @@ router.get('/', async (req, res) => {
           o.shipping_address as shippingAddress,
           o.shipping_option as shippingOption,
           o.shipping_cost as shippingCost,
-          o.studio_shipping_cost as studioShippingCost,
-          o.shipping_margin as shippingMargin,
-          o.shipping_destination as shippingDestination,
-          o.shipping_product_group as shippingProductGroup,
-          o.direct_pricing_mode_used as directPricingModeUsed,
-          o.shipping_rubric_source as shippingRubricSource,
           o.is_batch as isBatch,
           o.batch_shipping_address as batchShippingAddress,
           o.batch_ready_date as batchReadyDate,
@@ -1898,12 +1677,6 @@ router.get('/', async (req, res) => {
           o.shipping_address as shippingAddress,
           o.shipping_option as shippingOption,
           o.shipping_cost as shippingCost,
-          o.studio_shipping_cost as studioShippingCost,
-          o.shipping_margin as shippingMargin,
-          o.shipping_destination as shippingDestination,
-          o.shipping_product_group as shippingProductGroup,
-          o.direct_pricing_mode_used as directPricingModeUsed,
-          o.shipping_rubric_source as shippingRubricSource,
           o.is_batch as isBatch,
           o.batch_shipping_address as batchShippingAddress,
           o.batch_ready_date as batchReadyDate,
@@ -2031,12 +1804,6 @@ router.get('/details/:orderId', async (req, res) => {
                 o.shipping_address as shippingAddress,
                 o.shipping_option as shippingOption,
                 o.shipping_cost as shippingCost,
-                o.studio_shipping_cost as studioShippingCost,
-                o.shipping_margin as shippingMargin,
-                o.shipping_destination as shippingDestination,
-                o.shipping_product_group as shippingProductGroup,
-                o.direct_pricing_mode_used as directPricingModeUsed,
-                o.shipping_rubric_source as shippingRubricSource,
                 o.is_batch as isBatch,
                 o.batch_shipping_address as batchShippingAddress,
                 o.batch_ready_date as batchReadyDate,
@@ -2066,12 +1833,6 @@ router.get('/details/:orderId', async (req, res) => {
                 o.shipping_address as shippingAddress,
                 o.shipping_option as shippingOption,
                 o.shipping_cost as shippingCost,
-                o.studio_shipping_cost as studioShippingCost,
-                o.shipping_margin as shippingMargin,
-                o.shipping_destination as shippingDestination,
-                o.shipping_product_group as shippingProductGroup,
-                o.direct_pricing_mode_used as directPricingModeUsed,
-                o.shipping_rubric_source as shippingRubricSource,
                 o.is_batch as isBatch,
                 o.batch_shipping_address as batchShippingAddress,
                 o.batch_ready_date as batchReadyDate,
@@ -2103,7 +1864,6 @@ router.get('/details/:orderId', async (req, res) => {
     );
 
     const itemsWithPhotos = [];
-    const appBase = String(process.env.APP_BASE_URL || '').trim().replace(/\/$/, '');
     for (const item of items) {
       const photo = await queryRow(
         `SELECT id, album_id as albumId, file_name as fileName, thumbnail_url as thumbnailUrl, full_image_url as fullImageUrl, width, height
@@ -2132,30 +1892,6 @@ router.get('/details/:orderId', async (req, res) => {
         unitCost = Number(product?.price) || 0;
         productName = product?.name || null;
       }
-      // Digital product detection and download URL
-      const options = safeJsonParse(item.productOptions, {}) || {};
-      const category = String(item.productCategory || '').toLowerCase();
-      const name = String(productName || '').toLowerCase();
-      const isDigital = options?.isDigital === true || options?.is_digital_only === true || options?.digitalOnly === true || category.includes('digital') || name.includes('digital');
-      let downloadUrls = [];
-      if (isDigital) {
-        // Support multiple photoIds for digital products
-        const photoIds = safeJsonParse(item.photoIds, item.photoId ? [item.photoId] : []);
-        downloadUrls = (photoIds || []).map((pid) => {
-          const token = createDigitalDownloadToken({
-            orderId: order.id,
-            userId: order.userId,
-            orderItemId: item.id,
-            photoId: pid,
-          });
-          const relativeUrl = `/api/orders/digital-download/${token}`;
-          return {
-            orderItemId: item.id,
-            photoId: pid,
-            url: appBase ? `${appBase}${relativeUrl}` : relativeUrl,
-          };
-        });
-      }
       itemsWithPhotos.push({
         ...item,
         price: item.price || 0,
@@ -2179,8 +1915,6 @@ router.get('/details/:orderId', async (req, res) => {
           thumbnailUrl: `https://picsum.photos/seed/photo${item.photoId}/300/300`,
           url: `https://picsum.photos/seed/photo${item.photoId}/1200/900`,
         },
-        isDigital,
-        downloadUrls,
       });
     }
 
@@ -2224,12 +1958,6 @@ router.get('/admin/all-orders', adminRequired, async (req, res) => {
         o.shipping_address as shippingAddress,
         o.shipping_option as shippingOption,
         o.shipping_cost as shippingCost,
-        o.studio_shipping_cost as studioShippingCost,
-        o.shipping_margin as shippingMargin,
-        o.shipping_destination as shippingDestination,
-        o.shipping_product_group as shippingProductGroup,
-        o.direct_pricing_mode_used as directPricingModeUsed,
-        o.shipping_rubric_source as shippingRubricSource,
         o.is_batch as isBatch,
         o.batch_shipping_address as batchShippingAddress,
         o.batch_ready_date as batchReadyDate,
@@ -2285,17 +2013,11 @@ router.get('/admin/all-orders', adminRequired, async (req, res) => {
                   oi.crop_data as cropData,
                   p.name as productName,
             ps.size_name as productSizeName,
-            COALESCE(sspi.baseCost, ps.price, p.price, 0) as basePrice,
+            COALESCE(ps.price, p.price, 0) as basePrice,
             COALESCE(ps.cost, p.cost, 0) as labCost
            FROM order_items oi
            LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id
            LEFT JOIN products p ON p.id = COALESCE(oi.product_id, ps.product_id)
-           LEFT JOIN (
-             SELECT product_size_id as productSizeId, MIN(base_cost) as baseCost
-             FROM super_price_list_items
-             WHERE is_active = 1
-             GROUP BY product_size_id
-           ) sspi ON sspi.productSizeId = oi.product_size_id
            WHERE oi.order_id = $1`,
           [order.id]
         );
@@ -2395,12 +2117,6 @@ router.get('/admin/order-details/:orderId', adminRequired, async (req, res) => {
         o.shipping_address as shippingAddress,
         o.shipping_option as shippingOption,
         o.shipping_cost as shippingCost,
-        o.studio_shipping_cost as studioShippingCost,
-        o.shipping_margin as shippingMargin,
-        o.shipping_destination as shippingDestination,
-        o.shipping_product_group as shippingProductGroup,
-        o.direct_pricing_mode_used as directPricingModeUsed,
-        o.shipping_rubric_source as shippingRubricSource,
         o.is_batch as isBatch,
         o.batch_shipping_address as batchShippingAddress,
         o.batch_ready_date as batchReadyDate,
@@ -2453,20 +2169,12 @@ router.get('/admin/order-details/:orderId', adminRequired, async (req, res) => {
               oi.price,
               oi.crop_data as cropData,
               p.name as productName,
-              p.category as productCategory,
-              p.options as productOptions,
               ps.size_name as productSizeName,
-              COALESCE(sspi.baseCost, ps.price, p.price, 0) as basePrice,
+              COALESCE(ps.price, p.price, 0) as basePrice,
               COALESCE(ps.cost, p.cost, 0) as labCost
        FROM order_items oi
        LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id
        LEFT JOIN products p ON p.id = COALESCE(oi.product_id, ps.product_id)
-       LEFT JOIN (
-         SELECT product_size_id as productSizeId, MIN(base_cost) as baseCost
-         FROM super_price_list_items
-         WHERE is_active = 1
-         GROUP BY product_size_id
-       ) sspi ON sspi.productSizeId = oi.product_size_id
        WHERE oi.order_id = $1`,
       [order.id]
     );
@@ -2498,7 +2206,6 @@ router.get('/admin/order-details/:orderId', adminRequired, async (req, res) => {
         price: item.price || 0,
         basePrice: Number(item.basePrice) || 0,
         labCost: Number(item.labCost) || 0,
-        isDigital: isDigitalProductRow(item),
         productName: item.productName || (item.productId ? `Product #${item.productId}` : 'Unknown Product'),
         productSizeName: item.productSizeName || undefined,
         cropData: safeJsonParse(item.cropData),
@@ -2547,116 +2254,10 @@ router.get('/admin/order-details/:orderId', adminRequired, async (req, res) => {
       trackingUrl: canViewWhccFields ? order.trackingUrl : undefined,
       shippedAt: canViewWhccFields ? order.shippedAt : undefined,
       items: itemsWithPhotos,
-      hasDigitalItems: itemsWithPhotos.some((item) => item.isDigital),
-      digitalItemCount: itemsWithPhotos.filter((item) => item.isDigital).length,
       excludedItemsNote: excludedCount > 0 ? `${excludedCount} product(s) with amount were excluded from profit calculations because they are not linked to a valid product.` : undefined,
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
-  }
-});
-
-router.post('/admin/:orderId/resend-digital-download', adminRequired, async (req, res) => {
-  try {
-    if (!orderReceiptService.isConfigured()) {
-      return res.status(400).json({ error: 'SMTP is not configured; cannot resend download links' });
-    }
-
-    const orderId = Number(req.params.orderId);
-    if (!orderId) {
-      return res.status(400).json({ error: 'Valid orderId is required' });
-    }
-
-    const actingStudioId = req.headers['x-acting-studio-id'];
-    let orderQuery = `
-      SELECT o.id,
-             o.user_id as userId,
-             o.total as totalAmount,
-             o.subtotal,
-             o.tax_amount as taxAmount,
-             o.shipping_cost as shippingCost,
-             o.shipping_address as shippingAddress,
-             o.created_at as createdAt,
-             u.email as customerEmail,
-             u.name as customerName
-      FROM orders o
-      INNER JOIN users u ON u.id = o.user_id
-      WHERE o.id = $1
-    `;
-    const params = [orderId];
-
-    if (actingStudioId) {
-      orderQuery += ` AND o.studio_id = $2`;
-      params.push(actingStudioId);
-    } else if (req.user.role === 'studio_admin') {
-      orderQuery += ` AND o.user_id IN (SELECT u.id FROM users u WHERE u.studio_id = $2)`;
-      params.push(req.user.studio_id);
-    }
-
-    const order = await queryRow(orderQuery, params);
-    if (!order) {
-      return res.status(404).json({ error: 'Order not found' });
-    }
-
-    const items = await queryRows(
-      `SELECT oi.id,
-              oi.photo_id as photoId,
-              oi.quantity,
-              oi.price as unitPrice,
-              ph.file_name as photoFileName,
-              p.options as productOptions,
-              p.category as productCategory,
-              p.name as productName
-       FROM order_items oi
-       INNER JOIN photos ph ON ph.id = oi.photo_id
-       LEFT JOIN products p ON p.id = oi.product_id
-       WHERE oi.order_id = $1`,
-      [orderId]
-    );
-
-    const digitalDownloads = buildDigitalDownloadLinks({
-      orderId: order.id,
-      userId: order.userId,
-      items,
-    });
-
-    if (!digitalDownloads.length) {
-      return res.status(400).json({ error: 'Order has no digital products to resend' });
-    }
-
-    const parsedShippingAddress = safeJsonParse(order.shippingAddress, {});
-    const recipientEmail = parsedShippingAddress?.email || order.customerEmail;
-    if (!recipientEmail) {
-      return res.status(400).json({ error: 'No customer email available to resend links' });
-    }
-
-    const sent = await orderReceiptService.sendCustomerReceipt({
-      to: recipientEmail,
-      customerName: parsedShippingAddress?.fullName || order.customerName,
-      order,
-      items,
-      digitalDownloads,
-    });
-
-    if (!sent) {
-      return res.status(500).json({ error: 'Failed to resend digital download links' });
-    }
-
-    await query(
-      `UPDATE orders
-       SET customer_receipt_sent_at = CURRENT_TIMESTAMP
-       WHERE id = $1`,
-      [orderId]
-    );
-
-    return res.json({
-      success: true,
-      message: `Resent ${digitalDownloads.length} digital download link(s) to ${recipientEmail}`,
-      digitalItemCount: digitalDownloads.length,
-      recipientEmail,
-    });
-  } catch (error) {
-    return res.status(500).json({ error: error.message });
   }
 });
 

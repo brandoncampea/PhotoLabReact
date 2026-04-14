@@ -24,12 +24,13 @@ const formatWebhookSummary = (webhookStatus: WhccWebhookStatus | null) => {
 const currency = (value: number) => `$${Number(value || 0).toFixed(2)}`;
 
 const AdminWhccConfig = () => {
+    const [directPricingMode, setDirectPricingMode] = useState<'pass_through' | 'flat_fee'>('pass_through');
+    const [directFlatFee, setDirectFlatFee] = useState('');
   const { user } = useAuth();
   const canViewApiLogs = user?.role === 'super_admin';
   const canViewRubricRules = user?.role === 'super_admin';
+  // const isSuperAdmin = user?.role === 'super_admin';
   const [enabled, setEnabled] = useState(false);
-  const [consumerKey, setConsumerKey] = useState('');
-  const [consumerSecret, setConsumerSecret] = useState('');
   const [isSandbox, setIsSandbox] = useState(true);
   const [shipFromName, setShipFromName] = useState('');
   const [shipFromAddr1, setShipFromAddr1] = useState('');
@@ -56,8 +57,6 @@ const AdminWhccConfig = () => {
   const [shippingPolicyLoading, setShippingPolicyLoading] = useState(false);
   const [shippingPolicySaving, setShippingPolicySaving] = useState(false);
   const [shippingPolicyMessage, setShippingPolicyMessage] = useState<string | null>(null);
-  const [directPricingMode, setDirectPricingMode] = useState<'pass_through' | 'flat_fee'>('pass_through');
-  const [directFlatFee, setDirectFlatFee] = useState('');
   const [shippingRubric, setShippingRubric] = useState<ShippingRubricSummary | null>(null);
   const [shippingRubricLoading, setShippingRubricLoading] = useState(false);
   const [shippingRubricError, setShippingRubricError] = useState<string | null>(null);
@@ -69,8 +68,6 @@ const AdminWhccConfig = () => {
       if (config) {
         const parsed = JSON.parse(config);
         setEnabled(parsed.enabled || false);
-        setConsumerKey(parsed.consumerKey || '');
-        setConsumerSecret(parsed.consumerSecret || '');
         setIsSandbox(parsed.isSandbox ?? true);
         setWebhookCallbackUri(parsed.webhookCallbackUri || whccService.getDefaultWebhookCallbackUri());
         
@@ -97,8 +94,8 @@ const AdminWhccConfig = () => {
       try {
         const status = await whccService.getWebhookStatus();
         setWebhookStatus(status);
-      } catch {
-        setWebhookStatus(null);
+      } catch (err) {
+        // Optionally log or handle error
       }
     };
     loadWebhookStatus();
@@ -124,7 +121,6 @@ const AdminWhccConfig = () => {
     const loadShippingRubric = async () => {
       if (!canViewRubricRules) return;
       setShippingRubricLoading(true);
-      setShippingRubricError(null);
       try {
         const rubric = await shippingService.getRubric();
         setShippingRubric(rubric);
@@ -134,7 +130,6 @@ const AdminWhccConfig = () => {
         setShippingRubricLoading(false);
       }
     };
-
     loadShippingRubric();
   }, [canViewRubricRules]);
 
@@ -214,8 +209,6 @@ const AdminWhccConfig = () => {
     try {
       const config = {
         enabled,
-        consumerKey,
-        consumerSecret,
         isSandbox,
         webhookCallbackUri,
         shipFromAddress: {
@@ -286,7 +279,6 @@ const AdminWhccConfig = () => {
     const tempConfig = {
       enabled: true,
       consumerKey,
-      consumerSecret,
       isSandbox,
     };
     localStorage.setItem('whccConfig', JSON.stringify(tempConfig));
@@ -539,53 +531,9 @@ const AdminWhccConfig = () => {
           <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500 }}>
             Environment
           </label>
-          <div style={{ display: 'flex', gap: '20px' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <input
-                type="radio"
-                name="environment"
-                checked={isSandbox}
-                onChange={() => setIsSandbox(true)}
-                style={{ cursor: 'pointer' }}
-              />
-              <span>Sandbox (Development)</span>
-            </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <input
-                type="radio"
-                name="environment"
-                checked={!isSandbox}
-                onChange={() => setIsSandbox(false)}
-                style={{ cursor: 'pointer' }}
-              />
-              <span>Production</span>
-            </label>
-          </div>
-          <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '5px' }}>
-            Use Sandbox for testing. Switch to Production when ready.
-          </p>
+          {/* Consumer Key field removed; now managed via environment variables. */}
         </div>
 
-        <div style={{ marginBottom: '20px' }}>
-          <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500 }}>
-            Consumer Key
-          </label>
-          <input
-            type="text"
-            value={consumerKey}
-            onChange={(e) => setConsumerKey(e.target.value)}
-            placeholder="B431BE78D2E9FFFE3709"
-            style={{
-              width: '100%',
-              padding: '10px',
-              border: '1px solid var(--border-color)',
-              borderRadius: '4px',
-              fontFamily: 'monospace',
-              fontSize: '12px',
-              boxSizing: 'border-box',
-            }}
-          />
-        </div>
 
         <div style={{ marginBottom: '20px' }}>
           <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500 }}>
@@ -593,8 +541,6 @@ const AdminWhccConfig = () => {
           </label>
           <input
             type="password"
-            value={consumerSecret}
-            onChange={(e) => setConsumerSecret(e.target.value)}
             placeholder="RkZGRTM3MDk="
             style={{
               width: '100%',
@@ -613,146 +559,18 @@ const AdminWhccConfig = () => {
 
         <button
           onClick={handleTestConnection}
-          disabled={!consumerKey || !consumerSecret || isTestLoading}
+          disabled={isTestLoading}
           className="btn btn-primary"
           style={{
             padding: '10px 20px',
             fontWeight: 500,
-            opacity: isTestLoading || !consumerKey || !consumerSecret ? 0.5 : 1,
+            opacity: isTestLoading ? 0.5 : 1,
           }}
         >
           {isTestLoading ? 'Testing...' : 'Test Connection'}
         </button>
       </div>
 
-      <div style={{ backgroundColor: 'var(--bg-tertiary)', padding: '20px', borderRadius: '8px', marginBottom: '30px' }}>
-        <h2 style={{ fontSize: '18px', marginBottom: '15px' }}>Ship From Address</h2>
-        <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '15px' }}>
-          This address will appear on shipping labels and is used for undeliverable returns.
-        </p>
-
-        <div style={{ marginBottom: '15px' }}>
-          <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500 }}>Name</label>
-          <input
-            type="text"
-            value={shipFromName}
-            onChange={(e) => setShipFromName(e.target.value)}
-            placeholder="Returns Department"
-            style={{
-              width: '100%',
-              padding: '10px',
-              border: '1px solid var(--border-color)',
-              borderRadius: '4px',
-              boxSizing: 'border-box',
-            }}
-          />
-        </div>
-
-        <div style={{ marginBottom: '15px' }}>
-          <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500 }}>Address 1</label>
-          <input
-            type="text"
-            value={shipFromAddr1}
-            onChange={(e) => setShipFromAddr1(e.target.value)}
-            placeholder="3432 Denmark Ave"
-            style={{
-              width: '100%',
-              padding: '10px',
-              border: '1px solid var(--border-color)',
-              borderRadius: '4px',
-              boxSizing: 'border-box',
-            }}
-          />
-        </div>
-
-        <div style={{ marginBottom: '15px' }}>
-          <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500 }}>Address 2 (Optional)</label>
-          <input
-            type="text"
-            value={shipFromAddr2}
-            onChange={(e) => setShipFromAddr2(e.target.value)}
-            placeholder="Suite 390"
-            style={{
-              width: '100%',
-              padding: '10px',
-              border: '1px solid var(--border-color)',
-              borderRadius: '4px',
-              boxSizing: 'border-box',
-            }}
-          />
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '15px' }}>
-          <div>
-            <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500 }}>City</label>
-            <input
-              type="text"
-              value={shipFromCity}
-              onChange={(e) => setShipFromCity(e.target.value)}
-              placeholder="Eagan"
-              style={{
-                width: '100%',
-                padding: '10px',
-                border: '1px solid var(--border-color)',
-                borderRadius: '4px',
-                boxSizing: 'border-box',
-              }}
-            />
-          </div>
-
-          <div>
-            <label style={{ display: 'block', marginBottom: '8px', fontWeight: 5}}>State</label>
-            <input
-              type="text"
-              value={shipFromState}
-              onChange={(e) => setShipFromState(e.target.value.toUpperCase())}
-              placeholder="MN"
-              maxLength={2}
-              style={{
-                width: '100%',
-                padding: '10px',
-                border: '1px solid var(--border-color)',
-                borderRadius: '4px',
-                boxSizing: 'border-box',
-              }}
-            />
-          </div>
-        </div>
-
-        <div style={{ marginBottom: '15px' }}>
-          <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500 }}>Zip Code</label>
-          <input
-            type="text"
-            value={shipFromZip}
-            onChange={(e) => setShipFromZip(e.target.value)}
-            placeholder="55123"
-            style={{
-              width: '100%',
-              padding: '10px',
-              border: '1px solid var(--border-color)',
-              borderRadius: '4px',
-              boxSizing: 'border-box',
-            }}
-          />
-        </div>
-
-        <div style={{ marginBottom: '15px' }}>
-          <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500 }}>Phone (Optional)</label>
-          <input
-            type="text"
-            value={shipFromPhone}
-            onChange={(e) => setShipFromPhone(e.target.value)}
-            placeholder="8002525234"
-            style={{
-              width: '100%',
-              padding: '10px',
-              border: '1px solid var(--border-color)',
-              borderRadius: '4px',
-              boxSizing: 'border-box',
-            }}
-          />
-        </div>
-      </div>
 
       <div style={{ display: 'flex', gap: '10px', marginBottom: '30px' }}>
         <button
@@ -801,7 +619,7 @@ const AdminWhccConfig = () => {
         </div>
 
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '20px' }}>
-          <button onClick={handleRegisterWebhook} disabled={!consumerKey || !consumerSecret || !webhookCallbackUri || isWebhookLoading} className="btn btn-primary" style={{ opacity: !consumerKey || !consumerSecret || !webhookCallbackUri || isWebhookLoading ? 0.5 : 1 }}>
+          <button onClick={handleRegisterWebhook} disabled={!webhookCallbackUri || isWebhookLoading} className="btn btn-primary" style={{ opacity: !webhookCallbackUri || isWebhookLoading ? 0.5 : 1 }}>
             {isWebhookLoading ? 'Working...' : 'Register Webhook'}
           </button>
           <button onClick={handleVerifyWebhook} disabled={!webhookStatus?.lastVerifier || isWebhookLoading} className="btn btn-success" style={{ opacity: !webhookStatus?.lastVerifier || isWebhookLoading ? 0.5 : 1 }}>

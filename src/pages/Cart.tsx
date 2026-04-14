@@ -511,8 +511,8 @@ const Cart: React.FC = () => {
       }
     }
 
-    const orderNumber = `ORD-${Date.now()}`;
-    await orderService.createOrder(
+    // Create the order and get the result (should include orderId)
+    const orderResult = await orderService.createOrder(
       items,
       shippingAddress,
       shippingOption,
@@ -523,8 +523,18 @@ const Cart: React.FC = () => {
       paymentIntentId
     );
 
+    // If we have an orderId and paymentIntentId, update the Stripe fee
+    if (orderResult?.orderId && paymentIntentId) {
+      try {
+        const { updateStripeFee } = await import('../services/stripeFeeService');
+        await updateStripeFee(orderResult.orderId);
+      } catch (err) {
+        console.error('Failed to update Stripe fee:', err);
+      }
+    }
+
     console.log('📧 Email receipt sent to:', shippingAddress.email);
-    console.log('Order Number:', orderNumber);
+    console.log('Order Number:', orderResult?.orderId || 'N/A');
     console.log('Total Amount:', getFinalTotal());
 
     clearCart();
