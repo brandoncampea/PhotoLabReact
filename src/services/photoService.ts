@@ -1,3 +1,48 @@
+// Helper for chunked upload
+async function uploadFileInChunks({
+  file,
+  albumId,
+  chunkSize = 1024 * 1024 * 2, // 2MB
+  onProgress,
+  description,
+  duplicateMode = 'allow',
+  metadata,
+}) {
+  const totalChunks = Math.ceil(file.size / chunkSize);
+  const fileId = `${albumId}_${file.name}_${file.size}_${file.lastModified}`;
+  let uploaded = 0;
+  for (let i = 0; i < totalChunks; i++) {
+    const start = i * chunkSize;
+    const end = Math.min(file.size, start + chunkSize);
+    const chunk = file.slice(start, end);
+    const formData = new FormData();
+    formData.append('fileId', fileId);
+    formData.append('chunkIndex', String(i));
+    formData.append('totalChunks', String(totalChunks));
+    formData.append('chunk', chunk);
+    await api.post('/photos/chunked-upload/upload-chunk', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    uploaded += chunk.size;
+    if (onProgress) {
+      const percent = Math.round((uploaded / file.size) * 100);
+      onProgress(percent);
+    }
+  }
+  // Assemble chunks
+  const assemblePayload = {
+    fileId,
+    totalChunks,
+    fileName: file.name,
+    albumId,
+    mimetype: file.type,
+    description,
+    metadata,
+    duplicateMode,
+  };
+  const response = await api.post('/photos/chunked-upload/assemble-chunks', assemblePayload);
+  return response.data;
+}
 
 import api from './api';
 import { Photo } from '../types';
@@ -118,24 +163,45 @@ export const photoService = {
     duplicateMode: 'allow' | 'skip' | 'overwrite' = 'allow',
     onProgress?: (percent: number) => void
   ): Promise<Photo[]> {
-    const formData = new FormData();
-    formData.append('albumId', String(albumId));
-    formData.append('duplicateMode', duplicateMode);
-    files.forEach((file) => formData.append('photos', file));
-    if (descriptions && descriptions.length) {
-      formData.append('descriptions', JSON.stringify(descriptions));
+    // Use chunked upload for files > 8MB, otherwise normal upload
+    const CHUNK_THRESHOLD = 8 * 1024 * 1024;
+    const results: Photo[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const desc = descriptions?.[i] || '';
+      if (file.size > CHUNK_THRESHOLD) {
+        const photo = await uploadFileInChunks({
+          file,
+          albumId,
+          description: desc,
+          duplicateMode,
+          onProgress: (percent) => {
+            if (onProgress) onProgress(percent);
+          },
+        });
+        results.push(photo);
+      } else {
+        const formData = new FormData();
+        formData.append('albumId', String(albumId));
+        formData.append('duplicateMode', duplicateMode);
+        formData.append('photos', file);
+        if (desc) {
+          formData.append('descriptions', JSON.stringify([desc]));
+        }
+        const response = await api.post<Photo[]>(`/photos/upload`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+          onUploadProgress: (event) => {
+            if (!onProgress) return;
+            const total = event.total || 0;
+            if (!total) return;
+            const percent = Math.min(100, Math.max(0, Math.round((event.loaded / total) * 100)));
+            onProgress(percent);
+          },
+        });
+        if (Array.isArray(response.data)) results.push(...response.data);
+      }
     }
-    const response = await api.post<Photo[]>(`/photos/upload`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-      onUploadProgress: (event) => {
-        if (!onProgress) return;
-        const total = event.total || 0;
-        if (!total) return;
-        const percent = Math.min(100, Math.max(0, Math.round((event.loaded / total) * 100)));
-        onProgress(percent);
-      },
-    });
-    return response.data;
+    return results;
   },
 
   async deletePhoto(id: number): Promise<void> {

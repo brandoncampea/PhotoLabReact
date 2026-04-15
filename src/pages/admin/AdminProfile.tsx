@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { ProfileConfig } from '../../types';
 import { profileService } from '../../services/profileService';
+import { watermarkService } from '../../services/watermarkService';
 import { useAuth } from '../../contexts/AuthContext';
 import { SUBSCRIPTION_PLANS } from '../../services/subscriptionService';
 import AdminLayout from '../../components/AdminLayout';
@@ -19,6 +20,7 @@ const AdminProfile: React.FC = () => {
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState('');
   const [subscription, setSubscription] = useState<any>(null);
+  const [watermarkUrl, setWatermarkUrl] = useState<string>('');
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [selectedUpgradePlan, setSelectedUpgradePlan] = useState<string>('');
   const [selectedBillingCycle, setSelectedBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
@@ -28,8 +30,18 @@ const AdminProfile: React.FC = () => {
     loadConfig();
     if (user?.studioId) {
       fetchSubscriptionInfo();
+      fetchWatermark(user.studioId);
     }
   }, [user]);
+
+  const fetchWatermark = async (studioId: number) => {
+    try {
+      const watermark = await watermarkService.getDefaultWatermark(studioId);
+      setWatermarkUrl(watermark?.imageUrl || '');
+    } catch (e) {
+      setWatermarkUrl('');
+    }
+  };
 
   const loadConfig = async () => {
     try {
@@ -198,6 +210,26 @@ const AdminProfile: React.FC = () => {
       </div>
       <div className="admin-form" style={{ maxWidth: '600px' }}>
         <div className="form-group">
+          <label>Saved Watermark</label>
+          <div style={{ marginBottom: '1rem' }}>
+            {watermarkUrl ? (
+              <img
+                src={watermarkUrl}
+                alt="Watermark preview"
+                style={{
+                  maxWidth: '200px',
+                  maxHeight: '60px',
+                  objectFit: 'contain',
+                  marginBottom: '0.5rem',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '6px',
+                  background: '#fff',
+                }}
+              />
+            ) : (
+              <span style={{ color: 'var(--text-secondary)' }}>No watermark saved</span>
+            )}
+          </div>
           <label htmlFor="logo">Site Logo</label>
           <div style={{ marginBottom: '1rem' }}>
             {logoPreview && (
