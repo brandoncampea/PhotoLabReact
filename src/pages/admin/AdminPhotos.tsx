@@ -190,6 +190,18 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
 
 
 const AdminPhotos: React.FC = () => {
+      // Handler to detect faces/numbers for all photos in the current album
+      const handleDetectAll = async () => {
+        if (!photos.length) {
+          setUploadMessage({ type: 'error', text: 'No photos to detect.' });
+          return;
+        }
+        setUploadMessage({ type: 'success', text: 'Detecting faces/numbers for all photos...' });
+        for (const photo of photos) {
+          await handleDetectPlayers(photo, { silent: true });
+        }
+        setUploadMessage({ type: 'success', text: 'Detection complete for all photos.' });
+      };
     // Store refs to main image elements by photo id (must be inside component)
     const imageRefs = React.useRef<Record<number, HTMLImageElement | null>>({});
     const setImageRef = (photoId: number, el: HTMLImageElement | null) => {
@@ -577,7 +589,6 @@ const AdminPhotos: React.FC = () => {
       alert('No photos to delete');
       return;
     }
-    
     if (confirm(`Are you sure you want to delete all ${photos.length} photos from this album? This cannot be undone.`)) {
       try {
         // Delete all photos in parallel
@@ -587,6 +598,8 @@ const AdminPhotos: React.FC = () => {
         // Then reload to ensure sync
         await loadPhotos();
         await loadAlbums(); // Reload albums to update photo count
+        // Refresh the page to reset all UI state
+        window.location.reload();
       } catch (error) {
         console.error('Failed to delete all photos:', error);
       }
@@ -1131,6 +1144,16 @@ const AdminPhotos: React.FC = () => {
             <label htmlFor="roster-csv-upload" className="btn btn-secondary" style={{ margin: 0 }}>
               {rosterUploading ? 'Uploading roster…' : '📋 Upload Roster CSV'}
             </label>
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ marginLeft: '0.5rem', minWidth: 140 }}
+              onClick={handleDetectAll}
+              disabled={photos.length === 0}
+              title="Detect faces and numbers for all photos in this album"
+            >
+              🧑‍💻 Detect All
+            </button>
             <span className="muted-text" style={{ fontSize: '0.8rem' }}>
               Reused across this studio’s future album uploads.
             </span>

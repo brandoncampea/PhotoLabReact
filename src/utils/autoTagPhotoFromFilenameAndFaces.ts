@@ -59,7 +59,7 @@ export async function autoTagPhotoFromFilenameAndFaces({
   if (extractedName) {
     // Add to roster if missing
     addPlayerToRosterIfMissing(rosterPlayers, extractedName);
-    // Only tag the filename-matched player, do NOT run face detection on upload
+    // Only tag the filename-matched player, do NOT run face detection or roster fallback on upload
     try {
       await photoService.updatePhotoPlayers(photo.id, [{ playerName: extractedName }]);
       setUploadMessage && setUploadMessage({ type: 'success', text: `Auto-tagged with: ${extractedName}` });
@@ -69,21 +69,5 @@ export async function autoTagPhotoFromFilenameAndFaces({
     return;
   }
 
-  // 2. If no valid name in filename, fall back to roster-based detection
-  if (rosterPlayers.length > 0) {
-    const detectedPlayers = detectPlayersFromFilenames([
-      photo.fileName
-    ], rosterPlayers);
-    if (detectedPlayers.length > 0) {
-      try {
-        await photoService.updatePhotoPlayers(photo.id, detectedPlayers);
-        setUploadMessage && setUploadMessage({ type: 'success', text: `Auto-tagged with: ${detectedPlayers.map(p => p.playerName).join(', ')}` });
-      } catch (error) {
-        setUploadMessage && setUploadMessage({ type: 'error', text: 'Failed to auto-tag from roster.' });
-      }
-      return;
-    }
-  }
-
-  // 3. If neither, do NOT run detection on upload. Detection must be triggered manually.
+  // 2. If no valid name in filename, do NOT tag anyone. Detection must be triggered manually.
 }
