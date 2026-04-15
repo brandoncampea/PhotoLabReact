@@ -5,7 +5,7 @@ import path from 'path';
 import multer from 'multer';
 import { uploadImageBufferToAzure } from '../services/azureStorage.js';
 import mssql from '../mssql.cjs';
-import { extractImageMetadata } from '../utils/exif.js';
+import { extractImageMetadata } from '../utils/exif.mjs';
 import { computeImageSignature } from '../utils/imageSignature.js';
 
 const router = express.Router();
