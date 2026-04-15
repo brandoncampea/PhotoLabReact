@@ -307,7 +307,30 @@ const AdminPhotos: React.FC = () => {
     if (!albumId) return;
     try {
       const data = await photoService.getPhotosByAlbum(albumId);
-      setPhotos(Array.isArray(data) ? data : []);
+      // Only keep the filename-matched player for each photo
+      const cleaned = Array.isArray(data)
+        ? data.map(photo => {
+            const filename = photo.fileName || '';
+            const base = filename.replace(/\.[^.]+$/, '');
+            const normalized = base.replace(/[-]+/g, '_');
+            let parts = normalized.split('_').filter(Boolean);
+            if (parts.length === 0) return { ...photo, playerNames: undefined, playerNumbers: undefined };
+            if (/^\d+$/.test(parts[parts.length - 1])) parts = parts.slice(0, -1);
+            if (parts.length === 0) return { ...photo, playerNames: undefined, playerNumbers: undefined };
+            const name = parts.map(
+              (part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()
+            ).join(' ').trim();
+            // Only keep this player if present
+            const allNames = String(photo.playerNames || '').split(',').map(n => n.trim()).filter(Boolean);
+            const keep = allNames.find(n => n.toLowerCase() === name.toLowerCase());
+            return {
+              ...photo,
+              playerNames: keep ? keep : undefined,
+              playerNumbers: keep ? photo.playerNumbers : undefined,
+            };
+          })
+        : [];
+      setPhotos(cleaned);
     } catch (error) {
       console.error('Failed to load photos:', error);
       setPhotos([]);
