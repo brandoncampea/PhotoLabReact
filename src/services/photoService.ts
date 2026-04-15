@@ -1,47 +1,72 @@
-// Helper for chunked upload
-async function uploadFileInChunks({
-  file,
+// Notify backend after direct-to-Blob upload to save photo metadata and blob URL
+export async function recordPhotoBlob({
   albumId,
-  chunkSize = 1024 * 1024 * 2, // 2MB
-  onProgress,
+  fileName,
+  blobUrl,
   description,
-  duplicateMode = 'allow',
   metadata,
-}) {
-  const totalChunks = Math.ceil(file.size / chunkSize);
-  const fileId = `${albumId}_${file.name}_${file.size}_${file.lastModified}`;
-  let uploaded = 0;
-  for (let i = 0; i < totalChunks; i++) {
-    const start = i * chunkSize;
-    const end = Math.min(file.size, start + chunkSize);
-    const chunk = file.slice(start, end);
-    const formData = new FormData();
-    formData.append('fileId', fileId);
-    formData.append('chunkIndex', String(i));
-    formData.append('totalChunks', String(totalChunks));
-    formData.append('chunk', chunk);
-    await api.post('/photos/chunked-upload/upload-chunk', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
-    uploaded += chunk.size;
-    if (onProgress) {
-      const percent = Math.round((uploaded / file.size) * 100);
-      onProgress(percent);
-    }
-  }
-  // Assemble chunks
-  const assemblePayload = {
-    fileId,
-    totalChunks,
-    fileName: file.name,
+  width,
+  height,
+  fileSizeBytes,
+  playerName,
+  playerNumber,
+}: {
+  albumId: number;
+  fileName: string;
+  blobUrl: string;
+  description?: string;
+  metadata?: any;
+  width?: number;
+  height?: number;
+  fileSizeBytes?: number;
+  playerName?: string;
+  playerNumber?: string;
+}): Promise<{ id: number }> {
+  const response = await api.post('/photos/record-blob', {
     albumId,
-    mimetype: file.type,
+    fileName,
+    blobUrl,
     description,
     metadata,
-    duplicateMode,
-  };
-  const response = await api.post('/photos/chunked-upload/assemble-chunks', assemblePayload);
+    width,
+    height,
+    fileSizeBytes,
+    playerName,
+    playerNumber,
+  });
   return response.data;
+}
+import { BlobServiceClient } from '@azure/storage-blob';
+// Get SAS URL for a blob from backend
+async function getSasUrl(blobName: string): Promise<string> {
+  const response = await api.get<{ url: string }>(`/blob-sas/sas-url`, { params: { blobName } });
+  return response.data.url;
+}
+
+// Upload a file directly to Azure Blob Storage using SAS URL
+export async function uploadFileToAzureBlob({
+  file,
+  blobName,
+  onProgress,
+}: {
+  file: File;
+  blobName: string;
+  onProgress?: (percent: number) => void;
+}): Promise<string> {
+  const sasUrl = await getSasUrl(blobName);
+  const blobServiceClient = new BlobServiceClient(sasUrl.substring(0, sasUrl.indexOf('?') + 1));
+  const containerClient = blobServiceClient.getContainerClient(''); // container is in the URL
+  const blockBlobClient = containerClient.getBlockBlobClient(blobName + sasUrl.substring(sasUrl.indexOf('?')));
+  const uploadOptions = onProgress
+    ? {
+        onProgress: (ev: { loadedBytes: number }) => {
+          const percent = Math.round((ev.loadedBytes / file.size) * 100);
+          onProgress(percent);
+        },
+      }
+    : {};
+  await blockBlobClient.uploadBrowserData(file, uploadOptions);
+  return blockBlobClient.url;
 }
 
 import api from './api';
@@ -156,53 +181,6 @@ export const photoService = {
     return response.data;
   },
 
-  async uploadPhotos(
-    albumId: number,
-    files: File[],
-    descriptions?: string[],
-    duplicateMode: 'allow' | 'skip' | 'overwrite' = 'allow',
-    onProgress?: (percent: number) => void
-  ): Promise<Photo[]> {
-    // Use chunked upload for files > 8MB, otherwise normal upload
-    const CHUNK_THRESHOLD = 8 * 1024 * 1024;
-    const results: Photo[] = [];
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const desc = descriptions?.[i] || '';
-      if (file.size > CHUNK_THRESHOLD) {
-        const photo = await uploadFileInChunks({
-          file,
-          albumId,
-          description: desc,
-          duplicateMode,
-          onProgress: (percent) => {
-            if (onProgress) onProgress(percent);
-          },
-        });
-        results.push(photo);
-      } else {
-        const formData = new FormData();
-        formData.append('albumId', String(albumId));
-        formData.append('duplicateMode', duplicateMode);
-        formData.append('photos', file);
-        if (desc) {
-          formData.append('descriptions', JSON.stringify([desc]));
-        }
-        const response = await api.post<Photo[]>(`/photos/upload`, formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-          onUploadProgress: (event) => {
-            if (!onProgress) return;
-            const total = event.total || 0;
-            if (!total) return;
-            const percent = Math.min(100, Math.max(0, Math.round((event.loaded / total) * 100)));
-            onProgress(percent);
-          },
-        });
-        if (Array.isArray(response.data)) results.push(...response.data);
-      }
-    }
-    return results;
-  },
 
   async deletePhoto(id: number): Promise<void> {
     try {

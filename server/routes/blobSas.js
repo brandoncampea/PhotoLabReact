@@ -30,7 +30,7 @@ router.get('/sas-url', async (req, res) => {
     const sasToken = generateBlobSASQueryParameters({
       containerName,
       blobName,
-      permissions: BlobSASPermissions.parse('r'),
+      permissions: BlobSASPermissions.parse('cw'),
       startsOn: new Date(),
       expiresOn: new Date(Date.now() + 3600 * 1000), // 1 hour
       protocol: SASProtocol.Https,

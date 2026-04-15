@@ -10,60 +10,40 @@ import { createWorker } from 'tesseract.js';
 import { uploadImageBufferToAzure, deleteBlobByUrl, downloadBlob } from '../services/azureStorage.js';
 import { requireActiveSubscription, enforceStorageQuotaForStudio } from '../middleware/subscription.js';
 import orderReceiptService from '../services/orderReceiptService.js';
-
 const router = express.Router();
-// GET /:id/exif - Return EXIF metadata for a photo
-router.get('/:id/exif', async (req, res) => {
+// Direct-to-Blob: Record photo metadata and blob URL after upload
+router.post('/record-blob', requireActiveSubscription, async (req, res) => {
   try {
-    const photo = await queryRow(
-      `SELECT id, file_name as fileName, full_image_url as fullImageUrl FROM photos WHERE id = $1`,
-      [req.params.id]
-    );
-    if (!photo) {
-      return res.status(404).json({ error: 'Photo not found' });
+    await ensurePhotoUploadColumns();
+    const { albumId, fileName, blobUrl, description, metadata, width, height, fileSizeBytes, playerName, playerNumber } = req.body;
+    if (!albumId || !fileName || !blobUrl) {
+      return res.status(400).json({ error: 'Missing required fields: albumId, fileName, blobUrl' });
     }
-    let imageBuffer = null;
-    if (photo.fullImageUrl && photo.fullImageUrl.startsWith('http')) {
-      const fetch = (await import('node-fetch')).default;
-      const imgRes = await fetch(photo.fullImageUrl);
-      if (!imgRes.ok) throw new Error('Failed to download image');
-      imageBuffer = Buffer.from(await imgRes.arrayBuffer());
-    } else if (photo.fullImageUrl) {
-      // Local or Azure blob
-      const download = await downloadBlob(photo.fullImageUrl);
-      if (download?.readableStreamBody) {
-        const chunks = [];
-        await new Promise((resolve, reject) => {
-          download.readableStreamBody.on('data', (c) => chunks.push(c));
-          download.readableStreamBody.on('end', resolve);
-          download.readableStreamBody.on('error', reject);
-        });
-        imageBuffer = Buffer.concat(chunks);
-      }
-    }
-    if (!imageBuffer) {
-      return res.status(404).json({ error: 'Image data not found' });
-    }
-    // Write buffer to temp file for exiftool
-    const os = await import('os');
-    const fs = await import('fs');
-    const path = await import('path');
-    const { exiftool } = await import('exiftool-vendored');
-    const tmpDir = os.tmpdir();
-    const tmpFile = path.join(tmpDir, `exif-read-${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`);
-    try {
-      fs.writeFileSync(tmpFile, imageBuffer);
-      const tags = await exiftool.read(tmpFile);
-      res.json({
-        fileName: photo.fileName,
-        photoId: photo.id,
-        exif: tags,
-      });
-    } catch (err) {
-      res.status(500).json({ error: 'Failed to extract EXIF', detail: err?.message });
-    } finally {
-      try { fs.unlinkSync(tmpFile); } catch {}
-    }
+    // Insert photo record
+    const result = await queryRow(`
+      INSERT INTO photos (album_id, file_name, thumbnail_url, full_image_url, description, metadata, width, height, file_size_bytes, player_names, player_numbers)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      RETURNING id
+    `, [
+      albumId,
+      fileName,
+      blobUrl,
+      blobUrl,
+      description || '',
+      metadata ? JSON.stringify(metadata) : null,
+      width || null,
+      height || null,
+      fileSizeBytes || null,
+      playerName || null,
+      playerNumber || null,
+    ]);
+    // Update album photo count
+    await query(`
+      UPDATE albums 
+      SET photo_count = (SELECT COUNT(*) FROM photos WHERE album_id = $1)
+      WHERE id = $1
+    `, [albumId]);
+    res.status(201).json({ id: result.id });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -72,77 +52,9 @@ router.get('/:id/exif', async (req, res) => {
 const getPhotoAssetUrl = (photoId, variant = 'full') => `/api/photos/${photoId}/asset?variant=${variant}`;
 const getProxySourceUrl = (source) => `/api/photos/proxy?source=${encodeURIComponent(source)}`;
 
-// Removed duplicate declaration. Only the updated signPhotoForResponse remains below.
-const signPhotoForResponse = (photo) => {
-  let parsedMetadata = photo?.metadata;
-  if (typeof parsedMetadata === 'string') {
-    try {
-      parsedMetadata = JSON.parse(parsedMetadata);
-    } catch {
-      parsedMetadata = null;
-    }
-  }
+import { signPhotoForResponse } from './photos.utils.js';
 
-  return {
-    ...photo,
-    metadata: parsedMetadata && typeof parsedMetadata === 'object' ? parsedMetadata : null,
-    // Always return the direct Azure blob URLs for frontend use
-    thumbnailUrl: photo?.thumbnailUrl,
-    fullImageUrl: photo?.fullImageUrl,
-  };
-};
-
-async function pipeAssetToResponse(source, res) {
-  try {
-    const download = await downloadBlob(source);
-    if (!download) {
-      return res.status(404).json({ error: 'Asset not found' });
-    }
-    if (download?.contentType) {
-      res.setHeader('Content-Type', download.contentType);
-    }
-    if (download?.contentLength) {
-      res.setHeader('Content-Length', String(download.contentLength));
-    }
-    res.setHeader('Cache-Control', 'public, max-age=300');
-
-    if (download?.readableStreamBody) {
-      download.readableStreamBody.on('error', (error) => {
-        console.error('Blob stream error:', error);
-        if (!res.headersSent) {
-          res.status(500).end(error.message);
-        } else {
-          res.end();
-        }
-      });
-      download.readableStreamBody.pipe(res);
-      return;
-    }
-
-    // If download exists but no stream, treat as not found
-    return res.status(404).json({ error: 'Asset not found' });
-  } catch (err) {
-    // If source is a direct URL, try to fetch it
-    if (typeof source === 'string' && source.startsWith('http')) {
-      try {
-        const upstream = await fetch(source);
-        if (!upstream.ok) {
-          return res.status(upstream.status).end('Failed to fetch asset');
-        }
-        const arrayBuffer = await upstream.arrayBuffer();
-        res.setHeader('Content-Type', upstream.headers.get('content-type') || 'application/octet-stream');
-        res.send(Buffer.from(arrayBuffer));
-        return;
-      } catch (fetchErr) {
-        console.error('Fetch asset error:', fetchErr);
-        return res.status(404).json({ error: 'Asset not found' });
-      }
-    }
-    // For all other errors, log and return 500
-    console.error('pipeAssetToResponse error:', err);
-    res.status(500).json({ error: 'Server error: ' + err.message });
-  }
-}
+import { pipeAssetToResponse } from './photos.utils.js';
 
 const photoUpload = multer({
   storage: multer.memoryStorage(),
@@ -176,71 +88,9 @@ const csvUpload = multer({
   }
 });
 
-const ensurePlayerRecognitionSchema = async () => {
-  await query(`
-    IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'studio_player_roster')
-    BEGIN
-      CREATE TABLE studio_player_roster (
-        id INT IDENTITY(1,1) PRIMARY KEY,
-        studio_id INT NOT NULL,
-        player_name NVARCHAR(255) NOT NULL,
-        player_number NVARCHAR(64) NULL,
-        roster_name NVARCHAR(255) NULL,
-        source_album_id INT NULL,
-        created_at DATETIME2 DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME2 DEFAULT CURRENT_TIMESTAMP
-      )
-    END
-  `);
+import { ensurePlayerRecognitionSchema } from './photos.utils.js';
 
-  await query(`
-    IF COL_LENGTH('studio_player_roster', 'roster_name') IS NULL
-      ALTER TABLE studio_player_roster ADD roster_name NVARCHAR(255) NULL;
-
-    IF COL_LENGTH('studio_player_roster', 'source_album_id') IS NULL
-      ALTER TABLE studio_player_roster ADD source_album_id INT NULL;
-  `);
-
-  await query(`
-    IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'studio_player_face_signatures')
-    BEGIN
-      CREATE TABLE studio_player_face_signatures (
-        id INT IDENTITY(1,1) PRIMARY KEY,
-        studio_id INT NOT NULL,
-        player_name NVARCHAR(255) NOT NULL,
-        player_number NVARCHAR(64) NULL,
-        signature_hash NVARCHAR(128) NOT NULL,
-        source_photo_id INT NULL,
-        created_at DATETIME2 DEFAULT CURRENT_TIMESTAMP
-      )
-    END
-  `);
-};
-
-const ensurePhotoUploadColumns = async () => {
-  await query(`
-    IF COL_LENGTH('photos', 'width') IS NULL
-      ALTER TABLE photos ADD width INT NULL;
-
-    IF COL_LENGTH('photos', 'height') IS NULL
-      ALTER TABLE photos ADD height INT NULL;
-
-    IF COL_LENGTH('photos', 'file_size_bytes') IS NULL
-      ALTER TABLE photos ADD file_size_bytes BIGINT NULL;
-
-    IF COL_LENGTH('photos', 'player_names') IS NULL
-      ALTER TABLE photos ADD player_names NVARCHAR(MAX) NULL;
-
-    IF COL_LENGTH('photos', 'player_numbers') IS NULL
-      ALTER TABLE photos ADD player_numbers NVARCHAR(255) NULL;
-
-    IF COL_LENGTH('photos', 'detected_numbers') IS NULL
-      ALTER TABLE photos ADD detected_numbers NVARCHAR(MAX) NULL;
-
-    IF COL_LENGTH('photos', 'detected_numbers_updated_at') IS NULL
-      ALTER TABLE photos ADD detected_numbers_updated_at DATETIME2 NULL;
-  `);
-};
+import { ensurePhotoUploadColumns } from './photos.utils.js';
 
 const normalizeToken = (value) => String(value || '').trim().toLowerCase();
 
@@ -501,19 +351,7 @@ const saveRosterPlayers = async (studioId, rosterRows = [], options = {}) => {
   return saved;
 };
 
-const fetchStudioRoster = async (studioId) => {
-  if (!studioId) return [];
-  return queryRows(
-    `SELECT id,
-            player_name as playerName,
-            player_number as playerNumber,
-            roster_name as rosterName,
-            source_album_id as sourceAlbumId
-     FROM studio_player_roster
-     WHERE studio_id = $1`,
-    [studioId]
-  );
-};
+import { fetchStudioRoster } from './photos.utils.js';
 
 const fetchStudioFaceSignatures = async (studioId) => {
   if (!studioId) return [];

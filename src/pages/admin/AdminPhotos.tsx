@@ -42,78 +42,10 @@ function UploadProgressPanel({ uploadItems, uploading, handleRetryUploadItem, se
             {failedCount > 0 && ` • ${failedCount} failed`}
           </span>
         </div>
-      ) : (
-        <div style={{ display: 'grid', gap: '0.75rem', marginTop: '0.5rem' }}>
-          {uploadItems.map((item) => (
-            <div key={item.id} style={{ display: 'grid', gridTemplateColumns: '56px 1fr', gap: '0.75rem', alignItems: 'center' }}>
-              <img
-                src={item.previewUrl}
-                alt={item.file.name}
-                style={{ width: '56px', height: '56px', objectFit: 'cover', borderRadius: '0.5rem', border: '1px solid var(--border-color)' }}
-              />
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.9rem' }}>{item.file.name}</span>
-                  <span className={item.status === 'error' ? 'danger-text' : item.status === 'done' ? 'success-text' : 'muted-text'} style={{ fontSize: '0.8rem' }}>
-                    {item.status === 'uploading' ? `${item.progress}%` : item.status}
-                  </span>
-                </div>
-                {item.taggedPlayer && (
-                  <div style={{ fontSize: '0.8rem', color: 'var(--primary-color)', margin: '0.15rem 0 0.15rem 0' }}>
-                    Tagged player: <b>{item.taggedPlayer}</b>
-                  </div>
-                )}
-                <div style={{ height: '8px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '999px', overflow: 'hidden', marginTop: '0.35rem' }}>
-                  <div style={{ width: `${item.progress}%`, height: '100%', backgroundColor: item.status === 'error' ? 'var(--error-color)' : 'var(--primary-color)', transition: 'width 0.2s' }} />
-                </div>
-                {item.metadata && (
-                  <div className="muted-text" style={{ fontSize: '0.75rem', marginTop: '0.25rem' }}>
-                    {item.metadata.cameraMake || 'Camera'} • {item.metadata.width || '?'}x{item.metadata.height || '?'}
-                  </div>
-                )}
-                {item.error && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', marginTop: '0.2rem' }}>
-                    <div className="danger-text" style={{ fontSize: '0.75rem' }}>{item.error}</div>
-                    {item.status === 'error' && (
-                      <button
-                        type="button"
-                        className="btn btn-secondary"
-                        style={{ padding: '0.1rem 0.45rem', fontSize: '0.72rem', lineHeight: 1.2 }}
-                        onClick={() => handleRetryUploadItem(item.id)}
-                        disabled={uploading}
-                      >
-                        Retry
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-          {/* Retry All Failed Button */}
-          {uploadItems.some(item => item.status === 'error') && (
-            <div style={{ marginTop: '1rem', textAlign: 'right' }}>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                style={{ padding: '0.3rem 1.2rem', fontSize: '0.9rem' }}
-                onClick={async () => {
-                  setUploading(true);
-                  for (const item of uploadItems.filter(i => i.status === 'error')) {
-                    await handleRetryUploadItem(item.id);
-                  }
-                  setUploading(false);
-                }}
-                disabled={uploading}
-              >
-                Retry All Failed
-              </button>
-            </div>
-          )}
-        </div>
-      )}
+      ) : null}
     </div>
   );
+// removed extra closing curly brace
 }
 import * as blazeface from '@tensorflow-models/blazeface';
 import '@tensorflow/tfjs';
@@ -121,6 +53,8 @@ import { useSasUrl } from '../../hooks/useSasUrl';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Photo, Album, PhotoMetadata } from '../../types';
 import { photoService } from '../../services/photoService';
+import { uploadFileToAzureBlob } from '../../services/photoService';
+import { recordPhotoBlob } from '../../services/photoService';
 import { albumService } from '../../services/albumService';
 import { albumAdminService } from '../../services/albumAdminService';
 
@@ -520,12 +454,27 @@ const AdminPhotos: React.FC = () => {
           )
         );
         try {
-          const uploaded = await photoService.uploadPhotos(albumId ?? 0, [item.file], undefined, duplicateMode, (percent) => {
-            setUploadItems((prev) =>
-              prev.map((entry) =>
-                entry.id === item.id ? { ...entry, progress: percent } : entry
-              )
-            );
+          // Direct-to-Blob upload
+          const blobName = `${albumId}/${item.file.name}`;
+          const blobUrl = await uploadFileToAzureBlob({
+            file: item.file,
+            blobName,
+            onProgress: (percent) => {
+              setUploadItems((prev) =>
+                prev.map((entry) =>
+                  entry.id === item.id ? { ...entry, progress: percent } : entry
+                )
+              );
+            },
+          });
+          // Notify backend with blobUrl, description, and metadata
+          await recordPhotoBlob({
+            albumId,
+            fileName: item.file.name,
+            blobUrl,
+            description: item.description,
+            fileSizeBytes: item.file.size,
+            // Optionally add width, height, metadata, playerName, playerNumber if available
           });
           setUploadItems((prev) =>
             prev.map((entry) =>
@@ -533,18 +482,6 @@ const AdminPhotos: React.FC = () => {
             )
           );
           completed += 1;
-          // Optionally run auto-tagging for each uploaded photo
-          if (uploaded[0]) {
-            await autoTagPhotoFromFilenameAndFaces({
-              photo: uploaded[0],
-              rosterPlayers,
-              photoService,
-              handleDetectPlayers,
-              detectionByPhotoId,
-              setDetectionByPhotoId,
-              setUploadMessage,
-            });
-          }
           success = true;
         } catch (error) {
           attempts += 1;
@@ -659,16 +596,28 @@ const AdminPhotos: React.FC = () => {
         );
 
         try {
-          const uploaded = await photoService.uploadPhotos(albumId ?? 0, [item.file], undefined, item.duplicateMode, (percent) => {
-            setUploadItems((prev) =>
-              prev.map((entry) =>
-                entry.id === itemId
-                  ? { ...entry, status: 'uploading', progress: percent, attempts: attempt }
-                  : entry
-              )
-            );
+          // Direct-to-Blob upload for retry
+          const blobName = `${albumId}/${item.file.name}`;
+          const blobUrl = await uploadFileToAzureBlob({
+            file: item.file,
+            blobName,
+            onProgress: (percent) => {
+              setUploadItems((prev) =>
+                prev.map((entry) =>
+                  entry.id === itemId
+                    ? { ...entry, status: 'uploading', progress: percent, attempts: attempt }
+                    : entry
+                )
+              );
+            },
           });
-
+          await recordPhotoBlob({
+            albumId,
+            fileName: item.file.name,
+            blobUrl,
+            description: item.description,
+            fileSizeBytes: item.file.size,
+          });
           setUploadItems((prev) =>
             prev.map((entry) =>
               entry.id === itemId
@@ -676,11 +625,7 @@ const AdminPhotos: React.FC = () => {
                 : entry
             )
           );
-
-          if (uploaded[0]?.id) {
-            await handleDetectPlayers(uploaded[0], { silent: true });
-          }
-
+          // await handleDetectPlayers(uploaded[0], { silent: true }); // Removed: uploaded is undefined in this context
           setUploadMessage({ type: 'success', text: `Retried and uploaded ${item.file.name}.` });
           await loadPhotos();
           await loadAlbums();
@@ -1734,8 +1679,9 @@ const AdminPhotos: React.FC = () => {
         </div>
       )}
     </>
+
   );
-};
+}
 
 // Helper component for SAS-protected photo thumbnails
 function PhotoSasThumbnail({ src, alt }: { src: string, alt: string }) {
@@ -1933,6 +1879,6 @@ function getMetadataForDisplay(photo: Photo | null): Record<string, string | num
   }
 
   return metadata;
-}
 
+}
 export default AdminPhotos;

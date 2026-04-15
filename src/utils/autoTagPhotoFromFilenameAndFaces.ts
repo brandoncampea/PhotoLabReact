@@ -15,13 +15,31 @@ import { Photo } from '../types';
 function extractNameFromFilename(filename: string): string | null {
   const base = filename.replace(/\.[^.]+$/, '');
   const normalized = base.replace(/[-]+/g, '_');
-  let parts = normalized.split('_').filter(Boolean);
+  const parts = normalized.split('_').filter(Boolean);
   if (parts.length === 0) return null;
-  // Remove trailing number if present
-  if (/^\d+$/.test(parts[parts.length - 1])) parts = parts.slice(0, -1);
-  if (parts.length === 0) return null;
-  // Capitalize each part
-  const name = parts.map(
+
+  // Helper: is a name part (alphabetic, not all uppercase short code, not a number)
+  const isNamePart = (part: string) => /^[A-Za-z]+$/.test(part) && !(part.length <= 2 && part === part.toUpperCase());
+
+  // Find the longest sequence of consecutive name parts (length > 1)
+  let bestSeq: string[] = [];
+  let currentSeq: string[] = [];
+  for (const part of parts) {
+    if (isNamePart(part)) {
+      currentSeq.push(part);
+    } else {
+      if (currentSeq.length > bestSeq.length && currentSeq.length > 1) {
+        bestSeq = currentSeq;
+      }
+      currentSeq = [];
+    }
+  }
+  // Check at end
+  if (currentSeq.length > bestSeq.length && currentSeq.length > 1) {
+    bestSeq = currentSeq;
+  }
+  if (bestSeq.length === 0) return null;
+  const name = bestSeq.map(
     (part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()
   ).join(' ');
   return name.trim() || null;

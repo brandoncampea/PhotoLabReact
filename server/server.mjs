@@ -10,6 +10,7 @@ import labsRouter from './routes/labs.js';
 import superPriceListsRouter from './routes/superPriceLists.js';
 import studioPriceListsRouter from './routes/studioPriceLists.js';
 import albumProductsRouter from './routes/albumProducts.js';
+import photoRoutes from './routes/photos.js';
 
 // ...existing code...
 import express from 'express';
@@ -24,7 +25,6 @@ import authRoutes from './routes/auth.js';
 const infoRoutes = require('./routes/info.cjs');
 import albumsModule from './routes/albums.js';
 const albumRoutes = albumsModule.default || albumsModule;
-import photoRoutes from './routes/photos.js';
 import chunkedUploadRoutes from './routes/chunkedUpload.js';
 import orderRoutes from './routes/orders.js';
 import productRoutes from './routes/products.js';
