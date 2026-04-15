@@ -1094,56 +1094,103 @@ const AdminPhotos: React.FC = () => {
       </div>
 
       {uploadItems.length > 0 && (
-        <div className="admin-summary-box" style={{ marginBottom: '1.5rem' }}>
-          <h3 style={{ marginTop: 0, marginBottom: '0.75rem' }}>Upload Progress</h3>
-          <div style={{ display: 'grid', gap: '0.75rem' }}>
-            {uploadItems.map((item) => (
-              <div key={item.id} style={{ display: 'grid', gridTemplateColumns: '56px 1fr', gap: '0.75rem', alignItems: 'center' }}>
-                <img
-                  src={item.previewUrl}
-                  alt={item.file.name}
-                  style={{ width: '56px', height: '56px', objectFit: 'cover', borderRadius: '0.5rem', border: '1px solid var(--border-color)' }}
-                />
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem', alignItems: 'center' }}>
-                    <span style={{ fontSize: '0.9rem' }}>{item.file.name}</span>
-                    <span className={item.status === 'error' ? 'danger-text' : item.status === 'done' ? 'success-text' : 'muted-text'} style={{ fontSize: '0.8rem' }}>
-                      {item.status === 'uploading' ? `${item.progress}%` : item.status}
-                    </span>
-                  </div>
-                  {item.taggedPlayer && (
-                    <div style={{ fontSize: '0.8rem', color: 'var(--primary-color)', margin: '0.15rem 0 0.15rem 0' }}>
-                      Tagged player: <b>{item.taggedPlayer}</b>
-                    </div>
-                  )}
-                  <div style={{ height: '8px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '999px', overflow: 'hidden', marginTop: '0.35rem' }}>
-                    <div style={{ width: `${item.progress}%`, height: '100%', backgroundColor: item.status === 'error' ? 'var(--error-color)' : 'var(--primary-color)', transition: 'width 0.2s' }} />
-                  </div>
-                  {item.metadata && (
-                    <div className="muted-text" style={{ fontSize: '0.75rem', marginTop: '0.25rem' }}>
-                      {item.metadata.cameraMake || 'Camera'} • {item.metadata.width || '?'}x{item.metadata.height || '?'}
-                    </div>
-                  )}
-                  {item.error && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', marginTop: '0.2rem' }}>
-                      <div className="danger-text" style={{ fontSize: '0.75rem' }}>{item.error}</div>
-                      {item.status === 'error' && (
-                        <button
-                          type="button"
-                          className="btn btn-secondary"
-                          style={{ padding: '0.1rem 0.45rem', fontSize: '0.72rem', lineHeight: 1.2 }}
-                          onClick={() => handleRetryUploadItem(item.id)}
-                          disabled={uploading}
-                        >
-                          Retry
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
+        <UploadProgressPanel
+          uploadItems={uploadItems}
+          uploading={uploading}
+          handleRetryUploadItem={handleRetryUploadItem}
+          setUploading={setUploading}
+        />
+      )}
+// Collapsible Upload Progress Panel
+function UploadProgressPanel({ uploadItems, uploading, handleRetryUploadItem, setUploading }) {
+  const [collapsed, setCollapsed] = React.useState(true);
+  const uploadingCount = uploadItems.filter(i => i.status === 'uploading').length;
+  const failedCount = uploadItems.filter(i => i.status === 'error').length;
+  const doneCount = uploadItems.filter(i => i.status === 'done').length;
+
+  return (
+    <div className="admin-summary-box" style={{ marginBottom: '1.5rem', position: 'relative', zIndex: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }} onClick={() => setCollapsed(c => !c)}>
+        <h3 style={{ margin: 0, fontSize: '1.1rem', userSelect: 'none' }}>Upload Progress</h3>
+        <button
+          type="button"
+          className="btn btn-tertiary"
+          style={{ fontSize: '1.1rem', padding: '0.1rem 0.7rem', minWidth: 0 }}
+          tabIndex={-1}
+          aria-label={collapsed ? 'Expand upload panel' : 'Collapse upload panel'}
+        >
+          {collapsed ? '▼' : '▲'}
+        </button>
+      </div>
+
+      {collapsed ? (
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.5rem', overflowX: 'auto', paddingBottom: 4 }}>
+          {uploadItems.map(item => (
+            <div key={item.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 48 }}>
+              <img
+                src={item.previewUrl}
+                alt={item.file.name}
+                style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border-color)' }}
+              />
+              <div style={{ width: 36, height: 5, background: 'var(--bg-primary)', borderRadius: 3, marginTop: 2, overflow: 'hidden', border: '1px solid var(--border-color)' }}>
+                <div style={{ width: `${item.progress}%`, height: '100%', background: item.status === 'error' ? 'var(--error-color)' : 'var(--primary-color)', transition: 'width 0.2s' }} />
               </div>
-            ))}
-          </div>
+            </div>
+          ))}
+          <span style={{ fontSize: '0.85rem', color: 'var(--muted-color)', marginLeft: 8 }}>
+            {uploadingCount > 0 && `${uploadingCount} uploading`}
+            {doneCount > 0 && ` • ${doneCount} done`}
+            {failedCount > 0 && ` • ${failedCount} failed`}
+          </span>
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gap: '0.75rem', marginTop: '0.5rem' }}>
+          {uploadItems.map((item) => (
+            <div key={item.id} style={{ display: 'grid', gridTemplateColumns: '56px 1fr', gap: '0.75rem', alignItems: 'center' }}>
+              <img
+                src={item.previewUrl}
+                alt={item.file.name}
+                style={{ width: '56px', height: '56px', objectFit: 'cover', borderRadius: '0.5rem', border: '1px solid var(--border-color)' }}
+              />
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.9rem' }}>{item.file.name}</span>
+                  <span className={item.status === 'error' ? 'danger-text' : item.status === 'done' ? 'success-text' : 'muted-text'} style={{ fontSize: '0.8rem' }}>
+                    {item.status === 'uploading' ? `${item.progress}%` : item.status}
+                  </span>
+                </div>
+                {item.taggedPlayer && (
+                  <div style={{ fontSize: '0.8rem', color: 'var(--primary-color)', margin: '0.15rem 0 0.15rem 0' }}>
+                    Tagged player: <b>{item.taggedPlayer}</b>
+                  </div>
+                )}
+                <div style={{ height: '8px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '999px', overflow: 'hidden', marginTop: '0.35rem' }}>
+                  <div style={{ width: `${item.progress}%`, height: '100%', backgroundColor: item.status === 'error' ? 'var(--error-color)' : 'var(--primary-color)', transition: 'width 0.2s' }} />
+                </div>
+                {item.metadata && (
+                  <div className="muted-text" style={{ fontSize: '0.75rem', marginTop: '0.25rem' }}>
+                    {item.metadata.cameraMake || 'Camera'} • {item.metadata.width || '?'}x{item.metadata.height || '?'}
+                  </div>
+                )}
+                {item.error && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', marginTop: '0.2rem' }}>
+                    <div className="danger-text" style={{ fontSize: '0.75rem' }}>{item.error}</div>
+                    {item.status === 'error' && (
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        style={{ padding: '0.1rem 0.45rem', fontSize: '0.72rem', lineHeight: 1.2 }}
+                        onClick={() => handleRetryUploadItem(item.id)}
+                        disabled={uploading}
+                      >
+                        Retry
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
           {/* Retry All Failed Button */}
           {uploadItems.some(item => item.status === 'error') && (
             <div style={{ marginTop: '1rem', textAlign: 'right' }}>
@@ -1166,6 +1213,9 @@ const AdminPhotos: React.FC = () => {
           )}
         </div>
       )}
+    </div>
+  );
+}
 
       {currentAlbum && (
         <div className="admin-summary-box" style={{ marginBottom: '1.5rem' }}>
