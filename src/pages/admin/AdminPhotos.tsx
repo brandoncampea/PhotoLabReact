@@ -390,47 +390,57 @@ const AdminPhotos: React.FC = () => {
     let failed = 0;
 
     const queue = [...items];
+
+    const maxAutoRetries = 2;
     const uploadNext = async () => {
       if (queue.length === 0) return;
       const item = queue.shift();
-      setUploadItems((prev) =>
-        prev.map((entry) =>
-          entry.id === item.id ? { ...entry, status: 'uploading', progress: 0 } : entry
-        )
-      );
-      try {
-        const uploaded = await photoService.uploadPhotos(albumId ?? 0, [item.file], undefined, duplicateMode, (percent) => {
+      let attempts = item.attempts || 0;
+      let success = false;
+      while (attempts <= maxAutoRetries && !success) {
+        setUploadItems((prev) =>
+          prev.map((entry) =>
+            entry.id === item.id ? { ...entry, status: 'uploading', progress: 0, attempts } : entry
+          )
+        );
+        try {
+          const uploaded = await photoService.uploadPhotos(albumId ?? 0, [item.file], undefined, duplicateMode, (percent) => {
+            setUploadItems((prev) =>
+              prev.map((entry) =>
+                entry.id === item.id ? { ...entry, progress: percent } : entry
+              )
+            );
+          });
           setUploadItems((prev) =>
             prev.map((entry) =>
-              entry.id === item.id ? { ...entry, progress: percent } : entry
+              entry.id === item.id ? { ...entry, status: 'done', progress: 100, error: undefined, attempts } : entry
             )
           );
-        });
-        setUploadItems((prev) =>
-          prev.map((entry) =>
-            entry.id === item.id ? { ...entry, status: 'done', progress: 100, error: undefined } : entry
-          )
-        );
-        completed += 1;
-        // Optionally run auto-tagging for each uploaded photo
-        if (uploaded[0]) {
-          await autoTagPhotoFromFilenameAndFaces({
-            photo: uploaded[0],
-            rosterPlayers,
-            photoService,
-            handleDetectPlayers,
-            detectionByPhotoId,
-            setDetectionByPhotoId,
-            setUploadMessage,
-          });
+          completed += 1;
+          // Optionally run auto-tagging for each uploaded photo
+          if (uploaded[0]) {
+            await autoTagPhotoFromFilenameAndFaces({
+              photo: uploaded[0],
+              rosterPlayers,
+              photoService,
+              handleDetectPlayers,
+              detectionByPhotoId,
+              setDetectionByPhotoId,
+              setUploadMessage,
+            });
+          }
+          success = true;
+        } catch (error) {
+          attempts += 1;
+          if (attempts > maxAutoRetries) {
+            setUploadItems((prev) =>
+              prev.map((entry) =>
+                entry.id === item.id ? { ...entry, status: 'error', error: `Upload failed after ${attempts} attempts.` } : entry
+              )
+            );
+            failed += 1;
+          }
         }
-      } catch (error) {
-        setUploadItems((prev) =>
-          prev.map((entry) =>
-            entry.id === item.id ? { ...entry, status: 'error', error: 'Upload failed.' } : entry
-          )
-        );
-        failed += 1;
       }
       setUploadProgress({ completed: completed + failed, total: workingFiles.length });
       await uploadNext();
@@ -1134,6 +1144,26 @@ const AdminPhotos: React.FC = () => {
               </div>
             ))}
           </div>
+          {/* Retry All Failed Button */}
+          {uploadItems.some(item => item.status === 'error') && (
+            <div style={{ marginTop: '1rem', textAlign: 'right' }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ padding: '0.3rem 1.2rem', fontSize: '0.9rem' }}
+                onClick={async () => {
+                  setUploading(true);
+                  for (const item of uploadItems.filter(i => i.status === 'error')) {
+                    await handleRetryUploadItem(item.id);
+                  }
+                  setUploading(false);
+                }}
+                disabled={uploading}
+              >
+                Retry All Failed
+              </button>
+            </div>
+          )}
         </div>
       )}
 
