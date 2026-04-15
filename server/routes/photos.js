@@ -1928,48 +1928,63 @@ router.delete('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Photo not found' });
     }
 
+    // Try to delete blob, but ignore errors (missing blob, etc)
     if (photo.full_image_url?.startsWith('http')) {
-      await deleteBlobByUrl(photo.full_image_url);
+      try {
+        await deleteBlobByUrl(photo.full_image_url);
+      } catch (err) {
+        console.warn('Failed to delete blob for photo', req.params.id, err?.message);
+      }
     }
 
+    // Always attempt to delete DB record
     await query('DELETE FROM photos WHERE id = $1', [req.params.id]);
 
     // Update album photo count
-    await query(`
-      UPDATE albums 
-      SET photo_count = (SELECT COUNT(*) FROM photos WHERE album_id = $1)
-      WHERE id = $1
-    `, [photo.album_id]);
+    try {
+      await query(`
+        UPDATE albums 
+        SET photo_count = (SELECT COUNT(*) FROM photos WHERE album_id = $1)
+        WHERE id = $1
+      `, [photo.album_id]);
+    } catch (err) {
+      console.warn('Failed to update album photo count for album', photo.album_id, err?.message);
+    }
 
     // If album cover is missing (or deleted), pick the most recent remaining photo as fallback
-    const album = await queryRow(
-      `SELECT id, cover_photo_id as coverPhotoId, cover_image_url as coverImageUrl
-       FROM albums
-       WHERE id = $1`,
-      [photo.album_id]
-    );
-
-    const coverWasDeleted = Number(album?.coverPhotoId) === Number(req.params.id);
-    if (album && (coverWasDeleted || !album.coverPhotoId || !album.coverImageUrl)) {
-      const fallback = await queryRow(
-        `SELECT id, full_image_url as fullImageUrl
-         FROM photos
-         WHERE album_id = $1
-         ORDER BY created_at DESC`,
+    try {
+      const album = await queryRow(
+        `SELECT id, cover_photo_id as coverPhotoId, cover_image_url as coverImageUrl
+         FROM albums
+         WHERE id = $1`,
         [photo.album_id]
       );
 
-      await query(
-        `UPDATE albums
-         SET cover_photo_id = $1,
-             cover_image_url = $2
-         WHERE id = $3`,
-        [fallback?.id || null, fallback?.fullImageUrl || null, photo.album_id]
-      );
+      const coverWasDeleted = Number(album?.coverPhotoId) === Number(req.params.id);
+      if (album && (coverWasDeleted || !album.coverPhotoId || !album.coverImageUrl)) {
+        const fallback = await queryRow(
+          `SELECT id, full_image_url as fullImageUrl
+           FROM photos
+           WHERE album_id = $1
+           ORDER BY created_at DESC`,
+          [photo.album_id]
+        );
+
+        await query(
+          `UPDATE albums
+           SET cover_photo_id = $1,
+               cover_image_url = $2
+           WHERE id = $3`,
+          [fallback?.id || null, fallback?.fullImageUrl || null, photo.album_id]
+        );
+      }
+    } catch (err) {
+      console.warn('Failed to update album cover after photo delete', err?.message);
     }
 
     res.json({ message: 'Photo deleted successfully' });
   } catch (error) {
+    console.error('Photo delete failed:', error);
     res.status(500).json({ error: error.message });
   }
 });

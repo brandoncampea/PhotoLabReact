@@ -54,13 +54,15 @@ const resolvePhotoImageUrl = async (photo: Photo): Promise<string | null> => {
 };
 
 const detectFaceBoxesInBrowser = async (photo: Photo): Promise<{ faceBoxes: FaceTagBox[]; error?: string | null }> => {
+  let imageUrl;
+  let image;
   try {
-    const imageUrl = await resolvePhotoImageUrl(photo);
+    imageUrl = await resolvePhotoImageUrl(photo);
     if (!imageUrl) {
       return { faceBoxes: [], error: 'Could not load image for face detection.' };
     }
 
-    const image = await loadImageElement(imageUrl);
+    image = await loadImageElement(imageUrl);
     const width = Number(image.naturalWidth || image.width || 0);
     const height = Number(image.naturalHeight || image.height || 0);
     if (!width || !height) {
@@ -70,52 +72,59 @@ const detectFaceBoxesInBrowser = async (photo: Photo): Promise<{ faceBoxes: Face
     const FaceDetectorCtor = (window as any).FaceDetector;
     if (FaceDetectorCtor) {
       const detector = new FaceDetectorCtor({ maxDetectedFaces: 20, fastMode: true });
-      const detections: Array<{ boundingBox?: { x?: number; y?: number; width?: number; height?: number } }> = await detector.detect(image);
-
+      const detections = await detector.detect(image);
       return {
         faceBoxes: detections
-          .map((detection: { boundingBox?: { x?: number; y?: number; width?: number; height?: number } }, index: number) => ({
+          .map((detection, index) => ({
             id: `face-${index + 1}`,
             leftPct: clampPercent((Number(detection?.boundingBox?.x || 0) / width) * 100),
             topPct: clampPercent((Number(detection?.boundingBox?.y || 0) / height) * 100),
             widthPct: clampPercent((Number(detection?.boundingBox?.width || 0) / width) * 100),
             heightPct: clampPercent((Number(detection?.boundingBox?.height || 0) / height) * 100),
           }))
-          .filter((box: FaceTagBox) => box.widthPct > 0 && box.heightPct > 0),
+          .filter((box) => box.widthPct > 0 && box.heightPct > 0),
         error: null,
       };
     }
 
+    // TensorFlow.js/BlazeFace path
     const model = await getBlazeFaceModel();
-    const predictions = await model.estimateFaces(image, false);
+    let predictions;
+    try {
+      predictions = await model.estimateFaces(image, false);
+    } finally {
+      // Dispose tensors if present
+      if (predictions && Array.isArray(predictions)) {
+        predictions.forEach(pred => {
+          if (pred.topLeft && typeof pred.topLeft.dispose === 'function') pred.topLeft.dispose();
+          if (pred.bottomRight && typeof pred.bottomRight.dispose === 'function') pred.bottomRight.dispose();
+        });
+      }
+    }
 
-    const mappedFaceBoxes: FaceTagBox[] = (predictions || []).map((prediction: any, index: number): FaceTagBox => {
-        const topLeft = Array.isArray(prediction.topLeft)
-          ? prediction.topLeft
-          : (prediction.topLeft?.arraySync?.() || [0, 0]);
-        const bottomRight = Array.isArray(prediction.bottomRight)
-          ? prediction.bottomRight
-          : (prediction.bottomRight?.arraySync?.() || [0, 0]);
+    const mappedFaceBoxes = (predictions || []).map((prediction, index) => {
+      const topLeft = Array.isArray(prediction.topLeft)
+        ? prediction.topLeft
+        : (prediction.topLeft?.arraySync?.() || [0, 0]);
+      const bottomRight = Array.isArray(prediction.bottomRight)
+        ? prediction.bottomRight
+        : (prediction.bottomRight?.arraySync?.() || [0, 0]);
 
-        const x1 = Number(topLeft?.[0] || 0);
-        const y1 = Number(topLeft?.[1] || 0);
-        const x2 = Number(bottomRight?.[0] || 0);
-        const y2 = Number(bottomRight?.[1] || 0);
+      const x1 = Number(topLeft?.[0] || 0);
+      const y1 = Number(topLeft?.[1] || 0);
+      const x2 = Number(bottomRight?.[0] || 0);
+      const y2 = Number(bottomRight?.[1] || 0);
 
-        const boxWidth = Math.max(0, x2 - x1);
-        const boxHeight = Math.max(0, y2 - y1);
+      return {
+        id: `face-${index + 1}`,
+        leftPct: clampPercent((x1 / width) * 100),
+        topPct: clampPercent((y1 / height) * 100),
+        widthPct: clampPercent((Math.max(0, x2 - x1) / width) * 100),
+        heightPct: clampPercent((Math.max(0, y2 - y1) / height) * 100),
+      };
+    });
 
-        return {
-          id: `face-${index + 1}`,
-          leftPct: clampPercent((x1 / width) * 100),
-          topPct: clampPercent((y1 / height) * 100),
-          widthPct: clampPercent((boxWidth / width) * 100),
-          heightPct: clampPercent((boxHeight / height) * 100),
-        };
-      });
-
-    const faceBoxes: FaceTagBox[] = mappedFaceBoxes
-      .filter((box) => box.widthPct > 0 && box.heightPct > 0);
+    const faceBoxes = mappedFaceBoxes.filter((box) => box.widthPct > 0 && box.heightPct > 0);
 
     return {
       faceBoxes,
@@ -124,6 +133,15 @@ const detectFaceBoxesInBrowser = async (photo: Photo): Promise<{ faceBoxes: Face
   } catch (error) {
     console.error('Client-side face box detection failed:', error);
     return { faceBoxes: [], error: 'Face boxes could not be detected for this image.' };
+  } finally {
+    // Always revoke object URL if we created one
+    if (imageUrl && imageUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(imageUrl);
+    }
+    // Optionally, try to clean up image element
+    if (image && typeof image.remove === 'function') {
+      try { image.remove(); } catch {}
+    }
   }
 };
 
@@ -331,91 +349,38 @@ const AdminPhotos: React.FC = () => {
     setUploadMessage(null);
     setUploadProgress({ completed: 0, total: workingFiles.length });
 
-    const uploadSingleItem = async (item: UploadItem, autoRetries = 2): Promise<{ ok: boolean; uploadedPhoto?: Photo }> => {
-      let attempt = 0;
-      const maxAttempts = autoRetries + 1;
+    // Parallel upload logic (limit to 5 at a time)
+    const parallelLimit = 5;
+    let completed = 0;
+    let failed = 0;
 
-      while (attempt < maxAttempts) {
-        attempt += 1;
+    const queue = [...items];
+    const uploadNext = async () => {
+      if (queue.length === 0) return;
+      const item = queue.shift();
+      setUploadItems((prev) =>
+        prev.map((entry) =>
+          entry.id === item.id ? { ...entry, status: 'uploading', progress: 0 } : entry
+        )
+      );
+      try {
+        const uploaded = await photoService.uploadPhotos(albumId ?? 0, [item.file], undefined, duplicateMode, (percent) => {
+          setUploadItems((prev) =>
+            prev.map((entry) =>
+              entry.id === item.id ? { ...entry, progress: percent } : entry
+            )
+          );
+        });
         setUploadItems((prev) =>
           prev.map((entry) =>
-            entry.id === item.id
-              ? {
-                  ...entry,
-                  status: 'uploading',
-                  progress: 0,
-                  attempts: attempt,
-                  error: attempt > 1 ? `Retry ${attempt - 1}/${autoRetries}...` : undefined,
-                }
-              : entry
+            entry.id === item.id ? { ...entry, status: 'done', progress: 100, error: undefined } : entry
           )
         );
-
-        try {
-          const uploaded = await photoService.uploadPhotos(albumId ?? 0, [item.file], undefined, item.duplicateMode, (percent) => {
-            setUploadItems((prev) =>
-              prev.map((entry) =>
-                entry.id === item.id
-                  ? { ...entry, status: 'uploading', progress: percent, attempts: attempt }
-                  : entry
-              )
-            );
-          });
-
-          const skippedByServer = item.duplicateMode === 'skip' && uploaded.length === 0;
-
-          setUploadItems((prev) =>
-            prev.map((entry) =>
-              entry.id === item.id
-                ? {
-                    ...entry,
-                    status: 'done',
-                    progress: 100,
-                    attempts: attempt,
-                    error: skippedByServer ? 'Skipped duplicate' : undefined,
-                  }
-                : entry
-            )
-          );
-          return { ok: true, uploadedPhoto: uploaded[0] };
-        } catch (error) {
-          const hasMoreRetries = attempt < maxAttempts;
-          if (hasMoreRetries) {
-            await wait(600);
-            continue;
-          }
-
-          console.error(`Failed to upload photo ${item.file.name}:`, error);
-          setUploadItems((prev) =>
-            prev.map((entry) =>
-              entry.id === item.id
-                ? {
-                    ...entry,
-                    status: 'error',
-                    attempts: attempt,
-                    error: `Upload failed after ${attempt} attempt${attempt === 1 ? '' : 's'}.`,
-                  }
-                : entry
-            )
-          );
-          return { ok: false };
-        }
-      }
-
-      return { ok: false };
-    };
-
-    try {
-      let completed = 0;
-      let failed = 0;
-
-      for (let i = 0; i < items.length; i += 1) {
-        const current = items[i];
-        const result = await uploadSingleItem(current, 2);
-        if (result.ok && result.uploadedPhoto?.id) {
-          // Centralized utility handles all filename-based auto-tagging and face association
+        completed += 1;
+        // Optionally run auto-tagging for each uploaded photo
+        if (uploaded[0]) {
           await autoTagPhotoFromFilenameAndFaces({
-            photo: result.uploadedPhoto,
+            photo: uploaded[0],
             rosterPlayers,
             photoService,
             handleDetectPlayers,
@@ -423,12 +388,21 @@ const AdminPhotos: React.FC = () => {
             setDetectionByPhotoId,
             setUploadMessage,
           });
-          completed += 1;
-        } else {
-          failed += 1;
         }
-        setUploadProgress({ completed: completed + failed, total: workingFiles.length });
+      } catch (error) {
+        setUploadItems((prev) =>
+          prev.map((entry) =>
+            entry.id === item.id ? { ...entry, status: 'error', error: 'Upload failed.' } : entry
+          )
+        );
+        failed += 1;
       }
+      setUploadProgress({ completed: completed + failed, total: workingFiles.length });
+      await uploadNext();
+    };
+
+    try {
+      await Promise.all(Array(parallelLimit).fill(0).map(uploadNext));
 
       if (failed === 0) {
         const skipSuffix = skippedClientSide > 0 ? ` Skipped ${skippedClientSide} duplicate photo${skippedClientSide === 1 ? '' : 's'}.` : '';
@@ -1161,6 +1135,10 @@ const AdminPhotos: React.FC = () => {
               Reused across this studio’s future album uploads.
             </span>
           </div>
+
+
+
+
           {rosterMessage && (
             <p className={rosterMessage.toLowerCase().includes('failed') ? 'danger-text' : 'success-text'} style={{ margin: '0.45rem 0 0 0', fontSize: '0.85rem' }}>
               {rosterMessage}

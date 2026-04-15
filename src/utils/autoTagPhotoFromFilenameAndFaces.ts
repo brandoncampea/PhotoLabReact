@@ -59,27 +59,14 @@ export async function autoTagPhotoFromFilenameAndFaces({
   if (extractedName) {
     // Add to roster if missing
     addPlayerToRosterIfMissing(rosterPlayers, extractedName);
-    await handleDetectPlayers(photo, { silent: true });
-    const detection = detectionByPhotoId[photo.id];
-    if (detection && detection.faceBoxes && detection.faceBoxes.length === 1) {
-      // Only one face: force only one tag, overwrite any previous tags
-      try {
-        await photoService.updatePhotoPlayers(photo.id, [{ playerName: extractedName }]);
-        setUploadMessage && setUploadMessage({ type: 'success', text: `Auto-tagged single detected face with: ${extractedName}` });
-      } catch (error) {
-        setUploadMessage && setUploadMessage({ type: 'error', text: 'Failed to auto-tag single detected face.' });
-      }
-      return;
-    } else {
-      // Not exactly one face: keep previous logic (tag from filename, but don't overwrite extra tags)
-      try {
-        await photoService.updatePhotoPlayers(photo.id, [{ playerName: extractedName }]);
-        setUploadMessage && setUploadMessage({ type: 'success', text: `Auto-tagged with: ${extractedName}` });
-      } catch (error) {
-        setUploadMessage && setUploadMessage({ type: 'error', text: 'Failed to auto-tag from filename.' });
-      }
-      return;
+    // Only tag the filename-matched player, do NOT run face detection on upload
+    try {
+      await photoService.updatePhotoPlayers(photo.id, [{ playerName: extractedName }]);
+      setUploadMessage && setUploadMessage({ type: 'success', text: `Auto-tagged with: ${extractedName}` });
+    } catch (error) {
+      setUploadMessage && setUploadMessage({ type: 'error', text: 'Failed to auto-tag from filename.' });
     }
+    return;
   }
 
   // 2. If no valid name in filename, fall back to roster-based detection
@@ -98,6 +85,5 @@ export async function autoTagPhotoFromFilenameAndFaces({
     }
   }
 
-  // 3. If neither, just run detection
-  await handleDetectPlayers(photo, { silent: true });
+  // 3. If neither, do NOT run detection on upload. Detection must be triggered manually.
 }

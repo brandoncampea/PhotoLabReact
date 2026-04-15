@@ -139,7 +139,13 @@ export const photoService = {
   },
 
   async deletePhoto(id: number): Promise<void> {
-    await api.delete(`/photos/${id}`);
+    try {
+      await api.delete(`/photos/${id}`);
+    } catch (error: any) {
+      // Ignore 404 Not Found errors (photo already deleted)
+      if (error?.response?.status === 404) return;
+      throw error;
+    }
   },
 
   async getRecommendations(photoId: number): Promise<{
