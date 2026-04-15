@@ -24,12 +24,12 @@ export const packageService = {
   },
 
   async update(id: number, data: any): Promise<any> {
-    const response = await api.put(`/api/packages/${id}`, data);
+    const response = await api.put(`/packages/${id}`, data);
     return response.data;
   },
 
   async delete(id: number): Promise<void> {
-    await api.delete(`/api/packages/${id}`);
+    await api.delete(`/packages/${id}`);
   },
 
   /**

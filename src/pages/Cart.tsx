@@ -667,6 +667,8 @@ const Cart: React.FC = () => {
           ))}
         </div>
 
+          {/* Package Cost/Profit Display - moved here as requested */}
+
         <div className="cart-summary cart-summary-panel">
           <h2>Order Summary</h2>
           <div className="summary-row cart-summary-row">
