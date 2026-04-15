@@ -7,9 +7,10 @@ interface PhotoCardProps {
   photo: Photo;
   onClick: () => void;
   onShare?: (e: React.MouseEvent) => void;
+  studioId?: number;
 }
 
-const PhotoCard: React.FC<PhotoCardProps> = ({ photo, onClick, onShare }) => {
+const PhotoCard: React.FC<PhotoCardProps> = ({ photo, onClick, onShare, studioId }) => {
   // const metadata = photo.metadata;
   const [showOverlay, setShowOverlay] = useState(false);
   const [imgError, setImgError] = useState(false);
@@ -58,6 +59,7 @@ const PhotoCard: React.FC<PhotoCardProps> = ({ photo, onClick, onShare }) => {
             // @ts-ignore
             onError={() => setImgError(true)}
             onClick={onClick}
+            studioId={studioId}
           />
         ) : (
           <img

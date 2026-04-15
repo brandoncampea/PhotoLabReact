@@ -8,9 +8,10 @@ interface CartItemProps {
   onEditCrop?: (item: CartItemType) => void;
   onOpenWhccEditor?: (item: CartItemType) => void;
   showWhccEditorButton?: boolean;
+  studioId?: number;
 }
 
-const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop, onOpenWhccEditor, showWhccEditorButton }) => {
+const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop, onOpenWhccEditor, showWhccEditorButton, studioId }) => {
   const { updateQuantity, removeFromCart } = useCart();
   const [expanded, setExpanded] = useState(true);
 
@@ -79,6 +80,7 @@ const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop, onOpenWhccEditor,
                     src={displayImageUrl}
                     alt={item.productName || item.photo?.fileName || 'Product'}
                     style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                    studioId={studioId}
                   />
                   {item.cropData && <div style={getCropStyle()!} />}
                 </>

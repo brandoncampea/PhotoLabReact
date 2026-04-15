@@ -10,10 +10,13 @@ interface WatermarkedImageProps {
   className?: string;
   style?: React.CSSProperties;
   fill?: boolean;
+  studioId?: number;
 }
 
-const WatermarkedImage: React.FC<WatermarkedImageProps> = ({ src, alt, className, style, fill = true }) => {
+const WatermarkedImage: React.FC<WatermarkedImageProps> = ({ src, alt, className, style, fill = true, studioId }) => {
   const [watermark, setWatermark] = useState<Watermark | null>(null);
+  const [watermarkLoaded, setWatermarkLoaded] = useState(false);
+  const [imgError, setImgError] = useState(false);
 
   const resolveWatermarkUrl = (raw: string): string => {
     const value = String(raw || '');
@@ -26,16 +29,47 @@ const WatermarkedImage: React.FC<WatermarkedImageProps> = ({ src, alt, className
 
   useEffect(() => {
     let cancelled = false;
-    watermarkService.getDefaultWatermark(1)
+    watermarkService.getDefaultWatermark(studioId)
       .then(wm => { if (!cancelled) setWatermark(wm); })
-      .catch(() => {});
+      .catch(() => { if (!cancelled) setWatermark(null); })
+      .finally(() => { if (!cancelled) setWatermarkLoaded(true); });
     return () => { cancelled = true; };
-  }, []);
+  }, [studioId]);
 
   const getWatermarkStyle = (): React.CSSProperties => {
+    // Always use the default watermark if watermark is missing or failed to load
+    if (watermarkLoaded && !watermark) {
+      return {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        opacity: 0.18,
+        pointerEvents: 'none',
+        zIndex: 1,
+        backgroundImage: 'url(/watermark-default.png)',
+        backgroundRepeat: 'repeat',
+        backgroundSize: '180px auto',
+        backgroundPosition: 'center',
+      };
+    }
     if (!watermark) return {};
     const watermarkUrl = resolveWatermarkUrl(watermark.imageUrl);
-    if (!watermarkUrl) return {};
+    if (!watermarkUrl) return {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      opacity: 0.18,
+      pointerEvents: 'none',
+      zIndex: 1,
+      backgroundImage: 'url(/watermark-default.png)',
+      backgroundRepeat: 'repeat',
+      backgroundSize: '180px auto',
+      backgroundPosition: 'center',
+    };
 
     const baseStyle: React.CSSProperties = {
       position: 'absolute',
@@ -92,11 +126,11 @@ const WatermarkedImage: React.FC<WatermarkedImageProps> = ({ src, alt, className
     }
   };
   const containerStyle: React.CSSProperties = fill
-    ? { position: 'absolute', inset: 0, width: '100%', height: '100%', overflow: 'hidden' }
+    ? { position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }
     : { position: 'relative', width: '100%', height: 'auto', overflow: 'hidden' };
 
   const imageStyle: React.CSSProperties = fill
-    ? { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', ...style }
+    ? { width: '100%', height: '100%', objectFit: 'cover', display: 'block', ...style }
     : { width: '100%', height: 'auto', display: 'block', objectFit: 'contain', ...style };
 
   // If src is a full URL, use it directly. If it's a legacy /uploads/ path or API route, use as-is. Otherwise, use SAS URL for Azure Blob Storage.
@@ -108,28 +142,35 @@ const WatermarkedImage: React.FC<WatermarkedImageProps> = ({ src, alt, className
 
   return (
     <div style={containerStyle}>
-      <img
-        src={resolvedSrc}
-        alt={alt}
-        className={className}
-        style={imageStyle}
-      />
-      {watermark && watermarkUrl && (
-        <div style={getWatermarkStyle()}>
-          {!watermark.tiled && (
-            <img 
-              src={watermarkUrl}
-              alt="Watermark" 
-              style={{ 
-                width: '100%', 
-                height: '100%', 
-                objectFit: 'contain',
-                display: 'block' 
-              }} 
-            />
-          )}
+      {imgError ? (
+        <div style={{
+          width: '100%', height: '100%', background: '#232336', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#aaa', fontSize: 18, position: 'relative', zIndex: 0
+        }}>
+          <span>Image not found</span>
         </div>
+      ) : (
+        <img
+          src={resolvedSrc}
+          alt={alt}
+          className={className}
+          style={imageStyle}
+          onContextMenu={e => e.preventDefault()}
+          draggable={false}
+          onError={() => setImgError(true)}
+        />
       )}
+      {/* Always render overlay for stacking consistency */}
+      <div style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        pointerEvents: 'none',
+        zIndex: 2,
+      }}>
+        <div style={getWatermarkStyle()} />
+      </div>
     </div>
   );
 };

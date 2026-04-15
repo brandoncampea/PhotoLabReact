@@ -227,6 +227,7 @@ const Albums: React.FC = () => {
                       albumName={album.name}
                       coverImageUrl={album.coverImageUrl}
                       previewImageUrls={album.previewImageUrls}
+                      studioId={selectedStudio?.id}
                     />
                     <div className="album-overlay">
                       <span className="photo-count">{album.photoCount} photos</span>

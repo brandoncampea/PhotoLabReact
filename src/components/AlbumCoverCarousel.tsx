@@ -6,6 +6,7 @@ interface AlbumCoverCarouselProps {
   albumName: string;
   coverImageUrl?: string;
   previewImageUrls?: string[];
+  studioId?: number;
 }
 
 const AlbumCoverCarousel: React.FC<AlbumCoverCarouselProps> = ({
@@ -13,10 +14,13 @@ const AlbumCoverCarousel: React.FC<AlbumCoverCarouselProps> = ({
   albumName,
   coverImageUrl,
   previewImageUrls = [],
+  studioId,
 }) => {
   const images = useMemo(() => {
-    const items = previewImageUrls.length > 0 ? previewImageUrls : coverImageUrl ? [coverImageUrl] : [];
-    const deduped = Array.from(new Set(items.filter(Boolean)));
+    // Always show coverImageUrl first if present, then unique previewImageUrls (excluding duplicates)
+    const cover = coverImageUrl ? [coverImageUrl] : [];
+    const previews = (previewImageUrls || []).filter(Boolean).filter(url => url !== coverImageUrl);
+    const deduped = Array.from(new Set([...cover, ...previews]));
     if (deduped.length > 0) {
       return deduped;
     }
@@ -42,17 +46,22 @@ const AlbumCoverCarousel: React.FC<AlbumCoverCarouselProps> = ({
   }, [images]);
 
   return (
-    <div className="album-cover-carousel">
+    <div
+      className="album-cover-carousel"
+      style={{ position: 'relative', width: '100%', height: '100%', minHeight: 0 }}
+    >
       {images.map((image, index) => (
         <div
           key={`${image}-${index}`}
-          className={`album-cover-slide ${index === activeIndex ? 'active' : ''}`}
+          className={`album-cover-slide${index === activeIndex ? ' active' : ''}`}
           aria-hidden={index !== activeIndex}
+          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%' }}
         >
           <WatermarkedImage
             src={image}
             alt={albumName}
             fill
+            studioId={studioId}
           />
         </div>
       ))}
@@ -61,7 +70,14 @@ const AlbumCoverCarousel: React.FC<AlbumCoverCarouselProps> = ({
           {images.map((_, index) => (
             <span
               key={index}
-              className={`album-cover-dot ${index === activeIndex ? 'active' : ''}`}
+              className={`album-cover-dot${index === activeIndex ? ' active' : ''}`}
+              onClick={e => {
+                e.stopPropagation();
+                setActiveIndex(index);
+              }}
+              tabIndex={0}
+              aria-label={`Go to slide ${index + 1}`}
+              role="button"
             />
           ))}
         </div>

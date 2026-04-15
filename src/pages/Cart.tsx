@@ -663,6 +663,7 @@ const Cart: React.FC = () => {
               item={getResolvedCartItem(item)}
               onEditCrop={setEditingItem}
               onOpenWhccEditor={handleOpenWhccEditor}
+              studioId={user?.studioId}
             />
           ))}
         </div>

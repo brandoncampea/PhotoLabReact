@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import WatermarkedImage from '../components/WatermarkedImage';
 import { fetchPhotoExif } from '../services/exifService';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import Cropper from 'react-cropper';
@@ -488,10 +489,11 @@ const AlbumDetails: React.FC = () => {
 
       {selectedPhoto && (
         <div style={{ marginBottom: 14, border: '1px solid #2a2740', borderRadius: 8, overflow: 'hidden' }}>
-          <img
+          <WatermarkedImage
             src={selectedPhoto.fullImageUrl || selectedPhoto.thumbnailUrl}
             alt={selectedPhoto.fileName}
             style={{ width: '100%', maxHeight: 520, objectFit: 'contain', background: '#0f0f16' }}
+            studioId={album?.studioId}
           />
         </div>
       )}
@@ -983,6 +985,8 @@ const AlbumDetails: React.FC = () => {
                   src={photo.thumbnailUrl || photo.fullImageUrl}
                   alt={photo.fileName}
                   style={{ width: '100%', height: 220, objectFit: 'cover', display: 'block' }}
+                  onContextMenu={e => e.preventDefault()}
+                  draggable={false}
                 />
                 {hasPlayers && (
                   <div

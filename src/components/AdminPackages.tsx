@@ -11,6 +11,7 @@ const baseProductName = (name: string) => {
 import React, { useState, useEffect } from 'react';
 
 import { getRetailPrice } from '../utils/priceList';
+import { packageService } from '../services/packageService';
 
 interface Product {
   id: any;
@@ -115,47 +116,164 @@ const AdminPackages: React.FC<AdminPackagesProps> = ({ products, priceListId, pr
       : { productId: null, sizeId: null };
   }
 
+  // Build suggested packages only from products and sizes that exist in the current studio's product list and priceListItems
   const rawSuggestedPackages: Omit<Package, 'id'>[] = [
     {
       name: 'Print Starter Package',
       price: 19.99,
       items: [
-        (() => { const { productId, sizeId } = findProductSize('8x10', '8x10'); return { productId, sizeId, quantity: 1 }; })(),
-        (() => { const { productId, sizeId } = findProductSize('4x5', '4x5'); return { productId, sizeId, quantity: 2 }; })(),
-      ].filter(i => i.productId && i.sizeId),
+        (() => {
+          const pli = priceListItems.find(
+            pli => {
+              const product = products.find(p => p.id === pli.productId && p.name.toLowerCase().includes('8x10'));
+              const size = product?.sizes?.find(s => s.id === pli.sizeId && s.name.toLowerCase().includes('8x10'));
+              return product && size;
+            }
+          );
+          return pli ? { productId: pli.productId, sizeId: pli.sizeId, quantity: 1 } : null;
+        })(),
+        (() => {
+          const pli = priceListItems.find(
+            pli => {
+              const product = products.find(p => p.id === pli.productId && p.name.toLowerCase().includes('4x5'));
+              const size = product?.sizes?.find(s => s.id === pli.sizeId && s.name.toLowerCase().includes('4x5'));
+              return product && size;
+            }
+          );
+          return pli ? { productId: pli.productId, sizeId: pli.sizeId, quantity: 2 } : null;
+        })(),
+      ].filter(i => i && i.productId && i.sizeId),
     },
     {
       name: 'Digital & Print Combo',
       price: 29.99,
       items: [
-        (() => { const { productId, sizeId } = findProductSize('8x10', '8x10'); return { productId, sizeId, quantity: 1 }; })(),
-        (() => { const { productId, sizeId } = findProductSize('Digital Image', 'High Resolution'); return { productId, sizeId, quantity: 1 }; })(),
-      ].filter(i => i.productId && i.sizeId),
+        (() => {
+          const pli = priceListItems.find(
+            pli => {
+              const product = products.find(p => p.id === pli.productId && p.name.toLowerCase().includes('8x10'));
+              const size = product?.sizes?.find(s => s.id === pli.sizeId && s.name.toLowerCase().includes('8x10'));
+              return product && size;
+            }
+          );
+          return pli ? { productId: pli.productId, sizeId: pli.sizeId, quantity: 1 } : null;
+        })(),
+        (() => {
+          const pli = priceListItems.find(
+            pli => {
+              const product = products.find(p => p.id === pli.productId && p.name.toLowerCase().includes('digital'));
+              const size = product?.sizes?.find(s => s.id === pli.sizeId && s.name.toLowerCase().includes('high'));
+              return product && size;
+            }
+          );
+          return pli ? { productId: pli.productId, sizeId: pli.sizeId, quantity: 1 } : null;
+        })(),
+      ].filter(i => i && i.productId && i.sizeId),
     },
     {
       name: 'Button & Magnet Pack',
       price: 17.99,
       items: [
-        (() => { const { productId, sizeId } = findProductSize('Button', '3" Button'); return { productId, sizeId, quantity: 1 }; })(),
-        (() => { const { productId, sizeId } = findProductSize('Acrylic Magnet', 'Acrylic Magnet'); return { productId, sizeId, quantity: 1 }; })(),
-      ].filter(i => i.productId && i.sizeId),
+        (() => {
+          const pli = priceListItems.find(
+            pli => {
+              const product = products.find(p => p.id === pli.productId && p.name.toLowerCase().includes('button'));
+              const size = product?.sizes?.find(s => s.id === pli.sizeId && s.name.toLowerCase().includes('button'));
+              return product && size;
+            }
+          );
+          return pli ? { productId: pli.productId, sizeId: pli.sizeId, quantity: 1 } : null;
+        })(),
+        (() => {
+          const pli = priceListItems.find(
+            pli => {
+              const product = products.find(p => p.id === pli.productId && p.name.toLowerCase().includes('magnet'));
+              const size = product?.sizes?.find(s => s.id === pli.sizeId && s.name.toLowerCase().includes('magnet'));
+              return product && size;
+            }
+          );
+          return pli ? { productId: pli.productId, sizeId: pli.sizeId, quantity: 1 } : null;
+        })(),
+      ].filter(i => i && i.productId && i.sizeId),
     },
     {
       name: 'Keychain & Print Combo',
       price: 21.99,
       items: [
-        (() => { const { productId, sizeId } = findProductSize('Keychain', 'Keychain'); return { productId, sizeId, quantity: 1 }; })(),
-        (() => { const { productId, sizeId } = findProductSize('4x5', '4x5'); return { productId, sizeId, quantity: 2 }; })(),
-      ].filter(i => i.productId && i.sizeId),
+        (() => {
+          const pli = priceListItems.find(
+            pli => {
+              const product = products.find(p => p.id === pli.productId && p.name.toLowerCase().includes('keychain'));
+              const size = product?.sizes?.find(s => s.id === pli.sizeId && s.name.toLowerCase().includes('keychain'));
+              return product && size;
+            }
+          );
+          return pli ? { productId: pli.productId, sizeId: pli.sizeId, quantity: 1 } : null;
+        })(),
+        (() => {
+          const pli = priceListItems.find(
+            pli => {
+              const product = products.find(p => p.id === pli.productId && p.name.toLowerCase().includes('4x5'));
+              const size = product?.sizes?.find(s => s.id === pli.sizeId && s.name.toLowerCase().includes('4x5'));
+              return product && size;
+            }
+          );
+          return pli ? { productId: pli.productId, sizeId: pli.sizeId, quantity: 2 } : null;
+        })(),
+      ].filter(i => i && i.productId && i.sizeId),
     },
     {
       name: 'Digital Deluxe',
       price: 34.99,
       items: [
-        (() => { const { productId, sizeId } = findProductSize('Digital Image', 'High Resolution'); return { productId, sizeId, quantity: 2 }; })(),
-      ].filter(i => i.productId && i.sizeId),
+        (() => {
+          const pli = priceListItems.find(
+            pli => {
+              const product = products.find(p => p.id === pli.productId && p.name.toLowerCase().includes('digital'));
+              const size = product?.sizes?.find(s => s.id === pli.sizeId && s.name.toLowerCase().includes('high'));
+              return product && size;
+            }
+          );
+          return pli ? { productId: pli.productId, sizeId: pli.sizeId, quantity: 2 } : null;
+        })(),
+      ].filter(i => i && i.productId && i.sizeId),
     },
   ];
+
+  // Map suggested package items to valid productId and productSizeId from priceListItems
+  const suggestedPackages = rawSuggestedPackages
+    .map(pkg => {
+      const validItems = pkg.items
+        .map(item => {
+          // Find a valid priceListItem for this product/size
+          let pli = null;
+          // Try to match by productKeyword and sizeKeyword if present
+          if (item.productKeyword && item.sizeKeyword) {
+            pli = priceListItems.find(pli => {
+              const product = products.find(p => p.id === pli.productId);
+              const size = product?.sizes?.find(s => s.id === pli.sizeId);
+              return (
+                product && size &&
+                product.name.toLowerCase().includes(item.productKeyword.toLowerCase()) &&
+                size.name.toLowerCase().includes(item.sizeKeyword.toLowerCase())
+              );
+            });
+          }
+          // Fallback: match by productId/sizeId if present
+          if (!pli && item.productId && item.sizeId) {
+            pli = priceListItems.find(pli => pli.productId === item.productId && pli.sizeId === item.sizeId);
+          }
+          // If found, return the correct IDs
+          return pli ? {
+            ...item,
+            productId: pli.productId,
+            sizeId: pli.sizeId
+          } : null;
+        })
+        .filter(Boolean);
+      return { ...pkg, items: validItems };
+    })
+    .filter(pkg => pkg.items.length > 0);
 
   // DEBUG: Print all available product and size names
   const debugProductSizeList = products.map(p => ({
@@ -178,27 +296,7 @@ const AdminPackages: React.FC<AdminPackagesProps> = ({ products, priceListId, pr
     })
   }));
 
-  // Adjust suggested package prices so customer savings is never negative
-  // Only show packages with at least one item
-  const suggestedPackages = rawSuggestedPackages
-    .map(pkg => {
-      const fin = getPackageFinancials(pkg);
-      // 25% off total retail price, but never below total cost
-      let targetPrice = fin.totalRetail * 0.75;
-      targetPrice = Math.max(targetPrice, fin.totalCost + 0.01); // ensure profit > 0
-      // Make price end in .95
-      targetPrice = Math.floor(targetPrice) + 0.95;
-      // If that would make it less than cost, bump to next .95 above cost
-      if (targetPrice < fin.totalCost + 0.01) {
-        targetPrice = Math.ceil(fin.totalCost) + 0.95;
-      }
-      targetPrice = Math.round(targetPrice * 100) / 100;
-      return {
-        ...pkg,
-        price: targetPrice
-      };
-    })
-    .filter(pkg => pkg.items && pkg.items.length > 0);
+  // (removed duplicate suggestedPackages declaration)
 
   // Show suggestions if there are products and no saved packages
   // Always allow showing suggestions, with a toggle
@@ -262,7 +360,7 @@ const AdminPackages: React.FC<AdminPackagesProps> = ({ products, priceListId, pr
         packagePrice: form.price,
         items: form.items.map(item => ({
           productId: item.productId,
-          productSizeId: item.sizeId,
+          productSizeId: item.sizeId, // use productSizeId for backend
           quantity: item.quantity
         })),
         isActive: true
@@ -301,31 +399,50 @@ const AdminPackages: React.FC<AdminPackagesProps> = ({ products, priceListId, pr
 
   const handleAcceptSuggestion = (pkg: Omit<Package, 'id'>) => {
     // Persist to backend and reload packages
+    setAcceptingSuggestion(true);
     (async () => {
+      const payload = {
+        priceListId,
+        name: pkg.name,
+        description: '',
+        packagePrice: pkg.price,
+        items: pkg.items.map(item => ({
+          productId: item.productId,
+          productSizeId: item.sizeId, // use productSizeId for backend
+          quantity: item.quantity
+        })),
+        isActive: true
+      };
       try {
-        await packageService.create({
-          priceListId,
-          name: pkg.name,
-          description: '',
-          packagePrice: pkg.price,
-          items: pkg.items.map(item => ({
-            productId: item.productId,
-            productSizeId: item.sizeId,
-            quantity: item.quantity
-          })),
-          isActive: true
+        console.log('[DEBUG] Creating package with payload:', payload);
+        console.log('[DEBUG] Available priceListItems:', priceListItems);
+        payload.items.forEach((item, idx) => {
+          console.log(`[DEBUG] Item ${idx}: productId=${item.productId}, productSizeId=${item.productSizeId}`);
         });
+        const resp = await packageService.create(payload);
+        console.log('[DEBUG] Package creation response:', resp);
         const pkgs = await packageService.getAll(priceListId);
         setPackages(Array.isArray(pkgs) ? pkgs : []);
-        setShowSuggestions(false);
-      } catch {
-        // Optionally show error
+        // Remove the accepted suggestion from the list
+        setSuggestedPackages(prev => prev.filter(s => s.name !== pkg.name));
+        // Hide suggestions if none left
+        setShowSuggestions(prev => prev && suggestedPackages.length > 1);
+      } catch (err) {
+        let msg = 'Failed to add package. Please try again.';
+        if (err && err.response && err.response.data && err.response.data.error) {
+          msg += '\n' + err.response.data.error;
+        }
+        console.error('[ERROR] Failed to add package:', err);
+        alert(msg);
+      } finally {
+        setAcceptingSuggestion(false);
       }
     })();
   };
 
   const handleIgnoreSuggestions = () => setShowSuggestions(false);
 
+  const [acceptingSuggestion, setAcceptingSuggestion] = useState(false);
   if (loadingPackages) {
     return <div>Loading packages...</div>;
   }
@@ -350,7 +467,7 @@ const AdminPackages: React.FC<AdminPackagesProps> = ({ products, priceListId, pr
           {showSuggestions ? 'Hide' : 'Show'}
         </button>
       </div>
-      {showSuggestions && (
+      {showSuggestions && suggestedPackages.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24, marginBottom: 24 }}>
           {suggestedPackages.map((pkg, idx) => {
             const { profit, savings } = getPackageFinancials(pkg);
@@ -368,6 +485,8 @@ const AdminPackages: React.FC<AdminPackagesProps> = ({ products, priceListId, pr
                   flexDirection: 'column',
                   justifyContent: 'space-between',
                   transition: 'box-shadow 0.2s',
+                  opacity: acceptingSuggestion ? 0.5 : 1,
+                  pointerEvents: acceptingSuggestion ? 'none' : 'auto',
                 }}
               >
                 <div style={{ fontWeight: 700, fontSize: 19, color: '#fff', marginBottom: 6 }}>{pkg.name}</div>
@@ -403,8 +522,9 @@ const AdminPackages: React.FC<AdminPackagesProps> = ({ products, priceListId, pr
                     transition: 'background 0.2s',
                   }}
                   onClick={() => handleAcceptSuggestion(pkg)}
+                  disabled={acceptingSuggestion}
                 >
-                  Add Package
+                  {acceptingSuggestion ? 'Adding...' : 'Add Package'}
                 </button>
               </div>
             );
@@ -418,12 +538,76 @@ const AdminPackages: React.FC<AdminPackagesProps> = ({ products, priceListId, pr
 
       <h2 style={{ marginTop: 32 }}>{editingId ? 'Edit Package' : 'Create Package'}</h2>
       <div className="admin-orders-card" style={{ marginBottom: 24 }}>
-        {/* Show profit and savings for create/edit package */}
+        {/* Cart-like list of selected products, cost/profit display, and Save button */}
         {form.items.length > 0 && (() => {
           const { profit, savings } = getPackageFinancials(form);
           return (
-            <div style={{ fontSize: 15, margin: '8px 0', color: '#1565c0' }}>
-              Profit: <b>${profit.toFixed(2)}</b> &nbsp;|&nbsp; Customer Savings: <b>${savings.toFixed(2)}</b>
+            <div style={{
+              background: '#23242a',
+              borderRadius: 8,
+              padding: '12px 16px',
+              margin: '16px 0 0 0',
+              boxShadow: '0 1px 4px #0002',
+              maxWidth: 600
+            }}>
+              <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 6, color: '#fff' }}>Selected Items</div>
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                {form.items.map((item, idx) => {
+                  const product = products.find(p => p.id === item.productId);
+                  const size = product?.sizes?.find(s => s.id === item.sizeId);
+                  return (
+                    <li key={idx} style={{ display: 'flex', alignItems: 'center', marginBottom: 4, color: '#e0e0e0' }}>
+                      {/* Quantity controls */}
+                      <div style={{ display: 'flex', alignItems: 'center', minWidth: 90 }}>
+                        <button
+                          aria-label="Decrease quantity"
+                          onClick={() => {
+                            if (item.quantity > 1) handleQuantityChange(item.productId, item.sizeId, item.quantity - 1);
+                          }}
+                          style={{ width: 28, height: 28, fontSize: 18, marginRight: 4 }}
+                          type="button"
+                        >
+                          -
+                        </button>
+                        <input
+                          type="number"
+                          min={1}
+                          value={item.quantity}
+                          onChange={e => {
+                            const val = Math.max(1, parseInt(e.target.value) || 1);
+                            handleQuantityChange(item.productId, item.sizeId, val);
+                          }}
+                          style={{ width: 40, textAlign: 'center', margin: '0 4px' }}
+                        />
+                        <button
+                          aria-label="Increase quantity"
+                          onClick={() => handleQuantityChange(item.productId, item.sizeId, item.quantity + 1)}
+                          style={{ width: 28, height: 28, fontSize: 18, marginLeft: 4 }}
+                          type="button"
+                        >
+                          +
+                        </button>
+                      </div>
+                      <span style={{ flex: 1 }}>{product?.name} {size?.name ? `(${size.name})` : ''}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+              {/* Package Cost/Profit display */}
+              <div style={{ display: 'flex', alignItems: 'center', margin: '16px 0 0 0', fontSize: 20, fontWeight: 700, flexWrap: 'wrap' }}>
+                <span style={{ color: '#fff', marginRight: 24 }}>Package Cost: ${cost.toFixed(2)}</span>
+                <span style={{ color: profit < 0 ? 'red' : '#009900', marginRight: 24 }}>Package Profit: {profit < 0 ? '-' : ''}${Math.abs(profit).toFixed(2)}</span>
+                <span style={{ color: '#1565c0' }}>Customer Savings: ${savings.toFixed(2)}</span>
+              </div>
+              {/* Save Package button below selected items */}
+              <button
+                style={{ marginTop: 18, padding: '10px 24px', fontSize: 16, fontWeight: 600, borderRadius: 6, background: '#fff', color: '#181a20', border: 'none', cursor: 'pointer', boxShadow: '0 1px 4px #0002' }}
+                onClick={handleSave}
+                disabled={form.items.length === 0 || !form.name.trim()}
+              >
+                {editingId ? 'Update Package' : 'Save Package'}
+              </button>
+              {editingId && <button onClick={() => { setEditingId(null); setForm({ name: '', price: 0, items: [] }); }} style={{ marginLeft: 12 }}>Cancel</button>}
             </div>
           );
         })()}
