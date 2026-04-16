@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { useSasUrl } from '../hooks/useSasUrl';
 import { Watermark } from '../types';
 import { watermarkService } from '../services/watermarkService';
 import { getBlobUrl } from '../utils/getBlobUrl';
@@ -150,11 +149,20 @@ const WatermarkedImage: React.FC<WatermarkedImageProps> = ({ src, alt, className
     : { width: '100%', height: 'auto', display: 'block', objectFit: 'contain', ...style };
 
   // If src is a full URL, use it directly. If it's a legacy /uploads/ path or API route, use as-is. Otherwise, use SAS URL for Azure Blob Storage.
-  const isFullUrl = src.startsWith('http://') || src.startsWith('https://');
-  const isApiOrUploads = src.startsWith('/api/') || src.startsWith('/uploads/');
-  const sasUrl = !isFullUrl && !isApiOrUploads ? useSasUrl(src) : null;
-  const resolvedSrc = isFullUrl || isApiOrUploads ? src : (sasUrl || '');
-  const watermarkUrl = watermark ? resolveWatermarkUrl(watermark.imageUrl) : '';
+  // Always use proxy endpoint for Azure blob paths (e.g., albums/68/filename.jpg)
+  // Only allow /api/ and /uploads/ as direct paths, never direct blob URLs
+  let resolvedSrc = '';
+  if (src.startsWith('/api/') || src.startsWith('/uploads/')) {
+    resolvedSrc = src;
+  } else if (/^albums\//.test(src)) {
+    // If it's a blob path, always use the proxy endpoint
+    // Optionally, support thumbnails if needed
+    resolvedSrc = `/api/photos/asset?blobName=${encodeURIComponent(src)}`;
+  } else {
+    // Fallback: never allow direct blob URLs
+    resolvedSrc = '';
+  }
+  // (removed unused watermarkUrl)
 
   return (
     <div style={containerStyle}>

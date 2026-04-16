@@ -54,7 +54,7 @@ router.post('/assemble-chunks', express.json({ limit: '2mb' }), async (req, res)
 
     // Upload to Azure
     const blobName = `${albumId}/${Date.now()}_${fileName}`;
-    const photoUrl = await uploadImageBufferToAzure(fileBuffer, blobName, mimetype || 'application/octet-stream');
+    const photoBlobPath = await uploadImageBufferToAzure(fileBuffer, blobName, mimetype || 'application/octet-stream');
 
     // Extract metadata
     let extractedMetadata = {};
@@ -82,14 +82,15 @@ router.post('/assemble-chunks', express.json({ limit: '2mb' }), async (req, res)
     `, [
       albumId,
       fileName,
-      photoUrl,
-      photoUrl,
+      photoBlobPath,
+      photoBlobPath,
       description,
       Object.keys(mergedMetadata).length > 0 ? JSON.stringify(mergedMetadata) : null,
       width,
       height,
       fileBuffer.length
     ]);
+    // ...existing code...
 
     return res.status(201).json({
       ...result,

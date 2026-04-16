@@ -68,7 +68,8 @@ export async function uploadImageBufferToAzure(buffer, blobName, contentType = '
     },
   });
 
-  return blockBlobClient.url;
+  // Return only the blob path (relative to container)
+  return blobName;
 }
 
 export function getBlobNameFromUrlOrName(blobUrlOrName) {

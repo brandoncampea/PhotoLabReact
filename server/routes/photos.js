@@ -1458,8 +1458,8 @@ router.post('/upload', requireActiveSubscription, upload.fields([
       `, [
         parsedAlbumId,
         file.originalname,
-        photoUrl,
-        photoUrl,
+        photoUrl && typeof photoUrl === 'string' ? require('../services/azureStorage.js').getBlobNameFromUrlOrName(photoUrl) : photoUrl,
+        photoUrl && typeof photoUrl === 'string' ? require('../services/azureStorage.js').getBlobNameFromUrlOrName(photoUrl) : photoUrl,
         entry.description || '',
         Object.keys(mergedMetadata).length > 0 ? JSON.stringify(mergedMetadata) : null,
         width,
