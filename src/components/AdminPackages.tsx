@@ -13,12 +13,14 @@ import React, { useState, useEffect } from 'react';
 import { getRetailPrice } from '../utils/priceList';
 import { packageService } from '../services/packageService';
 
-interface Product {
-  id: any;
-  name: string;
-  sizes: any[];
+
+import { Product, Package, PackageItem, PriceListItem, PriceListProduct, PriceListProductSize } from '../types';
+
+interface AdminPackagesProps {
+  products: Product[];
+  priceListId: number;
+  priceListItems: PriceListItem[];
 }
-// ...other interfaces...
 
 const AdminPackages: React.FC<AdminPackagesProps> = ({ products, priceListId, priceListItems }) => {
     // Helper to calculate cost, retail, profit, and savings for a package
@@ -26,11 +28,11 @@ const AdminPackages: React.FC<AdminPackagesProps> = ({ products, priceListId, pr
       let totalCost = 0;
       let totalRetail = 0;
       pkg.items.forEach((item: PackageItem) => {
-        const product = products.find(p => p.id === item.productId);
-        const size = product?.sizes?.find((s: any) => s.id === item.sizeId);
+        const product = products.find((p: Product) => p.id === item.productId);
+        const size = product?.sizes?.find((s: PriceListProductSize) => s.id === item.productSizeId);
         const cost = size?.cost ?? 0;
         // Use centralized price lookup for retail
-        const retail = getRetailPrice(item.productId, item.sizeId, priceListItems);
+        const retail = getRetailPrice(item.productId, item.productSizeId, priceListItems);
         const quantity = item.quantity || 1;
         totalCost += cost * quantity;
         totalRetail += retail * quantity;
@@ -65,7 +67,7 @@ const AdminPackages: React.FC<AdminPackagesProps> = ({ products, priceListId, pr
 
   // Sports packages: only prints (8x10, 4x5), digital images, buttons, magnets, keychains
   // Filter out fine art, framed, metal, and wood prints from suggestions
-  const nonSpecialtyProducts = products.filter(p => {
+  const nonSpecialtyProducts = products.filter((p: Product) => {
     const name = p.name?.toLowerCase() || '';
     return !(
       name.includes('fine art') ||
@@ -80,39 +82,36 @@ const AdminPackages: React.FC<AdminPackagesProps> = ({ products, priceListId, pr
   // Helper to find valid productId and productSizeId from priceListItems
   function findProductSize(productKeyword: string, sizeKeyword: string) {
     const norm = (str: string) => String(str || '').trim().toLowerCase();
-    // Try to find a close match for both product and size, but skip fine art, framed, metal, and wood prints
-    let pli = priceListItems.find(item => {
-      const product = products.find(p => p.id === item.productId);
+    let pli = priceListItems.find((item: PriceListItem) => {
+      const product = products.find((p: Product) => p.id === item.productId);
       const pname = product?.name?.toLowerCase() || '';
       if (!product || pname.includes('fine art') || pname.includes('framed') || pname.includes('metal') || pname.includes('wood')) return false;
-      const size = product.sizes?.find(s => s.id === item.sizeId);
+      const size = product.sizes?.find((s: PriceListProductSize) => s.id === item.productSizeId);
       return (
         size &&
         (norm(product.name).includes(norm(productKeyword)) || norm(productKeyword).includes(norm(product.name))) &&
         (norm(size.name).includes(norm(sizeKeyword)) || norm(sizeKeyword).includes(norm(size.name)))
       );
     });
-    // If not found, try to match product only, and pick the first available size
     if (!pli) {
-      pli = priceListItems.find(item => {
-        const product = products.find(p => p.id === item.productId);
+      pli = priceListItems.find((item: PriceListItem) => {
+        const product = products.find((p: Product) => p.id === item.productId);
         const pname = product?.name?.toLowerCase() || '';
         if (!product || pname.includes('fine art') || pname.includes('framed') || pname.includes('metal') || pname.includes('wood')) return false;
         return (norm(product.name).includes(norm(productKeyword)) || norm(productKeyword).includes(norm(product.name)));
       });
     }
-    // If still not found, try to match size only, and pick the first available product
     if (!pli) {
-      pli = priceListItems.find(item => {
-        const product = products.find(p => p.id === item.productId);
+      pli = priceListItems.find((item: PriceListItem) => {
+        const product = products.find((p: Product) => p.id === item.productId);
         const pname = product?.name?.toLowerCase() || '';
         if (!product || pname.includes('fine art') || pname.includes('framed') || pname.includes('metal') || pname.includes('wood')) return false;
-        const size = product.sizes?.find(s => s.id === item.sizeId);
+        const size = product.sizes?.find((s: PriceListProductSize) => s.id === item.productSizeId);
         return size && (norm(size.name).includes(norm(sizeKeyword)) || norm(sizeKeyword).includes(norm(size.name)));
       });
     }
     return pli
-      ? { productId: pli.productId, sizeId: pli.sizeId }
+      ? { productId: pli.productId, sizeId: pli.productSizeId }
       : { productId: null, sizeId: null };
   }
 
@@ -123,24 +122,20 @@ const AdminPackages: React.FC<AdminPackagesProps> = ({ products, priceListId, pr
       price: 19.99,
       items: [
         (() => {
-          const pli = priceListItems.find(
-            pli => {
-              const product = products.find(p => p.id === pli.productId && p.name.toLowerCase().includes('8x10'));
-              const size = product?.sizes?.find(s => s.id === pli.sizeId && s.name.toLowerCase().includes('8x10'));
-              return product && size;
-            }
-          );
-          return pli ? { productId: pli.productId, sizeId: pli.sizeId, quantity: 1 } : null;
+          const pli = priceListItems.find((pli: PriceListItem) => {
+            const product = products.find((p: Product) => p.id === pli.productId && p.name.toLowerCase().includes('8x10'));
+            const size = product?.sizes?.find((s: PriceListProductSize) => s.id === pli.productSizeId && s.name.toLowerCase().includes('8x10'));
+            return product && size;
+          });
+          return pli ? { productId: pli.productId, sizeId: pli.productSizeId, quantity: 1 } : null;
         })(),
         (() => {
-          const pli = priceListItems.find(
-            pli => {
-              const product = products.find(p => p.id === pli.productId && p.name.toLowerCase().includes('4x5'));
-              const size = product?.sizes?.find(s => s.id === pli.sizeId && s.name.toLowerCase().includes('4x5'));
-              return product && size;
-            }
-          );
-          return pli ? { productId: pli.productId, sizeId: pli.sizeId, quantity: 2 } : null;
+          const pli = priceListItems.find((pli: PriceListItem) => {
+            const product = products.find((p: Product) => p.id === pli.productId && p.name.toLowerCase().includes('4x5'));
+            const size = product?.sizes?.find((s: PriceListProductSize) => s.id === pli.productSizeId && s.name.toLowerCase().includes('4x5'));
+            return product && size;
+          });
+          return pli ? { productId: pli.productId, sizeId: pli.productSizeId, quantity: 2 } : null;
         })(),
       ].filter(i => i && i.productId && i.sizeId),
     },
@@ -245,29 +240,15 @@ const AdminPackages: React.FC<AdminPackagesProps> = ({ products, priceListId, pr
     .map(pkg => {
       const validItems = pkg.items
         .map(item => {
-          // Find a valid priceListItem for this product/size
-          let pli = null;
-          // Try to match by productKeyword and sizeKeyword if present
-          if (item.productKeyword && item.sizeKeyword) {
-            pli = priceListItems.find(pli => {
-              const product = products.find(p => p.id === pli.productId);
-              const size = product?.sizes?.find(s => s.id === pli.sizeId);
-              return (
-                product && size &&
-                product.name.toLowerCase().includes(item.productKeyword.toLowerCase()) &&
-                size.name.toLowerCase().includes(item.sizeKeyword.toLowerCase())
-              );
-            });
+          let pli: PriceListItem | undefined = undefined;
+          // Try to match by productId/sizeId if present
+          if (item.productId && item.sizeId) {
+            pli = priceListItems.find((pli: PriceListItem) => pli.productId === item.productId && pli.productSizeId === item.sizeId);
           }
-          // Fallback: match by productId/sizeId if present
-          if (!pli && item.productId && item.sizeId) {
-            pli = priceListItems.find(pli => pli.productId === item.productId && pli.sizeId === item.sizeId);
-          }
-          // If found, return the correct IDs
           return pli ? {
             ...item,
             productId: pli.productId,
-            sizeId: pli.sizeId
+            sizeId: pli.productSizeId
           } : null;
         })
         .filter(Boolean);
@@ -276,17 +257,17 @@ const AdminPackages: React.FC<AdminPackagesProps> = ({ products, priceListId, pr
     .filter(pkg => pkg.items.length > 0);
 
   // DEBUG: Print all available product and size names
-  const debugProductSizeList = products.map(p => ({
+  const debugProductSizeList = products.map((p: Product) => ({
     product: p.name,
-    sizes: p.sizes.map(s => s.name)
+    sizes: p.sizes.map((s: PriceListProductSize) => s.name)
   }));
 
   // DEBUG: Print which product/size combos are matched for each suggested package
   const debugSuggestedMatches = rawSuggestedPackages.map(pkg => ({
     name: pkg.name,
     items: pkg.items.map(item => {
-      const prod = products.find(p => p.id === item.productId);
-      const size = prod?.sizes?.find(s => s.id === item.sizeId);
+      const prod = products.find((p: Product) => p.id === item.productId);
+      const size = prod?.sizes?.find((s: PriceListProductSize) => s.id === item.sizeId);
       return {
         productId: item.productId,
         sizeId: item.sizeId,
@@ -309,9 +290,9 @@ const AdminPackages: React.FC<AdminPackagesProps> = ({ products, priceListId, pr
 
   // Helper to get cost for a package
   const getPackageCost = (pkg: Package | { name: string; price: number; items: PackageItem[] }) => {
-    return pkg.items.reduce((sum, item) => {
-      const product = products.find(p => p.id === item.productId);
-      const size = product?.sizes.find((s: any) => s.id === item.sizeId);
+    return pkg.items.reduce((sum: number, item: PackageItem) => {
+      const product = products.find((p: Product) => p.id === item.productId);
+      const size = product?.sizes.find((s: PriceListProductSize) => s.id === item.productSizeId);
       return sum + ((size?.cost || 0) * item.quantity);
     }, 0);
   };
@@ -326,7 +307,7 @@ const AdminPackages: React.FC<AdminPackagesProps> = ({ products, priceListId, pr
   const [sizeFilter, setSizeFilter] = useState('');
 
   // Form handlers
-  const handleSelectItem = (productId: any, sizeId: any, checked: boolean) => {
+  const handleSelectItem = (productId: number, sizeId: number, checked: boolean) => {
     setForm(prev => {
       if (checked) {
         if (!prev.items.some(item => item.productId === productId && item.sizeId === sizeId)) {
@@ -339,7 +320,7 @@ const AdminPackages: React.FC<AdminPackagesProps> = ({ products, priceListId, pr
     });
   };
 
-  const handleQuantityChange = (productId: any, sizeId: any, quantity: number) => {
+  const handleQuantityChange = (productId: number, sizeId: number, quantity: number) => {
     setForm(prev => ({
       ...prev,
       items: prev.items.map(item =>

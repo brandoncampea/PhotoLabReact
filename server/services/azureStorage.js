@@ -1,3 +1,11 @@
+
+const STORAGE_CONTAINER = process.env.AZURE_STORAGE_CONTAINER || process.env.AZURE_CONTAINER_NAME;
+// Log container environment variables at startup for verification
+console.log('[AZURE CONTAINER DEBUG]', {
+  AZURE_STORAGE_CONTAINER: process.env.AZURE_STORAGE_CONTAINER,
+  AZURE_CONTAINER_NAME: process.env.AZURE_CONTAINER_NAME,
+  STORAGE_CONTAINER,
+});
 import {
   BlobServiceClient,
   BlobSASPermissions,
@@ -12,7 +20,11 @@ const STORAGE_CONNECTION_STRING =
   || (STORAGE_ACCOUNT && STORAGE_KEY
     ? `DefaultEndpointsProtocol=https;AccountName=${STORAGE_ACCOUNT};AccountKey=${STORAGE_KEY};EndpointSuffix=core.windows.net`
     : null);
-const STORAGE_CONTAINER = process.env.AZURE_STORAGE_CONTAINER || process.env.AZURE_CONTAINER_NAME || 'photos';
+// STORAGE_CONTAINER is already declared above. Duplicate declaration removed.
+
+if (!STORAGE_CONTAINER) {
+  throw new Error('Azure Storage container name is not set. Please set AZURE_STORAGE_CONTAINER or AZURE_CONTAINER_NAME in your environment.');
+}
 
 let containerClient;
 

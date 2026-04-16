@@ -290,6 +290,7 @@ export interface UserAccount {
   lastLoginDate?: string;
   studioId?: number;
   studioName?: string;
+  watchedPlayers?: string[];
 }
 
 export interface DashboardStats {

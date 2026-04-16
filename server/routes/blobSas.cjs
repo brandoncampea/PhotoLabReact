@@ -33,13 +33,21 @@ router.get(['/sas-url', '/'], async (req, res) => {
     const sasToken = generateBlobSASQueryParameters({
       containerName,
       blobName,
-      permissions: BlobSASPermissions.parse('r'),
+      permissions: BlobSASPermissions.parse('cwr'), // create, write, read
       startsOn: new Date(),
       expiresOn: new Date(Date.now() + 3600 * 1000), // 1 hour
       protocol: SASProtocol.Https,
     }, sharedKeyCredential).toString();
 
     const url = `https://${accountName}.blob.core.windows.net/${containerName}/${blobName}?${sasToken}`;
+    // Log for debugging
+    console.log('[SAS DEBUG]', {
+      blobName,
+      containerName,
+      url,
+      permissions: 'cwr',
+      time: new Date().toISOString(),
+    });
     res.json({ url });
   } catch (err) {
     console.error(err);

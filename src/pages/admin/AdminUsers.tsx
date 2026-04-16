@@ -148,6 +148,7 @@ const AdminUsers: React.FC = () => {
               <th>Email</th>
               {isSuperAdmin && <th>Studio</th>}
               <th>Role</th>
+              <th>Watched Players</th>
               <th>Registered</th>
               <th>Last Login</th>
               <th>Orders</th>
@@ -185,6 +186,11 @@ const AdminUsers: React.FC = () => {
                     <option value="studio_admin">🏢 Studio Admin</option>
                     <option value="super_admin">👑 Super Admin</option>
                   </select>
+                </td>
+                <td>
+                  {user.watchedPlayers && user.watchedPlayers.length > 0
+                    ? user.watchedPlayers.join(', ')
+                    : <span className="muted-text" style={{ fontStyle: 'italic' }}>None</span>}
                 </td>
                 <td>{new Date(user.registeredDate).toLocaleDateString()}</td>
                 <td>

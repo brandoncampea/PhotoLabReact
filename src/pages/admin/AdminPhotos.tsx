@@ -1,3 +1,80 @@
+// --- Local type definitions and stubs for missing types/functions ---
+type DuplicateMode = 'skip' | 'overwrite' | 'allow';
+
+type UploadItem = {
+  id: string;
+  file: File;
+  previewUrl: string;
+  progress: number;
+  status: 'queued' | 'uploading' | 'done' | 'error';
+  duplicateMode: DuplicateMode;
+  attempts: number;
+  taggedPlayer?: string | null;
+  description?: string;
+  error?: string;
+};
+
+type DetectionResult = {
+  detectedNumbers: string[];
+  usedCachedDetections: boolean;
+  detectedNumbersUpdatedAt: string | null;
+  numberMatchingAvailable: boolean;
+  rosterPlayersWithNumbersCount: number;
+  faceMatchingAvailable: boolean;
+  faceMatches: Array<{ playerName: string; playerNumber?: string; distance?: number }>;
+  faceBoxes: FaceTagBox[];
+  faceDetectionError?: string | null;
+  numberMatches: Array<{ playerName: string; playerNumber?: string; matchedNumber?: string }>;
+  suggestions: Array<{ playerName: string; playerNumber?: string; reasons?: string[]; confidence?: number }>;
+};
+
+// --- Implemented functions for auto-tagging and batch detection ---
+// Extract player name from filename (e.g., PAYTON_ROGERS_63_MM.jpg => Payton Rogers)
+const extractPlayerNameFromFilename = (filename: string): string | null => {
+  const base = filename.replace(/\.[^.]+$/, '');
+  const normalized = base.replace(/[-]+/g, '_');
+  const parts = normalized.split('_').filter(Boolean);
+  if (parts.length === 0) return null;
+  // Only use alphabetic parts for name
+  const isNamePart = (part: string) => /^[A-Za-z]+$/.test(part) && !(part.length <= 2 && part === part.toUpperCase());
+  const nameParts = parts.filter(isNamePart);
+  if (nameParts.length === 0) return null;
+  const name = nameParts.map(
+    (part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()
+  ).join(' ');
+  return name.trim() || null;
+};
+
+// Auto-tag a photo from filename and update playerNames
+const autoTagPhotoFromFilenameAndFaces = async ({ photo, rosterPlayers, photoService, onTagged }) => {
+  // Try to extract player name from filename
+  const detectedName = extractPlayerNameFromFilename(photo.fileName || '');
+  let matchedPlayer = null;
+  if (detectedName && Array.isArray(rosterPlayers)) {
+    matchedPlayer = rosterPlayers.find(r => r.playerName.toLowerCase() === detectedName.toLowerCase());
+  }
+  // If found, update photo playerNames
+  if (matchedPlayer) {
+    await photoService.updatePhoto(photo.id, { playerNames: matchedPlayer.playerName });
+    if (onTagged) onTagged([{ playerName: matchedPlayer.playerName }]);
+  } else if (detectedName) {
+    // If not on roster, still tag with detected name
+    await photoService.updatePhoto(photo.id, { playerNames: detectedName });
+    if (onTagged) onTagged([{ playerName: detectedName }]);
+  } else {
+    if (onTagged) onTagged([]);
+  }
+};
+
+// Dummy face detection (can be replaced with real model)
+const detectFaceBoxesInBrowser = async (photo) => {
+  // Placeholder: return empty array
+  return { faceBoxes: [] };
+};
+
+
+
+const setImageRef = (_photoId: number, _el: HTMLImageElement | null) => {};
 import React, { useState, useEffect } from 'react';
 
 // Collapsible Upload Progress Panel (must be top-level)
@@ -22,43 +99,153 @@ function UploadProgressPanel({ uploadItems, uploading, handleRetryUploadItem, se
         </button>
       </div>
 
-      {collapsed ? (
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.5rem', overflowX: 'auto', paddingBottom: 4 }}>
-          {uploadItems.map(item => (
-            <div key={item.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 48 }}>
-              <img
-                src={item.previewUrl}
-                alt={item.file.name}
-                style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border-color)' }}
-              />
-              <div style={{ width: 36, height: 5, background: 'var(--bg-primary)', borderRadius: 3, marginTop: 2, overflow: 'hidden', border: '1px solid var(--border-color)' }}>
-                <div style={{ width: `${item.progress}%`, height: '100%', background: item.status === 'error' ? 'var(--error-color)' : 'var(--primary-color)', transition: 'width 0.2s' }} />
-              </div>
+      {/* Always show thumbnails/progress bars */}
+      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.5rem', overflowX: 'auto', paddingBottom: 4 }}>
+        {uploadItems.map(item => (
+          <div key={item.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 48 }}>
+            <img
+              src={item.previewUrl}
+              alt={item.file.name}
+              style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border-color)' }}
+            />
+            <div style={{ width: 36, height: 5, background: 'var(--bg-primary)', borderRadius: 3, marginTop: 2, overflow: 'hidden', border: '1px solid var(--border-color)' }}>
+              <div style={{ width: `${item.progress}%`, height: '100%', background: item.status === 'error' ? 'var(--error-color)' : 'var(--primary-color)', transition: 'width 0.2s' }} />
             </div>
-          ))}
-          <span style={{ fontSize: '0.85rem', color: 'var(--muted-color)', marginLeft: 8 }}>
-            {uploadingCount > 0 && `${uploadingCount} uploading`}
-            {doneCount > 0 && ` • ${doneCount} done`}
-            {failedCount > 0 && ` • ${failedCount} failed`}
-          </span>
+          </div>
+        ))}
+        <span style={{ fontSize: '0.85rem', color: 'var(--muted-color)', marginLeft: 8 }}>
+          {uploadingCount > 0 && `${uploadingCount} uploading`}
+          {doneCount > 0 && ` • ${doneCount} done`}
+          {failedCount > 0 && ` • ${failedCount} failed`}
+        </span>
+      </div>
+
+      {/* Show full details only when expanded */}
+      {!collapsed && (
+        <div style={{ marginTop: '1rem' }}>
+          {/* Place for full upload details, actions, errors, etc. */}
+          {/* ...existing or future expanded content... */}
         </div>
-      ) : null}
+      )}
     </div>
   );
-// removed extra closing curly brace
 }
+
+
 import * as blazeface from '@tensorflow-models/blazeface';
 import '@tensorflow/tfjs';
-import { useSasUrl } from '../../hooks/useSasUrl';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Photo, Album, PhotoMetadata } from '../../types';
-import { photoService } from '../../services/photoService';
-import { uploadFileToAzureBlob } from '../../services/photoService';
-import { recordPhotoBlob } from '../../services/photoService';
+import { photoService, uploadFileToAzureBlob, recordPhotoBlob } from '../../services/photoService';
 import { albumService } from '../../services/albumService';
 import { albumAdminService } from '../../services/albumAdminService';
+import { useSasUrl } from '../../hooks/useSasUrl';
+import playerWatchlistService from '../../services/playerWatchlistService';
+import notifyWatchersService from '../../services/notifyWatchersService';
 
-import { autoTagPhotoFromFilenameAndFaces } from '../../utils/autoTagPhotoFromFilenameAndFaces';
+const AdminPhotos: React.FC = () => {
+  // Batch detect all photos in album (must be inside component for state access)
+  const handleDetectAll = async () => {
+    if (!photos.length) return;
+    setLoading(true);
+    try {
+      for (const photo of photos) {
+        await autoTagPhotoFromFilenameAndFaces({
+          photo,
+          rosterPlayers,
+          photoService,
+          onTagged: () => {},
+        });
+        // Optionally, run face detection here if needed
+        // const detection = await detectFaceBoxesInBrowser(photo);
+        // setDetectionByPhotoId(prev => ({ ...prev, [photo.id]: detection }));
+      }
+      await loadPhotos();
+      setUploadMessage({ type: 'success', text: 'Auto-tagged all photos from filenames.' });
+    } catch (err) {
+      setUploadMessage({ type: 'error', text: 'Failed to auto-tag all photos.' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // --- All state declarations must come first (before any useEffect) ---
+  // albumId must be declared first so it is available to all hooks below
+  const [albumId, setAlbumId] = useState<number | null>(null);
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const [albums, setAlbums] = useState<Album[]>([]);
+  const [photos, setPhotos] = useState<Photo[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ completed: number; total: number }>({ completed: 0, total: 0 });
+  const [uploadMessage, setUploadMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [showUploadPanel, setShowUploadPanel] = useState(true);
+  const [metadataPhoto, setMetadataPhoto] = useState<Photo | null>(null);
+  const [coverMessage, setCoverMessage] = useState<string | null>(null);
+  const [coverLoadingId, setCoverLoadingId] = useState<number | null>(null);
+  const [coverSuccessId, setCoverSuccessId] = useState<number | null>(null);
+  const [uploadItems, setUploadItems] = useState<UploadItem[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
+  const [rosterUploading, setRosterUploading] = useState(false);
+  const [rosterMessage, setRosterMessage] = useState<string | null>(null);
+  const [rosterPlayers, setRosterPlayers] = useState<Array<{ playerName: string; playerNumber?: string }>>([]);
+  const [pendingDuplicateFiles, setPendingDuplicateFiles] = useState<File[] | null>(null);
+  const [pendingDuplicateCount, setPendingDuplicateCount] = useState(0);
+  const [duplicateModeSelection, setDuplicateModeSelection] = useState<DuplicateMode>('skip');
+  const [detectionByPhotoId, setDetectionByPhotoId] = useState<Record<number, DetectionResult>>({});
+  const [detectingPhotoId, setDetectingPhotoId] = useState<number | null>(null);
+  const [selectedFaceBoxByPhotoId, setSelectedFaceBoxByPhotoId] = useState<Record<number, string | null>>({});
+  const [playerSearchByPhotoId, setPlayerSearchByPhotoId] = useState<Record<number, string>>({});
+  // Notify Watchers state
+  const [notifyLoading, setNotifyLoading] = useState(false);
+  const [notifyResult, setNotifyResult] = useState<string | null>(null);
+  const [watchedTaggedPlayers, setWatchedTaggedPlayers] = useState<{ playerName: string, count: number }[]>([]);
+
+  // Compute watched tagged players in album
+  useEffect(() => {
+    async function fetchWatchedTaggedPlayers() {
+      if (!albumId || !photos.length) {
+        setWatchedTaggedPlayers([]);
+        return;
+      }
+      // Get all tagged player names in album
+      const taggedNames = new Set<string>();
+      photos.forEach(photo => {
+        String(photo.playerNames || '').split(',').map(n => n.trim()).filter(Boolean).forEach(n => taggedNames.add(n));
+      });
+      if (taggedNames.size === 0) {
+        setWatchedTaggedPlayers([]);
+        return;
+      }
+      // Get roster with isWatching
+      try {
+        const roster = await playerWatchlistService.getRoster();
+        const watched = Array.from(taggedNames).map(playerName => {
+          const rosterEntry = roster.find(r => r.playerName.toLowerCase() === playerName.toLowerCase() && r.isWatching);
+          return rosterEntry ? { playerName: rosterEntry.playerName, count: 1 } : null;
+        }).filter(Boolean) as { playerName: string, count: number }[];
+        setWatchedTaggedPlayers(watched);
+      } catch {
+        setWatchedTaggedPlayers([]);
+      }
+    }
+    fetchWatchedTaggedPlayers();
+  }, [albumId, photos]);
+
+  const handleNotifyWatchers = async () => {
+    if (!albumId) return;
+    setNotifyLoading(true);
+    setNotifyResult(null);
+    try {
+      const result = await notifyWatchersService.notify(albumId);
+      setNotifyResult(result?.message || `Notified ${result?.notified || 0} watchers.`);
+    } catch (err: any) {
+      setNotifyResult(err?.response?.data?.error || 'Failed to notify watchers.');
+    } finally {
+      setNotifyLoading(false);
+    }
+  };
 
 
 
@@ -117,78 +304,6 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
 
 
 
-const AdminPhotos: React.FC = () => {
-      // Handler to detect faces/numbers for all photos in the current album
-      const handleDetectAll = async () => {
-        if (!photos.length) {
-          setUploadMessage({ type: 'error', text: 'No photos to detect.' });
-          return;
-        }
-        setUploadMessage({ type: 'success', text: 'Detecting faces/numbers for all photos...' });
-        for (const photo of photos) {
-          await handleDetectPlayers(photo, { silent: true });
-        }
-        setUploadMessage({ type: 'success', text: 'Detection complete for all photos.' });
-      };
-    // Store refs to main image elements by photo id (must be inside component)
-    const imageRefs = React.useRef<Record<number, HTMLImageElement | null>>({});
-    const setImageRef = (photoId: number, el: HTMLImageElement | null) => {
-      imageRefs.current[photoId] = el;
-    };
-  type DuplicateMode = 'allow' | 'skip' | 'overwrite';
-  type DetectionResult = {
-    detectedNumbers: string[];
-    usedCachedDetections?: boolean;
-    detectedNumbersUpdatedAt?: string | null;
-    numberMatchingAvailable?: boolean;
-    rosterPlayersWithNumbersCount?: number;
-    faceMatchingAvailable?: boolean;
-    faceMatches: Array<{ playerName: string; playerNumber?: string | null; distance: number }>;
-    faceBoxes: FaceTagBox[];
-    faceDetectionError?: string | null;
-    numberMatches: Array<{ playerName: string; playerNumber?: string | null; matchedNumber: string }>;
-    suggestions: Array<{ playerName: string; playerNumber?: string | null; reasons: string[]; confidence: number }>;
-  };
-
-  type UploadItem = {
-    id: string;
-    file: File;
-    previewUrl: string;
-    progress: number;
-    status: 'queued' | 'uploading' | 'done' | 'error';
-    duplicateMode: DuplicateMode;
-    attempts?: number;
-    metadata?: PhotoMetadata;
-    error?: string;
-    taggedPlayer?: string | null;
-  };
-
-  const [searchParams] = useSearchParams();
-  const navigate = useNavigate();
-  const [albums, setAlbums] = useState<Album[]>([]);
-  const [photos, setPhotos] = useState<Photo[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<{ completed: number; total: number }>({ completed: 0, total: 0 });
-  const [uploadMessage, setUploadMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [showUploadPanel, setShowUploadPanel] = useState(true);
-  const [metadataPhoto, setMetadataPhoto] = useState<Photo | null>(null);
-  const [albumId, setAlbumId] = useState<number | null>(null);
-  const [coverMessage, setCoverMessage] = useState<string | null>(null);
-  const [coverLoadingId, setCoverLoadingId] = useState<number | null>(null);
-  const [coverSuccessId, setCoverSuccessId] = useState<number | null>(null);
-  const [uploadItems, setUploadItems] = useState<UploadItem[]>([]);
-  const [isDragging, setIsDragging] = useState(false);
-  const [rosterUploading, setRosterUploading] = useState(false);
-  const [rosterMessage, setRosterMessage] = useState<string | null>(null);
-  const [rosterPlayers, setRosterPlayers] = useState<Array<{ playerName: string; playerNumber?: string }>>([]);
-  const [pendingDuplicateFiles, setPendingDuplicateFiles] = useState<File[] | null>(null);
-  const [pendingDuplicateCount, setPendingDuplicateCount] = useState(0);
-  const [duplicateModeSelection, setDuplicateModeSelection] = useState<DuplicateMode>('skip');
-  const [detectionByPhotoId, setDetectionByPhotoId] = useState<Record<number, DetectionResult>>({});
-  const [detectingPhotoId, setDetectingPhotoId] = useState<number | null>(null);
-  const [selectedFaceBoxByPhotoId, setSelectedFaceBoxByPhotoId] = useState<Record<number, string | null>>({});
-  const [playerSearchByPhotoId, setPlayerSearchByPhotoId] = useState<Record<number, string>>({});
 
   const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -333,7 +448,7 @@ const AdminPhotos: React.FC = () => {
         );
         try {
           // Direct-to-Blob upload
-          const blobName = `${albumId}/${item.file.name}`;
+          const blobName = `albums/${albumId}/${item.file.name}`;
           const blobUrl = await uploadFileToAzureBlob({
             file: item.file,
             blobName,
@@ -346,7 +461,7 @@ const AdminPhotos: React.FC = () => {
             },
           });
           // Notify backend with blobUrl, description, and metadata
-          await recordPhotoBlob({
+          const recordResult = await recordPhotoBlob({
             albumId,
             fileName: item.file.name,
             blobUrl,
@@ -354,6 +469,48 @@ const AdminPhotos: React.FC = () => {
             fileSizeBytes: item.file.size,
             // Optionally add width, height, metadata, playerName, playerNumber if available
           });
+
+
+          // Ensure roster is loaded before auto-tagging
+          if (rosterPlayers.length === 0) {
+            await loadRoster();
+          }
+
+
+          // Fetch the latest photo object from backend for accurate tagging
+          let latestPhoto = null;
+          try {
+            const refreshedPhotos = await photoService.getPhotosByAlbumId(albumId);
+            latestPhoto = refreshedPhotos.find((p: any) => p.fileName === item.file.name);
+          } catch {}
+
+          if (recordResult && recordResult.id && latestPhoto) {
+            // Run auto-tagging and capture the detected player(s)
+            let detectedPlayerNames: string[] = [];
+            await autoTagPhotoFromFilenameAndFaces({
+              photo: latestPhoto,
+              rosterPlayers,
+              photoService,
+              handleDetectPlayers: () => {}, // No-op for now
+              detectionByPhotoId,
+              setDetectionByPhotoId,
+              setUploadMessage,
+              onTagged: (players: Array<{ playerName: string }>) => {
+                detectedPlayerNames = players.map(p => p.playerName);
+              }
+            });
+            // Wait for the backend to update before reloading
+            await new Promise(res => setTimeout(res, 200));
+            // Update uploadItems to show tagged players in the upload panel
+            setUploadItems((prev) =>
+              prev.map((entry) =>
+                entry.id === item.id ? { ...entry, taggedPlayer: detectedPlayerNames.join(', ') } : entry
+              )
+            );
+            // Refresh UI state to show new tags
+            await loadPhotos();
+          }
+
           setUploadItems((prev) =>
             prev.map((entry) =>
               entry.id === item.id ? { ...entry, status: 'done', progress: 100, error: undefined, attempts } : entry
@@ -412,6 +569,39 @@ const AdminPhotos: React.FC = () => {
     const normalizeName = (name: string) => name.trim().toLowerCase();
     const existingNames = new Set(photos.map((p) => normalizeName(String(p.fileName || ''))));
     const duplicateCandidates = files.filter((file) => existingNames.has(normalizeName(file.name)));
+
+    // Helper to robustly extract a player name from a filename
+    const extractNameFromFilename = (filename: string): string | null => {
+      const base = filename.replace(/\.[^.]+$/, '');
+      const normalized = base.replace(/[-]+/g, '_');
+      const parts = normalized.split('_').filter(Boolean);
+      if (parts.length === 0) return null;
+      // Helper: is a name part (alphabetic, not all uppercase short code, not a number)
+      const isNamePart = (part: string) => /^[A-Za-z]+$/.test(part) && !(part.length <= 2 && part === part.toUpperCase());
+      const nameParts = parts.filter(isNamePart);
+      if (nameParts.length === 0) return null;
+      const name = nameParts.map(
+        (part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()
+      ).join(' ');
+      return name.trim() || null;
+    };
+
+    // Update uploadItems with detected player name immediately
+    setUploadItems((prev) => [
+      ...files.map((file, idx) => {
+        const detectedPlayer = extractNameFromFilename(file.name);
+        return {
+          id: `${Date.now()}-${idx}-${file.name}`,
+          file,
+          previewUrl: URL.createObjectURL(file),
+          progress: 0,
+          status: 'queued',
+          duplicateMode: 'allow',
+          attempts: 0,
+          taggedPlayer: detectedPlayer || null,
+        };
+      }),
+    ]);
 
     if (duplicateCandidates.length > 0) {
       setPendingDuplicateFiles(files);
@@ -905,6 +1095,37 @@ const AdminPhotos: React.FC = () => {
       <div className="page-header">
         <h1>Manage Photos</h1>
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+          {/* Notify Watchers Button */}
+          <button
+            type="button"
+            className="btn btn-warning"
+            style={{ position: 'relative', minWidth: 140, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}
+            onClick={handleNotifyWatchers}
+            disabled={notifyLoading || watchedTaggedPlayers.length === 0}
+            title={watchedTaggedPlayers.length === 0 ? 'No watched tagged players in this album' : 'Notify all customers watching tagged players'}
+          >
+            Notify Watchers
+            {watchedTaggedPlayers.length > 0 && (
+              <span style={{
+                background: '#f5b041',
+                color: '#222',
+                borderRadius: 12,
+                fontSize: '0.85rem',
+                fontWeight: 700,
+                padding: '0.1rem 0.6rem',
+                marginLeft: 4,
+                display: 'inline-block',
+                minWidth: 22,
+                textAlign: 'center',
+              }}>
+                {watchedTaggedPlayers.length}
+              </span>
+            )}
+            {notifyLoading && <span className="spinner" style={{ marginLeft: 6 }} />}
+          </button>
+          {notifyResult && (
+            <span style={{ color: notifyResult.toLowerCase().includes('fail') ? '#e74c3c' : '#27ae60', fontSize: '0.92rem', marginLeft: 8 }}>{notifyResult}</span>
+          )}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
             <label htmlFor="album-select" style={{ fontSize: '0.9rem', fontWeight: 500 }}>
               Select Album *

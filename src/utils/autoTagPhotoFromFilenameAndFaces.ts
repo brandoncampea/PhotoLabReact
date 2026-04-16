@@ -44,6 +44,7 @@ export async function autoTagPhotoFromFilenameAndFaces({
   detectionByPhotoId,
   // setDetectionByPhotoId, // removed unused variable
   setUploadMessage,
+  onTagged,
 }: {
   photo: Photo,
   rosterPlayers: Array<{ playerName: string; playerNumber?: string }>,
@@ -52,25 +53,39 @@ export async function autoTagPhotoFromFilenameAndFaces({
   detectionByPhotoId: Record<number, any>,
   setDetectionByPhotoId: Function,
   setUploadMessage: Function,
+  onTagged?: (players: Array<{ playerName: string }>) => void,
 }) {
   // Dynamically import to avoid circular deps
-  const { detectPlayersFromFilenames } = await import('../services/filenamePlayerDetection'); // removed unused extractPotentialPlayerNamesFromFilenames
+  const { detectPlayersFromFilenames } = await import('../services/filenamePlayerDetection');
 
-
-  // 1. Robustly extract a player name from the filename
-  const extractedName = extractNameFromFilename(photo.fileName);
-  if (extractedName) {
-    // Add to roster if missing
-    addPlayerToRosterIfMissing(rosterPlayers, extractedName);
-    // Only tag the filename-matched player, do NOT run face detection or roster fallback on upload
+  // 1. Try to match any roster player using robust filename detection
+  const detectedPlayers = detectPlayersFromFilenames([photo.fileName], rosterPlayers);
+  if (detectedPlayers.length > 0) {
+    // Add any detected player to roster if missing
+    detectedPlayers.forEach(player => addPlayerToRosterIfMissing(rosterPlayers, player.playerName));
     try {
-      await photoService.updatePhotoPlayers(photo.id, [{ playerName: extractedName }]);
-      setUploadMessage && setUploadMessage({ type: 'success', text: `Auto-tagged with: ${extractedName}` });
+      await photoService.updatePhotoPlayers(photo.id, detectedPlayers);
+      setUploadMessage && setUploadMessage({ type: 'success', text: `Auto-tagged with: ${detectedPlayers.map(p => p.playerName).join(', ')}` });
+      if (onTagged) onTagged(detectedPlayers);
     } catch (error) {
       setUploadMessage && setUploadMessage({ type: 'error', text: 'Failed to auto-tag from filename.' });
     }
     return;
   }
 
-  // 2. If no valid name in filename, do NOT tag anyone. Detection must be triggered manually.
+  // 2. Fallback: extract a name from filename if possible (for non-rostered players)
+  const extractedName = extractNameFromFilename(photo.fileName);
+  if (extractedName) {
+    addPlayerToRosterIfMissing(rosterPlayers, extractedName);
+    try {
+      await photoService.updatePhotoPlayers(photo.id, [{ playerName: extractedName }]);
+      setUploadMessage && setUploadMessage({ type: 'success', text: `Auto-tagged with: ${extractedName}` });
+      if (onTagged) onTagged([{ playerName: extractedName }]);
+    } catch (error) {
+      setUploadMessage && setUploadMessage({ type: 'error', text: 'Failed to auto-tag from filename.' });
+    }
+    return;
+  }
+
+  // 3. If no valid name in filename, do NOT tag anyone. Detection must be triggered manually.
 }

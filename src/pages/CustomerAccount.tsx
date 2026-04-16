@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import playerService from '../services/playerService';
 import { useAuth } from '../contexts/AuthContext';
 import playerWatchlistService, { WatchlistEntry } from '../services/playerWatchlistService';
 import './CustomerAccount.css';
@@ -11,6 +12,23 @@ const CustomerAccount: React.FC = () => {
   const [search, setSearch] = useState('');
   const [actionInProgress, setActionInProgress] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [roster, setRoster] = useState<any[]>([]);
+  const [loadingRoster, setLoadingRoster] = useState(true);
+  // Load roster on mount
+  useEffect(() => {
+    async function loadRoster() {
+      setLoadingRoster(true);
+      try {
+        const data = await playerService.getRoster();
+        setRoster(data);
+      } catch {
+        setRoster([]);
+      } finally {
+        setLoadingRoster(false);
+      }
+    }
+    loadRoster();
+  }, []);
 
   const showMessage = (type: 'success' | 'error', text: string) => {
     setMessage({ type, text });

@@ -54,9 +54,12 @@ export async function uploadFileToAzureBlob({
   onProgress?: (percent: number) => void;
 }): Promise<string> {
   const sasUrl = await getSasUrl(blobName);
-  const blobServiceClient = new BlobServiceClient(sasUrl.substring(0, sasUrl.indexOf('?') + 1));
-  const containerClient = blobServiceClient.getContainerClient(''); // container is in the URL
-  const blockBlobClient = containerClient.getBlockBlobClient(blobName + sasUrl.substring(sasUrl.indexOf('?')));
+  // Use the SAS URL as-is (it already includes the full blob path and token)
+  const blockBlobClient = new BlobServiceClient(sasUrl).getContainerClient('').getBlockBlobClient('');
+  // The above is a workaround to use the full SAS URL directly
+  // Alternatively, use BlockBlobClient directly:
+  // import { BlockBlobClient } from '@azure/storage-blob';
+  // const blockBlobClient = new BlockBlobClient(sasUrl);
   const uploadOptions = onProgress
     ? {
         onProgress: (ev: { loadedBytes: number }) => {
@@ -65,8 +68,14 @@ export async function uploadFileToAzureBlob({
         },
       }
     : {};
-  await blockBlobClient.uploadBrowserData(file, uploadOptions);
-  return blockBlobClient.url;
+  // Use BlockBlobClient directly for upload
+  // await blockBlobClient.uploadBrowserData(file, uploadOptions);
+  // return blockBlobClient.url;
+  // Use BlockBlobClient directly
+  const { BlockBlobClient } = await import('@azure/storage-blob');
+  const directBlobClient = new BlockBlobClient(sasUrl);
+  await directBlobClient.uploadBrowserData(file, uploadOptions);
+  return directBlobClient.url;
 }
 
 import api from './api';
