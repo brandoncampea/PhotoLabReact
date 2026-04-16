@@ -11,6 +11,17 @@ const containerName = process.env.AZURE_CONTAINER_NAME;
 if (!accountName || !accountKey || !containerName) {
   console.error('Missing Azure Storage env vars. Set AZURE_STORAGE_ACCOUNT, AZURE_STORAGE_KEY, AZURE_CONTAINER_NAME.');
 }
+// Endpoint to check Azure Storage config (safe for browser, masks secrets)
+router.get('/config', (req, res) => {
+  const config = {
+    AZURE_STORAGE_ACCOUNT: process.env.AZURE_STORAGE_ACCOUNT || null,
+    AZURE_STORAGE_KEY: process.env.AZURE_STORAGE_KEY ? '***MASKED***' : null,
+    AZURE_CONTAINER_NAME: process.env.AZURE_CONTAINER_NAME || null,
+    AZURE_STORAGE_CONNECTION_STRING: process.env.AZURE_STORAGE_CONNECTION_STRING ? '***MASKED***' : null,
+    NODE_ENV: process.env.NODE_ENV || null,
+  };
+  res.json({ ok: true, config });
+});
 
 // Support both /sas-url and root for compatibility with frontend useSasUrl
 router.get(['/sas-url', '/'], async (req, res) => {
