@@ -21,6 +21,7 @@ type PublicAlbum = {
   createdDate: string;
   batchShippingActive?: boolean;
   batchDeadline?: string;
+  category?: string;
 };
 
 
@@ -31,6 +32,7 @@ const Albums: React.FC = () => {
   const [albums, setAlbums] = useState<PublicAlbum[]>([]);
   const [albumQuery, setAlbumQuery] = useState('');
   const [albumSort, setAlbumSort] = useState<'recent' | 'oldest'>('recent');
+  const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [shareNotification, setShareNotification] = useState('');
@@ -109,6 +111,12 @@ const Albums: React.FC = () => {
   };
 
 
+  // Extract unique categories from albums
+  const albumCategories = React.useMemo(() => {
+    const cats = albums.map(a => a.category).filter(Boolean) as string[];
+    return Array.from(new Set(cats));
+  }, [albums]);
+
   // Filtering and sorting for albums
   const filteredAlbums = React.useMemo(() => {
     let filtered = albums;
@@ -119,13 +127,16 @@ const Albums: React.FC = () => {
         (album.description || '').toLowerCase().includes(query)
       );
     }
+    if (selectedCategory) {
+      filtered = filtered.filter(album => album.category === selectedCategory);
+    }
     filtered = [...filtered].sort((a, b) => {
       const aDate = new Date(a.createdDate).getTime();
       const bDate = new Date(b.createdDate).getTime();
       return albumSort === 'recent' ? bDate - aDate : aDate - bDate;
     });
     return filtered;
-  }, [albums, albumQuery, albumSort]);
+  }, [albums, albumQuery, albumSort, selectedCategory]);
 
   if (loading) {
     return <div className="loading">Loading...</div>;
@@ -190,6 +201,16 @@ const Albums: React.FC = () => {
               placeholder="Filter albums by name or description..."
               style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #3a3656', background: '#141320', color: '#fff', minWidth: 220 }}
             />
+            <select
+              value={selectedCategory}
+              onChange={e => setSelectedCategory(e.target.value)}
+              style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #3a3656', background: '#141320', color: '#fff', minWidth: 140 }}
+            >
+              <option value="">All Categories</option>
+              {albumCategories.map((cat) => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
+            </select>
             <select
               value={albumSort}
               onChange={e => setAlbumSort(e.target.value as 'recent' | 'oldest')}

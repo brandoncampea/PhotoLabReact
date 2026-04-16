@@ -21,25 +21,10 @@ function extractNameFromFilename(filename: string): string | null {
   // Helper: is a name part (alphabetic, not all uppercase short code, not a number)
   const isNamePart = (part: string) => /^[A-Za-z]+$/.test(part) && !(part.length <= 2 && part === part.toUpperCase());
 
-  // Find the longest sequence of consecutive name parts (length > 1)
-  let bestSeq: string[] = [];
-  let currentSeq: string[] = [];
-  for (const part of parts) {
-    if (isNamePart(part)) {
-      currentSeq.push(part);
-    } else {
-      if (currentSeq.length > bestSeq.length && currentSeq.length > 1) {
-        bestSeq = currentSeq;
-      }
-      currentSeq = [];
-    }
-  }
-  // Check at end
-  if (currentSeq.length > bestSeq.length && currentSeq.length > 1) {
-    bestSeq = currentSeq;
-  }
-  if (bestSeq.length === 0) return null;
-  const name = bestSeq.map(
+  // Extract all name parts, ignore numbers and abbreviations
+  const nameParts = parts.filter(isNamePart);
+  if (nameParts.length === 0) return null;
+  const name = nameParts.map(
     (part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()
   ).join(' ');
   return name.trim() || null;
