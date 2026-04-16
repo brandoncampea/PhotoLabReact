@@ -39,13 +39,14 @@ const AdminDashboard: React.FC = () => {
   const [customersRange, setCustomersRange] = useState<'day' | 'week' | 'month'>('month');
   const [pendingRange, setPendingRange] = useState<'day' | 'week' | 'month'>('month');
   const [batchRange, setBatchRange] = useState<'day' | 'week' | 'month'>('month');
+  const [analyticsRange, setAnalyticsRange] = useState<'today' | 'week' | 'month' | 'all'>('all');
 
   useEffect(() => {
     const fetchStats = async () => {
       setLoading(true);
       try {
         const token = localStorage.getItem('token');
-        const statsResponse = await fetch('/api/admin/dashboard-stats', {
+        const statsResponse = await fetch(`/api/admin/dashboard-stats${analyticsRange && analyticsRange !== 'all' ? `?range=${analyticsRange}` : ''}`, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
         if (!statsResponse.ok) throw new Error('Failed to fetch dashboard stats');
@@ -58,7 +59,7 @@ const AdminDashboard: React.FC = () => {
       }
     };
     fetchStats();
-  }, []);
+  }, [analyticsRange]);
 
   if (loading) {
     return <div className="loading">Loading dashboard...</div>;
@@ -171,6 +172,29 @@ const AdminDashboard: React.FC = () => {
 
       <div className="dashboard-widget tallydark-card admin-dashboard-widget">
         <h2 className="admin-dashboard-section-title">Analytics</h2>
+
+        {/* Analytics Time Range Controls */}
+        <div style={{ marginBottom: 16, display: 'flex', gap: 8, alignItems: 'center' }}>
+          <span style={{ fontWeight: 500, marginRight: 8 }}>Time Range:</span>
+          {[
+            { label: 'Today', value: 'today' },
+            { label: 'This Week', value: 'week' },
+            { label: 'This Month', value: 'month' },
+            { label: 'All Time', value: 'all' },
+          ].map((range) => (
+            <button
+              key={range.value}
+              className={
+                'dashboard-pill' + (analyticsRange === range.value ? ' active' : '')
+              }
+              style={{ minWidth: 90, fontWeight: analyticsRange === range.value ? 600 : 400 }}
+              onClick={() => setAnalyticsRange(range.value as any)}
+              disabled={loading && analyticsRange === range.value}
+            >
+              {range.label}
+            </button>
+          ))}
+        </div>
 
         <div className="admin-dashboard-analytics-stats">
           <div className="admin-dashboard-analytics-stat">

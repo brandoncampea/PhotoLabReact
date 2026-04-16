@@ -44,7 +44,7 @@ const AdminAlbums: React.FC = () => {
     const loadAlbums = async () => {
       try {
         const res = await api.get('/albums');
-        console.log('Albums API response:', res.data);
+        // Removed debug log
         setAlbums(res.data || []);
         // Extract unique categories from albums
         if (Array.isArray(res.data)) {
@@ -333,33 +333,57 @@ const AdminAlbums: React.FC = () => {
                   </td>
                 </tr>
               ) : (
-                albums.map((album) => (
-                  <tr key={album.id} style={{ borderBottom: '1px solid #29294a' }}>
-                    <td style={{ padding: '8px 12px' }}>
-                      <AlbumSasCover src={album.coverImageUrl || ''} alt={album.name} />
-                    </td>
-                    <td style={{ fontWeight: 500, padding: '8px 12px', color: '#fff' }}>{album.name}</td>
-                    <td style={{ padding: '8px 12px', color: '#fff' }}>{album.category || '-'}</td>
-                    <td style={{ padding: '8px 12px', color: '#fff' }}>{priceLists.find(pl => pl.id === album.priceListId)?.name || 'Default'}</td>
-                    <td style={{ padding: '8px 12px', color: '#fff' }}>{album.description}</td>
-                    <td style={{ padding: '8px 12px', color: '#fff' }}>{album.isPasswordProtected ? 'Yes' : 'No'}</td>
-                    <td style={{ padding: '8px 12px', color: '#fff' }}>{album.photoCount}</td>
-                    <td style={{ padding: '8px 12px', color: '#fff' }}>{new Date(album.createdDate).toLocaleDateString()}</td>
-                    <td style={{ padding: '8px 12px' }}>
-                      <div className="action-buttons" style={{ display: 'flex', gap: 8 }}>
-                        <button onClick={() => handleEdit(album)} className="btn-icon">✏️</button>
-                        <button onClick={() => handleDelete(album.id)} className="btn-icon">🗑️</button>
-                        <button
-                          onClick={() => window.location.href = `/admin/photos?album=${album.id}`}
-                          className="btn-icon"
-                          title="View Photos"
-                        >
-                          📷
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                albums.map((album) => {
+                  // Try to get the studio slug from user context or localStorage
+                  let studioSlug = user?.studioSlug || localStorage.getItem('studioSlug') || '';
+                  if (!studioSlug && user?.studioId) {
+                    // fallback: try to get from studioId if available
+                    studioSlug = `studio${user.studioId}`;
+                  }
+                  const shareUrl = studioSlug
+                    ? `${window.location.origin}/albums/${album.id}?studioSlug=${encodeURIComponent(studioSlug)}`
+                    : `${window.location.origin}/albums/${album.id}`;
+                  // Use the same logic as public albums for cover image
+                  const coverSrc =
+                    album.coverImageUrl && String(album.coverImageUrl).match(/^\d+$/)
+                      ? `/api/photos/${album.coverImageUrl}/asset?variant=thumbnail`
+                      : album.coverImageUrl || '/default-cover.png';
+                  return (
+                    <tr key={album.id} style={{ borderBottom: '1px solid #29294a' }}>
+                      <td style={{ padding: '8px 12px' }}>
+                        <AlbumSasCover src={coverSrc} alt={album.name} />
+                      </td>
+                      <td style={{ fontWeight: 500, padding: '8px 12px', color: '#fff' }}>{album.name}</td>
+                      <td style={{ padding: '8px 12px', color: '#fff' }}>{album.category || '-'}</td>
+                      <td style={{ padding: '8px 12px', color: '#fff' }}>{priceLists.find(pl => pl.id === album.priceListId)?.name || 'Default'}</td>
+                      <td style={{ padding: '8px 12px', color: '#fff' }}>{album.description}</td>
+                      <td style={{ padding: '8px 12px', color: '#fff' }}>{album.isPasswordProtected ? 'Yes' : 'No'}</td>
+                      <td style={{ padding: '8px 12px', color: '#fff' }}>{album.photoCount}</td>
+                      <td style={{ padding: '8px 12px', color: '#fff' }}>{new Date(album.createdDate).toLocaleDateString()}</td>
+                      <td style={{ padding: '8px 12px' }}>
+                        <div className="action-buttons" style={{ display: 'flex', gap: 8 }}>
+                          <button onClick={() => handleEdit(album)} className="btn-icon">✏️</button>
+                          <button onClick={() => handleDelete(album.id)} className="btn-icon">🗑️</button>
+                          <button
+                            onClick={() => window.location.href = `/admin/photos?album=${album.id}`}
+                            className="btn-icon"
+                            title="View Photos"
+                          >
+                            📷
+                          </button>
+                          <button
+                            className="btn-icon"
+                            title="Copy Share Link"
+                            onClick={() => {
+                              navigator.clipboard.writeText(shareUrl);
+                              alert('Share link copied to clipboard!');
+                            }}
+                          >🔗</button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

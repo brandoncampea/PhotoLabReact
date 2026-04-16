@@ -52,10 +52,11 @@ export const analyticsService = {
     this.trackEvent('photo_view', { photoId, photoFileName, albumId, albumName });
   },
 
+
   // Get analytics summary from backend
-  async getSummary() {
+  async getSummary(timeRange?: string) {
     try {
-      const response = await api.get('/analytics/summary');
+      const response = await api.get('/analytics/summary' + (timeRange && timeRange !== 'all' ? `?range=${timeRange}` : ''));
       return response.data;
     } catch (error) {
       console.warn('Failed to load analytics summary:', error);
@@ -68,10 +69,11 @@ export const analyticsService = {
     }
   },
 
+
   // Get full analytics details (per-album/per-photo) from backend
-  async getDetails() {
+  async getDetails(timeRange?: string) {
     try {
-      const response = await api.get('/analytics/details');
+      const response = await api.get('/analytics/details' + (timeRange && timeRange !== 'all' ? `?range=${timeRange}` : ''));
       return response.data;
     } catch (error) {
       console.warn('Failed to load analytics details:', error);
@@ -99,11 +101,12 @@ export const analyticsService = {
     }
   },
 
+
   // Get all analytics data
-  async getAnalytics(): Promise<AnalyticsData> {
+  async getAnalytics(timeRange?: string): Promise<AnalyticsData> {
     const [summary, details] = await Promise.all([
-      this.getSummary(),
-      this.getDetails(),
+      this.getSummary(timeRange),
+      this.getDetails(timeRange),
     ]);
 
     return {

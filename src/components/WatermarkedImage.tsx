@@ -13,6 +13,10 @@ interface WatermarkedImageProps {
   studioId?: number;
 }
 
+
+// Simple in-memory cache for watermark per studioId
+const watermarkCache: Record<string, Watermark | null> = {};
+
 const WatermarkedImage: React.FC<WatermarkedImageProps> = ({ src, alt, className, style, fill = true, studioId }) => {
   const [watermark, setWatermark] = useState<Watermark | null>(null);
   const [watermarkLoaded, setWatermarkLoaded] = useState(false);
@@ -29,9 +33,21 @@ const WatermarkedImage: React.FC<WatermarkedImageProps> = ({ src, alt, className
 
   useEffect(() => {
     let cancelled = false;
+    const cacheKey = String(studioId || 'default');
+    if (cacheKey in watermarkCache) {
+      setWatermark(watermarkCache[cacheKey]);
+      setWatermarkLoaded(true);
+      return;
+    }
     watermarkService.getDefaultWatermark(studioId)
-      .then(wm => { if (!cancelled) setWatermark(wm); })
-      .catch(() => { if (!cancelled) setWatermark(null); })
+      .then(wm => {
+        watermarkCache[cacheKey] = wm;
+        if (!cancelled) setWatermark(wm);
+      })
+      .catch(() => {
+        watermarkCache[cacheKey] = null;
+        if (!cancelled) setWatermark(null);
+      })
       .finally(() => { if (!cancelled) setWatermarkLoaded(true); });
     return () => { cancelled = true; };
   }, [studioId]);

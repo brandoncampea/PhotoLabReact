@@ -52,10 +52,8 @@ const signAlbumForResponse = (album) => ({
   ...album,
   batchShippingActive: Boolean(album?.batchShippingActive),
   coverImageUrl: album?.coverPhotoId
-    ? `/api/photos/${album.coverPhotoId}/asset?variant=thumbnail`
-    : album?.coverImageUrl
-      ? `/api/photos/proxy?source=${encodeURIComponent(album.coverImageUrl)}`
-      : album?.coverImageUrl,
+    ? String(album.coverPhotoId)
+    : album?.coverImageUrl || '',
 });
 
 const addAlbumPreviewImages = async (albums) => {
@@ -121,7 +119,8 @@ router.get('/', authRequired, async (req, res) => {
           a.is_password_protected as isPasswordProtected,
           a.password,
           a.password_hint as passwordHint,
-          a.created_at as createdDate
+          a.created_at as createdDate,
+          a.studio_id as "studioId"
         FROM albums a
         WHERE a.studio_id = $1
         ORDER BY a.created_at DESC
@@ -142,7 +141,8 @@ router.get('/', authRequired, async (req, res) => {
           a.is_password_protected as isPasswordProtected,
           a.password,
           a.password_hint as passwordHint,
-          a.created_at as createdDate
+          a.created_at as createdDate,
+          a.studio_id as "studioId"
         FROM albums a
         ORDER BY a.created_at DESC
       `);
@@ -176,7 +176,8 @@ router.get('/:id', async (req, res) => {
         a.password_hint as passwordHint,
         COALESCE(sc.is_active, 0) as batchShippingActive,
         sc.batch_deadline as batchDeadline,
-        a.created_at as createdDate
+        a.created_at as createdDate,
+        a.studio_id as "studioId"
       FROM albums a
       LEFT JOIN shipping_config sc ON sc.id = a.studio_id
       WHERE a.id = $1

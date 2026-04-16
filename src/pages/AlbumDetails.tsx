@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
+import WatermarkedImage from '../components/WatermarkedImage';
 import Cropper from 'react-cropper';
 import 'cropperjs/dist/cropper.css';
 import api from '../services/api';
@@ -37,11 +38,21 @@ const AlbumDetails: React.FC = () => {
 
   const selectedPhotoId = Number(searchParams.get('photo') || 0);
   const studioSlugFromQuery = searchParams.get('studioSlug');
+  // Navigation logic
+  // If viewing a photo, 'Back to Album' returns to album grid (removes ?photo=...)
+  // If viewing album grid, 'Back to Albums' returns to studio's album list
   const backToAlbumsHref = studioSlug
-    ? `/studio/${studioSlug}`
+    ? `/albums?studioSlug=${encodeURIComponent(studioSlug)}`
     : studioSlugFromQuery
     ? `/albums?studioSlug=${encodeURIComponent(studioSlugFromQuery)}`
     : '/albums';
+
+  // When viewing a photo, go back to album grid (same path, no ?photo=...)
+  const backToAlbumHref = () => {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('photo');
+    window.location.href = url.pathname + url.search;
+  };
 
   useEffect(() => {
     const id = Number(albumId);
@@ -451,22 +462,43 @@ const AlbumDetails: React.FC = () => {
     <div className="main-content dark-bg albums-full-height">
       <div className="page-header" style={{ marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
-          <Link
-            to={backToAlbumsHref}
-            className="btn btn-secondary"
-            style={{
-              marginBottom: 0,
-              textDecoration: 'none',
-              borderRadius: 999,
-              padding: '8px 14px',
-              border: '1px solid #7b61ff',
-              background: 'rgba(123, 97, 255, 0.08)',
-              color: '#c7bcff',
-              fontWeight: 600,
-            }}
-          >
-            ← Back to Albums
-          </Link>
+          {selectedPhoto ? (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{
+                marginBottom: 0,
+                textDecoration: 'none',
+                borderRadius: 999,
+                padding: '8px 14px',
+                border: '1px solid #7b61ff',
+                background: 'rgba(123, 97, 255, 0.08)',
+                color: '#c7bcff',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+              onClick={backToAlbumHref}
+            >
+              ← Back to Album
+            </button>
+          ) : (
+            <Link
+              to={backToAlbumsHref}
+              className="btn btn-secondary"
+              style={{
+                marginBottom: 0,
+                textDecoration: 'none',
+                borderRadius: 999,
+                padding: '8px 14px',
+                border: '1px solid #7b61ff',
+                background: 'rgba(123, 97, 255, 0.08)',
+                color: '#c7bcff',
+                fontWeight: 600,
+              }}
+            >
+              ← Back to Albums
+            </Link>
+          )}
         </div>
         <h1 className="gradient-text" style={{ marginBottom: 6, lineHeight: 1.15 }}>{album.name}</h1>
         {album.description && <p className="albums-description" style={{ marginTop: 0, color: '#a8a8b8' }}>{album.description}</p>}
@@ -475,7 +507,7 @@ const AlbumDetails: React.FC = () => {
       {selectedPhoto && (
         <div style={{ marginBottom: 14, border: '1px solid #2a2740', borderRadius: 8, overflow: 'hidden' }}>
           <img
-            src={selectedPhoto.fullImageUrl || selectedPhoto.thumbnailUrl}
+            src={`/api/photos/${selectedPhoto.id}/asset?variant=full`}
             alt={selectedPhoto.fileName}
             style={{ width: '100%', maxHeight: 520, objectFit: 'contain', background: '#0f0f16' }}
           />
@@ -715,11 +747,17 @@ const AlbumDetails: React.FC = () => {
                   position: 'relative',
                 }}
               >
-                <img
-                  src={photo.thumbnailUrl || photo.fullImageUrl}
-                  alt={photo.fileName}
-                  style={{ width: '100%', height: 220, objectFit: 'cover', display: 'block' }}
-                />
+                {(() => {
+                  const studioId = album?.studioId || album?.studio_id || (photos.length > 0 ? photos[0].studioId || photos[0].studio_id : undefined);
+                  return (
+                    <WatermarkedImage
+                      src={`/api/photos/${photo.id}/asset?variant=thumbnail`}
+                      alt={photo.fileName}
+                      style={{ width: '100%', height: 220, objectFit: 'cover', display: 'block' }}
+                      studioId={studioId}
+                    />
+                  );
+                })()}
                 {hasPlayers && (
                   <div
                     style={{
@@ -775,7 +813,7 @@ const AlbumDetails: React.FC = () => {
             <div style={{ marginBottom: 16, maxHeight: 400 }}>
               <Cropper
                 ref={setCropperRef}
-                src={selectedPhoto.fullImageUrl || selectedPhoto.thumbnailUrl}
+                src={selectedPhoto ? `/api/photos/${selectedPhoto.id}/asset` : ''}
                 crossOrigin="anonymous"
                 style={{ maxHeight: 400, width: '100%' }}
                 aspectRatio={getCropAspectRatio(productToCrop)}

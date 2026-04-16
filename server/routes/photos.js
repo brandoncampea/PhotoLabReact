@@ -1407,7 +1407,7 @@ router.post('/upload', requireActiveSubscription, upload.fields([
       // Extract comprehensive metadata from EXIF and image properties
       const extractedMetadata = await extractImageMetadata(file.buffer);
       const clientMetadata = entry.metadata || {};
-      
+
       // Merge extracted EXIF metadata with any client-provided metadata (client takes precedence)
       const mergedMetadata = {
         ...extractedMetadata,
@@ -1420,9 +1420,25 @@ router.post('/upload', requireActiveSubscription, upload.fields([
           firstExifCaption = captionCandidate;
         }
       }
-      
-      const width = mergedMetadata.width || null;
-      const height = mergedMetadata.height || null;
+
+      // Fallback: Always try to get width/height from Sharp if missing
+      let width = mergedMetadata.width || null;
+      let height = mergedMetadata.height || null;
+      if (!width || !height) {
+        try {
+          const fallbackMeta = await sharp(file.buffer).metadata();
+          if (!width && fallbackMeta.width) {
+            width = fallbackMeta.width;
+            console.log(`[Photo Upload] Fallback width used for ${file.originalname}: ${width}`);
+          }
+          if (!height && fallbackMeta.height) {
+            height = fallbackMeta.height;
+            console.log(`[Photo Upload] Fallback height used for ${file.originalname}: ${height}`);
+          }
+        } catch (err) {
+          console.error(`[Photo Upload] Failed to extract fallback dimensions for ${file.originalname}:`, err);
+        }
+      }
 
       const signatureHash = await computeImageSignature(file.buffer);
       const fileTag = resolvePlayerTagForFile({

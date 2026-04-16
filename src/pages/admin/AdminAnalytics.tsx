@@ -4,23 +4,33 @@ import { AnalyticsData } from '../../types';
 import { analyticsService } from '../../services/analyticsService';
 import AdminLayout from '../../components/AdminLayout';
 
+const TIME_RANGES = [
+  { label: 'Today', value: 'today' },
+  { label: 'This Week', value: 'week' },
+  { label: 'This Month', value: 'month' },
+  { label: 'All Time', value: 'all' },
+];
+
 const AdminAnalytics: React.FC = () => {
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [showAllAlbums, setShowAllAlbums] = useState(false);
   const [showAllPhotos, setShowAllPhotos] = useState(false);
+  const [timeRange, setTimeRange] = useState<string>('all');
+
 
   useEffect(() => {
-    loadAnalytics();
+    loadAnalytics(timeRange);
     // Refresh every 10 seconds
-    const interval = setInterval(loadAnalytics, 10000);
+    const interval = setInterval(() => loadAnalytics(timeRange), 10000);
     return () => clearInterval(interval);
-  }, []);
+  }, [timeRange]);
 
-  const loadAnalytics = () => {
+  const loadAnalytics = (range: string) => {
+    setLoading(true);
     try {
-      analyticsService.getAnalytics().then(data => {
-      setAnalytics(data);
+      analyticsService.getAnalytics(range).then(data => {
+        setAnalytics(data);
         setLoading(false);
       }).catch(error => {
         console.error('Failed to load analytics:', error);
@@ -91,6 +101,24 @@ const AdminAnalytics: React.FC = () => {
         <p className="muted-text" style={{ fontSize: '0.9rem', marginTop: '0.5rem' }}>
           Track visitor behavior and popular content
         </p>
+      </div>
+
+      {/* Time Range Selector */}
+      <div style={{ marginBottom: '1.5rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+        <span style={{ fontWeight: 500, marginRight: 8 }}>Time Range:</span>
+        {TIME_RANGES.map((range) => (
+          <button
+            key={range.value}
+            className={
+              'btn btn-secondary' + (timeRange === range.value ? ' active' : '')
+            }
+            style={{ minWidth: 90, fontWeight: timeRange === range.value ? 600 : 400 }}
+            onClick={() => setTimeRange(range.value)}
+            disabled={loading && timeRange === range.value}
+          >
+            {range.label}
+          </button>
+        ))}
       </div>
 
       {/* Overview Stats */}

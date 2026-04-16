@@ -289,12 +289,14 @@ router.put('/:id', upload.single('image'), async (req, res) => {
     if (!imageUrl) {
       return res.status(400).json({ error: 'Image URL is required' });
     }
-    let studioId = user?.role === 'super_admin' ? null : user?.studio_id;
+    let studioId = user?.role === 'super_admin' ? (req.body.studioId || null) : user?.studio_id;
     let watermark = await queryRow('SELECT * FROM watermarks WHERE id = $1', [req.params.id]);
     if (!watermark) return res.status(404).json({ error: 'Watermark not found' });
     if (studioId && watermark.studio_id !== studioId) {
       return res.status(403).json({ error: 'Forbidden' });
     }
+    // Always update studio_id to ensure it is set
+    await query('UPDATE watermarks SET studio_id = $1 WHERE id = $2', [studioId, req.params.id]);
     if (isDefault === 'true' || isDefault === true) {
       await query('UPDATE watermarks SET is_default = 0 WHERE studio_id = $1', [watermark.studio_id]);
     }

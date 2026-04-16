@@ -1,3 +1,31 @@
+	.shareButton {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3em;
+		background: linear-gradient(90deg, #a084ee 0%, #7b61ff 100%);
+		color: #fff;
+		font-weight: 600;
+		font-size: 0.92em;
+		border: none;
+		border-radius: 999px;
+		padding: 4px 14px;
+		cursor: pointer;
+		box-shadow: 0 1px 4px #0002;
+		transition: background 0.18s, box-shadow 0.18s, transform 0.12s;
+		margin-top: 2px;
+	}
+
+.shareButton:hover, .shareButton:focus {
+	background: linear-gradient(90deg, #7b61ff 0%, #a084ee 100%);
+	box-shadow: 0 2px 8px #7b61ff33;
+	transform: translateY(-1px) scale(1.02);
+	outline: none;
+}
+
+.shareIcon {
+	font-size: 1em;
+	margin-right: 0.15em;
+}
 /* Album grid and card styles for modern, clean layout and watermark overlay support */
 .albums-grid {
 	display: grid;

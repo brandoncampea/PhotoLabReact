@@ -246,8 +246,18 @@ const Albums: React.FC = () => {
                     <AlbumCoverCarousel
                       albumId={album.id}
                       albumName={album.name}
-                      coverImageUrl={album.coverImageUrl}
-                      previewImageUrls={album.previewImageUrls}
+                      coverImageUrl={
+                          album.coverImageUrl && String(album.coverImageUrl).match(/^\d+$/)
+                            ? `/api/photos/${album.coverImageUrl}/asset?variant=thumbnail`
+                            : album.coverImageUrl || undefined
+                      }
+                      previewImageUrls={
+                        Array.isArray(album.previewImageUrls)
+                          ? album.previewImageUrls
+                              .filter(pid => String(pid).match(/^\d+$/))
+                              .map(pid => `/api/photos/${pid}/asset?variant=thumbnail`)
+                          : undefined
+                      }
                       studioId={selectedStudio?.id}
                     />
                     <div className="album-overlay">
@@ -266,12 +276,10 @@ const Albums: React.FC = () => {
                       </span>
                       <button
                         onClick={(e) => handleShare(e, album)}
-                        className="btn-icon"
-                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f0f0f0'}
-                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                        className={styles.shareButton}
                         title="Share album"
                       >
-                        🔗 Share
+                        <span className={styles.shareIcon}>🔗</span> Share
                       </button>
                     </div>
                   </div>

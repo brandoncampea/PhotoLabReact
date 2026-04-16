@@ -1,3 +1,33 @@
+import { autoTagPhotoFromFilenameAndFaces } from '../../utils/autoTagPhotoFromFilenameAndFaces';
+// --- Shared types and utilities ---
+type FaceTagBox = {
+  id: string;
+  leftPct: number;
+  topPct: number;
+  widthPct: number;
+  heightPct: number;
+  playerName?: string | null;
+  playerNumber?: string | null;
+};
+
+const parsePhotoMetadata = (photo: Photo | null): PhotoMetadata => {
+  if (!photo) return {};
+
+  const rawMetadata = (photo as any).metadata;
+  if (rawMetadata && typeof rawMetadata === 'object') {
+    return rawMetadata as PhotoMetadata;
+  }
+
+  if (typeof rawMetadata === 'string') {
+    try {
+      const parsed = JSON.parse(rawMetadata);
+      return parsed as PhotoMetadata;
+    } catch {
+      return {};
+    }
+  }
+  return {};
+};
 // --- Local type definitions and stubs for missing types/functions ---
 type DuplicateMode = 'skip' | 'overwrite' | 'allow';
 
@@ -45,26 +75,6 @@ const extractPlayerNameFromFilename = (filename: string): string | null => {
   return name.trim() || null;
 };
 
-// Auto-tag a photo from filename and update playerNames
-const autoTagPhotoFromFilenameAndFaces = async ({ photo, rosterPlayers, photoService, onTagged }) => {
-  // Try to extract player name from filename
-  const detectedName = extractPlayerNameFromFilename(photo.fileName || '');
-  let matchedPlayer = null;
-  if (detectedName && Array.isArray(rosterPlayers)) {
-    matchedPlayer = rosterPlayers.find(r => r.playerName.toLowerCase() === detectedName.toLowerCase());
-  }
-  // If found, update photo playerNames
-  if (matchedPlayer) {
-    await photoService.updatePhoto(photo.id, { playerNames: matchedPlayer.playerName });
-    if (onTagged) onTagged([{ playerName: matchedPlayer.playerName }]);
-  } else if (detectedName) {
-    // If not on roster, still tag with detected name
-    await photoService.updatePhoto(photo.id, { playerNames: detectedName });
-    if (onTagged) onTagged([{ playerName: detectedName }]);
-  } else {
-    if (onTagged) onTagged([]);
-  }
-};
 
 // Dummy face detection (can be replaced with real model)
 const detectFaceBoxesInBrowser = async (photo) => {
@@ -78,11 +88,18 @@ const setImageRef = (_photoId: number, _el: HTMLImageElement | null) => {};
 import React, { useState, useEffect } from 'react';
 
 // Collapsible Upload Progress Panel (must be top-level)
-function UploadProgressPanel({ uploadItems, uploading, handleRetryUploadItem, setUploading }) {
+interface UploadProgressPanelProps {
+  uploadItems: UploadItem[];
+  uploading: boolean;
+  handleRetryUploadItem: (item: UploadItem) => void;
+  setUploading: (uploading: boolean) => void;
+}
+
+function UploadProgressPanel({ uploadItems, uploading, handleRetryUploadItem, setUploading }: UploadProgressPanelProps) {
   const [collapsed, setCollapsed] = React.useState(true);
-  const uploadingCount = uploadItems.filter(i => i.status === 'uploading').length;
-  const failedCount = uploadItems.filter(i => i.status === 'error').length;
-  const doneCount = uploadItems.filter(i => i.status === 'done').length;
+  const uploadingCount = uploadItems.filter((i: UploadItem) => i.status === 'uploading').length;
+  const failedCount = uploadItems.filter((i: UploadItem) => i.status === 'error').length;
+  const doneCount = uploadItems.filter((i: UploadItem) => i.status === 'done').length;
 
   return (
     <div className="admin-summary-box" style={{ marginBottom: '1.5rem', position: 'relative', zIndex: 10 }}>
@@ -101,7 +118,7 @@ function UploadProgressPanel({ uploadItems, uploading, handleRetryUploadItem, se
 
       {/* Always show thumbnails/progress bars */}
       <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.5rem', overflowX: 'auto', paddingBottom: 4 }}>
-        {uploadItems.map(item => (
+        {uploadItems.map((item: UploadItem) => (
           <div key={item.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 48 }}>
             <img
               src={item.previewUrl}
@@ -448,6 +465,7 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
         );
         try {
           // Direct-to-Blob upload
+          if (typeof albumId !== 'number') throw new Error('albumId must be a number');
           const blobName = `albums/${albumId}/${item.file.name}`;
           const blobUrl = await uploadFileToAzureBlob({
             file: item.file,
@@ -462,7 +480,7 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
           });
           // Notify backend with blobUrl, description, and metadata
           const recordResult = await recordPhotoBlob({
-            albumId,
+            albumId: albumId as number,
             fileName: item.file.name,
             blobUrl,
             description: item.description,
@@ -480,7 +498,8 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
           // Fetch the latest photo object from backend for accurate tagging
           let latestPhoto = null;
           try {
-            const refreshedPhotos = await photoService.getPhotosByAlbumId(albumId);
+            // Always fetch the latest list to ensure we get the just-uploaded photo
+            const refreshedPhotos = await photoService.getPhotosByAlbumId(albumId as number);
             latestPhoto = refreshedPhotos.find((p: any) => p.fileName === item.file.name);
           } catch {}
 
@@ -500,16 +519,16 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
               }
             });
             // Wait for the backend to update before reloading
-            await new Promise(res => setTimeout(res, 200));
+            await new Promise(res => setTimeout(res, 300));
             // Update uploadItems to show tagged players in the upload panel
             setUploadItems((prev) =>
               prev.map((entry) =>
                 entry.id === item.id ? { ...entry, taggedPlayer: detectedPlayerNames.join(', ') } : entry
               )
             );
-            // Refresh UI state to show new tags
-            await loadPhotos();
           }
+
+          // Only reload photos after all uploads are done (outside the uploadNext loop)
 
           setUploadItems((prev) =>
             prev.map((entry) =>
@@ -537,6 +556,10 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
     try {
       await Promise.all(Array(parallelLimit).fill(0).map(uploadNext));
 
+      // After all uploads and tagging, reload photos and albums once
+      await loadPhotos();
+      await loadAlbums();
+
       if (failed === 0) {
         const skipSuffix = skippedClientSide > 0 ? ` Skipped ${skippedClientSide} duplicate photo${skippedClientSide === 1 ? '' : 's'}.` : '';
         setUploadMessage({ type: 'success', text: `Uploaded ${completed} photo${completed === 1 ? '' : 's'} successfully.${skipSuffix}` });
@@ -546,9 +569,6 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
       } else {
         setUploadMessage({ type: 'error', text: 'Upload failed. Please try again.' });
       }
-
-      await loadPhotos();
-      await loadAlbums();
 
       // When all uploads finish successfully, clear progress UI and show gallery state.
       if (failed === 0 && completed === workingFiles.length) {
@@ -587,8 +607,8 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
     };
 
     // Update uploadItems with detected player name immediately
-    setUploadItems((prev) => [
-      ...files.map((file, idx) => {
+    setUploadItems((prev: UploadItem[]) => [
+      ...files.map((file, idx): UploadItem => {
         const detectedPlayer = extractNameFromFilename(file.name);
         return {
           id: `${Date.now()}-${idx}-${file.name}`,
@@ -680,7 +700,7 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
             },
           });
           await recordPhotoBlob({
-            albumId,
+            albumId: albumId as number,
             fileName: item.file.name,
             blobUrl,
             description: item.description,
@@ -773,7 +793,8 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
     try {
       setCoverLoadingId(photo.id);
       // Use the actual photo's full image URL as the cover
-      const coverUrl = photo.fullImageUrl || photo.thumbnailUrl;
+      // Use backend asset endpoint for cover image
+      const coverUrl = `/api/photos/${photo.id}/asset`;
       if (!coverUrl) {
         setCoverMessage('Photo URL not available');
         setTimeout(() => setCoverMessage(null), 2500);
@@ -1341,17 +1362,22 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
             position: 'relative',
           }}>
             <div style={{ cursor: 'pointer', position: 'relative' }}
-                 onClick={() => window.open(photo.fullImageUrl || photo.thumbnailUrl, '_blank')}
+                 onClick={() => window.open(`/api/photos/${photo.id}/asset`, '_blank')}
                  title="Click to view full size">
-              <FaceBoxPreview
-                photo={photo}
-                faceBoxes={detectionByPhotoId[photo.id]?.faceBoxes || []}
-                selectedFaceBoxId={selectedFaceBoxByPhotoId[photo.id] || null}
-                onSelectFaceBox={(faceBoxId) => setSelectedFaceBoxByPhotoId((prev) => ({
-                  ...prev,
-                  [photo.id]: faceBoxId,
-                }))}
-                setImageRef={setImageRef}
+              {/* Use backend asset endpoint for image preview */}
+              <img
+                src={`/api/photos/${photo.id}/asset`}
+                alt={photo.fileName}
+                style={{
+                  width: '100%',
+                  maxWidth: 360,
+                  aspectRatio: '1 / 1',
+                  objectFit: 'cover',
+                  borderRadius: 8,
+                  background: '#222',
+                  display: 'block',
+                }}
+                ref={el => setImageRef(photo.id, el)}
               />
             </div>
             <div className="photo-info">
@@ -1815,92 +1841,8 @@ function FaceBoxPreview({
   onSelectFaceBox: (faceBoxId: string) => void;
   setImageRef: (photoId: number, el: HTMLImageElement | null) => void;
 }) {
-  const source = photo.fullImageUrl || photo.thumbnailUrl;
-  const isBlobName = !!source && !source.startsWith('/') && !source.startsWith('http');
-  const sasUrl = useSasUrl(isBlobName ? source : null);
-  const resolvedSrc = isBlobName ? (sasUrl || '') : (source || '');
-
-  if (!resolvedSrc) return null;
-
-  return (
-    <div
-      style={{
-        position: 'relative',
-        width: '100%',
-        maxWidth: 360,
-        aspectRatio: '1 / 1',
-        borderRadius: 8,
-        overflow: 'hidden',
-        border: '1px solid var(--border-color)',
-        background: '#111827',
-      }}
-    >
-      <img
-        src={resolvedSrc}
-        alt={photo.fileName}
-        ref={el => setImageRef(photo.id, el)}
-        style={{
-          width: '100%',
-          height: '100%',
-          objectFit: 'cover',
-          display: 'block',
-          filter: 'brightness(0.96)',
-        }}
-      />
-      {faceBoxes.map((faceBox) => {
-        const isSelected = faceBox.id === selectedFaceBoxId;
-        const hasAssignedPlayer = !!faceBox.playerName;
-        return (
-          <button
-            key={faceBox.id}
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              onSelectFaceBox(faceBox.id);
-            }}
-            title={faceBox.playerName ? `${faceBox.id}: ${faceBox.playerName}` : `${faceBox.id}: click to select`}
-            style={{
-              position: 'absolute',
-              left: `${faceBox.leftPct}%`,
-              top: `${faceBox.topPct}%`,
-              width: `${faceBox.widthPct}%`,
-              height: `${faceBox.heightPct}%`,
-              border: isSelected
-                ? '2px solid #f5b041'
-                : hasAssignedPlayer
-                  ? '2px solid #7ee0b7'
-                  : '2px solid rgba(255,255,255,0.85)',
-              background: isSelected
-                ? 'rgba(245, 176, 65, 0.18)'
-                : hasAssignedPlayer
-                  ? 'rgba(126, 224, 183, 0.14)'
-                  : 'rgba(255,255,255,0.05)',
-              borderRadius: 6,
-              cursor: 'pointer',
-              padding: 0,
-            }}
-          >
-            <span
-              style={{
-                position: 'absolute',
-                left: 0,
-                top: 0,
-                transform: 'translateY(-100%)',
-                background: 'rgba(17, 24, 39, 0.92)',
-                color: '#fff',
-                fontSize: '0.68rem',
-                padding: '0.12rem 0.35rem',
-                borderRadius: '0.35rem 0.35rem 0 0',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {faceBox.playerName ? `${faceBox.id}: ${faceBox.playerName}` : faceBox.id}
-            </span>
-          </button>
-        );
-      })}
-    </div>
-  );
+  // Deprecated: FaceBoxPreview now unused, see above for direct <img> usage with asset endpoint
+  return null;
 }
 
 // Helper to format photo metadata for display
