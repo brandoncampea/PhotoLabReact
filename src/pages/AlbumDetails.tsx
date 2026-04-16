@@ -1,15 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import WatermarkedImage from '../components/WatermarkedImage';
-import { fetchPhotoExif } from '../services/exifService';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import Cropper from 'react-cropper';
 import 'cropperjs/dist/cropper.css';
-import './AlbumDetails.css';
 import api from '../services/api';
 import { photoService } from '../services/photoService';
 import { productService } from '../services/productService';
 import { useCart } from '../contexts/CartContext';
 import { Album, Photo, Product, ProductSize } from '../types';
+
 
 type ProductWithMatch = Product & {
   bestSize?: ProductSize | null;
@@ -18,25 +16,8 @@ type ProductWithMatch = Product & {
 };
 
 const AlbumDetails: React.FC = () => {
-    // EXIF modal state and handlers (moved to top level)
-    const [showExifModal, setShowExifModal] = useState(false);
-    const [exifLoading, setExifLoading] = useState(false);
-    const [exifError, setExifError] = useState('');
-    const [exifData, setExifData] = useState<any>(null);
-    const handleShowExif = async () => {
-      if (!selectedPhoto) return;
-      setExifLoading(true);
-      setExifError('');
-      setShowExifModal(true);
-      try {
-        const data = await fetchPhotoExif(selectedPhoto.id);
-        setExifData(data);
-      } catch (err: any) {
-        setExifError(err?.message || 'Failed to load EXIF');
-      } finally {
-        setExifLoading(false);
-      }
-    };
+    // Recommendation filter for product recommendations
+    const [recommendationFilter, setRecommendationFilter] = useState('');
   const { albumId, studioSlug } = useParams();
   const [searchParams] = useSearchParams();
   const [album, setAlbum] = useState<Album | null>(null);
@@ -56,16 +37,11 @@ const AlbumDetails: React.FC = () => {
 
   const selectedPhotoId = Number(searchParams.get('photo') || 0);
   const studioSlugFromQuery = searchParams.get('studioSlug');
-  // Prefer query string studioSlug, then param
-  const effectiveStudioSlug = studioSlugFromQuery || studioSlug;
-  // If viewing a specific photo, show 'Back to Album', else 'Back to All Albums'
-  const viewingPhoto = !!selectedPhotoId;
-  let backButtonHref = effectiveStudioSlug ? `/albums?studioSlug=${encodeURIComponent(effectiveStudioSlug)}` : '/albums';
-  let backButtonText = '← Back to All Albums';
-  if (viewingPhoto && albumId) {
-    backButtonHref = `/albums/${albumId}`;
-    backButtonText = '← Back to Album';
-  }
+  const backToAlbumsHref = studioSlug
+    ? `/studio/${studioSlug}`
+    : studioSlugFromQuery
+    ? `/albums?studioSlug=${encodeURIComponent(studioSlugFromQuery)}`
+    : '/albums';
 
   useEffect(() => {
     const id = Number(albumId);
@@ -171,9 +147,10 @@ const AlbumDetails: React.FC = () => {
 
     const width = Number(selectedPhoto.width || 0);
     const height = Number(selectedPhoto.height || 0);
-    const photoRatio = width > 0 && height > 0 ? width / height : 0;
+    const photoDims = [width, height].sort((a, b) => b - a); // [larger, smaller]
+    const photoRatio = width > 0 && height > 0 ? photoDims[0] / photoDims[1] : 0;
 
-    const withMatch: ProductWithMatch[] = (products || []).map((product) => {
+    let withMatch: ProductWithMatch[] = (products || []).map((product) => {
       const sizes = Array.isArray(product.sizes) ? product.sizes : [];
       let bestSize: ProductSize | null = null;
       let ratioDiff = Number.POSITIVE_INFINITY;
@@ -183,7 +160,8 @@ const AlbumDetails: React.FC = () => {
           const sw = Number(size.width || 0);
           const sh = Number(size.height || 0);
           if (sw > 0 && sh > 0) {
-            const sizeRatio = sw / sh;
+            const sizeDims = [sw, sh].sort((a, b) => b - a); // [larger, smaller]
+            const sizeRatio = sizeDims[0] / sizeDims[1];
             const diff = Math.abs(sizeRatio - photoRatio);
             if (diff < ratioDiff) {
               ratioDiff = diff;
@@ -200,6 +178,16 @@ const AlbumDetails: React.FC = () => {
         isRecommended: Number.isFinite(ratioDiff),
       };
     });
+
+    // Filter by recommendationFilter (product name or size)
+    if (recommendationFilter.trim()) {
+      const filter = recommendationFilter.trim().toLowerCase();
+      withMatch = withMatch.filter((product) => {
+        const nameMatch = product.name?.toLowerCase().includes(filter);
+        const sizeMatch = product.bestSize && `${product.bestSize.width}x${product.bestSize.height}`.includes(filter);
+        return nameMatch || sizeMatch;
+      });
+    }
 
     const recommendedNonDigital = withMatch
       .filter((p) => !p.isDigital && p.isRecommended)
@@ -224,7 +212,7 @@ const AlbumDetails: React.FC = () => {
       // 4) Then the rest alphabetically
       return String(a.name || '').localeCompare(String(b.name || ''));
     });
-  }, [products, selectedPhoto]);
+  }, [products, selectedPhoto, recommendationFilter]);
 
   const recommendedProductIds = useMemo(() => {
     const nonDigital = orderedProducts.filter((p) => !p.isDigital);
@@ -299,14 +287,20 @@ const AlbumDetails: React.FC = () => {
       grouped[category][productName].push(product);
     });
 
-    return Object.entries(grouped)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([category, productsByName]) => ({
-        category,
-        products: Object.entries(productsByName)
-          .sort(([a], [b]) => a.localeCompare(b))
-          .map(([name, items]) => ({ name, items: [...items].sort(compareBySizeAsc) })),
-      }));
+    // Move 'Partner Photo Fulfillment' category to the top
+    const groupedEntries = Object.entries(grouped)
+      .sort(([a], [b]) => a.localeCompare(b));
+    const partnerIdx = groupedEntries.findIndex(([cat]) => cat.toLowerCase().includes('partner photo fulfillment'));
+    if (partnerIdx > 0) {
+      const [partner] = groupedEntries.splice(partnerIdx, 1);
+      groupedEntries.unshift(partner);
+    }
+    return groupedEntries.map(([category, productsByName]) => ({
+      category,
+      products: Object.entries(productsByName)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([name, items]) => ({ name, items: [...items].sort(compareBySizeAsc) })),
+    }));
   }, [productsBySection.recommended]);
 
   const allProductsGrouped = useMemo(() => {
@@ -458,7 +452,7 @@ const AlbumDetails: React.FC = () => {
       <div className="page-header" style={{ marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
           <Link
-            to={backButtonHref}
+            to={backToAlbumsHref}
             className="btn btn-secondary"
             style={{
               marginBottom: 0,
@@ -471,291 +465,20 @@ const AlbumDetails: React.FC = () => {
               fontWeight: 600,
             }}
           >
-            {backButtonText}
+            ← Back to Albums
           </Link>
         </div>
         <h1 className="gradient-text" style={{ marginBottom: 6, lineHeight: 1.15 }}>{album.name}</h1>
         {album.description && <p className="albums-description" style={{ marginTop: 0, color: '#a8a8b8' }}>{album.description}</p>}
-        {album.batchShippingActive && (
-          <div className="album-details-batch-notice">
-            <strong>Batch shipping is active for this studio.</strong>
-            <span>
-              Select batch shipping at checkout to join the studio release shipment.
-              {album.batchDeadline ? ` Current release deadline: ${new Date(String(album.batchDeadline)).toLocaleString()}.` : ''}
-            </span>
-          </div>
-        )}
       </div>
 
       {selectedPhoto && (
         <div style={{ marginBottom: 14, border: '1px solid #2a2740', borderRadius: 8, overflow: 'hidden' }}>
-          <WatermarkedImage
+          <img
             src={selectedPhoto.fullImageUrl || selectedPhoto.thumbnailUrl}
             alt={selectedPhoto.fileName}
             style={{ width: '100%', maxHeight: 520, objectFit: 'contain', background: '#0f0f16' }}
-            studioId={album?.studioId}
           />
-        </div>
-      )}
-
-      {selectedPhoto && (
-        <div style={{ marginBottom: 14, border: '1px solid #2a2740', borderRadius: 8 }}>
-          <details style={{ padding: 12 }}>
-            <summary style={{ cursor: 'pointer', fontWeight: 600, color: '#7b61ff', fontSize: 14 }}>
-              📋 Photo Details
-            </summary>
-            <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #3a3656', display: 'grid', gap: 10 }}>
-                            <button
-                              className="btn btn-secondary"
-                              style={{ marginBottom: 10, width: 'fit-content', fontSize: 13 }}
-                              onClick={handleShowExif}
-                            >
-                              Show EXIF Metadata
-                            </button>
-                    {/* EXIF Modal */}
-                    {showExifModal && (
-                      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <div style={{ background: '#181c24', borderRadius: 12, border: '1px solid #2a2740', maxWidth: 600, width: '90vw', maxHeight: 600, overflow: 'auto', padding: 24, color: '#fff', position: 'relative' }}>
-                          <button
-                            className="btn btn-secondary"
-                            style={{ position: 'absolute', top: 16, right: 16, zIndex: 10 }}
-                            onClick={() => setShowExifModal(false)}
-                          >
-                            Close
-                          </button>
-                          <h2 style={{ marginTop: 0, marginBottom: 18, color: '#b7aaff', fontSize: 22 }}>EXIF Metadata</h2>
-                          {exifLoading && <div>Loading EXIF...</div>}
-                          {exifError && <div style={{ color: '#ff9a9a' }}>{exifError}</div>}
-                          {exifData && exifData.exif && (
-                            <table style={{ width: '100%', borderCollapse: 'collapse', color: '#fff', fontSize: 15 }}>
-                              <tbody>
-                                {Object.entries(exifData.exif).filter(([k]) => typeof exifData.exif[k] !== 'object').map(([key, value]) => (
-                                  <tr key={key}>
-                                    <td style={{ fontWeight: 600, padding: '4px 8px', color: '#b7aaff', textAlign: 'right', minWidth: 120 }}>{key}</td>
-                                    <td style={{ padding: '4px 8px', color: '#fff' }}>{String(value)}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          )}
-                          {!exifLoading && !exifError && (!exifData || !exifData.exif) && (
-                            <div style={{ color: '#aaa' }}>No EXIF metadata found for this photo.</div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-              {/* Filename */}
-              {selectedPhoto.fileName && (
-                <div>
-                  <div style={{ fontSize: '0.85rem', color: '#a8a8b8', marginBottom: 2 }}>Filename</div>
-                  <div style={{ fontSize: '0.95rem', color: '#ccc', wordBreak: 'break-all' }}>{selectedPhoto.fileName}</div>
-                </div>
-              )}
-
-              {/* Description */}
-              {selectedPhoto.description && (
-                <div>
-                  <div style={{ fontSize: '0.85rem', color: '#a8a8b8', marginBottom: 2 }}>Description</div>
-                  <div style={{ fontSize: '0.95rem', color: '#ccc' }}>{selectedPhoto.description}</div>
-                </div>
-              )}
-
-              {/* Player Names */}
-              {(selectedPhoto.playerNames || '').split(',').filter((p) => p.trim()).length > 0 && (
-                <div>
-                  <div style={{ fontSize: '0.85rem', color: '#a8a8b8', marginBottom: 4 }}>Players</div>
-                  <div style={{ fontSize: '0.95rem', fontWeight: 500 }}>
-                    {(selectedPhoto.playerNames || '')
-                      .split(',')
-                      .filter((p) => p.trim())
-                      .map((name, idx) => (
-                        <div key={idx}>{name.trim()}</div>
-                      ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Player Numbers */}
-              {(selectedPhoto.playerNumbers || '').split(',').filter((p) => p.trim()).length > 0 && (
-                <div>
-                  <div style={{ fontSize: '0.85rem', color: '#a8a8b8', marginBottom: 4 }}>Player Numbers</div>
-                  <div style={{ fontSize: '0.95rem', fontWeight: 500 }}>
-                    {(selectedPhoto.playerNumbers || '')
-                      .split(',')
-                      .filter((p) => p.trim())
-                      .map((num, idx) => (
-                        <div key={idx}>#{num.trim()}</div>
-                      ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Camera Metadata */}
-              {selectedPhoto.metadata && (
-                <>
-                  {(selectedPhoto.metadata as any).cameraMake && (
-                    <div>
-                      <div style={{ fontSize: '0.85rem', color: '#a8a8b8', marginBottom: 2 }}>Camera</div>
-                      <div style={{ fontSize: '0.95rem', color: '#ccc' }}>
-                        {(selectedPhoto.metadata as any).cameraMake}
-                        {(selectedPhoto.metadata as any).cameraModel ? ` ${(selectedPhoto.metadata as any).cameraModel}` : ''}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Keywords */}
-                  {(selectedPhoto.metadata as any).keywords && (
-                    <div>
-                      <div style={{ fontSize: '0.85rem', color: '#a8a8b8', marginBottom: 2 }}>Keywords</div>
-                      <div style={{ fontSize: '0.9rem', color: '#ccc' }}>{(selectedPhoto.metadata as any).keywords}</div>
-                    </div>
-                  )}
-
-                  {/* Headline */}
-                  {(selectedPhoto.metadata as any).headline && (
-                    <div>
-                      <div style={{ fontSize: '0.85rem', color: '#a8a8b8', marginBottom: 2 }}>Headline</div>
-                      <div style={{ fontSize: '0.9rem', color: '#ccc' }}>{(selectedPhoto.metadata as any).headline}</div>
-                    </div>
-                  )}
-
-                  {/* Location Info */}
-                  {((selectedPhoto.metadata as any).city || (selectedPhoto.metadata as any).stateOrProvince) && (
-                    <div>
-                      <div style={{ fontSize: '0.85rem', color: '#a8a8b8', marginBottom: 2 }}>Location</div>
-                      <div style={{ fontSize: '0.9rem', color: '#ccc' }}>
-                        {(selectedPhoto.metadata as any).city}
-                        {(selectedPhoto.metadata as any).city && (selectedPhoto.metadata as any).stateOrProvince ? ', ' : ''}
-                        {(selectedPhoto.metadata as any).stateOrProvince}
-                      </div>
-                    </div>
-                  )}
-
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
-                    {(selectedPhoto.metadata as any).dateTaken && (
-                      <div>
-                        <div style={{ fontSize: '0.75rem', color: '#a8a8b8', marginBottom: 2 }}>Date Taken</div>
-                        <div style={{ fontSize: '0.9rem', color: '#ccc' }}>{(selectedPhoto.metadata as any).dateTaken}</div>
-                      </div>
-                    )}
-
-                    {(selectedPhoto.metadata as any).iso && (
-                      <div>
-                        <div style={{ fontSize: '0.75rem', color: '#a8a8b8', marginBottom: 2 }}>ISO</div>
-                        <div style={{ fontSize: '0.9rem', color: '#ccc' }}>{(selectedPhoto.metadata as any).iso}</div>
-                      </div>
-                    )}
-
-                    {(selectedPhoto.metadata as any).aperture && (
-                      <div>
-                        <div style={{ fontSize: '0.75rem', color: '#a8a8b8', marginBottom: 2 }}>Aperture</div>
-                        <div style={{ fontSize: '0.9rem', color: '#ccc' }}>{(selectedPhoto.metadata as any).aperture}</div>
-                      </div>
-                    )}
-
-                    {(selectedPhoto.metadata as any).fNumber && (
-                      <div>
-                        <div style={{ fontSize: '0.75rem', color: '#a8a8b8', marginBottom: 2 }}>F Number</div>
-                        <div style={{ fontSize: '0.9rem', color: '#ccc' }}>{(selectedPhoto.metadata as any).fNumber}</div>
-                      </div>
-                    )}
-
-                    {(selectedPhoto.metadata as any).shutterSpeed && (
-                      <div>
-                        <div style={{ fontSize: '0.75rem', color: '#a8a8b8', marginBottom: 2 }}>Shutter Speed</div>
-                        <div style={{ fontSize: '0.9rem', color: '#ccc' }}>{(selectedPhoto.metadata as any).shutterSpeed}</div>
-                      </div>
-                    )}
-
-                    {(selectedPhoto.metadata as any).exposureTime && (
-                      <div>
-                        <div style={{ fontSize: '0.75rem', color: '#a8a8b8', marginBottom: 2 }}>Exposure Time</div>
-                        <div style={{ fontSize: '0.9rem', color: '#ccc' }}>{(selectedPhoto.metadata as any).exposureTime}</div>
-                      </div>
-                    )}
-
-                    {(selectedPhoto.metadata as any).exposureProgram && (
-                      <div>
-                        <div style={{ fontSize: '0.75rem', color: '#a8a8b8', marginBottom: 2 }}>Exposure Program</div>
-                        <div style={{ fontSize: '0.9rem', color: '#ccc' }}>{(selectedPhoto.metadata as any).exposureProgram}</div>
-                      </div>
-                    )}
-
-                    {(selectedPhoto.metadata as any).focalLength && (
-                      <div>
-                        <div style={{ fontSize: '0.75rem', color: '#a8a8b8', marginBottom: 2 }}>Focal Length</div>
-                        <div style={{ fontSize: '0.9rem', color: '#ccc' }}>{(selectedPhoto.metadata as any).focalLength}</div>
-                      </div>
-                    )}
-
-                    {(selectedPhoto.metadata as any).meteringMode && (
-                      <div>
-                        <div style={{ fontSize: '0.75rem', color: '#a8a8b8', marginBottom: 2 }}>Metering Mode</div>
-                        <div style={{ fontSize: '0.9rem', color: '#ccc' }}>{(selectedPhoto.metadata as any).meteringMode}</div>
-                      </div>
-                    )}
-
-                    {((selectedPhoto.metadata as any).width || selectedPhoto.width) && (
-                      <div>
-                        <div style={{ fontSize: '0.75rem', color: '#a8a8b8', marginBottom: 2 }}>Width</div>
-                        <div style={{ fontSize: '0.9rem', color: '#ccc' }}>{(selectedPhoto.metadata as any).width || selectedPhoto.width}px</div>
-                      </div>
-                    )}
-
-                    {((selectedPhoto.metadata as any).height || selectedPhoto.height) && (
-                      <div>
-                        <div style={{ fontSize: '0.75rem', color: '#a8a8b8', marginBottom: 2 }}>Height</div>
-                        <div style={{ fontSize: '0.9rem', color: '#ccc' }}>{(selectedPhoto.metadata as any).height || selectedPhoto.height}px</div>
-                      </div>
-                    )}
-
-                    {(selectedPhoto.metadata as any).fileSize && (
-                      <div>
-                        <div style={{ fontSize: '0.75rem', color: '#a8a8b8', marginBottom: 2 }}>File Size</div>
-                        <div style={{ fontSize: '0.9rem', color: '#ccc' }}>
-                          {(
-                            Number((selectedPhoto.metadata as any).fileSize) / (1024 * 1024)
-                          ).toFixed(2)} MB
-                        </div>
-                      </div>
-                    )}
-
-                    {(selectedPhoto.metadata as any).colorSpace && (
-                      <div>
-                        <div style={{ fontSize: '0.75rem', color: '#a8a8b8', marginBottom: 2 }}>Color Space</div>
-                        <div style={{ fontSize: '0.9rem', color: '#ccc' }}>{(selectedPhoto.metadata as any).colorSpace}</div>
-                      </div>
-                    )}
-
-                    {(selectedPhoto.metadata as any).colorProfile && (
-                      <div>
-                        <div style={{ fontSize: '0.75rem', color: '#a8a8b8', marginBottom: 2 }}>Color Profile</div>
-                        <div style={{ fontSize: '0.9rem', color: '#ccc' }}>{(selectedPhoto.metadata as any).colorProfile}</div>
-                      </div>
-                    )}
-
-                    {(selectedPhoto.metadata as any).redEye && (
-                      <div>
-                        <div style={{ fontSize: '0.75rem', color: '#a8a8b8', marginBottom: 2 }}>Red Eye</div>
-                        <div style={{ fontSize: '0.9rem', color: '#ccc' }}>{(selectedPhoto.metadata as any).redEye}</div>
-                      </div>
-                    )}
-
-                    {(selectedPhoto.metadata as any).alphaChannel && (
-                      <div>
-                        <div style={{ fontSize: '0.75rem', color: '#a8a8b8', marginBottom: 2 }}>Alpha Channel</div>
-                        <div style={{ fontSize: '0.9rem', color: '#ccc' }}>{(selectedPhoto.metadata as any).alphaChannel}</div>
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
-
-              {!selectedPhoto.playerNames && !selectedPhoto.playerNumbers && !selectedPhoto.metadata && !selectedPhoto.fileName && !selectedPhoto.description && (
-                <div style={{ color: '#888' }}>No additional details available for this photo.</div>
-              )}
-            </div>
-          </details>
         </div>
       )}
 
@@ -763,6 +486,17 @@ const AlbumDetails: React.FC = () => {
         <div style={{ marginBottom: 16, border: '1px solid #2a2740', borderRadius: 8, padding: 12 }}>
           <h3 style={{ marginTop: 0, marginBottom: 8 }}>Order this photo</h3>
           {addMessage && <div style={{ marginBottom: 8, color: addMessage.includes('Failed') ? '#ff9a9a' : '#79d279' }}>{addMessage}</div>}
+
+          {/* Recommendation filter input */}
+          <div style={{ marginBottom: 12 }}>
+            <input
+              type="text"
+              placeholder="Filter products by name or size..."
+              value={recommendationFilter}
+              onChange={e => setRecommendationFilter(e.target.value)}
+              style={{ padding: 6, width: '100%', maxWidth: 320 }}
+            />
+          </div>
 
           {orderedProducts.length === 0 ? (
             <div style={{ color: '#999' }}>No products available for this album.</div>
@@ -985,8 +719,6 @@ const AlbumDetails: React.FC = () => {
                   src={photo.thumbnailUrl || photo.fullImageUrl}
                   alt={photo.fileName}
                   style={{ width: '100%', height: 220, objectFit: 'cover', display: 'block' }}
-                  onContextMenu={e => e.preventDefault()}
-                  draggable={false}
                 />
                 {hasPlayers && (
                   <div
@@ -997,6 +729,9 @@ const AlbumDetails: React.FC = () => {
                       right: 0,
                       bottom: 0,
                       background: 'rgba(20, 19, 32, 0.9)',
+                      display: 'none',
+                      alignItems: 'center',
+                      justifyContent: 'center',
                       padding: '12px',
                       borderRadius: 0,
                     }}

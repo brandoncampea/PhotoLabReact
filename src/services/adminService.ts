@@ -175,3 +175,10 @@ export const superAdminService = {
     return response.data;
   },
 };
+
+export const adminService = {
+  async getDashboardStats() {
+    const response = await api.get('/admin/dashboard-stats');
+    return response.data;
+  },
+};
