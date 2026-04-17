@@ -4,7 +4,7 @@ const playerService = {
   async getRoster() {
     // Example: GET /api/roster or /api/players
     // Adjust the endpoint as needed for your backend
-    const response = await api.get('/roster');
+    const response = await api.get('/player-watchlist/roster');
     return response.data;
   },
 };

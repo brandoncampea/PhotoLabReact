@@ -32,6 +32,11 @@ export function extractPlayerNamesFromFilename(filename: string): string[] {
   if (parts.length < 2) return [];
   // Remove trailing number if present
   if (/^\d+$/.test(parts[parts.length - 1])) parts = parts.slice(0, -1);
+  // Remove trailing non-name codes (positions, etc.)
+  const NON_NAME_CODES = ['MM', 'GK', 'FWD', 'DEF', 'MID', 'POS', 'G', 'D', 'M', 'F', 'C', 'W', 'S', 'A'];
+  while (parts.length > 1 && NON_NAME_CODES.includes(parts[parts.length - 1].toUpperCase())) {
+    parts = parts.slice(0, -1);
+  }
   // Join all as name, capitalize
   const name = parts
     .map(
@@ -118,6 +123,11 @@ export function extractPlayerNameFromFilename(filename: string): { name: string;
       nameParts = [...parts.slice(0, -1), match[1]];
       number = match[2];
     }
+  }
+  // Remove trailing non-name codes (positions, etc.)
+  const NON_NAME_CODES = ['MM', 'GK', 'FWD', 'DEF', 'MID', 'POS', 'G', 'D', 'M', 'F', 'C', 'W', 'S', 'A'];
+  while (nameParts.length > 1 && NON_NAME_CODES.includes(nameParts[nameParts.length - 1].toUpperCase())) {
+    nameParts = nameParts.slice(0, -1);
   }
   // Join remaining as name, capitalize
   const name = nameParts

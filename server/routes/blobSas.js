@@ -17,6 +17,8 @@ const _sasCache = new Map(); // blobName -> { url, expiresAt }
 const SAS_TTL_MS = 55 * 60 * 1000;
 
 router.get('/sas-url', async (req, res) => {
+    // Purge SAS cache for debugging (force new token every time)
+    _sasCache.clear();
   const { blobName } = req.query;
   if (!blobName) return res.status(400).json({ error: 'Missing blobName' });
 
@@ -30,10 +32,11 @@ router.get('/sas-url', async (req, res) => {
     const sasToken = generateBlobSASQueryParameters({
       containerName,
       blobName,
-      permissions: BlobSASPermissions.parse('cw'),
-      startsOn: new Date(),
+      permissions: BlobSASPermissions.parse('rcw'),
+      startsOn: new Date(Date.now() - 5 * 60 * 1000), // 5 minutes ago
       expiresOn: new Date(Date.now() + 3600 * 1000), // 1 hour
       protocol: SASProtocol.Https,
+      resource: 'b',
     }, sharedKeyCredential).toString();
 
     const url = `https://${accountName}.blob.core.windows.net/${containerName}/${blobName}?${sasToken}`;

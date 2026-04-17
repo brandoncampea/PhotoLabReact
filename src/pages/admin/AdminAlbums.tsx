@@ -10,12 +10,25 @@ import './AdminAlbums.css';
 
 // Helper component for SAS-protected album covers
 function AlbumSasCover({ src, alt }: { src: string, alt: string }) {
-  // Only use SAS if src is a blob name, not a full URL or API endpoint
-  const isBlobName = src && !src.startsWith('/') && !src.startsWith('http');
-  const sasUrl = isBlobName ? useSasUrl(src) : null;
+  // Always use SAS for Azure blob images, even if src is a full URL or blob path
+  function extractBlobName(url: string): string | null {
+    if (!url) return null;
+    // Match Azure blob URLs (with or without query)
+    const azureMatch = url.match(/^https?:\/\/[^/]+\/(.+?)(\?.*)?$/);
+    if (azureMatch) {
+      return decodeURIComponent(azureMatch[1]);
+    }
+    // If it's already a blob name (not a URL or API endpoint)
+    if (!url.startsWith('/') && !url.startsWith('http')) {
+      return url;
+    }
+    return null;
+  }
+  const blobName = extractBlobName(src);
+  const sasUrl = useSasUrl(blobName);
   return (
     <img
-      src={isBlobName ? (sasUrl || '') : src}
+      src={sasUrl || src}
       alt={alt}
       className="table-thumbnail"
       style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 6, background: '#222' }}
@@ -25,209 +38,135 @@ function AlbumSasCover({ src, alt }: { src: string, alt: string }) {
 
 const AdminAlbums: React.FC = () => {
   const { user } = useAuth();
-
-    const emptyFormData = {
-      name: '',
-      description: '',
-      category: '',
-      priceListId: undefined as number | undefined,
-      isPasswordProtected: false,
-      password: '',
-      passwordHint: '',
-      coverType: '',
-      paperType: '',
-      albumSize: '',
-      batchShippingActive: false,
-    };
-
-    // Load albums from API
-    const loadAlbums = async () => {
-      try {
-        const res = await api.get('/albums');
-        // Removed debug log
-        setAlbums(res.data || []);
-        // Extract unique categories from albums
-        if (Array.isArray(res.data)) {
-          const uniqueCategories = Array.from(new Set(res.data.map((album: any) => album.category).filter(Boolean)));
-          setCategories(uniqueCategories);
-        }
-        setLoading(false);
-      } catch (error) {
-        setLoading(false);
-        console.error('Failed to load albums:', error);
-      }
-    };
-
-    // Load categories from API
-    const loadCategories = async () => {
-      try {
-        const categories = await categoryService.getCategories();
-        setCategories(categories || []);
-      } catch (error) {
-        console.error('Failed to load categories:', error);
-      }
-    };
-
-    // Load price lists from API
-    const loadPriceLists = async () => {
-      try {
-        const viewAsStudioId = Number(localStorage.getItem('viewAsStudioId'));
-        const effectiveStudioId = Number.isInteger(viewAsStudioId) && viewAsStudioId > 0
-          ? viewAsStudioId
-          : Number(user?.studioId || 0);
-
-        let allPriceLists: any[] = [];
-        if (effectiveStudioId > 0) {
-          const res = await api.get('/studio-price-lists', {
-            params: { studio_id: effectiveStudioId }
-          });
-          allPriceLists = Array.isArray(res.data) ? res.data : [];
-        } else {
-          const res = await api.get('/price-lists');
-          allPriceLists = Array.isArray(res.data) ? res.data : (res.data?.priceLists || []);
-        }
-
-        const selectablePriceLists = allPriceLists.filter((pl: any) => {
-          const name = String(pl?.name || '').trim().toLowerCase();
-          const description = String(pl?.description || '').trim().toLowerCase();
-          // Hide internal/system bridge price lists from album assignment UI.
-          if (name === 'whcc import bridge') return false;
-          if (description.includes('system bridge price list')) return false;
-          return true;
-        });
-
-        setPriceLists(selectablePriceLists);
-      } catch (error) {
-        console.error('Failed to load price lists:', error);
-      }
-    };
-    const handleCreate = () => {
-      setEditingAlbum(null);
-      setFormData(emptyFormData);
-      setNewModalCategory('');
-      setShowModal(true);
-    };
-    const handleAddCategory = async () => {
-      const category = newCategory.trim();
-      if (!category) return;
-      try {
-        const updatedCategories = await categoryService.addCategory(category);
-        setCategories(updatedCategories || []);
-        setNewCategory('');
-      } catch (error) {
-        console.error('Failed to add category:', error);
-        alert('Failed to add category. Please try again.');
-      }
-    };
-    const handleEdit = (album: Album) => {
-      setEditingAlbum(album);
-      setNewModalCategory('');
-      setFormData({
-        name: album.name || '',
-        description: album.description || '',
-        category: album.category || '',
-        priceListId: album.priceListId,
-        isPasswordProtected: album.isPasswordProtected || false,
-        password: album.password || '',
-        passwordHint: album.passwordHint || '',
-        coverType: '',
-        paperType: '',
-        albumSize: '',
-        batchShippingActive: !!album.batchShippingActive,
-      });
-      setShowModal(true);
-    };
-    const handleSubmit = async (e: React.FormEvent) => {
-      e.preventDefault();
-
-      const payload = {
-        name: formData.name.trim(),
-        description: formData.description?.trim() || '',
-        category: formData.category || undefined,
-        priceListId: formData.priceListId,
-        isPasswordProtected: !!formData.isPasswordProtected,
-        password: formData.isPasswordProtected ? formData.password : undefined,
-        passwordHint: formData.isPasswordProtected ? formData.passwordHint : undefined,
-        batchShippingActive: !!formData.batchShippingActive,
-      };
-
-      if (!payload.name) {
-        alert('Album name is required.');
-        return;
-      }
-
-      try {
-        if (editingAlbum) {
-          await albumAdminService.updateAlbum(editingAlbum.id, payload);
-        } else {
-          await albumAdminService.createAlbum(payload);
-        }
-
-        setShowModal(false);
-        setEditingAlbum(null);
-        setNewModalCategory('');
-        setFormData(emptyFormData);
-        await loadAlbums();
-      } catch (error: any) {
-        console.error('Failed to save album:', error);
-        const message = error?.response?.data?.error || 'Failed to save album. Please try again.';
-        alert(message);
-      }
-    };
+  const emptyFormData = {
+    name: '',
+    description: '',
+    category: '',
+    priceListId: undefined as number | undefined,
+    isPasswordProtected: false,
+    password: '',
+    passwordHint: '',
+    coverType: '',
+    paperType: '',
+    albumSize: '',
+    batchShippingActive: false,
+  };
   const [albums, setAlbums] = useState<Album[]>([]);
   const [priceLists, setPriceLists] = useState<PriceList[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingAlbum, setEditingAlbum] = useState<Album | null>(null);
   const [categories, setCategories] = useState<string[]>([]);
-  // const [showNewCategory, setShowNewCategory] = useState(false);
   const [newCategory, setNewCategory] = useState('');
   const [newModalCategory, setNewModalCategory] = useState('');
   const [formData, setFormData] = useState(emptyFormData);
 
-  // const [albumStyles, setAlbumStyles] = useState<{coverTypes: string[], paperTypes: string[], albumSizes: string[]} | null>(null);
-  // Minimal stub for setShowModal to avoid errors if not present
-  // (If setShowModal is already defined, ignore this)
-  // const [showModal, setShowModal] = useState(false);
-
-  useEffect(() => {
-    loadAlbums();
-    loadCategories();
-    loadPriceLists();
-    loadAlbumStyles();
-  }, [user?.studioId]);
-
-  const loadAlbumStyles = async () => {
+  // Load albums from API
+  const loadAlbums = async () => {
     try {
-      // Replace studioId with actual studio id from context/auth
-      const studioId = localStorage.getItem('viewAsStudioId');
-      if (!studioId) return;
-      // const res = await api.get(`/studios/${studioId}/album-styles`);
-      // const styles = res.data.albumStyles || {};
-      // setAlbumStyles({
-      //   coverTypes: styles.coverTypes || [],
-      //   paperTypes: styles.paperTypes || [],
-      //   albumSizes: styles.albumSizes || [],
-      // });
+      const res = await api.get('/albums');
+      setAlbums(res.data || []);
+      if (Array.isArray(res.data)) {
+        const uniqueCategories = Array.from(new Set(res.data.map((album: any) => album.category).filter(Boolean)));
+        setCategories(uniqueCategories);
+      }
+      setLoading(false);
     } catch (error) {
-      console.error('Failed to load album styles:', error);
+      setLoading(false);
+      console.error('Failed to load albums:', error);
     }
   };
-
+  // Load categories from API
+  const loadCategories = async () => {
+    try {
+      const categories = await categoryService.getCategories();
+      setCategories(categories || []);
+    } catch (error) {
+      console.error('Failed to load categories:', error);
+    }
+  };
+  // Load price lists from API
+  const loadPriceLists = async () => {};
+  const handleCreate = () => {
+    setEditingAlbum(null);
+    setFormData(emptyFormData);
+    setNewModalCategory('');
+    setShowModal(true);
+  };
+  const handleAddCategory = async () => {
+    const category = newCategory.trim();
+    if (!category) return;
+    try {
+      const updatedCategories = await categoryService.addCategory(category);
+      setCategories(updatedCategories || []);
+      setNewCategory('');
+    } catch (error) {
+      console.error('Failed to add category:', error);
+      alert('Failed to add category. Please try again.');
+    }
+  };
+  const handleEdit = (album: Album) => {
+    setEditingAlbum(album);
+    setNewModalCategory('');
+    setFormData({
+      name: album.name || '',
+      description: album.description || '',
+      category: album.category || '',
+      priceListId: album.priceListId,
+      isPasswordProtected: album.isPasswordProtected || false,
+      password: album.password || '',
+      passwordHint: album.passwordHint || '',
+      coverType: '',
+      paperType: '',
+      albumSize: '',
+      batchShippingActive: !!album.batchShippingActive,
+    });
+    setShowModal(true);
+  };
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const payload = {
+      name: formData.name.trim(),
+      description: formData.description?.trim() || '',
+      category: formData.category || undefined,
+      priceListId: formData.priceListId,
+      isPasswordProtected: !!formData.isPasswordProtected,
+      password: formData.isPasswordProtected ? formData.password : undefined,
+      passwordHint: formData.isPasswordProtected ? formData.passwordHint : undefined,
+      batchShippingActive: !!formData.batchShippingActive,
+    };
+    if (!payload.name) {
+      alert('Album name is required.');
+      return;
+    }
+    try {
+      if (editingAlbum) {
+        await albumAdminService.updateAlbum(editingAlbum.id, payload);
+      } else {
+        await albumAdminService.createAlbum(payload);
+      }
+      setShowModal(false);
+      setEditingAlbum(null);
+      setNewModalCategory('');
+      setFormData(emptyFormData);
+      await loadAlbums();
+    } catch (error: any) {
+      console.error('Failed to save album:', error);
+      const message = error?.response?.data?.error || 'Failed to save album. Please try again.';
+      alert(message);
+    }
+  };
   const handleDelete = async (id: number) => {
     if (confirm('Are you sure you want to delete this album?')) {
       try {
         await albumAdminService.deleteAlbum(id);
-        // Immediately remove from UI
         setAlbums(albums.filter(a => a.id !== id));
-        // Then reload to ensure sync with backend
         await loadAlbums();
       } catch (error) {
         console.error('Failed to delete album:', error);
       }
     }
   };
-
   const handleDeleteCategory = async (category: string) => {
     if (confirm(`Delete category "${category}"? Albums with this category will have it removed.`)) {
       try {
@@ -238,11 +177,9 @@ const AdminAlbums: React.FC = () => {
       }
     }
   };
-
   const handleAddCategoryFromModal = async () => {
     const category = newModalCategory.trim();
     if (!category) return;
-
     try {
       const updatedCategories = await categoryService.addCategory(category);
       setCategories(updatedCategories || []);
@@ -254,77 +191,61 @@ const AdminAlbums: React.FC = () => {
     }
   };
 
-  if (loading) {
-    return (
-      <AdminLayout>
-        <div className="loading">Loading albums...</div>
-      </AdminLayout>
-    );
-  }
+  useEffect(() => {
+    loadAlbums();
+    loadCategories();
+    loadPriceLists();
+  }, [user?.studioId]);
 
   return (
     <AdminLayout>
-      <div className="admin-orders-container admin-albums-page">
-      <div className="page-header admin-orders-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-        <h1 className="gradient-text" style={{ margin: 0 }}>Manage Albums</h1>
-        <button onClick={handleCreate} className="btn btn-primary" style={{ fontSize: 18, padding: '8px 24px' }}>
-          + Create Album
-        </button>
-      </div>
-
-      {/* Categories Card */}
-      <div className="dashboard-card tallydark-card admin-orders-card" style={{ maxWidth: 480, margin: '0 auto 32px auto', padding: 24, background: 'var(--card-bg, #23233a)', boxShadow: '0 2px 12px #0002', borderRadius: 16 }}>
-        <div className="categories-section">
-          <h3 style={{ marginTop: 0, marginBottom: 16 }}>Categories ({categories.length})</h3>
-          <div className="add-category-row" style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+      <div className="admin-albums-page">
+        <div className="dashboard-card" style={{ maxWidth: 400, marginBottom: 32 }}>
+          <h2 className="admin-albums-title">
+            Categories ({categories.length})
+          </h2>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
             <input
-              className="add-category-input"
               type="text"
               placeholder="Add new category"
               value={newCategory}
               onChange={e => setNewCategory(e.target.value)}
-              onKeyPress={e => e.key === 'Enter' && (e.preventDefault(), handleAddCategory())}
-              style={{ flex: 1, padding: '8px 12px', borderRadius: 8, border: '1px solid #333', background: '#19192a', color: '#fff' }}
+              style={{ flex: 1 }}
             />
-            <button className="add-category-btn" onClick={handleAddCategory} style={{ padding: '8px 16px', borderRadius: 8, background: 'var(--primary, #7b61ff)', color: '#fff', border: 'none', fontWeight: 500 }}>Add</button>
+            <button className="btn btn-primary" onClick={handleAddCategory}>Add</button>
           </div>
-          {Array.isArray(categories) && categories.length > 0 && (
-            <div className="category-tags" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {categories.map((category) => (
-                <div key={category} className="category-tag" style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#19192a', borderRadius: 8, padding: '4px 12px', color: '#fff', fontWeight: 500 }}>
-                  <span>{category}</span>
-                  <button
-                    onClick={() => handleDeleteCategory(category)}
-                    className="category-tag-delete"
-                    title="Delete category"
-                    style={{ background: 'none', border: 'none', color: '#ff6b6b', fontSize: 18, cursor: 'pointer', marginLeft: 4 }}
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+            {categories.map(cat => (
+              <li key={cat} style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
+                <span style={{ flex: 1 }}>{cat}</span>
+                <button className="btn btn-danger btn-xs" onClick={() => handleDeleteCategory(cat)} style={{ marginLeft: 8 }}>×</button>
+              </li>
+            ))}
+          </ul>
         </div>
-      </div>
 
-      {/* Albums Table Card */}
-      <div className="dashboard-card tallydark-card admin-orders-card" style={{ width: '100%', maxWidth: 1200, margin: '0 auto', padding: 24, background: 'var(--card-bg, #23233a)', boxShadow: '0 2px 12px #0002', borderRadius: 16 }}>
-        <div className="admin-table" style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0 }}>
-            <thead>
-              <tr style={{ background: 'transparent', color: '#fff', fontWeight: 700, fontSize: 16 }}>
-                <th style={{ padding: '8px 12px', textAlign: 'left' }}>Cover</th>
-                <th style={{ padding: '8px 12px', textAlign: 'left' }}>Name</th>
-                <th style={{ padding: '8px 12px', textAlign: 'left' }}>Category</th>
-                <th style={{ padding: '8px 12px', textAlign: 'left' }}>Price List</th>
-                <th style={{ padding: '8px 12px', textAlign: 'left' }}>Description</th>
-                <th style={{ padding: '8px 12px', textAlign: 'left' }}>Protected</th>
-                <th style={{ padding: '8px 12px', textAlign: 'left' }}>Photos</th>
-                <th style={{ padding: '8px 12px', textAlign: 'left' }}>Created</th>
-                <th style={{ padding: '8px 12px', textAlign: 'left' }}>Actions</th>
-              </tr>
-            </thead>
+        {/* Create Album Button */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+          <button className="btn btn-primary" onClick={handleCreate}>+ Create Album</button>
+        </div>
+
+        {/* Albums Table Card */}
+        <div className="dashboard-card tallydark-card admin-orders-card">
+          <div className="admin-table" style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0 }}>
+              <thead>
+                <tr style={{ background: 'transparent', color: '#fff', fontWeight: 700, fontSize: 16 }}>
+                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Cover</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Name</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Category</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Price List</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Description</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Protected</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Photos</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Created</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Actions</th>
+                </tr>
+              </thead>
             <tbody>
               {albums.length === 0 ? (
                 <tr>
@@ -334,6 +255,7 @@ const AdminAlbums: React.FC = () => {
                 </tr>
               ) : (
                 albums.map((album) => {
+                  // Always link directly to the customer album page
                   // Try to get the studio slug from user context or localStorage
                   let studioSlug = user?.studioSlug || localStorage.getItem('studioSlug') || '';
                   if (!studioSlug && user?.studioId) {
@@ -390,6 +312,7 @@ const AdminAlbums: React.FC = () => {
         </div>
       </div>
 
+      </div>
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal-content admin-modal-content" onClick={(e) => e.stopPropagation()}>
@@ -465,11 +388,9 @@ const AdminAlbums: React.FC = () => {
             </form>
           </div>
         </div>
-
       )}
-    </div>
     </AdminLayout>
   );
-};
+}
 
 export default AdminAlbums;

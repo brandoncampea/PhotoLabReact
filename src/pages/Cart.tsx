@@ -989,7 +989,10 @@ const Cart: React.FC = () => {
             <div className="cart-crop-frame">
               <Cropper
                 ref={setCropperRef}
-                src={editingItem.photo?.fullImageUrl || editingItem.photo?.thumbnailUrl}
+                // Always use SAS-protected URL for Azure blobs
+                src={useSasUrl(
+                  (editingItem.photo?.fullImageUrl || editingItem.photo?.thumbnailUrl) || ''
+                )}
                 crossOrigin="anonymous"
                 style={{ maxHeight: 500, width: '100%' }}
                 aspectRatio={getItemAspectRatio(editingItem)}

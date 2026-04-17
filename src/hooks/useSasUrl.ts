@@ -5,8 +5,16 @@ import { useEffect, useState } from 'react';
  * @param blobName The blob name or path (e.g. 'photos/123.jpg')
  * @returns {string | null} The SAS URL, or null if loading or error.
  */
+
 export function useSasUrl(blobName?: string | null): string | null {
   const [sasUrl, setSasUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (blobName) {
+      // Log every time the hook is called with a blobName
+      // eslint-disable-next-line no-console
+      console.log('[useSasUrl] called with blobName:', blobName);
+    }
+  }, [blobName]);
 
   useEffect(() => {
     if (!blobName) {

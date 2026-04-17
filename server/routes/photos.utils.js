@@ -3,7 +3,7 @@ import('../mssql.cjs').then((mssql) => {
   query = mssql.query || mssql.default?.query;
   queryRows = mssql.queryRows || mssql.default?.queryRows;
 });
-import { downloadBlob } from '../services/azureStorage.js';
+import { downloadBlob, getSignedReadUrl } from '../services/azureStorage.js';
 
 export const signPhotoForResponse = (photo) => {
   let parsedMetadata = photo?.metadata;
@@ -22,9 +22,14 @@ export const signPhotoForResponse = (photo) => {
   };
 };
 
-export async function pipeAssetToResponse(source, res) {
   try {
-    const download = await downloadBlob(source);
+    // Always generate a fresh SAS URL for Azure blobs
+    let downloadSource = source;
+    if (typeof source === 'string' && !source.startsWith('/uploads/') && !source.startsWith('/api/') && !source.startsWith('http://localhost')) {
+      // Only for Azure blobs (not local uploads or API proxies)
+      downloadSource = getSignedReadUrl(source);
+    }
+    const download = await downloadBlob(downloadSource);
     if (!download) {
       return res.status(404).json({ error: 'Asset not found' });
     }

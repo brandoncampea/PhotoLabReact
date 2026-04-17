@@ -39,8 +39,10 @@ export async function recordPhotoBlob({
 import { BlobServiceClient } from '@azure/storage-blob';
 // Get SAS URL for a blob from backend
 async function getSasUrl(blobName: string): Promise<string> {
-  const response = await api.get<{ url: string }>(`/blob-sas/sas-url`, { params: { blobName } });
-  return response.data.url;
+  // Always use /api/blob-sas for SAS URL fetch for compatibility
+  const response = await api.get<{ sasUrl?: string; url?: string }>(`/api/blob-sas`, { params: { blobName } });
+  // Prefer sasUrl, fallback to url for legacy support
+  return response.data.sasUrl || response.data.url || '';
 }
 
 // Upload a file directly to Azure Blob Storage using SAS URL
@@ -107,10 +109,19 @@ const normalizeRecommendations = (data: any) => {
       ? data.recommendations.map(mapRec)
       : [],
   };
+
 };
 
 
 export const photoService = {
+      async clearAllTagsInAlbum(albumId: number): Promise<{ cleared: number }> {
+        const response = await api.post<{ cleared: number }>(`/photos/album/${albumId}/clear-tags`);
+        return response.data;
+      },
+    async batchUpdatePhotoPlayers(updates: Array<{ id: number; playerNames: string }>): Promise<{ updated: number }> {
+      const response = await api.post<{ updated: number }>(`/photos/batch-update-players`, { updates });
+      return response.data;
+    },
   async updatePhoto(id: number, payload: {
     description?: string;
     metadata?: Record<string, any> | null;

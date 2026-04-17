@@ -1,4 +1,122 @@
 import express from 'express';
+const router = express.Router();
+
+// Clear all player tags and face signatures for all photos in an album
+router.post('/album/:albumId/clear-tags', async (req, res) => {
+  try {
+    const albumId = Number(req.params.albumId);
+    if (!Number.isInteger(albumId) || albumId <= 0) {
+      return res.status(400).json({ error: 'Invalid album id' });
+    }
+
+    // Get all photos in the album
+    const photos = await queryRows('SELECT id FROM photos WHERE album_id = $1', [albumId]);
+    if (!photos.length) {
+      return res.json({ cleared: 0 });
+    }
+
+    // Clear player tags for all photos
+    await query('UPDATE photos SET player_names = NULL, player_numbers = NULL WHERE album_id = $1', [albumId]);
+
+    // Remove face signatures for these photos (MSSQL compatible)
+    const photoIds = photos.map(p => p.id);
+    if (photoIds.length) {
+      // Build a parameterized IN clause for MSSQL with @p1, @p2, ...
+      const placeholders = photoIds.map((_, i) => `@p${i + 1}`).join(', ');
+      await query(
+        `DELETE FROM face_signatures WHERE source_photo_id IN (${placeholders})`,
+        photoIds
+      );
+    }
+
+    res.json({ cleared: photos.length });
+  } catch (error) {
+    console.error('Error in clear-tags:', error);
+    res.status(500).json({ error: error.message, details: error });
+  }
+});
+// Batch update player names for multiple photos
+router.post('/batch-update-players', async (req, res) => {
+  try {
+    await ensurePhotoUploadColumns();
+    const { updates } = req.body; // [{ id, playerNames }]
+    console.log('[BATCH UPDATE] Received updates:', JSON.stringify(updates, null, 2));
+    if (!Array.isArray(updates) || updates.length === 0) {
+      console.log('[BATCH UPDATE] No updates provided');
+      return res.status(400).json({ error: 'No updates provided' });
+    }
+    let updatedCount = 0;
+    for (const { id, playerNames } of updates) {
+      if (!id || !playerNames) {
+        console.log(`[BATCH UPDATE] Skipping update: id=${id}, playerNames=${playerNames}`);
+        continue;
+      }
+      // Update photo player_names
+      await query(
+        `UPDATE photos SET player_names = $1 WHERE id = $2`,
+        [Array.isArray(playerNames) ? playerNames.join(',') : playerNames, id]
+      );
+      console.log(`[BATCH UPDATE] Updated photo id=${id} with playerNames=${playerNames}`);
+      updatedCount++;
+
+      // Fetch album and studio for this photo
+      const photo = await queryRow('SELECT album_id FROM photos WHERE id = $1', [id]);
+      if (!photo || !photo.album_id) {
+        console.log(`[BATCH UPDATE] Could not find album for photo id=${id}`);
+        continue;
+      }
+      const album = await queryRow('SELECT studio_id FROM albums WHERE id = $1', [photo.album_id]);
+      if (!album || !album.studio_id) {
+        console.log(`[BATCH UPDATE] Could not find studio for album id=${photo.album_id}`);
+        continue;
+      }
+      const studioId = album.studio_id;
+      // For each player name, add to roster and face signatures if not present
+      const playerList = Array.isArray(playerNames) ? playerNames : (typeof playerNames === 'string' ? playerNames.split(',') : []);
+      for (const playerNameRaw of playerList) {
+        const playerName = playerNameRaw.trim();
+        if (!playerName) continue;
+        // Check if player already exists in roster
+        const existing = await queryRow(
+          `SELECT id FROM studio_player_roster WHERE studio_id = $1 AND LOWER(player_name) = LOWER($2)`,
+          [studioId, playerName]
+        );
+        if (!existing) {
+          await query(
+            `INSERT INTO studio_player_roster (studio_id, player_name, player_number, roster_name, source_album_id) VALUES ($1, $2, NULL, NULL, $3)`,
+            [studioId, playerName, photo.album_id]
+          );
+          console.log(`[BATCH UPDATE] Added player '${playerName}' to roster for studio ${studioId}`);
+        }
+
+        // Only add to face signatures if a real face signature is available
+        // Assume the real face signature (hash or vector) would be provided in the batch update payload as playerSignatures: { [playerName]: signatureHash }
+        // (You may need to update the frontend to send this if not already)
+        if (updates.playerSignatures && updates.playerSignatures[playerName]) {
+          const signatureHash = updates.playerSignatures[playerName];
+          if (signatureHash) {
+            const faceSigExists = await queryRow(
+              `SELECT id FROM studio_player_face_signatures WHERE studio_id = $1 AND LOWER(player_name) = LOWER($2)`,
+              [studioId, playerName]
+            );
+            if (!faceSigExists) {
+              await query(
+                `INSERT INTO studio_player_face_signatures (studio_id, player_name, player_number, signature_hash, source_photo_id) VALUES ($1, $2, NULL, $3, $4)`,
+                [studioId, playerName, signatureHash, id]
+              );
+              console.log(`[BATCH UPDATE] Added face signature for '${playerName}' in studio ${studioId} from photo ${id}`);
+            }
+          }
+        }
+      }
+    }
+    console.log(`[BATCH UPDATE] Total updated: ${updatedCount}`);
+    res.json({ updated: updatedCount });
+  } catch (error) {
+    console.error('[BATCH UPDATE] Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
 import multer from 'multer';
 import path from 'path';
 import mssql from '../mssql.cjs';
@@ -10,12 +128,39 @@ import { createWorker } from 'tesseract.js';
 import { uploadImageBufferToAzure, deleteBlobByUrl, downloadBlob } from '../services/azureStorage.js';
 import { requireActiveSubscription, enforceStorageQuotaForStudio } from '../middleware/subscription.js';
 import orderReceiptService from '../services/orderReceiptService.js';
-const router = express.Router();
 // Direct-to-Blob: Record photo metadata and blob URL after upload
 router.post('/record-blob', requireActiveSubscription, async (req, res) => {
   try {
     await ensurePhotoUploadColumns();
-    const { albumId, fileName, blobUrl, description, metadata, width, height, fileSizeBytes, playerName, playerNumber } = req.body;
+    const { albumId, fileName, blobUrl, description, metadata, width, height, fileSizeBytes } = req.body;
+    // Extract player name/number from filename if not provided
+    let playerName = req.body.playerName;
+    let playerNumber = req.body.playerNumber;
+    if (!playerName || !playerNumber) {
+      // Try to extract from filename: e.g. "John_Doe_12.jpg" or "12-JaneSmith.png"
+      const base = fileName ? fileName.replace(/\.[^.]+$/, '') : '';
+      const match = base.match(/([A-Za-z]+[ _-]?[A-Za-z]+)[ _-]?([0-9]{1,3})?$/);
+      if (match) {
+        if (!playerName) playerName = match[1].replace(/[_-]/g, ' ').trim();
+        if (!playerNumber && match[2]) playerNumber = match[2];
+      }
+    }
+    // Add player to roster if not present
+    let studioId = null;
+    const album = await queryRow('SELECT studio_id FROM albums WHERE id = $1', [albumId]);
+    if (album && album.studio_id && playerName) {
+      studioId = album.studio_id;
+      const existing = await queryRow(
+        `SELECT id FROM studio_player_roster WHERE studio_id = $1 AND LOWER(player_name) = LOWER($2) AND COALESCE(LOWER(player_number), '') = COALESCE(LOWER($3), '')`,
+        [studioId, playerName, playerNumber || null]
+      );
+      if (!existing) {
+        await query(
+          `INSERT INTO studio_player_roster (studio_id, player_name, player_number, roster_name, source_album_id) VALUES ($1, $2, $3, NULL, $4)`,
+          [studioId, playerName, playerNumber || null, albumId]
+        );
+      }
+    }
     if (!albumId || !fileName || !blobUrl) {
       return res.status(400).json({ error: 'Missing required fields: albumId, fileName, blobUrl' });
     }

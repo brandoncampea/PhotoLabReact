@@ -35,6 +35,33 @@ router.post('/upload-chunk', chunkUpload.single('chunk'), async (req, res) => {
 router.post('/assemble-chunks', express.json({ limit: '2mb' }), async (req, res) => {
   try {
     const { fileId, totalChunks, fileName, albumId, mimetype, description = '', metadata = {} } = req.body;
+    // Extract player name/number from filename if not provided
+    let playerName = req.body.playerName;
+    let playerNumber = req.body.playerNumber;
+    if (!playerName || !playerNumber) {
+      const base = fileName ? fileName.replace(/\.[^.]+$/, '') : '';
+      const match = base.match(/([A-Za-z]+[ _-]?[A-Za-z]+)[ _-]?([0-9]{1,3})?$/);
+      if (match) {
+        if (!playerName) playerName = match[1].replace(/[_-]/g, ' ').trim();
+        if (!playerNumber && match[2]) playerNumber = match[2];
+      }
+    }
+    // Add player to roster if not present
+    let studioId = null;
+    const album = await mssql.queryRow('SELECT studio_id FROM albums WHERE id = $1', [albumId]);
+    if (album && album.studio_id && playerName) {
+      studioId = album.studio_id;
+      const existing = await mssql.queryRow(
+        `SELECT id FROM studio_player_roster WHERE studio_id = $1 AND LOWER(player_name) = LOWER($2) AND COALESCE(LOWER(player_number), '') = COALESCE(LOWER($3), '')`,
+        [studioId, playerName, playerNumber || null]
+      );
+      if (!existing) {
+        await mssql.query(
+          `INSERT INTO studio_player_roster (studio_id, player_name, player_number, roster_name, source_album_id) VALUES ($1, $2, $3, NULL, $4)`,
+          [studioId, playerName, playerNumber || null, albumId]
+        );
+      }
+    }
     if (!fileId || !totalChunks || !fileName || !albumId) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
@@ -75,9 +102,9 @@ router.post('/assemble-chunks', express.json({ limit: '2mb' }), async (req, res)
 
     // Insert photo into DB
     const { queryRow } = mssql;
-    const result = await queryRow(`
-      INSERT INTO photos (album_id, file_name, thumbnail_url, full_image_url, description, metadata, width, height, file_size_bytes)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    const result = await mssql.queryRow(`
+      INSERT INTO photos (album_id, file_name, thumbnail_url, full_image_url, description, metadata, width, height, file_size_bytes, player_names, player_numbers)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       RETURNING id, album_id as "albumId", file_name as "fileName", thumbnail_url as "thumbnailUrl", full_image_url as "fullImageUrl", description, metadata, width, height
     `, [
       albumId,
@@ -88,7 +115,9 @@ router.post('/assemble-chunks', express.json({ limit: '2mb' }), async (req, res)
       Object.keys(mergedMetadata).length > 0 ? JSON.stringify(mergedMetadata) : null,
       width,
       height,
-      fileBuffer.length
+      fileBuffer.length,
+      playerName || null,
+      playerNumber || null
     ]);
     // ...existing code...
 

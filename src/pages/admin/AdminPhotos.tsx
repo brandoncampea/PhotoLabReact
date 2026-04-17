@@ -1323,6 +1323,60 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
             >
               🧑‍💻 Detect All
             </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ marginLeft: '0.5rem', minWidth: 140 }}
+              onClick={async () => {
+                if (photos.length === 0) {
+                  alert('No photos to tag from filenames.');
+                  return;
+                }
+                setLoading(true);
+                try {
+                  for (const photo of photos) {
+                    await autoTagPhotoFromFilenameAndFaces({
+                      photo,
+                      rosterPlayers,
+                      photoService,
+                      onTagged: () => {},
+                    });
+                  }
+                  await loadPhotos();
+                  setUploadMessage({ type: 'success', text: 'Tagged all photos from filenames.' });
+                } catch (err) {
+                  setUploadMessage({ type: 'error', text: 'Failed to tag all photos from filenames.' });
+                } finally {
+                  setLoading(false);
+                }
+              }}
+              disabled={photos.length === 0}
+              title="Auto-tag all photos in this album from filenames only"
+            >
+              🏷️ Tag All from Filenames
+            </button>
+            <button
+              type="button"
+              className="btn btn-danger"
+              style={{ marginLeft: '0.5rem', minWidth: 140 }}
+              onClick={async () => {
+                if (photos.length === 0) {
+                  alert('No photos to clear tags from.');
+                  return;
+                }
+                if (window.confirm(`Are you sure you want to clear all player tags from all ${photos.length} photos in this album? This cannot be undone.`)) {
+                  for (const photo of photos) {
+                    await handleClearPhotoTags(photo);
+                  }
+                  setUploadMessage({ type: 'success', text: 'Cleared all player tags from all photos in this album.' });
+                  await loadPhotos();
+                }
+              }}
+              disabled={photos.length === 0}
+              title="Remove all player tags from all photos in this album"
+            >
+              🗑️ Delete All Tags
+            </button>
             <span className="muted-text" style={{ fontSize: '0.8rem' }}>
               Reused across this studio’s future album uploads.
             </span>

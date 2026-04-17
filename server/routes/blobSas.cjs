@@ -25,7 +25,11 @@ router.get('/config', (req, res) => {
 
 // Support both /sas-url and root for compatibility with frontend useSasUrl
 router.get(['/sas-url', '/'], async (req, res) => {
+
+  console.log('[SAS ROUTE] /api/blob-sas hit', { query: req.query });
   const { blobName } = req.query;
+  console.log('[SAS ROUTE] blobName received:', blobName);
+  console.log('[SAS ROUTE] containerName:', containerName);
   if (!blobName) return res.status(400).json({ error: 'Missing blobName' });
 
   try {
@@ -33,10 +37,11 @@ router.get(['/sas-url', '/'], async (req, res) => {
     const sasToken = generateBlobSASQueryParameters({
       containerName,
       blobName,
-      permissions: BlobSASPermissions.parse('cwr'), // create, write, read
-      startsOn: new Date(),
+      permissions: BlobSASPermissions.parse('rcw'), // read, create, write
+      startsOn: new Date(Date.now() - 5 * 60 * 1000), // 5 minutes ago
       expiresOn: new Date(Date.now() + 3600 * 1000), // 1 hour
       protocol: SASProtocol.Https,
+      resource: 'b',
     }, sharedKeyCredential).toString();
 
     const url = `https://${accountName}.blob.core.windows.net/${containerName}/${blobName}?${sasToken}`;
@@ -45,10 +50,22 @@ router.get(['/sas-url', '/'], async (req, res) => {
       blobName,
       containerName,
       url,
-      permissions: 'cwr',
+      permissions: 'rcw',
       time: new Date().toISOString(),
     });
-    res.json({ url });
+    // Extra logging for troubleshooting 403 errors
+    console.log('[SAS EXTRA LOGGING]');
+    console.log('  blobName:', blobName);
+    console.log('  containerName:', containerName);
+    console.log('  SAS URL:', url);
+    try {
+      const decodedBlobName = decodeURIComponent(blobName);
+      console.log('  Decoded blobName:', decodedBlobName);
+      console.log('  SAS URL with decoded blobName:', `https://${accountName}.blob.core.windows.net/${containerName}/${decodedBlobName}?${sasToken}`);
+    } catch (e) {
+      console.log('  Could not decode blobName:', e);
+    }
+    res.json({ sasUrl: url, url });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to generate SAS URL' });

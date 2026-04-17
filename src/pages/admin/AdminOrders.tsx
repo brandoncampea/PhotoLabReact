@@ -33,7 +33,8 @@ function AdminOrderItemCard({ item }: { item: any }) {
     <div className="admin-order-item-card">
       <div className="admin-order-item-image-container">
         {thumbnailUrl ? (
-          <img src={thumbnailUrl} alt={item.photo?.fileName || 'Photo'} className="admin-order-item-image" />
+          // Always use SAS-protected URL for Azure blobs
+          <img src={useSasUrl(thumbnailUrl)} alt={item.photo?.fileName || 'Photo'} className="admin-order-item-image" />
         ) : (
           <div className="admin-order-item-image-placeholder">No Image</div>
         )}

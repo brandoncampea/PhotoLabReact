@@ -250,7 +250,8 @@ const AdminDashboard: React.FC = () => {
                     </Link>
                     {(photo.thumbnailUrl || photo.fullImageUrl) && (
                       <span className="admin-dashboard-photo-hover-preview" role="tooltip">
-                        <img src={(photo.thumbnailUrl || photo.fullImageUrl) as string} alt={photo.photoFileName} />
+                        {/* Always use SAS-protected URL for Azure blobs */}
+                        <img src={useSasUrl((photo.thumbnailUrl || photo.fullImageUrl) || '')} alt={photo.photoFileName} />
                       </span>
                     )}
                   </span>

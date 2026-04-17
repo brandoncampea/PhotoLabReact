@@ -30,7 +30,8 @@ function OrderItemWithSas({ item }: { item: any }) {
     <div className="order-item">
       <div className="item-image-container">
         {thumbnailUrl ? (
-          <img src={thumbnailUrl} alt={item.photo?.fileName || 'Photo'} className="item-image" />
+          // Always use SAS-protected URL for Azure blobs
+          <img src={useSasUrl(thumbnailUrl)} alt={item.photo?.fileName || 'Photo'} className="item-image" />
         ) : (
           <div className="item-image-placeholder">No Image</div>
         )}

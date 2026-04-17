@@ -89,10 +89,16 @@ const Albums: React.FC = () => {
     }
   };
 
-  const handleShare = async (e: React.MouseEvent, album: PublicAlbum) => {
-    e.preventDefault();
+  const handleShare = async (e: React.MouseEvent, album: Album) => {
     e.stopPropagation();
-    const url = `${window.location.origin}/albums/${album.id}`;
+    // Try to get the studio slug from context or localStorage
+    let studioSlug = (user && user.studioSlug) || localStorage.getItem('studioSlug') || '';
+    if (!studioSlug && user && user.studioId) {
+      studioSlug = `studio${user.studioId}`;
+    }
+    const url = studioSlug
+      ? `${window.location.origin}/albums/${album.id}?studioSlug=${encodeURIComponent(studioSlug)}`
+      : `${window.location.origin}/albums/${album.id}`;
     if (navigator.share) {
       try {
         await navigator.share({
@@ -289,8 +295,9 @@ const Albums: React.FC = () => {
           </div>
         </>
       )}
+
     </div>
   );
-};
+}
 
 export default Albums;

@@ -1,7 +1,20 @@
 import React, { useState } from 'react';
 import { Photo } from '../types';
 import WatermarkedImage from './WatermarkedImage';
-// import { useSasUrl } from '../hooks/useSasUrl';
+import { useSasUrl } from '../hooks/useSasUrl';
+
+// Utility to extract blob name from any Azure URL or blob path
+function extractBlobName(url: string): string | null {
+  if (!url) return null;
+  // If already a relative blob path
+  if (!url.startsWith('http')) return url;
+  // Azure URL: https://<account>.blob.core.windows.net/<container>/<blob-path>[?sas]
+  const match = url.match(/https?:\/\/[^\/]+\/([^?]+)(?:\?|$)/);
+  if (match && match[1]) {
+    return match[1];
+  }
+  return null;
+}
 
 interface PhotoCardProps {
   photo: Photo;
@@ -10,10 +23,17 @@ interface PhotoCardProps {
   studioId?: number;
 }
 
+
 const PhotoCard: React.FC<PhotoCardProps> = ({ photo, onClick, onShare, studioId }) => {
-  // const metadata = photo.metadata;
   const [showOverlay, setShowOverlay] = useState(false);
   const [imgError, setImgError] = useState(false);
+  // Always use SAS URL for Azure blob images (full URL or blob path)
+  const blobName = extractBlobName(photo.thumbnailUrl);
+  const isAzureBlob = !!blobName && (photo.thumbnailUrl.includes('blob.core.windows.net') || !photo.thumbnailUrl.startsWith('/uploads/'));
+  const sasUrl = useSasUrl(isAzureBlob ? blobName : undefined);
+  // Debug logging
+  // eslint-disable-next-line no-console
+  console.log('[PhotoCard] blobName:', blobName, 'sasUrl:', sasUrl, 'thumbnailUrl:', photo.thumbnailUrl);
 
   // Hide overlay when clicking outside
   React.useEffect(() => {
@@ -42,7 +62,7 @@ const PhotoCard: React.FC<PhotoCardProps> = ({ photo, onClick, onShare, studioId
       <div className="photo-image" style={{ position: 'relative', width: '100%', display: 'flex', justifyContent: 'center' }}>
         {!imgError ? (
           <WatermarkedImage
-            src={photo.thumbnailUrl}
+            src={isAzureBlob ? (sasUrl || '') : photo.thumbnailUrl}
             alt={photo.fileName}
             fill={false}
             style={{
