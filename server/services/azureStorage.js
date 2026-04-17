@@ -135,11 +135,7 @@ export async function downloadBlob(blobUrlOrName) {
   const blockBlobClient = container.getBlockBlobClient(blobName);
   try {
     const downloadResponse = await blockBlobClient.download();
-    const chunks = [];
-    for await (const chunk of downloadResponse.readableStreamBody) {
-      chunks.push(chunk);
-    }
-    return Buffer.concat(chunks);
+    return downloadResponse;
   } catch (err) {
     console.error('[azureStorage] Error downloading blob:', err);
     return null;

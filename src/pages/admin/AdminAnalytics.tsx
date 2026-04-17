@@ -1,8 +1,8 @@
-
 import React, { useState, useEffect } from 'react';
 import { AnalyticsData } from '../../types';
 import { analyticsService } from '../../services/analyticsService';
 import AdminLayout from '../../components/AdminLayout';
+import { useSasUrl } from '../../hooks/useSasUrl';
 
 const TIME_RANGES = [
   { label: 'Today', value: 'today' },
@@ -244,7 +244,13 @@ const AdminAnalytics: React.FC = () => {
                         </div>
                       </td>
                       <td>
-                        {renderThumbnail(photo.thumbnailUrl || photo.fullImageUrl, photo.photoFileName, '🖼️')}
+                        {renderThumbnail(
+                          photo.fullImageUrl && photo.fullImageUrl.startsWith('http')
+                            ? photo.fullImageUrl
+                            : useSasUrl(photo.fullImageUrl) || '',
+                          photo.photoFileName,
+                          '🖼️'
+                        )}
                       </td>
                       <td style={{ textAlign: 'center' }}>
                         <span className="analytics-view-badge" style={{ backgroundColor: '#16a34a' }}>

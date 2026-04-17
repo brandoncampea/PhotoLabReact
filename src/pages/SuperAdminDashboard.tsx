@@ -1,10 +1,7 @@
-function PhotoSasThumbnail({ src, alt }: { src: string, alt: string }) {
-  const sasUrl = useSasUrl(src);
-  return <img src={sasUrl || ''} alt={alt} style={{ width: '56px', height: '56px', objectFit: 'cover', borderRadius: '6px', border: '1px solid var(--border-color)' }} />;
-}
+
 
 import React, { useEffect, useState } from 'react';
-import { useSasUrl } from '../hooks/useSasUrl';
+
 import AdminLayout from '../components/AdminLayout';
 import { useAuth } from '../contexts/AuthContext';
 import { Order, DashboardStats } from '../types/index';
@@ -636,8 +633,8 @@ const SuperAdminDashboard: React.FC = () => {
                             {albumPhotos.map((row) => (
                               <tr key={row.photoId}>
                                 <td>
-                                  {row.thumbnailUrl ? (
-                                    <PhotoSasThumbnail src={row.thumbnailUrl} alt={row.fileName} />
+                                  {row.photoId ? (
+                                    <img src={`/api/photos/${row.photoId}/asset?variant=thumbnail`} alt={row.fileName} style={{ width: '56px', height: '56px', objectFit: 'cover', borderRadius: '6px', border: '1px solid var(--border-color)' }} />
                                   ) : '—'}
 
                                 

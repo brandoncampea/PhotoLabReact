@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Photo } from '../types';
 import WatermarkedImage from './WatermarkedImage';
-import { useSasUrl } from '../hooks/useSasUrl';
+
 
 // Utility to extract blob name from any Azure URL or blob path
 function extractBlobName(url: string): string | null {
@@ -28,12 +28,8 @@ const PhotoCard: React.FC<PhotoCardProps> = ({ photo, onClick, onShare, studioId
   const [showOverlay, setShowOverlay] = useState(false);
   const [imgError, setImgError] = useState(false);
   // Always use SAS URL for Azure blob images (full URL or blob path)
-  const blobName = extractBlobName(photo.thumbnailUrl);
-  const isAzureBlob = !!blobName && (photo.thumbnailUrl.includes('blob.core.windows.net') || !photo.thumbnailUrl.startsWith('/uploads/'));
-  const sasUrl = useSasUrl(isAzureBlob ? blobName : undefined);
-  // Debug logging
-  // eslint-disable-next-line no-console
-  console.log('[PhotoCard] blobName:', blobName, 'sasUrl:', sasUrl, 'thumbnailUrl:', photo.thumbnailUrl);
+  // Always use the asset endpoint for thumbnails
+  const assetUrl = `/api/photos/${photo.id}/asset?variant=thumbnail`;
 
   // Hide overlay when clicking outside
   React.useEffect(() => {
@@ -62,7 +58,7 @@ const PhotoCard: React.FC<PhotoCardProps> = ({ photo, onClick, onShare, studioId
       <div className="photo-image" style={{ position: 'relative', width: '100%', display: 'flex', justifyContent: 'center' }}>
         {!imgError ? (
           <WatermarkedImage
-            src={isAzureBlob ? (sasUrl || '') : photo.thumbnailUrl}
+            src={assetUrl}
             alt={photo.fileName}
             fill={false}
             style={{

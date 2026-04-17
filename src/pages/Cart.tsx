@@ -991,7 +991,7 @@ const Cart: React.FC = () => {
                 ref={setCropperRef}
                 // Always use SAS-protected URL for Azure blobs
                 src={useSasUrl(
-                  (editingItem.photo?.fullImageUrl || editingItem.photo?.thumbnailUrl) || ''
+                  editingItem.photo?.fullImageUrl || ''
                 )}
                 crossOrigin="anonymous"
                 style={{ maxHeight: 500, width: '100%' }}

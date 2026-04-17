@@ -1,8 +1,8 @@
-import { useSasUrl } from '../hooks/useSasUrl';
-function AlbumSasCover({ src, alt }: { src: string, alt: string }) {
-  const isAzureBlob = src && !src.startsWith('http://') && !src.startsWith('https://picsum.photos');
-  const sasUrl = useSasUrl(isAzureBlob ? src : undefined);
-  return <img src={sasUrl || src} alt={alt} />;
+
+function AlbumSasCover({ albumId, alt }: { albumId: number, alt: string }) {
+  // Always use asset endpoint for album covers
+  const assetUrl = `/api/photos/${albumId}/asset?variant=thumbnail`;
+  return <img src={assetUrl} alt={alt} />;
 }
 
 import { useNavigate } from 'react-router-dom';
@@ -30,7 +30,7 @@ const Albums = () => {
               navigate(`/albums/${album.id}`);
             }}
           >
-            <AlbumSasCover src={album.cover} alt={album.name} />
+            <AlbumSasCover albumId={album.id} alt={album.name} />
             <div>{album.name}</div>
           </a>
         ))}

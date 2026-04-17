@@ -6,9 +6,10 @@ import { orderService } from '../../services/orderService';
 import { shippingService } from '../../services/shippingService';
 import AdminLayout from '../../components/AdminLayout';
 import './AdminOrders.css';
+import { useSasUrl } from '../../hooks/useSasUrl';
 
 function AdminOrderItemCard({ item }: { item: any }) {
-  const thumbnailUrl = item.photo?.thumbnailUrl || null;
+  const fullImageUrl = item.photo?.fullImageUrl || null;
   const cropData = item.cropData
     ? (typeof item.cropData === 'string' ? JSON.parse(item.cropData) : item.cropData)
     : null;
@@ -32,9 +33,12 @@ function AdminOrderItemCard({ item }: { item: any }) {
   return (
     <div className="admin-order-item-card">
       <div className="admin-order-item-image-container">
-        {thumbnailUrl ? (
-          // Always use SAS-protected URL for Azure blobs
-          <img src={useSasUrl(thumbnailUrl)} alt={item.photo?.fileName || 'Photo'} className="admin-order-item-image" />
+        {fullImageUrl ? (
+          <img
+            src={fullImageUrl.startsWith('http') ? fullImageUrl : useSasUrl(fullImageUrl) || ''}
+            alt={item.photo?.fileName || 'Photo'}
+            className="admin-order-item-image"
+          />
         ) : (
           <div className="admin-order-item-image-placeholder">No Image</div>
         )}

@@ -211,7 +211,7 @@ const Checkout: React.FC = () => {
                     <div style={{ background: '#0f0f16', borderRadius: 4, overflow: 'hidden', height: 100 }}>
                       {/* Always use SAS-protected URL for Azure blobs */}
                       <img
-                        src={useSasUrl((item.photo.thumbnailUrl || item.photo.fullImageUrl) || '')}
+                        src={item.photo?.id ? `/api/photos/${item.photo.id}/asset?variant=thumbnail` : ''}
                         alt={item.photo.fileName}
                         style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                       />

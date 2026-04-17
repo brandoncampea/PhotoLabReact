@@ -137,7 +137,7 @@ const AdminPackages: React.FC<AdminPackagesProps> = ({ products, priceListId, pr
           });
           return pli ? { productId: pli.productId, sizeId: pli.productSizeId, quantity: 2 } : null;
         })(),
-      ].filter(i => i && i.productId && i.sizeId),
+      ].filter(i => i && i.productId && i.productSizeId),
     },
     {
       name: 'Digital & Print Combo',
@@ -151,7 +151,7 @@ const AdminPackages: React.FC<AdminPackagesProps> = ({ products, priceListId, pr
               return product && size;
             }
           );
-          return pli ? { productId: pli.productId, sizeId: pli.sizeId, quantity: 1 } : null;
+          return pli ? { productId: pli.productId, productSizeId: pli.sizeId, quantity: 1 } : null;
         })(),
         (() => {
           const pli = priceListItems.find(
@@ -161,9 +161,9 @@ const AdminPackages: React.FC<AdminPackagesProps> = ({ products, priceListId, pr
               return product && size;
             }
           );
-          return pli ? { productId: pli.productId, sizeId: pli.sizeId, quantity: 1 } : null;
+          return pli ? { productId: pli.productId, productSizeId: pli.sizeId, quantity: 1 } : null;
         })(),
-      ].filter(i => i && i.productId && i.sizeId),
+      ].filter(i => i && i.productId && i.productSizeId),
     },
     {
       name: 'Button & Magnet Pack',
@@ -177,7 +177,7 @@ const AdminPackages: React.FC<AdminPackagesProps> = ({ products, priceListId, pr
               return product && size;
             }
           );
-          return pli ? { productId: pli.productId, sizeId: pli.sizeId, quantity: 1 } : null;
+          return pli ? { productId: pli.productId, productSizeId: pli.sizeId, quantity: 1 } : null;
         })(),
         (() => {
           const pli = priceListItems.find(
@@ -187,9 +187,9 @@ const AdminPackages: React.FC<AdminPackagesProps> = ({ products, priceListId, pr
               return product && size;
             }
           );
-          return pli ? { productId: pli.productId, sizeId: pli.sizeId, quantity: 1 } : null;
+          return pli ? { productId: pli.productId, productSizeId: pli.sizeId, quantity: 1 } : null;
         })(),
-      ].filter(i => i && i.productId && i.sizeId),
+      ].filter(i => i && i.productId && i.productSizeId),
     },
     {
       name: 'Keychain & Print Combo',
@@ -203,7 +203,7 @@ const AdminPackages: React.FC<AdminPackagesProps> = ({ products, priceListId, pr
               return product && size;
             }
           );
-          return pli ? { productId: pli.productId, sizeId: pli.sizeId, quantity: 1 } : null;
+          return pli ? { productId: pli.productId, productSizeId: pli.sizeId, quantity: 1 } : null;
         })(),
         (() => {
           const pli = priceListItems.find(
@@ -213,9 +213,9 @@ const AdminPackages: React.FC<AdminPackagesProps> = ({ products, priceListId, pr
               return product && size;
             }
           );
-          return pli ? { productId: pli.productId, sizeId: pli.sizeId, quantity: 2 } : null;
+          return pli ? { productId: pli.productId, productSizeId: pli.sizeId, quantity: 2 } : null;
         })(),
-      ].filter(i => i && i.productId && i.sizeId),
+      ].filter(i => i && i.productId && i.productSizeId),
     },
     {
       name: 'Digital Deluxe',
@@ -229,9 +229,9 @@ const AdminPackages: React.FC<AdminPackagesProps> = ({ products, priceListId, pr
               return product && size;
             }
           );
-          return pli ? { productId: pli.productId, sizeId: pli.sizeId, quantity: 2 } : null;
+          return pli ? { productId: pli.productId, productSizeId: pli.sizeId, quantity: 2 } : null;
         })(),
-      ].filter(i => i && i.productId && i.sizeId),
+      ].filter(i => i && i.productId && i.productSizeId),
     },
   ];
 
@@ -241,14 +241,14 @@ const AdminPackages: React.FC<AdminPackagesProps> = ({ products, priceListId, pr
       const validItems = pkg.items
         .map(item => {
           let pli: PriceListItem | undefined = undefined;
-          // Try to match by productId/sizeId if present
-          if (item.productId && item.sizeId) {
-            pli = priceListItems.find((pli: PriceListItem) => pli.productId === item.productId && pli.productSizeId === item.sizeId);
+          // Try to match by productId/productSizeId if present
+          if (item.productId && item.productSizeId) {
+            pli = priceListItems.find((pli: PriceListItem) => pli.productId === item.productId && pli.productSizeId === item.productSizeId);
           }
           return pli ? {
             ...item,
             productId: pli.productId,
-            sizeId: pli.productSizeId
+            productSizeId: pli.productSizeId
           } : null;
         })
         .filter(Boolean);

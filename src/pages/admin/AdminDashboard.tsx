@@ -1,9 +1,9 @@
-
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import DashboardChart from '../../components/DashboardChart';
 import AdminLayout from '../../components/AdminLayout';
 import './AdminDashboard.css';
+import { useSasUrl } from '../../hooks/useSasUrl';
 
 type DashboardStats = {
   totalRevenue: number;
@@ -248,10 +248,12 @@ const AdminDashboard: React.FC = () => {
                     >
                       {photo.photoFileName}
                     </Link>
-                    {(photo.thumbnailUrl || photo.fullImageUrl) && (
+                    {photo.fullImageUrl && (
                       <span className="admin-dashboard-photo-hover-preview" role="tooltip">
-                        {/* Always use SAS-protected URL for Azure blobs */}
-                        <img src={useSasUrl((photo.thumbnailUrl || photo.fullImageUrl) || '')} alt={photo.photoFileName} />
+                        <img
+                          src={photo.fullImageUrl.startsWith('http') ? photo.fullImageUrl : useSasUrl(photo.fullImageUrl) || ''}
+                          alt={photo.photoFileName}
+                        />
                       </span>
                     )}
                   </span>

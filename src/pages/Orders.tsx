@@ -1,7 +1,7 @@
 // Helper component for order items
 function OrderItemWithSas({ item }: { item: any }) {
   // thumbnailUrl is a backend API URL — use directly (not a blob name for useSasUrl)
-  const thumbnailUrl = item.photo?.thumbnailUrl || null;
+  const assetUrl = item.photo?.id ? `/api/photos/${item.photo.id}/asset?variant=thumbnail` : null;
   const cropData = item.cropData
     ? (typeof item.cropData === 'string' ? JSON.parse(item.cropData) : item.cropData)
     : null;
@@ -29,9 +29,8 @@ function OrderItemWithSas({ item }: { item: any }) {
   return (
     <div className="order-item">
       <div className="item-image-container">
-        {thumbnailUrl ? (
-          // Always use SAS-protected URL for Azure blobs
-          <img src={useSasUrl(thumbnailUrl)} alt={item.photo?.fileName || 'Photo'} className="item-image" />
+        {assetUrl ? (
+          <img src={assetUrl} alt={item.photo?.fileName || 'Photo'} className="item-image" />
         ) : (
           <div className="item-image-placeholder">No Image</div>
         )}

@@ -79,9 +79,31 @@ router.post('/assemble-chunks', express.json({ limit: '2mb' }), async (req, res)
       fs.unlinkSync(path.join(CHUNKS_DIR, `${fileId}.${i}`));
     }
 
-    // Upload to Azure
-    const blobName = `${albumId}/${Date.now()}_${fileName}`;
+
+    // Upload original image to Azure
+    // Remove spaces from filename
+    const safeFileName = fileName.replace(/\s+/g, '_');
+    const blobName = `${albumId}/${Date.now()}_${safeFileName}`;
+    // Store only the blob path (relative to container)
     const photoBlobPath = await uploadImageBufferToAzure(fileBuffer, blobName, mimetype || 'application/octet-stream');
+
+    // Generate thumbnail (max 400px width/height, JPEG)
+    let thumbnailBuffer;
+    try {
+      const sharp = (await import('sharp')).default;
+      thumbnailBuffer = await sharp(fileBuffer)
+        .resize({ width: 400, height: 400, fit: 'inside', withoutEnlargement: true })
+        .jpeg({ quality: 80 })
+        .toBuffer();
+    } catch (err) {
+      console.error('[assemble-chunks] Thumbnail generation failed:', err);
+      thumbnailBuffer = fileBuffer; // fallback to original if sharp fails
+    }
+
+    // Upload thumbnail to Azure
+    const thumbBlobName = `${albumId}/thumb_${Date.now()}_${safeFileName.replace(/\.[^.]+$/, '.jpg')}`;
+    // Store only the blob path (relative to container)
+    const thumbnailBlobPath = await uploadImageBufferToAzure(thumbnailBuffer, thumbBlobName, 'image/jpeg');
 
     // Extract metadata
     let extractedMetadata = {};
@@ -100,8 +122,9 @@ router.post('/assemble-chunks', express.json({ limit: '2mb' }), async (req, res)
       signatureHash = await computeImageSignature(fileBuffer);
     } catch {}
 
-    // Insert photo into DB
+    // Insert photo into DB with thumbnail
     const { queryRow } = mssql;
+    // Ensure only the blob path is stored (not a signed URL)
     const result = await mssql.queryRow(`
       INSERT INTO photos (album_id, file_name, thumbnail_url, full_image_url, description, metadata, width, height, file_size_bytes, player_names, player_numbers)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
@@ -109,8 +132,8 @@ router.post('/assemble-chunks', express.json({ limit: '2mb' }), async (req, res)
     `, [
       albumId,
       fileName,
-      photoBlobPath,
-      photoBlobPath,
+      thumbnailBlobPath, // e.g. albums/68/thumb_{timestamp}_MORIA_ST_JOHN_77.jpg
+      photoBlobPath,     // e.g. albums/68/{timestamp}_MORIA_ST_JOHN_77.jpg
       description,
       Object.keys(mergedMetadata).length > 0 ? JSON.stringify(mergedMetadata) : null,
       width,
@@ -119,13 +142,13 @@ router.post('/assemble-chunks', express.json({ limit: '2mb' }), async (req, res)
       playerName || null,
       playerNumber || null
     ]);
-    // ...existing code...
 
     return res.status(201).json({
       ...result,
       metadata: mergedMetadata,
       signatureHash,
-      url: photoUrl,
+      url: photoBlobPath,
+      thumbnailUrl: thumbnailBlobPath,
     });
   } catch (err) {
     return res.status(500).json({ error: err.message });

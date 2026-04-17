@@ -125,7 +125,7 @@ import csv from 'csv-parser';
 import sharp from 'sharp';
 import exifReader from 'exif-reader';
 import { createWorker } from 'tesseract.js';
-import { uploadImageBufferToAzure, deleteBlobByUrl, downloadBlob } from '../services/azureStorage.js';
+import { uploadImageBufferToAzure, deleteBlobByUrl, downloadBlob, getSignedReadUrl } from '../services/azureStorage.js';
 import { requireActiveSubscription, enforceStorageQuotaForStudio } from '../middleware/subscription.js';
 import orderReceiptService from '../services/orderReceiptService.js';
 // Direct-to-Blob: Record photo metadata and blob URL after upload
@@ -198,6 +198,28 @@ router.post('/record-blob', requireActiveSubscription, async (req, res) => {
       mergedMetadata = metadata || {};
     }
 
+    // --- Generate and upload thumbnail ---
+    let thumbnailUrl = blobUrl; // fallback: use full image if thumb fails
+    try {
+      if (fileBuffer && fileBuffer.length > 0) {
+        // Generate thumbnail (max 400px wide, JPEG)
+        const thumbBuffer = await sharp(fileBuffer)
+          .resize({ width: 400, withoutEnlargement: true })
+          .jpeg({ quality: 80 })
+          .toBuffer();
+
+        // Compose thumbnail blob name in album folder
+        const thumbName = makeBlobName(albumId, fileName.replace(/\.[^.]+$/, '-thumb.jpg'));
+        // Upload thumbnail to Azure (returns blob path)
+        const thumbBlobPath = await uploadImageBufferToAzure(thumbBuffer, thumbName, 'image/jpeg');
+        // Convert blob path to full URL
+        thumbnailUrl = getSignedReadUrl(thumbBlobPath);
+      }
+    } catch (err) {
+      console.error('[record-blob] Thumbnail generation/upload failed:', err);
+      // fallback: thumbnailUrl remains as blobUrl
+    }
+
     const result = await queryRow(`
       INSERT INTO photos (album_id, file_name, thumbnail_url, full_image_url, description, metadata, width, height, file_size_bytes, player_names, player_numbers)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
@@ -205,7 +227,7 @@ router.post('/record-blob', requireActiveSubscription, async (req, res) => {
     `, [
       albumId,
       fileName,
-      blobUrl,
+      thumbnailUrl,
       blobUrl,
       description || '',
       Object.keys(mergedMetadata).length > 0 ? JSON.stringify(mergedMetadata) : null,
@@ -1578,8 +1600,26 @@ router.post('/upload', requireActiveSubscription, upload.fields([
     for (let index = 0; index < uploadEntries.length; index++) {
       const entry = uploadEntries[index];
       const file = entry.file;
+
+      // Generate blob name for full image
       const blobName = makeBlobName(albumId, file.originalname);
       const photoUrl = await uploadImageBufferToAzure(file.buffer, blobName, file.mimetype);
+
+      // --- THUMBNAIL GENERATION AND UPLOAD ---
+      // Generate a thumbnail buffer (e.g., 400px wide, preserve aspect)
+      let thumbnailUrl = null;
+      try {
+        const thumbExt = path.extname(file.originalname).toLowerCase() || '.jpg';
+        const thumbBase = path.basename(file.originalname, thumbExt).replace(/[^a-zA-Z0-9-_]/g, '-');
+        const thumbName = `albums/${albumId}/${thumbBase}-thumb-${Date.now()}-${Math.round(Math.random() * 1e9)}${thumbExt}`;
+        const thumbBuffer = await sharp(file.buffer)
+          .resize({ width: 400, withoutEnlargement: true })
+          .jpeg({ quality: 80 })
+          .toBuffer();
+        thumbnailUrl = await uploadImageBufferToAzure(thumbBuffer, thumbName, 'image/jpeg');
+      } catch (err) {
+        console.error(`[Photo Upload] Failed to generate/upload thumbnail for ${file.originalname}:`, err);
+      }
 
       // Extract comprehensive metadata from EXIF and image properties
       const extractedMetadata = await extractImageMetadata(file.buffer);
@@ -1628,6 +1668,8 @@ router.post('/upload', requireActiveSubscription, upload.fields([
         : null;
       const player = fileTag || signatureTag;
 
+
+      // Use the correct thumbnail path (album folder)
       const result = await queryRow(`
         INSERT INTO photos (album_id, file_name, thumbnail_url, full_image_url, description, metadata, width, height, file_size_bytes, player_names, player_numbers)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
@@ -1635,7 +1677,7 @@ router.post('/upload', requireActiveSubscription, upload.fields([
       `, [
         parsedAlbumId,
         file.originalname,
-        photoUrl && typeof photoUrl === 'string' ? require('../services/azureStorage.js').getBlobNameFromUrlOrName(photoUrl) : photoUrl,
+        thumbnailUrl && typeof thumbnailUrl === 'string' ? require('../services/azureStorage.js').getBlobNameFromUrlOrName(thumbnailUrl) : thumbnailUrl,
         photoUrl && typeof photoUrl === 'string' ? require('../services/azureStorage.js').getBlobNameFromUrlOrName(photoUrl) : photoUrl,
         entry.description || '',
         Object.keys(mergedMetadata).length > 0 ? JSON.stringify(mergedMetadata) : null,
@@ -1660,8 +1702,8 @@ router.post('/upload', requireActiveSubscription, upload.fields([
         id: result.id,
         albumId: parsedAlbumId,
         fileName: file.originalname,
-        thumbnailUrl: photoUrl,
-        fullImageUrl: photoUrl,
+        thumbnailUrl: thumbnailUrl && typeof thumbnailUrl === 'string' ? require('../services/azureStorage.js').getBlobNameFromUrlOrName(thumbnailUrl) : thumbnailUrl,
+        fullImageUrl: photoUrl && typeof photoUrl === 'string' ? require('../services/azureStorage.js').getBlobNameFromUrlOrName(photoUrl) : photoUrl,
         description: entry.description || '',
         metadata: Object.keys(mergedMetadata).length > 0 ? mergedMetadata : null,
         width: width,

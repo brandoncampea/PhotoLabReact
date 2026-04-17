@@ -1420,17 +1420,11 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
                  title="Click to view full size">
               {/* Use backend asset endpoint for image preview */}
               <img
-                src={`/api/photos/${photo.id}/asset`}
-                alt={photo.fileName}
-                style={{
-                  width: '100%',
-                  maxWidth: 360,
-                  aspectRatio: '1 / 1',
-                  objectFit: 'cover',
-                  borderRadius: 8,
-                  background: '#222',
-                  display: 'block',
-                }}
+                src={`/api/photos/${photo.id}/asset?variant=thumbnail`}
+                alt={photo.file_name}
+                className="photo-img"
+                style={{ maxWidth: '120px', maxHeight: '120px', objectFit: 'cover', borderRadius: 8, background: '#222', display: 'block' }}
+                loading="lazy"
                 ref={el => setImageRef(photo.id, el)}
               />
             </div>
