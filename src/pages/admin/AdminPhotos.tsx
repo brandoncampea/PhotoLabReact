@@ -1906,72 +1906,47 @@ function getMetadataForDisplay(photo: Photo | null): Record<string, string | num
   let exif: Record<string, any> = {};
   exif = parsePhotoMetadata(photo);
 
+  // Start with basic fields
   const metadata: Record<string, string | number> = {
-    'File Name': photo.fileName || 'N/A',
-    'Photo ID': photo.id,
+    'File Name': photo?.fileName || 'N/A',
+    'Photo ID': photo?.id,
   };
 
-  if ((photo as any).playerNames) {
-    metadata['Players'] = (photo as any).playerNames;
-  }
-  if ((photo as any).playerNumbers) {
-    metadata['Player Numbers'] = (photo as any).playerNumbers;
-  }
-
-  if (exif.caption) metadata['Caption'] = String(exif.caption);
-  if (exif.headline) metadata['Headline'] = String(exif.headline);
-  if (exif.keywords) metadata['Keywords'] = String(exif.keywords);
-
-  if (exif.cameraMake || exif.cameraModel) {
-    metadata['Camera'] = `${exif.cameraMake || ''}${exif.cameraMake && exif.cameraModel ? ' ' : ''}${exif.cameraModel || ''}`.trim();
-  }
-  if (exif.dateTaken) metadata['Date Taken'] = String(exif.dateTaken);
-
-  if (exif.iso) metadata['ISO'] = String(exif.iso);
-  if (exif.aperture) metadata['Aperture'] = String(exif.aperture);
-  if (exif.fNumber) metadata['F Number'] = String(exif.fNumber);
-  if (exif.shutterSpeed) metadata['Shutter Speed'] = String(exif.shutterSpeed);
-  if (exif.exposureTime) metadata['Exposure Time'] = String(exif.exposureTime);
-  if (exif.exposureProgram) metadata['Exposure Program'] = String(exif.exposureProgram);
-  if (exif.focalLength) metadata['Focal Length'] = String(exif.focalLength);
-  if (exif.meteringMode) metadata['Metering Mode'] = String(exif.meteringMode);
-
-  if (exif.city || exif.stateOrProvince) {
-    metadata['Location'] = `${exif.city || ''}${exif.city && exif.stateOrProvince ? ', ' : ''}${exif.stateOrProvince || ''}`.trim();
-  }
-
-  if (exif.colorSpace) metadata['Color Space'] = String(exif.colorSpace);
-  if (exif.colorProfile) metadata['Color Profile'] = String(exif.colorProfile);
-  if (exif.redEye) metadata['Red Eye'] = String(exif.redEye);
-  if (exif.alphaChannel) metadata['Alpha Channel'] = String(exif.alphaChannel);
-
-  if (photo.width && photo.height) {
-    metadata['Dimensions'] = `${photo.width} × ${photo.height}`;
-  } else if (exif.width && exif.height) {
-    metadata['Dimensions'] = `${exif.width} × ${exif.height}`;
-  }
-  if (exif.fileSize) {
-    const bytes = Number(exif.fileSize);
-    if (Number.isFinite(bytes) && bytes > 0) {
-      metadata['File Size'] = `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  // Add all top-level photo fields except for large blobs
+  Object.entries(photo || {}).forEach(([key, value]) => {
+    if (
+      key !== 'metadata' &&
+      key !== 'id' &&
+      key !== 'fileName' &&
+      key !== 'albumId' &&
+      key !== 'url' &&
+      key !== 'assetUrl' &&
+      key !== 'sasUrl' &&
+      key !== 'blobName' &&
+      key !== 'createdAt' &&
+      key !== 'updatedAt' &&
+      typeof value !== 'object' &&
+      typeof value !== 'undefined'
+    ) {
+      metadata[key.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase())] = value as any;
     }
-  }
+  });
 
-  if (Array.isArray(exif.faceTags) && exif.faceTags.length > 0) {
-    metadata['Face Tags'] = exif.faceTags
-      .map((faceTag: FaceTagBox) => `${faceTag.id}${faceTag.playerName ? ` → ${faceTag.playerName}${faceTag.playerNumber ? ` #${faceTag.playerNumber}` : ''}` : ''}`)
-      .join(', ');
+  // Add all EXIF fields (flattened, no prefix, and recursively for nested objects)
+  function addExifFields(obj: any, prefix = '') {
+    if (!obj || typeof obj !== 'object') return;
+    Object.entries(obj).forEach(([key, value]) => {
+      const label = prefix ? `${prefix}${key}` : key;
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        addExifFields(value, label + '.');
+      } else if (Array.isArray(value)) {
+        metadata[label] = value.map(v => (typeof v === 'object' ? JSON.stringify(v) : String(v))).join(', ');
+      } else if (typeof value !== 'undefined') {
+        metadata[label] = String(value);
+      }
+    });
   }
-
-  if ((photo as any).aspectRatio) {
-    metadata['Aspect Ratio'] = (photo as any).aspectRatio;
-  }
-  if ((photo as any).orientation) {
-    metadata['Orientation'] = (photo as any).orientation;
-  }
-  if ((photo as any).megapixels) {
-    metadata['Megapixels'] = (photo as any).megapixels;
-  }
+  addExifFields(exif);
 
   return metadata;
 

@@ -14,24 +14,30 @@ export const signPhotoForResponse = (photo) => {
       parsedMetadata = null;
     }
   }
+  // Flatten metadata fields into the top-level response for easy frontend access
+  const metadataFields = parsedMetadata && typeof parsedMetadata === 'object' ? parsedMetadata : {};
   return {
     ...photo,
-    metadata: parsedMetadata && typeof parsedMetadata === 'object' ? parsedMetadata : null,
+    ...metadataFields, // flatten all EXIF fields
+    metadata: metadataFields,
     thumbnailUrl: photo?.thumbnailUrl,
     fullImageUrl: photo?.fullImageUrl,
   };
 };
 
+// Wrap the asset piping logic in a function and export it
+export async function pipeAssetToResponse(source, res) {
   try {
     // Always generate a fresh SAS URL for Azure blobs
     let downloadSource = source;
-    if (typeof source === 'string' && !source.startsWith('/uploads/') && !source.startsWith('/api/') && !source.startsWith('http://localhost')) {
+    if (typeof source === 'string' && !downloadSource.startsWith('/uploads/') && !downloadSource.startsWith('/api/') && !downloadSource.startsWith('http://localhost')) {
       // Only for Azure blobs (not local uploads or API proxies)
       downloadSource = getSignedReadUrl(source);
     }
     const download = await downloadBlob(downloadSource);
     if (!download) {
-      return res.status(404).json({ error: 'Asset not found' });
+      res.status(404).json({ error: 'Asset not found' });
+      return;
     }
     if (download?.contentType) {
       res.setHeader('Content-Type', download.contentType);
@@ -52,13 +58,15 @@ export const signPhotoForResponse = (photo) => {
       download.readableStreamBody.pipe(res);
       return;
     }
-    return res.status(404).json({ error: 'Asset not found' });
+    res.status(404).json({ error: 'Asset not found' });
+    return;
   } catch (err) {
     if (typeof source === 'string' && source.startsWith('http')) {
       try {
         const upstream = await fetch(source);
         if (!upstream.ok) {
-          return res.status(upstream.status).end('Failed to fetch asset');
+          res.status(upstream.status).end('Failed to fetch asset');
+          return;
         }
         const arrayBuffer = await upstream.arrayBuffer();
         res.setHeader('Content-Type', upstream.headers.get('content-type') || 'application/octet-stream');
@@ -66,12 +74,14 @@ export const signPhotoForResponse = (photo) => {
         return;
       } catch (fetchErr) {
         console.error('Fetch asset error:', fetchErr);
-        return res.status(404).json({ error: 'Asset not found' });
+        res.status(404).json({ error: 'Asset not found' });
+        return;
       }
     }
     console.error('pipeAssetToResponse error:', err);
     res.status(500).json({ error: 'Server error: ' + err.message });
   }
+// Removed extra closing brace
 }
 
 export const ensurePlayerRecognitionSchema = async () => {

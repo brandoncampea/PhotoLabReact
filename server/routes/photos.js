@@ -133,11 +133,9 @@ router.post('/record-blob', requireActiveSubscription, async (req, res) => {
   try {
     await ensurePhotoUploadColumns();
     const { albumId, fileName, blobUrl, description, metadata, width, height, fileSizeBytes } = req.body;
-    // Extract player name/number from filename if not provided
     let playerName = req.body.playerName;
     let playerNumber = req.body.playerNumber;
     if (!playerName || !playerNumber) {
-      // Try to extract from filename: e.g. "John_Doe_12.jpg" or "12-JaneSmith.png"
       const base = fileName ? fileName.replace(/\.[^.]+$/, '') : '';
       const match = base.match(/([A-Za-z]+[ _-]?[A-Za-z]+)[ _-]?([0-9]{1,3})?$/);
       if (match) {
@@ -145,7 +143,6 @@ router.post('/record-blob', requireActiveSubscription, async (req, res) => {
         if (!playerNumber && match[2]) playerNumber = match[2];
       }
     }
-    // Add player to roster if not present
     let studioId = null;
     const album = await queryRow('SELECT studio_id FROM albums WHERE id = $1', [albumId]);
     if (album && album.studio_id && playerName) {
@@ -164,7 +161,43 @@ router.post('/record-blob', requireActiveSubscription, async (req, res) => {
     if (!albumId || !fileName || !blobUrl) {
       return res.status(400).json({ error: 'Missing required fields: albumId, fileName, blobUrl' });
     }
-    // Insert photo record
+
+    // --- EXIF extraction for direct-to-blob uploads ---
+    let mergedMetadata = metadata || {};
+    try {
+      // Download the blob from Azure to get the file buffer, with retry logic
+      console.log('[record-blob] Attempting to download blob:', blobUrl);
+      let fileBuffer = null;
+      const maxAttempts = 5;
+      const delayMs = 1000;
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+          fileBuffer = await downloadBlob(blobUrl);
+          if (fileBuffer && fileBuffer.length > 0) {
+            console.log(`[record-blob] Blob download succeeded on attempt ${attempt}. Buffer length:`, fileBuffer.length);
+            break;
+          } else {
+            console.warn(`[record-blob] Blob buffer empty on attempt ${attempt}. Retrying...`);
+          }
+        } catch (err) {
+          console.error(`[record-blob] Blob download error on attempt ${attempt}:`, err);
+        }
+        if (attempt < maxAttempts) {
+          await new Promise(res => setTimeout(res, delayMs));
+        }
+      }
+      if (fileBuffer && fileBuffer.length > 0) {
+        const extractedMetadata = await import('../utils/exif.mjs').then(m => m.extractImageMetadata(fileBuffer));
+        console.log('[record-blob] Extracted metadata:', extractedMetadata);
+        mergedMetadata = { ...extractedMetadata, ...metadata };
+      } else {
+        console.warn('[record-blob] Blob download failed or buffer is empty after retries.');
+      }
+    } catch (err) {
+      console.error('[record-blob] Error during blob download or EXIF extraction:', err);
+      mergedMetadata = metadata || {};
+    }
+
     const result = await queryRow(`
       INSERT INTO photos (album_id, file_name, thumbnail_url, full_image_url, description, metadata, width, height, file_size_bytes, player_names, player_numbers)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
@@ -175,14 +208,13 @@ router.post('/record-blob', requireActiveSubscription, async (req, res) => {
       blobUrl,
       blobUrl,
       description || '',
-      metadata ? JSON.stringify(metadata) : null,
+      Object.keys(mergedMetadata).length > 0 ? JSON.stringify(mergedMetadata) : null,
       width || null,
       height || null,
       fileSizeBytes || null,
       playerName || null,
       playerNumber || null,
     ]);
-    // Update album photo count
     await query(`
       UPDATE albums 
       SET photo_count = (SELECT COUNT(*) FROM photos WHERE album_id = $1)

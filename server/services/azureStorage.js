@@ -133,7 +133,17 @@ export async function downloadBlob(blobUrlOrName) {
 
   const container = getContainerClient();
   const blockBlobClient = container.getBlockBlobClient(blobName);
-  return blockBlobClient.download();
+  try {
+    const downloadResponse = await blockBlobClient.download();
+    const chunks = [];
+    for await (const chunk of downloadResponse.readableStreamBody) {
+      chunks.push(chunk);
+    }
+    return Buffer.concat(chunks);
+  } catch (err) {
+    console.error('[azureStorage] Error downloading blob:', err);
+    return null;
+  }
 }
 
 export async function deleteBlobByUrl(blobUrl) {

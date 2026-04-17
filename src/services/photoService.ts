@@ -40,7 +40,7 @@ import { BlobServiceClient } from '@azure/storage-blob';
 // Get SAS URL for a blob from backend
 async function getSasUrl(blobName: string): Promise<string> {
   // Always use /api/blob-sas for SAS URL fetch for compatibility
-  const response = await api.get<{ sasUrl?: string; url?: string }>(`/api/blob-sas`, { params: { blobName } });
+  const response = await api.get<{ sasUrl?: string; url?: string }>(`/blob-sas`, { params: { blobName } });
   // Prefer sasUrl, fallback to url for legacy support
   return response.data.sasUrl || response.data.url || '';
 }
