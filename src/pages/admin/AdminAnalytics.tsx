@@ -245,9 +245,11 @@ const AdminAnalytics: React.FC = () => {
                       </td>
                       <td>
                         {renderThumbnail(
-                          photo.fullImageUrl && photo.fullImageUrl.startsWith('http')
+                          photo.fullImageUrl && photo.fullImageUrl.startsWith('/api/photos/')
                             ? photo.fullImageUrl
-                            : useSasUrl(photo.fullImageUrl) || '',
+                            : (photo.fullImageUrl && !photo.fullImageUrl.startsWith('http') && !photo.fullImageUrl.startsWith('/')
+                                ? useSasUrl(photo.fullImageUrl) || ''
+                                : photo.fullImageUrl || ''),
                           photo.photoFileName,
                           '🖼️'
                         )}

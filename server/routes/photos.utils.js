@@ -35,9 +35,11 @@ export async function pipeAssetToResponse(source, res) {
     if (typeof source === 'string' && !downloadSource.startsWith('/uploads/') && !downloadSource.startsWith('/api/') && !downloadSource.startsWith('http://localhost')) {
       // Only for Azure blobs (not local uploads or API proxies)
       downloadSource = getSignedReadUrl(source);
-      console.log('[PHOTO ASSET] Generated SAS URL:', downloadSource);
+      console.log('[PHOTO ASSET] Generated SAS URL:', downloadSource, 'from blob path:', source);
     }
-    const download = await downloadBlob(downloadSource);
+    console.log('[PHOTO ASSET] Calling downloadBlob with:', downloadSource);
+    const download = await downloadBlob(downloadSource, 'stream');
+    console.log('[PHOTO ASSET] downloadBlob result:', !!download, download?.contentType, download?.contentLength);
     if (!download) {
       console.error('[PHOTO ASSET] Asset not found for:', downloadSource);
       res.status(404).json({ error: 'Asset not found' });

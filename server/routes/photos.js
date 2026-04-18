@@ -125,7 +125,7 @@ import csv from 'csv-parser';
 import sharp from 'sharp';
 import exifReader from 'exif-reader';
 import { createWorker } from 'tesseract.js';
-import { uploadImageBufferToAzure, deleteBlobByUrl, downloadBlob, getSignedReadUrl } from '../services/azureStorage.js';
+import { uploadImageBufferToAzure, deleteBlobByUrl, downloadBlob, getSignedReadUrl, getBlobNameFromUrlOrName } from '../services/azureStorage.js';
 import { requireActiveSubscription, enforceStorageQuotaForStudio } from '../middleware/subscription.js';
 import orderReceiptService from '../services/orderReceiptService.js';
 // Direct-to-Blob: Record photo metadata and blob URL after upload
@@ -159,28 +159,28 @@ router.post('/record-blob', requireActiveSubscription, async (req, res) => {
       }
     }
     if (!albumId || !fileName || !blobUrl) {
+      console.error('[RECORD-BLOB] Missing required fields:', { albumId, fileName, blobUrl });
       return res.status(400).json({ error: 'Missing required fields: albumId, fileName, blobUrl' });
     }
 
     // --- EXIF extraction for direct-to-blob uploads ---
     let mergedMetadata = metadata || {};
+    let fileBuffer = null;
     try {
       // Download the blob from Azure to get the file buffer, with retry logic
-      console.log('[record-blob] Attempting to download blob:', blobUrl);
-      let fileBuffer = null;
       const maxAttempts = 5;
       const delayMs = 1000;
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
-          fileBuffer = await downloadBlob(blobUrl);
+          fileBuffer = await downloadBlob(blobUrl, 'buffer');
           if (fileBuffer && fileBuffer.length > 0) {
-            console.log(`[record-blob] Blob download succeeded on attempt ${attempt}. Buffer length:`, fileBuffer.length);
+            console.log(`[RECORD-BLOB] Successfully downloaded fileBuffer for EXIF extraction, size: ${fileBuffer.length}`);
             break;
           } else {
-            console.warn(`[record-blob] Blob buffer empty on attempt ${attempt}. Retrying...`);
+            console.warn(`[RECORD-BLOB] Attempt ${attempt}: fileBuffer empty or invalid for blobUrl: ${blobUrl}`);
           }
         } catch (err) {
-          console.error(`[record-blob] Blob download error on attempt ${attempt}:`, err);
+          console.error(`[RECORD-BLOB] Attempt ${attempt}: Error downloading blob for EXIF extraction:`, err);
         }
         if (attempt < maxAttempts) {
           await new Promise(res => setTimeout(res, delayMs));
@@ -188,62 +188,149 @@ router.post('/record-blob', requireActiveSubscription, async (req, res) => {
       }
       if (fileBuffer && fileBuffer.length > 0) {
         const extractedMetadata = await import('../utils/exif.mjs').then(m => m.extractImageMetadata(fileBuffer));
-        console.log('[record-blob] Extracted metadata:', extractedMetadata);
+        console.log('[RECORD-BLOB] Extracted EXIF metadata:', extractedMetadata);
         mergedMetadata = { ...extractedMetadata, ...metadata };
       } else {
-        console.warn('[record-blob] Blob download failed or buffer is empty after retries.');
+        console.warn('[RECORD-BLOB] No fileBuffer available for EXIF extraction after retries. Skipping EXIF extraction.');
       }
     } catch (err) {
-      console.error('[record-blob] Error during blob download or EXIF extraction:', err);
+      console.error('[RECORD-BLOB] Error during EXIF extraction:', err);
       mergedMetadata = metadata || {};
     }
 
+
     // --- Generate and upload thumbnail ---
-    let thumbnailUrl = blobUrl; // fallback: use full image if thumb fails
-    try {
-      if (fileBuffer && fileBuffer.length > 0) {
+    // Always sanitize file names for blobs (replace spaces with underscores)
+    const safeFileName = fileName.replace(/\s+/g, '_');
+    let thumbnailBlobPath = null;
+    if (typeof fileBuffer !== 'undefined' && fileBuffer && fileBuffer.length > 0) {
+      try {
         // Generate thumbnail (max 400px wide, JPEG)
         const thumbBuffer = await sharp(fileBuffer)
           .resize({ width: 400, withoutEnlargement: true })
           .jpeg({ quality: 80 })
           .toBuffer();
 
-        // Compose thumbnail blob name in album folder
-        const thumbName = makeBlobName(albumId, fileName.replace(/\.[^.]+$/, '-thumb.jpg'));
+        // Compose thumbnail blob name in album folder (always albums/{albumId}/...)
+        const thumbName = `albums/${albumId}/thumb_${safeFileName.replace(/\.[^.]+$/, '.jpg')}`;
+        // Removed debug logging
         // Upload thumbnail to Azure (returns blob path)
-        const thumbBlobPath = await uploadImageBufferToAzure(thumbBuffer, thumbName, 'image/jpeg');
-        // Convert blob path to full URL
-        thumbnailUrl = getSignedReadUrl(thumbBlobPath);
+        thumbnailBlobPath = await uploadImageBufferToAzure(thumbBuffer, thumbName, 'image/jpeg');
+        // Removed debug logging
+      } catch (err) {
+        // Removed debug logging
+        thumbnailBlobPath = null;
       }
-    } catch (err) {
-      console.error('[record-blob] Thumbnail generation/upload failed:', err);
-      // fallback: thumbnailUrl remains as blobUrl
+    } else {
+      // Removed debug logging
     }
 
-    const result = await queryRow(`
-      INSERT INTO photos (album_id, file_name, thumbnail_url, full_image_url, description, metadata, width, height, file_size_bytes, player_names, player_numbers)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-      RETURNING id
-    `, [
-      albumId,
-      fileName,
-      thumbnailUrl,
-      blobUrl,
-      description || '',
-      Object.keys(mergedMetadata).length > 0 ? JSON.stringify(mergedMetadata) : null,
-      width || null,
-      height || null,
-      fileSizeBytes || null,
-      playerName || null,
-      playerNumber || null,
-    ]);
-    await query(`
-      UPDATE albums 
-      SET photo_count = (SELECT COUNT(*) FROM photos WHERE album_id = $1)
-      WHERE id = $1
-    `, [albumId]);
-    res.status(201).json({ id: result.id });
+    // Always store only blob paths in DB
+    // file_name: just the base file name (e.g., MORIA_ST_JOHN_74_MM.jpg)
+    // thumbnail_url: albums/{albumId}/thumb_...
+    // full_image_url: albums/{albumId}/safeFileName
+    let fileBlobPath = typeof blobUrl === 'string' && blobUrl.startsWith('albums/')
+      ? blobUrl
+      : (typeof blobUrl === 'string' ? getBlobNameFromUrlOrName(blobUrl) : blobUrl);
+    if (typeof fileBlobPath === 'string' && !fileBlobPath.startsWith('albums/')) {
+      fileBlobPath = `albums/${albumId}/${safeFileName}`;
+    }
+    const thumbBlobPath = thumbnailBlobPath || fileBlobPath; // fallback to full image blob path if thumb failed or fileBuffer is undefined
+
+    // Only store the base file name in the DB
+    const baseFileName = safeFileName;
+
+    // Prevent duplicate photo insert (album_id + file_name)
+    const existingPhoto = await queryRow(
+      `SELECT id FROM photos WHERE album_id = $1 AND file_name = $2`,
+      [albumId, baseFileName]
+    );
+    if (existingPhoto) {
+      // Return the existing photo record
+      const photoRecord = await queryRow(`
+        SELECT 
+          id, album_id as albumId, file_name as fileName, 
+          thumbnail_url as thumbnailUrl, full_image_url as fullImageUrl,
+          description, metadata, player_names as playerNames, player_numbers as playerNumbers,
+          width, height, created_at as createdDate
+        FROM photos 
+        WHERE id = $1
+      `, [existingPhoto.id]);
+      // Add baseFileName for UI display
+      return res.status(200).json({ ...signPhotoForResponse(photoRecord), fileName: baseFileName });
+    }
+
+    // Log all variables before DB insert
+    // Removed debug logging
+    let result;
+    try {
+      console.log('[RECORD-BLOB] Inserting photo with mergedMetadata:', mergedMetadata);
+      result = await queryRow(`
+        INSERT INTO photos (album_id, file_name, thumbnail_url, full_image_url, description, metadata, width, height, file_size_bytes, player_names, player_numbers)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        RETURNING id
+      `, [
+        albumId,
+        baseFileName,
+        thumbBlobPath,
+        `albums/${albumId}/${safeFileName}`,
+        description || '',
+        Object.keys(mergedMetadata).length > 0 ? JSON.stringify(mergedMetadata) : null,
+        width || null,
+        height || null,
+        fileSizeBytes || null,
+        playerName || null,
+        playerNumber || null,
+      ]);
+    } catch (err) {
+      console.error('[RECORD-BLOB] DB insert error:', err && err.stack ? err.stack : err);
+      try {
+        console.error('[RECORD-BLOB] Insert variables:', {
+          albumId, baseFileName, thumbBlobPath, safeFileName, description, mergedMetadata, width, height, fileSizeBytes, playerName, playerNumber
+        });
+      } catch (jsonErr) {
+        console.error('[RECORD-BLOB] Error stringifying insert variables:', jsonErr);
+      }
+      return res.status(500).json({ error: 'DB insert error', details: err.message, stack: err.stack });
+    }
+    try {
+      await query(`
+        UPDATE albums 
+        SET photo_count = (SELECT COUNT(*) FROM photos WHERE album_id = $1)
+        WHERE id = $1
+      `, [albumId]);
+    } catch (err) {
+      // Not fatal for upload, continue
+    }
+    // Fetch the full photo record and return it in the response
+    let photoRecord = null;
+    try {
+      photoRecord = await queryRow(`
+        SELECT 
+          id, album_id as albumId, file_name as fileName, 
+          thumbnail_url as thumbnailUrl, full_image_url as fullImageUrl,
+          description, metadata, player_names as playerNames, player_numbers as playerNumbers,
+          width, height, created_at as createdDate
+        FROM photos 
+        WHERE id = $1
+      `, [result.id]);
+    } catch (err) {
+      // Removed debug logging
+    }
+    if (photoRecord) {
+      // Use the same response shape as other photo endpoints
+      // Add baseFileName for UI display
+      res.status(200).json({ success: true, ...signPhotoForResponse(photoRecord), fileName: baseFileName });
+    } else {
+      res.status(200).json({ success: true, id: result.id, fileName: baseFileName });
+    }
   } catch (error) {
+    console.error('[RECORD-BLOB] Unhandled error:', error && error.stack ? error.stack : error);
+    try {
+      console.error('[RECORD-BLOB] Request body:', JSON.stringify(req.body));
+    } catch (jsonErr) {
+      console.error('[RECORD-BLOB] Error stringifying request body:', jsonErr);
+    }
     res.status(500).json({ error: error.message });
   }
 });
@@ -329,10 +416,6 @@ const parsePlayerRosterRows = (rows = []) => {
       'player',
       'full_name',
       'fullname',
-    ]);
-
-    const firstName = getFieldFromRow(row, [
-      'first_name',
       'firstName',
       'firstname',
       'first',
@@ -1315,10 +1398,12 @@ router.get('/:id/asset', async (req, res) => {
     );
 
     if (!photo) {
+      console.error(`[ASSET ROUTE] Photo not found for id=${req.params.id}`);
       return res.status(404).json({ error: 'Photo not found' });
     }
 
     const source = variant === 'thumbnail' ? photo.thumbnailUrl : photo.fullImageUrl;
+    console.log(`[ASSET ROUTE] id=${req.params.id} variant=${variant} source=`, source);
 
     // External HTTP(S) sources (e.g. SmugMug/CDN) should be loaded directly by the browser.
     // Proxy-fetching can fail due to upstream anti-hotlinking and incorrectly returns 404.
@@ -1328,6 +1413,7 @@ router.get('/:id/asset', async (req, res) => {
 
     await pipeAssetToResponse(source, res);
   } catch (error) {
+    console.error('[ASSET ROUTE] Error:', error);
     if (!res.headersSent) {
       res.status(500).json({ error: error.message });
     }
@@ -1638,23 +1724,29 @@ router.post('/upload', requireActiveSubscription, upload.fields([
         }
       }
 
-      // Fallback: Always try to get width/height from Sharp if missing
-      let width = mergedMetadata.width || null;
-      let height = mergedMetadata.height || null;
-      if (!width || !height) {
-        try {
-          const fallbackMeta = await sharp(file.buffer).metadata();
-          if (!width && fallbackMeta.width) {
-            width = fallbackMeta.width;
-            console.log(`[Photo Upload] Fallback width used for ${file.originalname}: ${width}`);
-          }
-          if (!height && fallbackMeta.height) {
-            height = fallbackMeta.height;
-            console.log(`[Photo Upload] Fallback height used for ${file.originalname}: ${height}`);
-          }
-        } catch (err) {
-          console.error(`[Photo Upload] Failed to extract fallback dimensions for ${file.originalname}:`, err);
+      // Always extract dimensions from Sharp independently
+      let width = null;
+      let height = null;
+      try {
+        const sharpMeta = await sharp(file.buffer).metadata();
+        if (sharpMeta.width && sharpMeta.height) {
+          width = sharpMeta.width;
+          height = sharpMeta.height;
+          console.log(`[Photo Upload] Sharp dimensions for ${file.originalname}: width=${width}, height=${height}`);
         }
+      } catch (err) {
+        console.error(`[Photo Upload] Failed to extract dimensions from Sharp for ${file.originalname}:`, err);
+      }
+      // If EXIF has dimensions, prefer those only if they differ and are valid
+      if (mergedMetadata.width && mergedMetadata.height) {
+        if (mergedMetadata.width !== width || mergedMetadata.height !== height) {
+          console.log(`[Photo Upload] EXIF dimensions for ${file.originalname}: width=${mergedMetadata.width}, height=${mergedMetadata.height}`);
+        }
+        // Optionally, you could compare and decide which to trust more
+      }
+      // Log if dimensions are missing after Sharp
+      if (!width || !height) {
+        console.warn(`[Photo Upload] WARNING: Missing dimensions for ${file.originalname} after Sharp extraction. width=${width}, height=${height}`);
       }
 
       const signatureHash = await computeImageSignature(file.buffer);
@@ -2001,12 +2093,15 @@ router.delete('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Photo not found' });
     }
 
-    // Try to delete blob, but ignore errors (missing blob, etc)
-    if (photo.full_image_url?.startsWith('http')) {
+    // Try to delete blobs (full image and thumbnail), but ignore errors (missing blob, etc)
+    const blobPaths = [];
+    if (photo.full_image_url) blobPaths.push(photo.full_image_url);
+    if (photo.thumbnail_url && photo.thumbnail_url !== photo.full_image_url) blobPaths.push(photo.thumbnail_url);
+    for (const blobPath of blobPaths) {
       try {
-        await deleteBlobByUrl(photo.full_image_url);
+        await deleteBlobByUrl(blobPath);
       } catch (err) {
-        console.warn('Failed to delete blob for photo', req.params.id, err?.message);
+        console.warn('Failed to delete blob for photo', req.params.id, blobPath, err?.message);
       }
     }
 

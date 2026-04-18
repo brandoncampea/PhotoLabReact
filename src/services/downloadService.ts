@@ -7,14 +7,12 @@ export const downloadService = {
     expiresAt.setDate(expiresAt.getDate() + 30); // 30 days expiry
 
     items.forEach(item => {
-      if (item.productId) {
-        const uniqueId = Math.random().toString(36).substring(2, 15);
-        const url = `${window.location.origin}/api/downloads/${uniqueId}/${item.photoId}`;
-        
+      if (item.productId && item.photo && item.photo.fullImageUrl) {
+        // Use the full-size image SAS URL for digital download
         urls.push({
           photoId: item.photoId,
           productId: item.productId,
-          url,
+          url: item.photo.fullImageUrl,
           expiresAt: expiresAt.toISOString(),
           downloads: 0,
           maxDownloads: 5, // Allow 5 downloads

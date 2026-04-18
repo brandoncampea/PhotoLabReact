@@ -125,7 +125,8 @@ export function getSignedReadUrl(blobUrlOrName, expiresInHours = Number(process.
   return `${container.getBlockBlobClient(blobName).url}?${sas.toString()}`;
 }
 
-export async function downloadBlob(blobUrlOrName) {
+// mode: 'buffer' (default) returns Buffer, mode: 'stream' returns downloadResponse
+export async function downloadBlob(blobUrlOrName, mode = 'buffer') {
   const blobName = getBlobNameFromUrlOrName(blobUrlOrName);
   if (!blobName) {
     return null;
@@ -135,7 +136,22 @@ export async function downloadBlob(blobUrlOrName) {
   const blockBlobClient = container.getBlockBlobClient(blobName);
   try {
     const downloadResponse = await blockBlobClient.download();
-    return downloadResponse;
+    if (mode === 'stream') {
+      return downloadResponse;
+    }
+    // Default: return buffer
+    const chunks = [];
+    return await new Promise((resolve, reject) => {
+      downloadResponse.readableStreamBody.on('data', (data) => {
+        chunks.push(data);
+      });
+      downloadResponse.readableStreamBody.on('end', () => {
+        resolve(Buffer.concat(chunks));
+      });
+      downloadResponse.readableStreamBody.on('error', (err) => {
+        reject(err);
+      });
+    });
   } catch (err) {
     console.error('[azureStorage] Error downloading blob:', err);
     return null;
@@ -143,11 +159,12 @@ export async function downloadBlob(blobUrlOrName) {
 }
 
 export async function deleteBlobByUrl(blobUrl) {
-  if (!blobUrl || !blobUrl.startsWith('http')) {
+  if (!blobUrl) {
     return;
   }
 
   const container = getContainerClient();
+  // Accept both full URLs and relative blob paths
   const blobName = getBlobNameFromUrlOrName(blobUrl);
   if (!blobName) {
     return;

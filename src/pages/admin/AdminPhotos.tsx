@@ -466,7 +466,9 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
         try {
           // Direct-to-Blob upload
           if (typeof albumId !== 'number') throw new Error('albumId must be a number');
-          const blobName = `albums/${albumId}/${item.file.name}`;
+          // Sanitize filename for blob storage (replace spaces with underscores)
+          const safeFileName = item.file.name.replace(/\s+/g, '_');
+          const blobName = `albums/${albumId}/${safeFileName}`;
           const blobUrl = await uploadFileToAzureBlob({
             file: item.file,
             blobName,
@@ -478,22 +480,31 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
               );
             },
           });
-          // Notify backend with blobUrl, description, and metadata
+          // Notify backend with sanitized fileName and blobUrl
           const recordResult = await recordPhotoBlob({
             albumId: albumId as number,
-            fileName: item.file.name,
+            fileName: safeFileName,
             blobUrl,
             description: item.description,
             fileSizeBytes: item.file.size,
             // Optionally add width, height, metadata, playerName, playerNumber if available
           });
 
+          // Only mark as success if backend returns success: true
+          if (!recordResult || recordResult.success !== true) {
+            setUploadItems((prev) =>
+              prev.map((entry) =>
+                entry.id === item.id ? { ...entry, status: 'error', error: 'Upload failed (backend error).' } : entry
+              )
+            );
+            failed += 1;
+            break;
+          }
 
           // Ensure roster is loaded before auto-tagging
           if (rosterPlayers.length === 0) {
             await loadRoster();
           }
-
 
           // Fetch the latest photo object from backend for accurate tagging
           let latestPhoto = null;
@@ -528,8 +539,6 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
             );
           }
 
-          // Only reload photos after all uploads are done (outside the uploadNext loop)
-
           setUploadItems((prev) =>
             prev.map((entry) =>
               entry.id === item.id ? { ...entry, status: 'done', progress: 100, error: undefined, attempts } : entry
@@ -560,6 +569,11 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
       await loadPhotos();
       await loadAlbums();
 
+      // Ensure photos state is refreshed before next upload
+      // This is critical for duplicate detection to work on repeated uploads
+      // (Fix for: duplicate prompt not appearing after uploading same file again)
+      // Optionally, you can debounce or throttle this if needed for performance
+
       if (failed === 0) {
         const skipSuffix = skippedClientSide > 0 ? ` Skipped ${skippedClientSide} duplicate photo${skippedClientSide === 1 ? '' : 's'}.` : '';
         setUploadMessage({ type: 'success', text: `Uploaded ${completed} photo${completed === 1 ? '' : 's'} successfully.${skipSuffix}` });
@@ -586,6 +600,7 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
   const uploadFiles = async (files: File[]) => {
     if (!files.length) return;
 
+    // Always check for duplicates before uploading
     const normalizeName = (name: string) => name.trim().toLowerCase();
     const existingNames = new Set(photos.map((p) => normalizeName(String(p.fileName || ''))));
     const duplicateCandidates = files.filter((file) => existingNames.has(normalizeName(file.name)));

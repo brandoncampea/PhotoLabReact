@@ -990,9 +990,13 @@ const Cart: React.FC = () => {
               <Cropper
                 ref={setCropperRef}
                 // Always use SAS-protected URL for Azure blobs
-                src={useSasUrl(
-                  editingItem.photo?.fullImageUrl || ''
-                )}
+                src={
+                  editingItem.photo?.fullImageUrl && editingItem.photo?.fullImageUrl.startsWith('/api/photos/')
+                    ? editingItem.photo.fullImageUrl
+                    : (editingItem.photo?.fullImageUrl && !editingItem.photo.fullImageUrl.startsWith('http') && !editingItem.photo.fullImageUrl.startsWith('/')
+                        ? useSasUrl(editingItem.photo.fullImageUrl) || ''
+                        : editingItem.photo?.fullImageUrl || '')
+                }
                 crossOrigin="anonymous"
                 style={{ maxHeight: 500, width: '100%' }}
                 aspectRatio={getItemAspectRatio(editingItem)}

@@ -226,16 +226,22 @@ class WhccService {
 
     // Centralize mapping of cropData to cropX/cropY/zoomX/zoomY for WHCC
     const mappedCartItems = cartItems.map((item) => {
+      // Always use the full-size image URL for WHCC AssetPath
+      let fullImageUrl = item?.photo?.fullImageUrl || item?.fullImageUrl || item?.imageUrl || '';
       if (item.cropData) {
         return {
           ...item,
+          imageUrl: fullImageUrl,
           cropX: typeof item.cropData.x === 'number' ? Math.round(item.cropData.x) : 0,
           cropY: typeof item.cropData.y === 'number' ? Math.round(item.cropData.y) : 0,
           zoomX: typeof item.cropData.width === 'number' ? Math.round(item.cropData.width) : 100,
           zoomY: typeof item.cropData.height === 'number' ? Math.round(item.cropData.height) : 100,
         };
       }
-      return item;
+      return {
+        ...item,
+        imageUrl: fullImageUrl,
+      };
     });
 
     const config = this.getConfig();

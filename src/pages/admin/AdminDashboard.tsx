@@ -251,7 +251,11 @@ const AdminDashboard: React.FC = () => {
                     {photo.fullImageUrl && (
                       <span className="admin-dashboard-photo-hover-preview" role="tooltip">
                         <img
-                          src={photo.fullImageUrl.startsWith('http') ? photo.fullImageUrl : useSasUrl(photo.fullImageUrl) || ''}
+                          src={photo.fullImageUrl && photo.fullImageUrl.startsWith('/api/photos/')
+                            ? photo.fullImageUrl
+                            : (photo.fullImageUrl && !photo.fullImageUrl.startsWith('http') && !photo.fullImageUrl.startsWith('/')
+                                ? useSasUrl(photo.fullImageUrl) || ''
+                                : photo.fullImageUrl || '')}
                           alt={photo.photoFileName}
                         />
                       </span>

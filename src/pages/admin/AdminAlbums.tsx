@@ -25,10 +25,12 @@ function AlbumSasCover({ src, alt }: { src: string, alt: string }) {
     return null;
   }
   const blobName = extractBlobName(src);
-  const sasUrl = useSasUrl(blobName);
+  // If src is an API endpoint, use it directly. Otherwise, use SAS if blobName is valid.
+  const isApiEndpoint = src && src.startsWith('/api/photos/');
+  const sasUrl = blobName && !isApiEndpoint ? useSasUrl(blobName) : null;
   return (
     <img
-      src={sasUrl || src}
+      src={isApiEndpoint ? src : (sasUrl || src)}
       alt={alt}
       className="table-thumbnail"
       style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 6, background: '#222' }}

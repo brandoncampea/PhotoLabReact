@@ -35,7 +35,11 @@ function AdminOrderItemCard({ item }: { item: any }) {
       <div className="admin-order-item-image-container">
         {fullImageUrl ? (
           <img
-            src={fullImageUrl.startsWith('http') ? fullImageUrl : useSasUrl(fullImageUrl) || ''}
+            src={fullImageUrl && fullImageUrl.startsWith('/api/photos/')
+              ? fullImageUrl
+              : (fullImageUrl && !fullImageUrl.startsWith('http') && !fullImageUrl.startsWith('/')
+                  ? useSasUrl(fullImageUrl) || ''
+                  : fullImageUrl || '')}
             alt={item.photo?.fileName || 'Photo'}
             className="admin-order-item-image"
           />
