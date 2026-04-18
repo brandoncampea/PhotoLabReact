@@ -91,16 +91,19 @@ export const orderService = {
     return response.data;
   },
 
-  async getAdminOrders(options?: { includeItems?: boolean; limit?: number }): Promise<Order[]> {
+  async getAdminOrders(options?: { includeItems?: boolean; page?: number; pageSize?: number }): Promise<{ total: number; page: number; pageSize: number; orders: Order[] }> {
     const params = new URLSearchParams();
     if (options?.includeItems) {
       params.set('includeItems', '1');
     }
-    if (typeof options?.limit === 'number' && Number.isFinite(options.limit) && options.limit > 0) {
-      params.set('limit', String(Math.floor(options.limit)));
+    if (typeof options?.page === 'number' && Number.isFinite(options.page) && options.page > 0) {
+      params.set('page', String(Math.floor(options.page)));
+    }
+    if (typeof options?.pageSize === 'number' && Number.isFinite(options.pageSize) && options.pageSize > 0) {
+      params.set('pageSize', String(Math.floor(options.pageSize)));
     }
     const query = params.toString();
-    const response = await api.get<Order[]>(`/orders/admin/all-orders${query ? `?${query}` : ''}`);
+    const response = await api.get(`/orders/admin/all-orders${query ? `?${query}` : ''}`);
     return response.data;
   },
 
