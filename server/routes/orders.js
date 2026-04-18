@@ -1125,7 +1125,8 @@ const sendOrderReceipts = async (orderId) => {
     [orderId]
   );
 
-  const appBase = String(process.env.APP_BASE_URL || '').trim().replace(/\/$/, '');
+  // Ensure APP_BASE_URL is set, fallback to canonical public URL
+  const appBase = String(process.env.APP_BASE_URL || process.env.CANONICAL_APP_URL || 'https://labs.campeaphotography.com').trim().replace(/\/$/, '');
   const digitalDownloads = items
     .filter((item) => isDigitalProductRow(item))
     .map((item) => {
@@ -1950,6 +1951,8 @@ router.get('/details/:orderId', async (req, res) => {
       });
     }
 
+    // Add digital item flags for admin UI
+    const digitalItems = itemsWithPhotos.filter((item) => isDigitalProductRow(item));
     return res.json({
       ...order,
       status: order.status || 'Pending',
@@ -1962,6 +1965,8 @@ router.get('/details/:orderId', async (req, res) => {
       batchLabVendor: order.batchLabVendor,
       labSubmittedAt: order.labSubmittedAt,
       items: itemsWithPhotos,
+      hasDigitalItems: digitalItems.length > 0,
+      digitalItemCount: digitalItems.length,
     });
   } catch (error) {
     return res.status(500).json({ error: error.message });
@@ -2526,6 +2531,33 @@ router.get('/admin/batch-queue', adminRequired, async (req, res) => {
     queryText += ` ORDER BY o.created_at ASC`;
 
     const queuedOrders = await queryRows(queryText, params);
+    // Filter out orders that are digital-only (all items are digital)
+    const filteredOrders = [];
+    for (const order of queuedOrders) {
+      // Fetch order items for this order
+      const items = await queryRows(
+        `SELECT oi.id, oi.product_id, oi.product_size_id, p.options as productOptions, p.category as productCategory, p.name as productName
+         FROM order_items oi
+         LEFT JOIN products p ON p.id = oi.product_id
+         WHERE oi.order_id = $1`,
+        [order.id]
+      );
+      // If there are no items, keep the order (to avoid hiding empty orders by accident)
+      if (!items.length) {
+        filteredOrders.push(order);
+        continue;
+      }
+      // Use isDigitalProductRow logic from above
+      const allDigital = items.every((item) => {
+        const options = (() => { try { return JSON.parse(item.productOptions || '{}'); } catch { return {}; } })();
+        const category = String(item.productCategory || '').toLowerCase();
+        const name = String(item.productName || '').toLowerCase();
+        return options.isDigital === true || options.is_digital_only === true || options.digitalOnly === true || category.includes('digital') || name.includes('digital');
+      });
+      if (!allDigital) {
+        filteredOrders.push(order);
+      }
+    }
     const shippingConfig = accessStudioId
       ? await queryRow(
           `SELECT batch_shipping_address as batchShippingAddress
@@ -2553,7 +2585,7 @@ router.get('/admin/batch-queue', adminRequired, async (req, res) => {
     let nextBatchDate = null;
     const mappedOrders = [];
 
-    for (const order of queuedOrders) {
+    for (const order of filteredOrders) {
       const readyDate = order.batchReadyDate ? new Date(order.batchReadyDate) : null;
       const isEligible = !readyDate || Number.isNaN(readyDate.getTime()) || readyDate <= now;
       if (!readyDate || Number.isNaN(readyDate.getTime()) || readyDate <= now) {
@@ -2576,7 +2608,7 @@ router.get('/admin/batch-queue', adminRequired, async (req, res) => {
     }
 
     res.json({
-      totalQueued: queuedOrders.length,
+      totalQueued: filteredOrders.length,
       eligibleCount: eligibleOrderIds.length,
       eligibleOrderIds,
       shouldPromptSubmission: eligibleOrderIds.length > 0,

@@ -10,11 +10,11 @@ const router = express.Router();
 // Add items to price list (products with sizes)
 router.post('/:id/items', superAdminRequired, async (req, res) => {
   try {
-    console.log('[PriceListItems] Received request:', { params: req.params, body: req.body });
+    // ...existing code...
     const priceListId = parseInt(req.params.id, 10);
     const items = req.body.items || [];
     if (!Array.isArray(items) || items.length === 0) {
-      console.error('[PriceListItems] No items provided:', req.body);
+      // ...existing code...
       return res.status(400).json({ error: 'No items provided' });
     }
 
@@ -39,7 +39,7 @@ router.post('/:id/items', superAdminRequired, async (req, res) => {
       try {
         // Skip products with missing or empty name
         if (!item.productName || typeof item.productName !== 'string' || item.productName.trim() === '') {
-          console.warn('[PriceListItems] Skipping product with empty name:', item);
+          // ...existing code...
           continue;
         }
 
@@ -66,14 +66,14 @@ router.post('/:id/items', superAdminRequired, async (req, res) => {
         // Force price to a valid number (0 if not finite)
         price = Number(price);
         if (!Number.isFinite(price)) price = 0;
-        console.log('[PriceListItems] Computed product price:', price, 'for', item.productName);
+        // ...existing code...
 
         // Insert product if not exists
         let product = await queryRow('SELECT id FROM products WHERE name = $1', [item.productName]);
         if (!product) {
           const sql = 'INSERT INTO products (name, description, category, price) VALUES ($1, $2, $3, $4) RETURNING id';
           const sqlArgs = [item.productName, item.description || '', item.category || 'Other', price];
-          console.log('[PriceListItems] SQL:', sql, 'ARGS:', sqlArgs);
+          // ...existing code...
           product = await queryRow(sql, sqlArgs);
         }
 
@@ -92,9 +92,9 @@ router.post('/:id/items', superAdminRequired, async (req, res) => {
             const rawName = (size.name !== undefined ? String(size.name) : '').trim();
             const rawSizeName = (size.sizeName !== undefined ? String(size.sizeName) : '').trim();
             const sizeName = rawName || rawSizeName;
-            console.log('[PriceListItems] Checking size:', { size, rawName, rawSizeName, sizeName });
+            // ...existing code...
             if (!sizeName) {
-              console.warn('[PriceListItems] Skipping size with empty name:', { size, rawName, rawSizeName });
+              // ...existing code...
               continue;
             }
 
@@ -111,15 +111,15 @@ router.post('/:id/items', superAdminRequired, async (req, res) => {
             if (!sizeExists) {
               await query('INSERT INTO product_sizes (product_id, price_list_id, size_name, price, cost) VALUES ($1, $2, $3, $4, $5)', [product.id, priceListId, sizeName, safePrice, safeCost]);
               insertedSizes += 1;
-              console.log('[PriceListItems] Inserted size:', { productId: product.id, priceListId, sizeName, safePrice, safeCost });
+              // ...existing code...
             }
           } catch (sizeError) {
-            console.error('[PriceListItems] Error inserting size:', size, sizeError);
+            // ...existing code...
             throw sizeError;
           }
         }
       } catch (itemError) {
-        console.error('[PriceListItems] Error processing item:', item, itemError);
+        // ...existing code...
         throw itemError;
       }
     }
@@ -131,7 +131,7 @@ router.post('/:id/items', superAdminRequired, async (req, res) => {
       skippedProducts,
     });
   } catch (error) {
-    console.error('[PriceListItems] Unexpected error:', error, req.body);
+    // ...existing code...
     res.status(500).json({ error: error.message });
   }
 });

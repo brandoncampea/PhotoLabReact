@@ -1,14 +1,18 @@
 
 
+
+
 // =============================
 //  MANUAL AZURE CONFIG SECTION
 // =============================
 // Fill in your Azure storage credentials below:
-process.env.AZURE_STORAGE_ACCOUNT = '';
-process.env.AZURE_STORAGE_KEY = '';
-process.env.AZURE_STORAGE_CONTAINER = '';
+process.env.AZURE_STORAGE_ACCOUNT = 'campeaphotolab';
+process.env.AZURE_STORAGE_KEY = 'ZbQFeiDIWvboEREf3XB0XsXxnc1jy1e+57rNOHo2WONUOr+kaeig2yX8ZOIeY9oAtnWHnm+3Mifu+ASt3QA7nA==';
+process.env.AZURE_STORAGE_CONTAINER = 'photos';
+process.env.AZURE_CONTAINER_NAME = 'photos';
+process.env.AZURE_STORAGE_CONNECTION_STRING = 'DefaultEndpointsProtocol=https;AccountName=campeaphotolab;AccountKey=ZbQFeiDIWvboEREf3XB0XsXxnc1jy1e+57rNOHo2WONUOr+kaeig2yX8ZOIeY9oAtnWHnm+3Mifu+ASt3QA7nA==;EndpointSuffix=core.windows.net';
 // OR, if you use a connection string:
-// process.env.AZURE_STORAGE_CONNECTION_STRING = '';
+// process.env.AZURE_STORAGE_CONNECTION_STRING = 'DefaultEndpointsProtocol=https;AccountName=campeaphotolab;AccountKey=ZbQFeiDIWvboEREf3XB0XsXxnc1jy1e+57rNOHo2WONUOr+kaeig2yX8ZOIeY9oAtnWHnm+3Mifu+ASt3QA7nA==;EndpointSuffix=core.windows.net';
 // =============================
 
 // =============================
@@ -17,15 +21,23 @@ process.env.AZURE_STORAGE_CONTAINER = '';
 // Fill in your MSSQL database credentials below:
 
 import sharp from 'sharp';
-import { downloadBlob, uploadImageBufferToAzure } from '../services/azureStorage.js';
 import fs from 'fs';
 import path from 'path';
 import { parse } from 'csv-parse/sync';
 
+let downloadBlob, uploadImageBufferToAzure;
+
+async function importAzureStorage() {
+  const azure = await import('../services/azureStorage.js');
+  downloadBlob = azure.downloadBlob;
+  uploadImageBufferToAzure = azure.uploadImageBufferToAzure;
+}
+
 
 async function main() {
+    await importAzureStorage();
   // Path to the CSV file
-  const csvPath = path.join(path.dirname(new URL(import.meta.url).pathname), 'results (2).csv');
+  const csvPath = path.join(path.dirname(new URL(import.meta.url).pathname), 'results (3).csv');
   let csvContent;
   try {
     csvContent = fs.readFileSync(csvPath, 'utf8');
@@ -54,10 +66,8 @@ async function main() {
     const thumbnailPath = photo.thumbnail_url;
     const fullImagePath = photo.full_image_url;
     if (!thumbnailPath || !fullImagePath) continue;
-    // Only process if the filename (after last slash) contains a space
-    const filename = fullImagePath.split('/').pop();
-    if (!filename || !filename.includes(' ')) continue;
     try {
+      console.log('[DEBUG] Requesting blob for full image:', fullImagePath);
       console.log(`Processing thumbnail: ${thumbnailPath} from full image: ${fullImagePath}`);
       // Download full-size image (encode path)
       const fullImage = await downloadBlob(encodeURI(fullImagePath));

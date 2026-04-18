@@ -21,10 +21,23 @@ export async function extractImageMetadata(fileBuffer) {
       all: true,
     });
 
-    // Map fields from exifr output to the screenshot fields
+    // Fallback to sharp for width/height if missing
+    let width = exif?.ImageWidth || null;
+    let height = exif?.ImageHeight || null;
+    if (!width || !height) {
+      try {
+        const sharp = (await import('sharp')).default;
+        const meta = await sharp(fileBuffer).metadata();
+        width = meta.width || width;
+        height = meta.height || height;
+      } catch (sharpErr) {
+        // ignore sharp errors, fallback to null
+      }
+    }
+
     return {
       keywords: exif?.Keywords || exif?.keywords || exif?.Subject || null,
-      dimensions: exif?.ImageWidth && exif?.ImageHeight ? `${exif.ImageWidth}x${exif.ImageHeight}` : null,
+      dimensions: width && height ? `${width}x${height}` : null,
       deviceMake: exif?.Make || null,
       deviceModel: exif?.Model || null,
       colorSpace: exif?.ColorSpace || null,
@@ -43,12 +56,11 @@ export async function extractImageMetadata(fileBuffer) {
       // Additional useful fields
       iso: exif?.ISO || exif?.ISOSetting || null,
       dateTaken: exif?.DateTimeOriginal || exif?.CreateDate || null,
-      width: exif?.ImageWidth || null,
-      height: exif?.ImageHeight || null,
+      width,
+      height,
       fileSize: fileBuffer?.length || null,
     };
   } catch (err) {
-    console.error('EXIF extraction error:', err);
     return {};
   }
 }

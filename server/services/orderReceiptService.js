@@ -296,7 +296,7 @@ export const orderReceiptService = {
         category: 'Player Photo Notification',
       });
     } catch (emailErr) {
-      console.error('[playerPhotoNotification] Failed to send to', to, emailErr?.message);
+      // ...existing code...
       return false;
     }
     return true;

@@ -162,7 +162,7 @@ const loadWhccCsvCostMap = async () => {
 router.post('/:id/import-items', async (req, res) => {
   const { id } = req.params;
   const items = req.body.items;
-  console.log('[superPriceLists] import-items start', { listId: id, itemCount: Array.isArray(items) ? items.length : 0 });
+  // ...existing code...
   if (!Array.isArray(items) || items.length === 0) return res.status(400).json({ error: 'items array required' });
   try {
     let importedCount = 0;
@@ -378,7 +378,7 @@ router.post('/:id/import-items', async (req, res) => {
       }
     }
 
-    console.log('[superPriceLists] import-items done', { listId: id, importedCount, updatedCount, skippedCount });
+    // ...existing code...
     res.status(201).json({ success: true, importedCount, updatedCount, skippedCount, errorSamples });
   } catch (err) {
     res.status(500).json({ error: 'Failed to import items to super price list', details: err?.message || String(err) });

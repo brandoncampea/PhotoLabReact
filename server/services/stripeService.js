@@ -21,7 +21,7 @@ const getConfiguredStripeClient = async () => {
       };
     }
   } catch (error) {
-    console.warn('Subscription Stripe config lookup failed, falling back to env key:', error?.message || error);
+    // ...existing code...
   }
 
   return {
@@ -56,7 +56,7 @@ export const stripeService = {
 
       return session;
     } catch (error) {
-      console.error('Error creating checkout session:', error);
+      // ...existing code...
       throw error;
     }
   },
@@ -70,7 +70,7 @@ export const stripeService = {
       const subscription = await client.subscriptions.retrieve(subscriptionId);
       return subscription;
     } catch (error) {
-      console.error('Error retrieving subscription:', error);
+      // ...existing code...
       throw error;
     }
   },
@@ -95,7 +95,7 @@ export const stripeService = {
 
       return updated;
     } catch (error) {
-      console.error('Error updating subscription:', error);
+      // ...existing code...
       throw error;
     }
   },
@@ -111,7 +111,7 @@ export const stripeService = {
       });
       return subscription;
     } catch (error) {
-      console.error('Error setting cancel_at_period_end:', error);
+      // ...existing code...
       throw error;
     }
   },
@@ -125,7 +125,7 @@ export const stripeService = {
       const subscription = await client.subscriptions.del(subscriptionId);
       return subscription;
     } catch (error) {
-      console.error('Error canceling subscription:', error);
+      // ...existing code...
       throw error;
     }
   },
@@ -142,7 +142,7 @@ export const stripeService = {
       });
       return customer;
     } catch (error) {
-      console.error('Error creating customer:', error);
+      // ...existing code...
       throw error;
     }
   },
@@ -163,7 +163,7 @@ export const stripeService = {
       const event = client.webhooks.constructEvent(body, signature, signingSecret);
       return event;
     } catch (error) {
-      console.error('Webhook signature verification failed:', error);
+      // ...existing code...
       throw error;
     }
   }

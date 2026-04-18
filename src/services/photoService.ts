@@ -69,11 +69,10 @@ export async function uploadFileToAzureBlob({
     const { BlockBlobClient } = await import('@azure/storage-blob');
     const directBlobClient = new BlockBlobClient(sasUrl);
     const uploadResult = await directBlobClient.uploadBrowserData(file, uploadOptions);
-    console.log('[AzureUpload] Upload result:', uploadResult);
-    console.log('[AzureUpload] Blob uploaded successfully:', directBlobClient.url);
+    // ...existing code...
     return directBlobClient.url;
   } catch (err) {
-    console.error('[AzureUpload] Upload failed:', err);
+    // ...existing code...
     throw err;
   }
 }

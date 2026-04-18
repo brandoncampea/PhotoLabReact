@@ -1,11 +1,7 @@
 
 const STORAGE_CONTAINER = process.env.AZURE_STORAGE_CONTAINER || process.env.AZURE_CONTAINER_NAME;
 // Log container environment variables at startup for verification
-console.log('[AZURE CONTAINER DEBUG]', {
-  AZURE_STORAGE_CONTAINER: process.env.AZURE_STORAGE_CONTAINER,
-  AZURE_CONTAINER_NAME: process.env.AZURE_CONTAINER_NAME,
-  STORAGE_CONTAINER,
-});
+// ...existing code...
 import {
   BlobServiceClient,
   BlobSASPermissions,
@@ -153,7 +149,7 @@ export async function downloadBlob(blobUrlOrName, mode = 'buffer') {
       });
     });
   } catch (err) {
-    console.error('[azureStorage] Error downloading blob:', err);
+    // ...existing code...
     return null;
   }
 }

@@ -96,7 +96,7 @@ router.post('/assemble-chunks', express.json({ limit: '2mb' }), async (req, res)
         .jpeg({ quality: 80 })
         .toBuffer();
     } catch (err) {
-      console.error('[assemble-chunks] Thumbnail generation failed:', err);
+      // ...existing code...
       thumbnailBuffer = fileBuffer; // fallback to original if sharp fails
     }
 
