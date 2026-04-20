@@ -191,11 +191,21 @@ router.post('/create-payment-intent', authRequired, async (req, res) => {
   } catch (error) {
     console.error('Error creating payment intent:', error);
 
+    // If this is a Stripe error, return as much detail as possible
+    if (error && error.type && error.type.startsWith('Stripe')) {
+      return res.status(500).json({
+        error: error.message || 'Stripe error',
+        type: error.type,
+        code: error.code,
+        raw: error.raw || undefined,
+      });
+    }
+    // Authentication error
     if (error && error.type === 'StripeAuthenticationError') {
       return res.status(503).json({ error: 'Stripe authentication failed. Check your secret key.' });
     }
-
-    res.status(500).json({ error: error.message });
+    // Other errors
+    res.status(500).json({ error: error.message || 'Unknown error', details: error });
   }
 });
 

@@ -1124,6 +1124,9 @@ const sendOrderReceipts = async (orderId) => {
      WHERE oi.order_id = $1`,
     [orderId]
   );
+  // Debug logging for items
+  console.log('Order items for orderId', orderId);
+  console.log(items);
 
   // Ensure APP_BASE_URL is set, fallback to canonical public URL
   const appBase = String(process.env.APP_BASE_URL || process.env.CANONICAL_APP_URL || 'https://labs.campeaphotography.com').trim().replace(/\/$/, '');
@@ -2215,6 +2218,9 @@ router.get('/admin/order-details/:orderId', adminRequired, async (req, res) => {
        WHERE oi.order_id = $1`,
       [order.id]
     );
+    // Debug logging for admin order details items
+    console.log('ADMIN ORDER DETAILS: items for orderId', order.id);
+    console.log(items);
 
     const photoIds = [...new Set(items.map((item) => Number(item.photoId)).filter(Boolean))];
     let photosById = new Map();
@@ -2229,16 +2235,9 @@ router.get('/admin/order-details/:orderId', adminRequired, async (req, res) => {
       photosById = new Map(photos.map((photo) => [Number(photo.id), photo]));
     }
 
-    const itemsWithPhotos = [];
-    let excludedCount = 0;
-    for (const item of items) {
-      if (!item.productName || item.productName === 'Unknown Product') {
-        excludedCount += 1;
-        continue;
-      }
-
+    const itemsWithPhotos = items.map((item) => {
       const photo = photosById.get(Number(item.photoId));
-      itemsWithPhotos.push({
+      return {
         ...item,
         price: item.price || 0,
         basePrice: Number(item.basePrice) || 0,
@@ -2264,8 +2263,8 @@ router.get('/admin/order-details/:orderId', adminRequired, async (req, res) => {
           thumbnailUrl: `https://picsum.photos/seed/photo${item.photoId}/300/300`,
           fullImageUrl: `https://picsum.photos/seed/photo${item.photoId}/1200/900`,
         },
-      });
-    }
+      };
+    });
 
     res.json({
       ...order,

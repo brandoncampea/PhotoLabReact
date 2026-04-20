@@ -72,6 +72,7 @@ import './AdminOrders.css';
 import { useSasUrl } from '../../hooks/useSasUrl';
 
 function AdminOrderItemCard({ item }: { item: any }) {
+  // Defensive: ensure item fields exist
   const photoId = item.photo?.id;
   const cropData = item.cropData
     ? (typeof item.cropData === 'string' ? JSON.parse(item.cropData) : item.cropData)
@@ -256,7 +257,7 @@ const AdminOrders: React.FC = () => {
         orderService.getBatchQueue(),
         shippingService.getConfig(),
       ]);
-      setOrders((ordersData && ordersData.orders) || []);
+      setOrders(Array.isArray(ordersData) ? ordersData : (ordersData && ordersData.orders) || []);
       setBatchQueue(queueData);
       const configuredAddress = queueData.batchShippingAddress || config.batchShippingAddress;
       if (configuredAddress) {
@@ -272,16 +273,18 @@ const AdminOrders: React.FC = () => {
           phone: configuredAddress.phone || '',
         });
       }
-    } catch {
+    } catch (err) {
       setMessage('Failed to load orders');
     } finally {
       setLoading(false);
     }
   };
 
+
+  // Always reload orders when the page is loaded or when selectedOrderId changes
   useEffect(() => {
     loadData();
-  }, []);
+  }, [selectedOrderId]);
 
   useEffect(() => () => {
     stopBatchProgressPolling();
@@ -550,12 +553,14 @@ const AdminOrders: React.FC = () => {
       updateSelectedOrder(null);
       return;
     }
+    // Always reload orders before selecting
+    await loadData();
     updateSelectedOrder(orderId);
     await ensureOrderDetailsLoaded(orderId);
   };
 
   const renderOrderDetails = (order: Order) => (
-    <div className="admin-order-detail-panel">
+      <div className="admin-order-detail-panel">
       {/* Cancel Order Button for Studio Admins */}
       {user?.role === 'studio_admin' &&
         !['cancelled', 'refunded', 'shipped', 'completed'].includes(String(order.status).toLowerCase()) && (
@@ -1031,6 +1036,9 @@ const AdminOrders: React.FC = () => {
                     <tbody>
                       {batchQueue.orders.map((order) => {
                         const statusDisplay = getQueueOrderStatusDisplay(order);
+                        // Patch: fallback for missing fields
+                        const createdAt = order.createdAt || order.orderDate;
+                        const customerName = order.customerName || order.shippingAddress?.fullName || 'Unknown';
                         return (
                         <React.Fragment key={order.id}>
                           <tr
@@ -1048,10 +1056,10 @@ const AdminOrders: React.FC = () => {
                             tabIndex={0}
                           >
                             <td><span className="order-id">#{order.id}</span></td>
-                            <td>{order.customerName}</td>
-                            <td>{new Date(order.createdAt).toLocaleDateString()}</td>
+                            <td>{customerName}</td>
+                            <td>{createdAt ? new Date(createdAt).toLocaleDateString() : ''}</td>
                             <td>{order.batchReadyDate ? new Date(order.batchReadyDate).toLocaleString() : 'Ready now'}</td>
-                            <td>${order.totalAmount.toFixed(2)}</td>
+                            <td>${order.totalAmount?.toFixed(2) ?? '0.00'}</td>
                             <td>
                               <span className={`order-status ${statusDisplay.className}`}>
                                 {statusDisplay.label}
@@ -1064,11 +1072,25 @@ const AdminOrders: React.FC = () => {
                               <td colSpan={6}>
                                 {loadingOrderDetails[order.id] ? (
                                   <div className="loading-state">Loading order details...</div>
-                                ) : getOrderById(order.id) ? (
-                                  renderOrderDetails(getOrderById(order.id) as Order)
-                                ) : (
-                                  <div className="loading-state">Order details unavailable.</div>
-                                )}
+                                ) : (() => {
+                                  // Prefer detailed order (with items) if available
+                                  const detailedOrder = orders.find(o => o.id === order.id && o.items && o.items.length > 0);
+                                  if (detailedOrder) {
+                                    return renderOrderDetails(detailedOrder as Order);
+                                  }
+                                  // Fallback to summary order if no details
+                                  const fallbackOrder = getOrderById(order.id);
+                                  if (fallbackOrder) {
+                                    // Debug: log the fallback order to diagnose missing items
+                                    // eslint-disable-next-line no-console
+                                    console.log('DEBUG: fallbackOrder for order details', fallbackOrder);
+                                    return renderOrderDetails(fallbackOrder as Order);
+                                  }
+                                  // Debug: log that no order was found
+                                  // eslint-disable-next-line no-console
+                                  console.log('DEBUG: No order found for orderId', order.id, orders);
+                                  return <div className="loading-state">Order details unavailable.</div>;
+                                })()}
                               </td>
                             </tr>
                           )}

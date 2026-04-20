@@ -1,5 +1,4 @@
 import taxRoutes from './routes/tax.js';
-app.use('/api/tax', taxRoutes);
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -72,10 +71,16 @@ import notifyWatchersRoutes from './routes/notifyWatchers.js';
 
 
 
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 const clientDistPath = path.resolve(__dirname, '../dist');
 const hasClientBuild = fs.existsSync(path.join(clientDistPath, 'index.html'));
+
+
+// Ensure JSON body parsing is enabled before tax route
+app.use(express.json({ limit: '50mb' }));
+app.use('/api/tax', taxRoutes);
 
 // CORS: allow frontend dev server and production origin
 const allowedOrigins = [

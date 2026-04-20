@@ -1,3 +1,11 @@
+import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// Ensure .env.local is loaded regardless of working directory
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+dotenv.config({ path: path.join(__dirname, '../.env.local') });
 // server/stripeTax.ts
 // Node.js/TypeScript backend utility for Stripe Tax calculation
 import Stripe from 'stripe';
@@ -28,7 +36,7 @@ export async function calculateStripeTax({
     line_items: lineItems.map((item) => ({
       amount: item.amount,
       reference: item.reference,
-      tax_code: item.tax_code,
+      tax_code: item.tax_code || 'txcd_10000000', // Default to general tangible goods
     })),
     customer_details: {
       address: {
@@ -36,11 +44,12 @@ export async function calculateStripeTax({
         city: shippingAddress.city,
         state: shippingAddress.state,
         postal_code: shippingAddress.postal_code,
-        country: shippingAddress.country,
+        country: shippingAddress.country || 'US',
       },
       address_source: 'shipping',
     },
   };
+  console.log('[stripeTax] Stripe Tax calculation payload:', JSON.stringify(params, null, 2));
   const calculation = await stripe.tax.calculations.create(params);
   return calculation;
 }

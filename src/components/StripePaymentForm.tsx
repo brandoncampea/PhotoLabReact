@@ -44,7 +44,7 @@ const StripePaymentForm: React.FC<StripePaymentFormProps> = ({
               city: shippingAddress.city,
               state: shippingAddress.state,
               postal_code: shippingAddress.zipCode,
-              country: shippingAddress.country === 'United States' ? 'US' : undefined,
+              country: shippingAddress.country,
             },
           },
         },
@@ -52,7 +52,7 @@ const StripePaymentForm: React.FC<StripePaymentFormProps> = ({
     });
 
     if (error) {
-      setErrorMessage(error.message || 'Payment failed. Please check your details and try again.');
+      setErrorMessage(`Stripe error: ${error.message || JSON.stringify(error)}`);
       setSubmitting(false);
       return;
     }

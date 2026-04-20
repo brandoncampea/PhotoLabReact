@@ -11,7 +11,8 @@ const STATE_TAX_RATES: Record<string, number> = {
   'NM': 0.05125, 'NY': 0.04, 'NC': 0.045, 'ND': 0.05, 'OH': 0.0575,
   'OK': 0.045, 'OR': 0.00, 'PA': 0.06, 'RI': 0.07, 'SC': 0.07,
   'SD': 0.045, 'TN': 0.055, 'TX': 0.0625, 'UT': 0.061, 'VT': 0.06,
-  'VA': 0.053, 'WA': 0.065, 'WV': 0.06, 'WI': 0.05, 'WY': 0.04,
+  'VA': 0.053, 'WA': 0.081, // Updated to 8.1% for digital products in 2026
+  'WV': 0.06, 'WI': 0.05, 'WY': 0.04,
   'DC': 0.0575
 };
 
@@ -23,8 +24,10 @@ export const taxService = {
    * @returns Object with tax amount and tax rate
    */
   calculateTax(subtotal: number, address: ShippingAddress): { taxAmount: number; taxRate: number } {
-    // Only apply tax to US addresses
-    if (address.country && address.country.toLowerCase() !== 'united states') {
+
+    // Only apply tax to US addresses (accepts 'US', 'United States', case-insensitive)
+    const country = (address.country || '').toLowerCase();
+    if (country !== 'united states' && country !== 'us') {
       return { taxAmount: 0, taxRate: 0 };
     }
 

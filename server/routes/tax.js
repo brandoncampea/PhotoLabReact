@@ -5,14 +5,11 @@ const router = express.Router();
 
 router.post('/calculate', async (req, res) => {
   try {
-    const { items, shippingOption, shippingCost, discountAmount, feeAmount, shippingAddress } = req.body;
+    const { lineItems, shippingAddress, currency } = req.body;
     const result = await calculateStripeTax({
-      items,
-      shippingOption,
-      shippingCost,
-      discountAmount,
-      feeAmount,
-      shippingAddress
+      lineItems,
+      shippingAddress,
+      currency
     });
     res.json(result);
   } catch (error) {

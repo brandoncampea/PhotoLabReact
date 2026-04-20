@@ -12,9 +12,9 @@ export const stripeTaxService = {
     currency?: string;
   }): Promise<{ taxAmount: number; taxRate: number }> {
     // Map CartItem[] to Stripe lineItems[]
-    const lineItems = items.map((item) => ({
+    const lineItems = items.map((item, idx) => ({
       amount: Math.round(item.price * 100), // cents
-      reference: item.productId ? String(item.productId) : 'item',
+      reference: item.productId ? `${item.productId}-${item.productSizeId || ''}-${idx}` : `item-${idx}`,
       // Optionally add tax_code if available
     }));
     const response = await api.post('/tax/calculate', {

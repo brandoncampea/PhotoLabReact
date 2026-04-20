@@ -13,12 +13,17 @@ export default defineConfig({
       configureServer(server) {
         server.middlewares.use(async (req, res, next) => {
           const url = req.url || ''
-          if (!url.startsWith('/api') && !url.startsWith('/uploads')) {
+
+          if (!url.startsWith('/api') && !url.startsWith('/uploads') && !url.startsWith('/stripe')) {
             return next()
           }
 
+          // Define targetUrl before logging
+          const targetUrl = `${backendOrigin}${url}`
+          // Log all forwarded URLs for debugging
+          console.log(`[vite-proxy] Forwarding ${req.method} ${url} to backend: ${targetUrl}`)
+
           try {
-            const targetUrl = `${backendOrigin}${url}`
             const headers = new Headers()
             Object.entries(req.headers).forEach(([key, value]) => {
               if (key.toLowerCase() === 'host') return
@@ -88,6 +93,10 @@ export default defineConfig({
         changeOrigin: true,
       },
       '/uploads': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
+      '/stripe': {
         target: 'http://localhost:3000',
         changeOrigin: true,
       },

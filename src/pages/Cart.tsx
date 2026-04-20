@@ -51,7 +51,7 @@ const Cart: React.FC = () => {
     city: '',
     state: '',
     zipCode: '',
-    country: 'United States',
+    country: 'US', // Default to ISO code
     email: user?.email || '',
     phone: ''
   });
@@ -356,28 +356,45 @@ const Cart: React.FC = () => {
     }
     const subtotalAfterDiscount = subtotal + fees + shipping - discount;
 
-    // Use Stripe Tax if Stripe is active
+    // Use Stripe Tax if Stripe is active and address is complete
+    let usedStripeTax = false;
     if (stripeConfig?.isActive) {
-      try {
-        const { stripeTaxService } = await import('../services/stripeTaxService');
-        const result = await stripeTaxService.calculateTax({
-          items,
-          shippingAddress,
-          currency: 'usd',
-        });
-        setTaxAmount(result.taxAmount);
-        setTaxRate(result.taxRate);
-        setTaxLoading(false);
-        return;
-      } catch (err) {
-        setTaxError('Failed to calculate tax with Stripe. Using fallback.');
+      // Only call Stripe Tax if all required address fields are present and country is a 2-letter code
+      const addr = shippingAddress;
+      const addressComplete =
+        addr &&
+        addr.addressLine1 &&
+        addr.city &&
+        addr.state &&
+        addr.zipCode &&
+        addr.country &&
+        typeof addr.country === 'string' &&
+        addr.country.length === 2;
+      if (addressComplete) {
+        try {
+          const { stripeTaxService } = await import('../services/stripeTaxService');
+          const result = await stripeTaxService.calculateTax({
+            items,
+            shippingAddress: { ...shippingAddress, country: addr.country.toUpperCase() },
+            currency: 'usd',
+          });
+          setTaxAmount(result.taxAmount);
+          setTaxRate(result.taxRate);
+          setTaxLoading(false);
+          usedStripeTax = true;
+          return;
+        } catch (err) {
+          setTaxError('Stripe Tax unavailable. Using fallback tax calculation.');
+        }
       }
     }
-    // Fallback to manual taxService
-    const { taxAmount, taxRate } = taxService.calculateTax(subtotalAfterDiscount, shippingAddress);
-    setTaxAmount(taxAmount);
-    setTaxRate(taxRate);
-    setTaxLoading(false);
+    if (!usedStripeTax) {
+      // Always fallback to manual taxService if Stripe fails or is not available
+      const { taxAmount, taxRate } = taxService.calculateTax(subtotalAfterDiscount, shippingAddress);
+      setTaxAmount(taxAmount);
+      setTaxRate(taxRate);
+      setTaxLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -657,7 +674,7 @@ const Cart: React.FC = () => {
         shippingOption,
         getShippingCost(),
         getDiscountAmount(),
-        getTaxAmount(),
+        taxAmount,
         getStudioFeeAmount()
       );
 
@@ -675,7 +692,20 @@ const Cart: React.FC = () => {
       setActivePaymentIntent(paymentIntent);
       setShowPaymentModal(true);
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Payment failed. Please try again.');
+      // Show detailed Stripe error if present
+      const data = err?.response?.data;
+      if (data) {
+        let details = data.error || data.message || 'Payment failed.';
+        if (data.type || data.code || data.raw) {
+          details += '\n';
+          if (data.type) details += `Type: ${data.type}\n`;
+          if (data.code) details += `Code: ${data.code}\n`;
+          if (data.raw) details += `Raw: ${typeof data.raw === 'string' ? data.raw : JSON.stringify(data.raw)}`;
+        }
+        setError(details);
+      } else {
+        setError(err.message || 'Payment failed. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -991,8 +1021,6 @@ const Cart: React.FC = () => {
               <span>Tax ({shippingAddress.state.toUpperCase()})</span>
               {taxLoading ? (
                 <span>Calculating...</span>
-              ) : taxError ? (
-                <span style={{ color: 'red' }}>{taxError}</span>
               ) : (
                 <span>${taxAmount.toFixed(2)}</span>
               )}
@@ -1022,11 +1050,16 @@ const Cart: React.FC = () => {
             </div>
           )}
 
+          {error && (
+            <div className="cart-alert" style={{ color: 'red', marginBottom: 12 }}>
+              {error}
+            </div>
+          )}
           <div className="cart-actions">
             <button
               onClick={handleCheckout}
               className="btn btn-primary btn-checkout cart-action-button"
-              disabled={loading || !stripeConfig?.isActive}
+              disabled={loading || !stripeConfig?.publishableKey || stripeConfig.publishableKey.startsWith('sk_')}
             >
               {loading ? 'Processing Payment...' : '🔒 Pay with Stripe'}
             </button>
