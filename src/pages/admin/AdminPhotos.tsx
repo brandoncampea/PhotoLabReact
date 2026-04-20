@@ -1196,6 +1196,17 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
                   ? `Uploading ${uploadProgress.completed}/${uploadProgress.total}...`
                   : '+ Upload Photos'}
               </label>
+              {/* Upload Progress Bar and Status */}
+              {uploading && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.7rem', marginTop: '0.5rem', minWidth: 220 }}>
+                  <div style={{ flex: 1, height: 8, background: '#eee', borderRadius: 5, overflow: 'hidden', border: '1px solid #ddd', minWidth: 120 }}>
+                    <div style={{ width: `${uploadProgress.total ? (uploadProgress.completed / uploadProgress.total) * 100 : 0}%`, height: '100%', background: 'var(--primary-color)', transition: 'width 0.3s' }} />
+                  </div>
+                  <span style={{ fontSize: '0.92rem', color: '#555', minWidth: 70 }}>
+                    {uploadProgress.completed}/{uploadProgress.total} done
+                  </span>
+                </div>
+              )}
               {photos.length > 0 && (
                 <button
                   onClick={handleDeleteAll}
@@ -1270,47 +1281,7 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
           e.stopPropagation();
           setIsDragging(true);
         }}
-        onDragLeave={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          setIsDragging(false);
-        }}
-        onDrop={handleDrop}
-        style={{
-          marginBottom: '1rem',
-          padding: '1.25rem',
-          border: `2px dashed ${isDragging ? 'var(--primary-color)' : 'var(--border-color)'}`,
-          borderRadius: '0.75rem',
-          backgroundColor: isDragging ? 'rgba(124, 92, 255, 0.12)' : 'var(--bg-tertiary)',
-          textAlign: 'center',
-          color: 'var(--text-secondary)',
-        }}
-      >
-        Drag & drop images here to upload, or use the upload button.
-      </div>
-
-      {uploadItems.length > 0 && (
-        <UploadProgressPanel
-          uploadItems={uploadItems}
-          uploading={uploading}
-          handleRetryUploadItem={handleRetryUploadItem}
-          setUploading={setUploading}
-        />
-      )}
-
-      {currentAlbum && (
-        <div className="admin-summary-box" style={{ marginBottom: '1.5rem' }}>
-          <p className="muted-text" style={{ margin: 0, fontSize: '0.95rem' }}>
-            <strong>Current Album:</strong> {currentAlbum.name} ({photos.length} photos)
-          </p>
-          {coverMessage && (
-            <p className={coverMessage.includes('Failed') ? 'danger-text' : 'success-text'} style={{ margin: '0.35rem 0 0 0', fontSize: '0.85rem' }}>
-              {coverMessage}
-            </p>
-          )}
-          <p className="muted-text" style={{ margin: '0.5rem 0 0 0', fontSize: '0.85rem' }}>
-            All photos must belong to an album. Select an album above to upload or manage photos.
-          </p>
+          );
           {uploadMessage && (
             <p className={uploadMessage.type === 'success' ? 'success-text' : 'danger-text'} style={{ margin: '0.5rem 0 0 0', fontSize: '0.85rem' }}>
               {uploadMessage.text}
@@ -1396,10 +1367,6 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
               Reused across this studio’s future album uploads.
             </span>
           </div>
-
-
-
-
           {rosterMessage && (
             <p className={rosterMessage.toLowerCase().includes('failed') ? 'danger-text' : 'success-text'} style={{ margin: '0.45rem 0 0 0', fontSize: '0.85rem' }}>
               {rosterMessage}

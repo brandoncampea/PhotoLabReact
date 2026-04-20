@@ -1,7 +1,20 @@
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// Must be declared before any usage
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 import priceSuggestionsRoutes from './routes/priceSuggestions.js';
 console.log('[server.mjs] Server entrypoint loaded');
+console.log('ENV DEBUG: AZURE_STORAGE_CONTAINER:', process.env.AZURE_STORAGE_CONTAINER);
+console.log('ENV DEBUG: AZURE_CONTAINER_NAME:', process.env.AZURE_CONTAINER_NAME);
+console.log('ENV DEBUG: All env:', Object.keys(process.env).filter(k => k.toLowerCase().includes('azure')).reduce((acc, k) => { acc[k] = process.env[k]; return acc; }, {}));
 // Load environment variables from .env.local (for WHCC and other secrets)
-import '../server/env-loader.mjs';
+import dotenv from 'dotenv';
+// (moved above for dotenv absolute path loading)
+// __filename and __dirname already declared above
+dotenv.config({ path: path.join(__dirname, '../.env.local') });
 import adminDashboardRoutes from './routes/adminDashboard.js';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
@@ -15,9 +28,7 @@ import photoRoutes from './routes/photos.js';
 // ...existing code...
 import express from 'express';
 import cors from 'cors';
-import path from 'path';
 import fs from 'fs';
-import { fileURLToPath } from 'url';
 import mssql from './mssql.cjs';
 const { initializeDatabase } = mssql;
 
@@ -55,8 +66,7 @@ import whccEditorRoutes from './routes/whccEditor.js';
 import ticketRoutes from './tickets/routes.js';
 import notifyWatchersRoutes from './routes/notifyWatchers.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+
 
 
 
