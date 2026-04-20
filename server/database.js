@@ -1,5 +1,5 @@
 
-console.log('database.js script started');
+// ...existing code...
 import Database from 'better-sqlite3';
 import bcrypt from 'bcryptjs';
 import path from 'path';
@@ -15,7 +15,7 @@ db.pragma('foreign_keys = ON');
 const initDb = () => {
   // Super Admin Price Lists (moved to top for guaranteed execution)
   try {
-    console.log('Creating super_price_lists table...');
+    // ...existing code...
     db.exec(`
       CREATE TABLE IF NOT EXISTS super_price_lists (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -25,13 +25,13 @@ const initDb = () => {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
-    console.log('Created super_price_lists table.');
+    // ...existing code...
   } catch (err) {
     console.error('Error creating super_price_lists table:', err);
   }
 
   try {
-    console.log('Creating super_price_list_items table...');
+    // ...existing code...
     db.exec(`
       CREATE TABLE IF NOT EXISTS super_price_list_items (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -45,7 +45,7 @@ const initDb = () => {
         UNIQUE(super_price_list_id, product_size_id)
       )
     `);
-    console.log('Created super_price_list_items table.');
+    // ...existing code...
   } catch (err) {
     console.error('Error creating super_price_list_items table:', err);
   }
@@ -252,8 +252,8 @@ const initDb = () => {
   // Enable foreign keys
   db.pragma('foreign_keys = ON');
 
-  console.log('process.argv[1]:', process.argv[1]);
-  console.log('fileURLToPath(import.meta.url):', fileURLToPath(import.meta.url));
+  // ...existing code...
+  // ...existing code...
   // (Removed conditional initDb call; now always called at top level)
 
   return { db, initDb };
@@ -263,5 +263,5 @@ const initDb = () => {
 // Initialize DB schema when run directly
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   initDb();
-  console.log('Database schema initialized.');
+  // ...existing code...
 }

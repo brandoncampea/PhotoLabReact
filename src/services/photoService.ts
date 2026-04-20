@@ -36,7 +36,6 @@ export async function recordPhotoBlob({
   });
   return response.data;
 }
-import { BlobServiceClient } from '@azure/storage-blob';
 // Get SAS URL for a blob from backend
 async function getSasUrl(blobName: string): Promise<string> {
   // Always use /api/blob-sas for SAS URL fetch for compatibility
@@ -68,7 +67,7 @@ export async function uploadFileToAzureBlob({
   try {
     const { BlockBlobClient } = await import('@azure/storage-blob');
     const directBlobClient = new BlockBlobClient(sasUrl);
-    const uploadResult = await directBlobClient.uploadBrowserData(file, uploadOptions);
+    await directBlobClient.uploadBrowserData(file, uploadOptions);
     // ...existing code...
     return directBlobClient.url;
   } catch (err) {

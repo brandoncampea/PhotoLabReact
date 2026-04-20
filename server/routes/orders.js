@@ -2306,7 +2306,7 @@ router.post('/admin/:orderId/whcc-retry', superAdminRequired, handleWhccRetryReq
 router.patch('/admin/:orderId/status', adminRequired, async (req, res) => {
   try {
     const orderId = Number(req.params.orderId);
-    const { status } = req.body;
+    const { status, cancelReason, refund } = req.body;
 
     if (!orderId || !status) {
       return res.status(400).json({ error: 'orderId and status are required' });
@@ -2317,8 +2317,9 @@ router.patch('/admin/:orderId/status', adminRequired, async (req, res) => {
       return res.status(400).json({ error: 'Invalid order status' });
     }
 
+    // Fetch order details for validation and refund
     const order = await queryRow(
-      `SELECT o.id, o.user_id as userId
+      `SELECT o.id, o.user_id as userId, o.status, o.total_amount as totalAmount, o.payment_intent_id as paymentIntentId, o.stripe_charge_id as stripeChargeId, o.email, o.studio_id as studioId
        FROM orders o
        WHERE o.id = $1`,
       [orderId]
@@ -2333,20 +2334,94 @@ router.patch('/admin/:orderId/status', adminRequired, async (req, res) => {
         `SELECT studio_id as studioId FROM users WHERE id = $1`,
         [order.userId]
       );
-
       if (!user || user.studioId !== req.user.studio_id) {
         return res.status(403).json({ error: 'Forbidden' });
       }
     }
 
-    await query(
-      `UPDATE orders
-       SET status = $1
-       WHERE id = $2`,
-      [status, orderId]
-    );
+    // Only allow cancellation if not already cancelled or shipped/completed
+    if (String(status).toLowerCase() === 'cancelled') {
+      if (['cancelled', 'shipped', 'completed'].includes(String(order.status).toLowerCase())) {
+        return res.status(400).json({ error: 'Order cannot be cancelled in its current state.' });
+      }
+      if (!cancelReason || typeof cancelReason !== 'string' || cancelReason.length < 3) {
+        return res.status(400).json({ error: 'Cancel reason is required.' });
+      }
 
-    res.json({ success: true });
+      // Refund via Stripe if requested and payment exists
+      let refundStatus = null;
+      let refundId = null;
+      let refundError = null;
+      if (refund && order.paymentIntentId) {
+        try {
+          const stripe = await getConfiguredStripeClient();
+          if (!stripe) throw new Error('Stripe not configured');
+          // Find the charge to refund
+          let chargeId = order.stripeChargeId;
+          if (!chargeId) {
+            // Try to get from payment intent
+            const pi = await stripe.paymentIntents.retrieve(order.paymentIntentId, { expand: ['latest_charge'] });
+            chargeId = typeof pi.latest_charge === 'string' ? pi.latest_charge : pi.latest_charge?.id;
+          }
+          if (!chargeId) throw new Error('No Stripe charge found for refund');
+          const refundObj = await stripe.refunds.create({ charge: chargeId, reason: 'requested_by_customer' });
+          refundStatus = refundObj.status;
+          refundId = refundObj.id;
+        } catch (err) {
+          refundStatus = 'failed';
+          refundError = err?.message || String(err);
+        }
+      }
+
+      // Update order with cancel info
+      await query(
+        `UPDATE orders
+         SET status = 'cancelled', cancel_reason = $1, cancel_by = $2, cancel_at = CURRENT_TIMESTAMP, refund_status = $3, refund_id = $4
+         WHERE id = $5`,
+        [cancelReason, req.user.id, refundStatus, refundId, orderId]
+      );
+
+      // Insert audit log
+      await query(
+        `INSERT INTO order_cancellation_audit (order_id, cancelled_by, cancelled_at, reason, refund_status, refund_id, refund_error)
+         VALUES ($1, $2, CURRENT_TIMESTAMP, $3, $4, $5, $6)`,
+        [orderId, req.user.id, cancelReason, refundStatus, refundId, refundError]
+      );
+
+      // Send cancellation email to customer
+      try {
+        // Fetch order items for email
+        const items = await queryRows(
+          `SELECT oi.id, oi.photo_id as photoId, oi.product_id as productId, oi.product_size_id as productSizeId, oi.quantity, oi.price, oi.crop_data as cropData, p.name as productName, ps.size_name as productSizeName
+           FROM order_items oi
+           LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id
+           LEFT JOIN products p ON p.id = COALESCE(oi.product_id, ps.product_id)
+           WHERE oi.order_id = $1`,
+          [orderId]
+        );
+        await orderReceiptService.sendCustomerReceipt({
+          to: order.email,
+          customerName: '',
+          order: { ...order, status: 'cancelled' },
+          items,
+          digitalDownloads: [],
+        });
+      } catch (emailErr) {
+        // Log but do not fail
+        console.error('Failed to send cancellation email:', emailErr);
+      }
+
+      return res.json({ success: true, cancelled: true, refundStatus, refundId, refundError });
+    } else {
+      // For other status updates, just update status
+      await query(
+        `UPDATE orders
+         SET status = $1
+         WHERE id = $2`,
+        [status, orderId]
+      );
+      return res.json({ success: true });
+    }
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

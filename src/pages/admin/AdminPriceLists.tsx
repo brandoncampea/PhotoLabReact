@@ -1,7 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { studioPriceListService } from '../../services/studioPriceListService';
-import { packageService } from '../../services/packageService';
 import { superPriceListService } from '../../services/superPriceListService';
 import { useAuth } from '../../contexts/AuthContext';
 import './AdminPriceLists.css';

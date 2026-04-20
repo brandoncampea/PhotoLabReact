@@ -157,6 +157,7 @@ router.get('/revenue-breakdown', adminRequired, async (req, res) => {
       params.push(req.user.studio_id);
     }
 
+    // Exclude cancelled orders from revenue/profit/cost/quantity/orderCount, but allow them in recent orders elsewhere
     const baseWhere = `
       WHERE (o.status IS NULL OR LOWER(o.status) <> 'cancelled')
         ${studioFilter}

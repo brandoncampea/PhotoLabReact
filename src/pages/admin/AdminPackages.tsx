@@ -1,7 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import AdminPackages from '../../components/AdminPackages';
-import { PriceListItem } from '../../utils/priceList';
-import { productService } from '../../services/productService';
 import { studioPriceListService } from '../../services/studioPriceListService';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -9,7 +7,6 @@ const AdminPackagesPage: React.FC = () => {
   const { user } = useAuth();
   const effectiveStudioId = Number(localStorage.getItem('viewAsStudioId') || user?.studioId || 0);
   const [products, setProducts] = useState<any[]>([]);
-  const [priceListItems, setPriceListItems] = useState<PriceListItem[]>([]);
   const [priceLists, setPriceLists] = useState<any[]>([]);
   const [selectedPriceListId, setSelectedPriceListId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -40,7 +37,6 @@ const AdminPackagesPage: React.FC = () => {
     const fetchProductsAndPriceListItems = async () => {
       if (!selectedPriceListId) {
         setProducts([]);
-        setPriceListItems([]);
         return;
       }
       setLoading(true);
@@ -67,15 +63,8 @@ const AdminPackagesPage: React.FC = () => {
         });
         setProducts(Object.values(grouped));
         // Build price list items for retail price lookup
-        const priceListItems: PriceListItem[] = offered.map((item: any) => ({
-          productId: item.product_id,
-          sizeId: item.product_size_id,
-          price: item.price,
-        }));
-        setPriceListItems(priceListItems);
       } catch (err) {
         setProducts([]);
-        setPriceListItems([]);
       } finally {
         setLoading(false);
       }
@@ -106,7 +95,7 @@ const AdminPackagesPage: React.FC = () => {
         </div>
       )}
       {selectedPriceListId && (
-        <AdminPackages products={products} priceListId={selectedPriceListId} priceListItems={priceListItems} />
+        <AdminPackages products={products} />
       )}
     </div>
   );

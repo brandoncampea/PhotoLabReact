@@ -11,7 +11,7 @@ const inClause = (ids, startIndex = 1) => {
 const toNumberIds = (rows) => rows.map((r) => Number(r.id)).filter((id) => Number.isInteger(id) && id > 0);
 
 const logCount = (label, count) => {
-  console.log(`${label}: ${count}`);
+  // ...existing code...
 };
 
 const deleteByIds = async (table, idColumn, ids, label) => {
@@ -29,7 +29,7 @@ const deleteByIds = async (table, idColumn, ids, label) => {
 };
 
 const main = async () => {
-  console.log(apply ? '🧹 Applying test data cleanup...' : '🔎 Dry run: test data cleanup preview');
+  // ...existing code...
 
   const studioRows = await queryRows(
     `SELECT id FROM studios
@@ -106,7 +106,7 @@ const main = async () => {
     seedProductSizeIds = toNumberIds(await queryRows('SELECT id FROM product_sizes WHERE product_id = $1', [seedProductId]));
   }
 
-  console.log('--- Target rows ---');
+  // ...existing code...
   logCount('Studios', studioIds.length);
   logCount('Users', userIds.length);
   logCount('Albums', albumIds.length);
@@ -116,7 +116,7 @@ const main = async () => {
   logCount('Seed products', seedProductId ? 1 : 0);
 
   if (!apply) {
-    console.log('Dry run complete. Re-run with --apply to delete these rows.');
+    // ...existing code...
     process.exit(0);
   }
 
@@ -184,7 +184,7 @@ const main = async () => {
     logCount('Deleted seed products', 0);
   }
 
-  console.log('✅ Test commerce cleanup completed.');
+  // ...existing code...
   process.exit(0);
 };
 

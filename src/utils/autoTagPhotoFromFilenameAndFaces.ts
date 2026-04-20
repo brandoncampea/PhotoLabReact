@@ -40,8 +40,6 @@ export async function autoTagPhotoFromFilenameAndFaces({
   photo,
   rosterPlayers,
   photoService,
-  handleDetectPlayers,
-  detectionByPhotoId,
   // setDetectionByPhotoId, // removed unused variable
   setUploadMessage,
   onTagged,

@@ -35,7 +35,7 @@ type DiscountCode = {
 
 const AdminDiscountCodes: React.FC = () => {
   const [discountCodes, setDiscountCodes] = React.useState<DiscountCode[]>([]);
-  const [loading, setLoading] = React.useState(true);
+  // const [loading, setLoading] = React.useState(true);
   const [showModal, setShowModal] = React.useState(false);
   const [editingCode, setEditingCode] = React.useState<DiscountCode | null>(null);
   const [error, setError] = React.useState<string | null>(null);

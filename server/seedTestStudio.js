@@ -24,10 +24,10 @@ const main = async () => {
     return { studioId: createdStudioId, userId: userResult.rows[0].id };
   });
 
-  console.log('✅ Studio created with ID:', studioId);
-  console.log('✅ User created with ID:', userId);
-  console.log('📧 Email: studioowner@example.com');
-  console.log('🔑 Password: StudioPassword@123');
+  // ...existing code...
+  // ...existing code...
+  // ...existing code...
+  // ...existing code...
   process.exit(0);
 };
 

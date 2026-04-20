@@ -27,7 +27,7 @@ export async function query(text, params) {
   try {
     const result = await pool.query(text, params);
     const duration = Date.now() - start;
-    console.log('Executed query', { text, duration, rows: result.rowCount });
+    // ...existing code...
     return result;
   } catch (error) {
     console.error('Database query error:', error);
@@ -65,7 +65,7 @@ export async function transaction(callback) {
 
 // Initialize database schema
 export async function initializeDatabase() {
-  console.log('Initializing PostgreSQL database...');
+  // ...existing code...
 
   try {
     await query(`
@@ -417,10 +417,10 @@ export async function initializeDatabase() {
          VALUES ($1, $2, $3, $4, true, CURRENT_TIMESTAMP)`,
         ['super_admin@photolab.com', hashedPassword, 'Super Admin', 'super_admin']
       );
-      console.log('Super admin user created: super_admin@photolab.com / SuperAdmin@123456');
+      // ...existing code...
     }
 
-    console.log('✓ Database schema initialized successfully');
+    // ...existing code...
   } catch (error) {
     console.error('Database initialization error:', error);
     throw error;

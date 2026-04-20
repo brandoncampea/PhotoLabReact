@@ -27,21 +27,15 @@ export const signPhotoForResponse = (photo) => {
 
 // Wrap the asset piping logic in a function and export it
 export async function pipeAssetToResponse(source, res) {
-  // Debug logging for asset fetch
-  console.log('[PHOTO ASSET] Requested source:', source);
   try {
     // Always generate a fresh SAS URL for Azure blobs
     let downloadSource = source;
     if (typeof source === 'string' && !downloadSource.startsWith('/uploads/') && !downloadSource.startsWith('/api/') && !downloadSource.startsWith('http://localhost')) {
       // Only for Azure blobs (not local uploads or API proxies)
       downloadSource = getSignedReadUrl(source);
-      console.log('[PHOTO ASSET] Generated SAS URL:', downloadSource, 'from blob path:', source);
     }
-    console.log('[PHOTO ASSET] Calling downloadBlob with:', downloadSource);
     const download = await downloadBlob(downloadSource, 'stream');
-    console.log('[PHOTO ASSET] downloadBlob result:', !!download, download?.contentType, download?.contentLength);
     if (!download) {
-      console.error('[PHOTO ASSET] Asset not found for:', downloadSource);
       res.status(404).json({ error: 'Asset not found' });
       return;
     }
@@ -64,11 +58,9 @@ export async function pipeAssetToResponse(source, res) {
       download.readableStreamBody.pipe(res);
       return;
     }
-    console.error('[PHOTO ASSET] Asset not found after download for:', downloadSource);
     res.status(404).json({ error: 'Asset not found' });
     return;
   } catch (err) {
-    console.error('[PHOTO ASSET] Error fetching asset:', err);
     if (typeof source === 'string' && source.startsWith('http')) {
       try {
         const upstream = await fetch(source);
@@ -81,7 +73,6 @@ export async function pipeAssetToResponse(source, res) {
         res.send(Buffer.from(arrayBuffer));
         return;
       } catch (fetchErr) {
-        console.error('[PHOTO ASSET] Fetch asset error:', fetchErr);
         res.status(404).json({ error: 'Asset not found' });
         return;
       }

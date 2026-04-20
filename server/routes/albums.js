@@ -98,14 +98,11 @@ const addAlbumPreviewImages = async (albums) => {
 // Get all albums (auth required)
 router.get('/', authRequired, async (req, res) => {
   try {
-    console.log('ALBUMS ROUTE: headers:', req.headers);
     const user = req.user;
-    console.log('ALBUMS ROUTE: user:', user);
     let albums;
     const studioId = user?.studio_id;
     if (studioId) {
       // If studioId is present (even for super_admin), filter by studio
-      console.log('ALBUMS ROUTE: Filtering by studioId:', studioId);
       albums = await queryRows(`
         SELECT 
           a.id,
@@ -127,7 +124,6 @@ router.get('/', authRequired, async (req, res) => {
       `, [studioId]);
     } else if (user?.role === 'super_admin') {
       // Only show all albums if super_admin and no studioId
-      console.log('ALBUMS ROUTE: super_admin, no studioId, returning all albums');
       albums = await queryRows(`
         SELECT 
           a.id,

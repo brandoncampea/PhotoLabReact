@@ -336,10 +336,16 @@ const AlbumDetails: React.FC = () => {
   };
 
   const getCropAspectRatio = (product: ProductWithMatch | null): number => {
-    if (!product) return NaN;
+    if (!product || !selectedPhoto) return NaN;
     const size = sizeToCrop || getDefaultSize(product);
-    const width = Number(size?.width || 0);
-    const height = Number(size?.height || 0);
+    let width = Number(size?.width || 0);
+    let height = Number(size?.height || 0);
+    const photoIsLandscape = selectedPhoto.width > selectedPhoto.height;
+    const sizeIsLandscape = width > height;
+    // If photo and product size orientations don't match, swap
+    if (photoIsLandscape !== sizeIsLandscape) {
+      [width, height] = [height, width];
+    }
     if (width > 0 && height > 0) {
       return width / height;
     }
@@ -748,7 +754,7 @@ const AlbumDetails: React.FC = () => {
                 }}
               >
                 {(() => {
-                  const studioId = album?.studioId || album?.studio_id || (photos.length > 0 ? photos[0].studioId || photos[0].studio_id : undefined);
+                   const studioId = (album as any)?.studioId || (album as any)?.studio_id || (photos.length > 0 ? (photos[0] as any)?.studioId || (photos[0] as any)?.studio_id : undefined);
                   return (
                     <WatermarkedImage
                       src={`/api/photos/${photo.id}/asset?variant=full`}

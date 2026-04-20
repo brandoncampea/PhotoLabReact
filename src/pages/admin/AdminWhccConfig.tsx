@@ -140,7 +140,7 @@ const AdminWhccConfig = () => {
     try {
       const orders = await orderService.getAdminOrders();
       const withWhccLogs = (orders || [])
-        .filter((order) => (
+        .filter((order: any) => (
           order.whccRequestLog ||
           order.whccImportResponse ||
           order.whccSubmitResponse ||
@@ -148,7 +148,7 @@ const AdminWhccConfig = () => {
           order.whccConfirmationId ||
           order.whccOrderNumber
         ))
-        .sort((a, b) => {
+        .sort((a: any, b: any) => {
           const aTs = new Date(a.orderDate).getTime() || 0;
           const bTs = new Date(b.orderDate).getTime() || 0;
           return bTs - aTs;

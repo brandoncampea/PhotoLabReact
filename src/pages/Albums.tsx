@@ -89,12 +89,12 @@ const Albums: React.FC = () => {
     }
   };
 
-  const handleShare = async (e: React.MouseEvent, album: Album) => {
+  const handleShare = async (e: React.MouseEvent, album: any) => {
     e.stopPropagation();
     // Try to get the studio slug from context or localStorage
-    let studioSlug = (user && user.studioSlug) || localStorage.getItem('studioSlug') || '';
-    if (!studioSlug && user && user.studioId) {
-      studioSlug = `studio${user.studioId}`;
+    let studioSlug = (user && (user as any).studioSlug) || localStorage.getItem('studioSlug') || '';
+    if (!studioSlug && user && (user as any).studioId) {
+      studioSlug = `studio${(user as any).studioId}`;
     }
     const url = studioSlug
       ? `${window.location.origin}/albums/${album.id}?studioSlug=${encodeURIComponent(studioSlug)}`

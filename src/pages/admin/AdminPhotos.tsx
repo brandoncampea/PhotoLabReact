@@ -1,4 +1,5 @@
 import { autoTagPhotoFromFilenameAndFaces } from '../../utils/autoTagPhotoFromFilenameAndFaces';
+import { useDropzone } from 'react-dropzone';
 // --- Shared types and utilities ---
 type FaceTagBox = {
   id: string;
@@ -1182,15 +1183,47 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
           </div>
           {showUploadPanel ? (
             <div className="upload-btn" style={{ marginTop: '1.5rem' }}>
-              <input
-                type="file"
-                id="photo-upload"
-                multiple
-                accept="image/*"
-                onChange={handleUpload}
-                style={{ display: 'none' }}
-                disabled={uploading}
-              />
+              {(() => {
+                const onDrop = (acceptedFiles: File[]) => {
+                  if (!uploading) uploadFiles(acceptedFiles);
+                };
+                const { getRootProps, getInputProps, isDragActive } = useDropzone({
+                  onDrop,
+                  accept: { 'image/*': [] },
+                  multiple: true,
+                  disabled: uploading,
+                });
+                return (
+                  <div
+                    {...getRootProps()}
+                    style={{
+                      border: isDragActive ? '2.5px dashed #7b5cff' : '2.5px dashed #aaa',
+                      borderRadius: 12,
+                      padding: '2.2rem 1.5rem',
+                      background: isDragActive ? 'rgba(123,92,255,0.08)' : 'rgba(255,255,255,0.03)',
+                      textAlign: 'center',
+                      marginBottom: 16,
+                      transition: 'background 0.2s, border 0.2s',
+                      cursor: uploading ? 'not-allowed' : 'pointer',
+                      position: 'relative',
+                      minHeight: 90,
+                      outline: isDragActive ? '2px solid #7b5cff' : 'none',
+                      color: '#888',
+                      fontSize: '1.08rem',
+                      fontWeight: 500,
+                      userSelect: 'none',
+                      opacity: uploading ? 0.6 : 1,
+                    }}
+                  >
+                    <input {...getInputProps()} />
+                    {isDragActive
+                      ? 'Drop images here to upload'
+                      : uploading
+                        ? 'Uploading...'
+                        : 'Drag & drop images here or click to select files'}
+                  </div>
+                );
+              })()}
               <label htmlFor="photo-upload" className="btn btn-primary">
                 {uploading
                   ? `Uploading ${uploadProgress.completed}/${uploadProgress.total}...`
@@ -1281,13 +1314,14 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
           e.stopPropagation();
           setIsDragging(true);
         }}
-          );
-          {uploadMessage && (
-            <p className={uploadMessage.type === 'success' ? 'success-text' : 'danger-text'} style={{ margin: '0.5rem 0 0 0', fontSize: '0.85rem' }}>
-              {uploadMessage.text}
-            </p>
-          )}
-          <div style={{ marginTop: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+        onDrop={handleDrop}
+      >
+        {uploadMessage && (
+          <p className={uploadMessage.type === 'success' ? 'success-text' : 'danger-text'} style={{ margin: '0.5rem 0 0 0', fontSize: '0.85rem' }}>
+            {uploadMessage.text}
+          </p>
+        )}
+        <div style={{ marginTop: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
             <input
               type="file"
               id="roster-csv-upload"
@@ -1373,7 +1407,6 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
             </p>
           )}
         </div>
-      )}
 
       <div className="photos-grid" style={{
         display: 'grid',

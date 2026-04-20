@@ -111,15 +111,17 @@ const SuperAdminDashboard: React.FC = () => {
       const customers = customersResult.status === 'fulfilled' ? customersResult.value : [];
       const albums = albumsResult.status === 'fulfilled' ? albumsResult.value : [];
 
-      const totalRevenue = ordersData.reduce((sum: number, order: Order) => sum + (order.totalAmount || 0), 0);
-      const pendingOrders = ordersData.filter((order: Order) => (order.status || '').toLowerCase() === 'pending').length;
-      const totalOrders = ordersData.length;
-      const recentOrders = [...ordersData]
-        .sort((a, b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime())
-        .slice(0, 5);
+      const totalRevenue = Array.isArray(ordersData) ? ordersData.reduce((sum: number, order: Order) => sum + (order.totalAmount || 0), 0) : 0;
+      const pendingOrders = Array.isArray(ordersData) ? ordersData.filter((order: Order) => (order.status || '').toLowerCase() === 'pending').length : 0;
+      const totalOrders = Array.isArray(ordersData) ? ordersData.length : 0;
+      const recentOrders = Array.isArray(ordersData)
+        ? [...ordersData]
+            .sort((a, b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime())
+            .slice(0, 5)
+        : [];
 
       const albumOrderCounts = new Map<number, { albumId: number; orderCount: number; albumName: string }>();
-      ordersData.forEach((order: Order) => {
+      if (Array.isArray(ordersData)) ordersData.forEach((order: Order) => {
         order.items?.forEach((item: any) => {
           const albumId = item.photo?.albumId;
           if (!albumId) return;
@@ -148,7 +150,7 @@ const SuperAdminDashboard: React.FC = () => {
         recentOrders,
         topAlbums,
       });
-      setOrders(ordersData);
+      setOrders(Array.isArray(ordersData) ? ordersData : []);
     } catch (error) {
       console.error('Failed to load stats:', error);
     } finally {

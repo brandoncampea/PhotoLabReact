@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { CartItem as CartItemType } from '../types';
 import { useCart } from '../contexts/CartContext';
 import WatermarkedImage from './WatermarkedImage';
+import { getPhotoAssetUrl } from '../utils/getPhotoAssetUrl';
 
 interface CartItemProps {
   item: CartItemType;
@@ -51,8 +52,9 @@ const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop, onOpenWhccEditor,
     };
   };
 
-  // Determine which image to show: product > category > photo > placeholder
-  let displayImageUrl = (item as any).productImageUrl || (item as any).categoryImageUrl || item.photo?.fullImageUrl || item.photo?.thumbnailUrl;
+
+  // Always use centralized asset URL logic
+  let displayImageUrl = getPhotoAssetUrl(item.photo || item);
 
   return (
     <div style={{ border: '1px solid #2a2740', borderRadius: 8, marginBottom: 16, overflow: 'hidden', background: '#0f0f16' }}>
@@ -75,15 +77,58 @@ const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop, onOpenWhccEditor,
           <div>
             <div style={{ marginBottom: 12, borderRadius: 6, overflow: 'hidden', background: '#000', height: 280, position: 'relative' }}>
               {displayImageUrl ? (
-                <>
-                  <WatermarkedImage 
-                    src={displayImageUrl}
-                    alt={item.productName || item.photo?.fileName || 'Product'}
-                    style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                    studioId={studioId}
-                  />
-                  {item.cropData && <div style={getCropStyle()!} />}
-                </>
+                (() => {
+                  // If cropData and photo dimensions are available, render the cropped preview
+                  if (item.cropData && (item.photo?.width || item.photo?.metadata?.width) && (item.photo?.height || item.photo?.metadata?.height)) {
+                    const crop = item.cropData;
+                    const naturalWidth = Number(item.photo?.width || item.photo?.metadata?.width || 0);
+                    const naturalHeight = Number(item.photo?.height || item.photo?.metadata?.height || 0);
+                    // Determine orientation and aspect ratio
+                    let aspectRatio = 1;
+                    if (item.productId && item.productSizeId && Array.isArray(item.photo?.products)) {
+                      const product = item.photo.products.find((p: any) => p.id === item.productId);
+                      const size = product?.sizes?.find((s: any) => s.id === item.productSizeId);
+                      if (size && size.width && size.height) {
+                        aspectRatio = Number(size.width) / Number(size.height);
+                      }
+                    } else if (naturalWidth > 0 && naturalHeight > 0) {
+                      aspectRatio = naturalWidth / naturalHeight;
+                    }
+                    // Calculate crop and container dimensions
+                    const cropLeft = (crop.x / naturalWidth) * 100;
+                    const cropTop = (crop.y / naturalHeight) * 100;
+                    const cropWidth = (crop.width / naturalWidth) * 100;
+                    const cropHeight = (crop.height / naturalHeight) * 100;
+                    // Use aspect ratio to set container height
+                    return (
+                      <div style={{ width: '100%', height: `calc(100% / ${aspectRatio})`, position: 'relative', overflow: 'hidden' }}>
+                        <WatermarkedImage
+                          src={displayImageUrl}
+                          alt={item.productName || item.photo?.fileName || 'Product'}
+                          style={{
+                            width: `${100 / (cropWidth / 100)}%`,
+                            height: `${100 / (cropHeight / 100)}%`,
+                            objectFit: 'cover',
+                            position: 'absolute',
+                            left: `-${cropLeft / (cropWidth / 100)}%`,
+                            top: `-${cropTop / (cropHeight / 100)}%`,
+                          }}
+                          studioId={studioId}
+                        />
+                      </div>
+                    );
+                  } else {
+                    // No crop, show full image
+                    return (
+                      <WatermarkedImage
+                        src={displayImageUrl}
+                        alt={item.productName || item.photo?.fileName || 'Product'}
+                        style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                        studioId={studioId}
+                      />
+                    );
+                  }
+                })()
               ) : (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#666' }}>
                   No Image

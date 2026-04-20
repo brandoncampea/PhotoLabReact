@@ -3,18 +3,6 @@ import { Photo } from '../types';
 import WatermarkedImage from './WatermarkedImage';
 
 
-// Utility to extract blob name from any Azure URL or blob path
-function extractBlobName(url: string): string | null {
-  if (!url) return null;
-  // If already a relative blob path
-  if (!url.startsWith('http')) return url;
-  // Azure URL: https://<account>.blob.core.windows.net/<container>/<blob-path>[?sas]
-  const match = url.match(/https?:\/\/[^\/]+\/([^?]+)(?:\?|$)/);
-  if (match && match[1]) {
-    return match[1];
-  }
-  return null;
-}
 
 interface PhotoCardProps {
   photo: Photo;

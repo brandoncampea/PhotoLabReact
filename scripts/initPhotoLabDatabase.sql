@@ -1,3 +1,32 @@
+-- Add cancel-related columns to orders table if not present
+IF COL_LENGTH('orders', 'cancel_reason') IS NULL
+    ALTER TABLE orders ADD cancel_reason NVARCHAR(1000);
+IF COL_LENGTH('orders', 'cancel_by') IS NULL
+    ALTER TABLE orders ADD cancel_by INT NULL; -- user id of who cancelled
+IF COL_LENGTH('orders', 'cancel_at') IS NULL
+    ALTER TABLE orders ADD cancel_at DATETIME2 NULL;
+IF COL_LENGTH('orders', 'refund_status') IS NULL
+    ALTER TABLE orders ADD refund_status NVARCHAR(100);
+IF COL_LENGTH('orders', 'refund_id') IS NULL
+    ALTER TABLE orders ADD refund_id NVARCHAR(255);
+GO
+
+-- Create order_cancellation_audit table for audit logging
+IF OBJECT_ID('order_cancellation_audit', 'U') IS NULL
+BEGIN
+    CREATE TABLE order_cancellation_audit (
+        id INT IDENTITY(1,1) PRIMARY KEY,
+        order_id INT NOT NULL,
+        cancelled_by INT NOT NULL,
+        cancelled_at DATETIME2 DEFAULT CURRENT_TIMESTAMP,
+        reason NVARCHAR(1000),
+        refund_status NVARCHAR(100),
+        refund_id NVARCHAR(255),
+        FOREIGN KEY (order_id) REFERENCES orders(id),
+        FOREIGN KEY (cancelled_by) REFERENCES users(id)
+    );
+END
+GO
 -- initPhotoLabDatabase.sql
 -- Description: Initializes the full MSSQL schema for PhotoLab, including all core tables and a super admin user.
 -- Usage: Run this script in SQL Server Management Studio or with sqlcmd after creating your database.

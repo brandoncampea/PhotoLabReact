@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { Elements } from '@stripe/react-stripe-js';
 import { loadStripe } from '@stripe/stripe-js';
 import Cropper from 'react-cropper';
+import { getPhotoAssetUrl } from '../utils/getPhotoAssetUrl';
+import { getCropAspectRatioForPhotoAndProduct } from '../utils/getCropAspectRatio';
 import 'cropperjs/dist/cropper.css';
 import './Cart.css';
 import { useCart } from '../contexts/CartContext';
@@ -333,12 +335,17 @@ const Cart: React.FC = () => {
     }
   };
 
-  const getTaxAmount = () => {
+  const [taxAmount, setTaxAmount] = useState(0);
+  const [taxRate, setTaxRate] = useState(0);
+  const [taxLoading, setTaxLoading] = useState(false);
+  const [taxError, setTaxError] = useState('');
+
+  const calculateTaxAmount = async () => {
+    setTaxLoading(true);
+    setTaxError('');
     const subtotal = getTotalPrice();
     const shipping = getShippingCost();
     const discount = getDiscountAmount();
-    
-    // Calculate fees
     let fees = 0;
     if (studioFees && studioFees.feeValue > 0) {
       if (studioFees.feeType === 'percentage') {
@@ -347,19 +354,41 @@ const Cart: React.FC = () => {
         fees = studioFees.feeValue * items.reduce((count, item) => count + item.quantity, 0);
       }
     }
-    
     const subtotalAfterDiscount = subtotal + fees + shipping - discount;
-    
-    const { taxAmount } = taxService.calculateTax(subtotalAfterDiscount, shippingAddress);
-    return taxAmount;
+
+    // Use Stripe Tax if Stripe is active
+    if (stripeConfig?.isActive) {
+      try {
+        const { stripeTaxService } = await import('../services/stripeTaxService');
+        const result = await stripeTaxService.calculateTax({
+          items,
+          shippingAddress,
+          currency: 'usd',
+        });
+        setTaxAmount(result.taxAmount);
+        setTaxRate(result.taxRate);
+        setTaxLoading(false);
+        return;
+      } catch (err) {
+        setTaxError('Failed to calculate tax with Stripe. Using fallback.');
+      }
+    }
+    // Fallback to manual taxService
+    const { taxAmount, taxRate } = taxService.calculateTax(subtotalAfterDiscount, shippingAddress);
+    setTaxAmount(taxAmount);
+    setTaxRate(taxRate);
+    setTaxLoading(false);
   };
+
+  useEffect(() => {
+    calculateTaxAmount();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, shippingOption, shippingAddress, appliedDiscount, studioFees, stripeConfig]);
 
   const getFinalTotal = () => {
     const subtotal = getTotalPrice();
     const shipping = getShippingCost();
     const discount = getDiscountAmount();
-    
-    // Calculate fees
     let fees = 0;
     if (studioFees && studioFees.feeValue > 0) {
       if (studioFees.feeType === 'percentage') {
@@ -368,9 +397,7 @@ const Cart: React.FC = () => {
         fees = studioFees.feeValue * items.reduce((count, item) => count + item.quantity, 0);
       }
     }
-    
     const subtotalWithFees = subtotal + fees + shipping - discount;
-    const { taxAmount } = taxService.calculateTax(subtotalWithFees, shippingAddress);
     return Math.max(0, subtotalWithFees + taxAmount);
   };
 
@@ -443,15 +470,39 @@ const Cart: React.FC = () => {
         ? [item.photoId]
         : [];
 
+
+      // Add orientation/aspect ratio logic for WHCC editor
+      const getOrientationAndAspect = (photo: any, productId: number, productSizeId: number) => {
+        let aspectRatio = 1;
+        let orientation = 'portrait';
+        if (photo && Array.isArray(photo.products)) {
+          const product = photo.products.find((p: any) => p.id === productId);
+          const size = product?.sizes?.find((s: any) => s.id === productSizeId);
+          if (size && size.width && size.height) {
+            aspectRatio = Number(size.width) / Number(size.height);
+            orientation = aspectRatio >= 1 ? 'landscape' : 'portrait';
+          }
+        } else if (photo?.width && photo?.height) {
+          aspectRatio = Number(photo.width) / Number(photo.height);
+          orientation = aspectRatio >= 1 ? 'landscape' : 'portrait';
+        }
+        return { aspectRatio, orientation };
+      };
+
       const photos = Array.isArray(item.photos)
-        ? item.photos.map((entry) => ({
-            id: entry?.photo?.id,
-            name: entry?.photo?.fileName,
-            thumbnailUrl: entry?.photo?.thumbnailUrl,
-            fullImageUrl: entry?.photo?.fullImageUrl,
-            width: entry?.photo?.width || entry?.photo?.metadata?.width,
-            height: entry?.photo?.height || entry?.photo?.metadata?.height,
-          }))
+        ? item.photos.map((entry) => {
+            const { aspectRatio, orientation } = getOrientationAndAspect(entry?.photo, item.productId, item.productSizeId);
+            return {
+              id: entry?.photo?.id,
+              name: entry?.photo?.fileName,
+              thumbnailUrl: entry?.photo?.thumbnailUrl,
+              fullImageUrl: entry?.photo?.fullImageUrl,
+              width: entry?.photo?.width || entry?.photo?.metadata?.width,
+              height: entry?.photo?.height || entry?.photo?.metadata?.height,
+              aspectRatio,
+              orientation,
+            };
+          })
         : item.photo
         ? [{
             id: item.photo.id,
@@ -460,6 +511,7 @@ const Cart: React.FC = () => {
             fullImageUrl: item.photo.fullImageUrl,
             width: item.photo.width || item.photo.metadata?.width,
             height: item.photo.height || item.photo.metadata?.height,
+            ...getOrientationAndAspect(item.photo, item.productId, item.productSizeId),
           }]
         : [];
 
@@ -937,7 +989,13 @@ const Cart: React.FC = () => {
           {shippingAddress.state && (
             <div className="summary-row cart-summary-row">
               <span>Tax ({shippingAddress.state.toUpperCase()})</span>
-              <span>${getTaxAmount().toFixed(2)}</span>
+              {taxLoading ? (
+                <span>Calculating...</span>
+              ) : taxError ? (
+                <span style={{ color: 'red' }}>{taxError}</span>
+              ) : (
+                <span>${taxAmount.toFixed(2)}</span>
+              )}
             </div>
           )}
           
@@ -990,16 +1048,23 @@ const Cart: React.FC = () => {
               <Cropper
                 ref={setCropperRef}
                 // Always use SAS-protected URL for Azure blobs
-                src={
-                  editingItem.photo?.fullImageUrl && editingItem.photo?.fullImageUrl.startsWith('/api/photos/')
-                    ? editingItem.photo.fullImageUrl
-                    : (editingItem.photo?.fullImageUrl && !editingItem.photo.fullImageUrl.startsWith('http') && !editingItem.photo.fullImageUrl.startsWith('/')
-                        ? useSasUrl(editingItem.photo.fullImageUrl) || ''
-                        : editingItem.photo?.fullImageUrl || '')
-                }
+                src={getPhotoAssetUrl(editingItem.photo || editingItem)}
                 crossOrigin="anonymous"
                 style={{ maxHeight: 500, width: '100%' }}
-                aspectRatio={getItemAspectRatio(editingItem)}
+                aspectRatio={(() => {
+                  const photo = editingItem.photo || editingItem;
+                  const product = products.find((p) => p.id === editingItem.productId);
+                  const size = product?.sizes?.find((s) => s.id === editingItem.productSizeId);
+                  if (photo && size) {
+                    return getCropAspectRatioForPhotoAndProduct({
+                      photoWidth: Number(photo.width || photo.metadata?.width || 0),
+                      photoHeight: Number(photo.height || photo.metadata?.height || 0),
+                      productWidth: Number(size.width || 0),
+                      productHeight: Number(size.height || 0),
+                    });
+                  }
+                  return NaN;
+                })()}
                 viewMode={1}
                 guides={true}
                 responsive={true}

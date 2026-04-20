@@ -38,7 +38,7 @@ const WatermarkedImage: React.FC<WatermarkedImageProps> = ({ src, alt, className
       setWatermarkLoaded(true);
       return;
     }
-    watermarkService.getDefaultWatermark(studioId)
+    watermarkService.getDefaultWatermark(studioId ?? 0)
       .then(wm => {
         watermarkCache[cacheKey] = wm;
         if (!cancelled) setWatermark(wm);

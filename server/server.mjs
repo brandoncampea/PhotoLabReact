@@ -1,3 +1,5 @@
+import taxRoutes from './routes/tax.js';
+app.use('/api/tax', taxRoutes);
 import path from 'path';
 import { fileURLToPath } from 'url';
 

@@ -54,7 +54,7 @@ const AdminAlbums: React.FC = () => {
     batchShippingActive: false,
   };
   const [albums, setAlbums] = useState<Album[]>([]);
-  const [priceLists, setPriceLists] = useState<PriceList[]>([]);
+  const [priceLists] = useState<PriceList[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingAlbum, setEditingAlbum] = useState<Album | null>(null);
@@ -96,7 +96,6 @@ const AdminAlbums: React.FC = () => {
     setShowModal(true);
   };
   const handleAddCategory = async () => {
-    const category = newCategory.trim();
     if (!category) return;
     try {
       const updatedCategories = await categoryService.addCategory(category);
@@ -262,7 +261,7 @@ const AdminAlbums: React.FC = () => {
                   let studioSlug = user?.studioSlug || localStorage.getItem('studioSlug') || '';
                   if (!studioSlug && user?.studioId) {
                     // fallback: try to get from studioId if available
-                    studioSlug = `studio${user.studioId}`;
+                      studioSlug = `studio${(user as any).studioId}`;
                   }
                   const shareUrl = studioSlug
                     ? `${window.location.origin}/albums/${album.id}?studioSlug=${encodeURIComponent(studioSlug)}`

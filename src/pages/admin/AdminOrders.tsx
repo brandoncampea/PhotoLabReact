@@ -1,3 +1,66 @@
+  // ...existing code...
+
+  const handleShowCancelDialog = (order: Order) => {
+    setCancelOrderId(order.id);
+    setCancelReason('');
+    setCancelRefund(false);
+    setCancelError(null);
+    setShowCancelDialog(true);
+  };
+
+  const handleCloseCancelDialog = () => {
+    setShowCancelDialog(false);
+    setCancelOrderId(null);
+    setCancelReason('');
+    setCancelRefund(false);
+    setCancelError(null);
+  };
+
+  // Ensure order details are loaded (move this above handleSubmitCancelOrder)
+  const ensureOrderDetailsLoaded = async (orderId: number) => {
+    if (loadingOrderDetails[orderId]) {
+      return;
+    }
+    setLoadingOrderDetails((current) => ({
+      ...current,
+      [orderId]: true,
+    }));
+    try {
+      const orderDetails = await orderService.getAdminOrderDetails(orderId);
+      setOrders((current) => current.map((entry) => (entry.id === orderId ? { ...entry, ...orderDetails } : entry)));
+    } catch {
+      setMessage(`Failed to load details for order #${orderId}`);
+    } finally {
+      setLoadingOrderDetails((current) => {
+        const next = { ...current };
+        delete next[orderId];
+        return next;
+      });
+    }
+  };
+
+  // Cancel order submit handler
+  const handleSubmitCancelOrder = async () => {
+    if (!cancelOrderId) return;
+    setCancelLoading(true);
+    setCancelError(null);
+    try {
+      const result = await orderService.cancelOrder(cancelOrderId, cancelReason, cancelRefund);
+      if (!result.success) {
+        setCancelError(result.message || 'Failed to cancel order.');
+        setCancelLoading(false);
+        return;
+      }
+      // Refresh order details
+      await ensureOrderDetailsLoaded(cancelOrderId);
+      setShowCancelDialog(false);
+    } catch (err: any) {
+      setCancelError(err?.response?.data?.error || err.message || 'Failed to cancel order.');
+    } finally {
+      setCancelLoading(false);
+    }
+  };
+
 import React, { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Order, BatchQueueSummary, ShippingAddress } from '../../types';
@@ -9,7 +72,7 @@ import './AdminOrders.css';
 import { useSasUrl } from '../../hooks/useSasUrl';
 
 function AdminOrderItemCard({ item }: { item: any }) {
-  const fullImageUrl = item.photo?.fullImageUrl || null;
+  const photoId = item.photo?.id;
   const cropData = item.cropData
     ? (typeof item.cropData === 'string' ? JSON.parse(item.cropData) : item.cropData)
     : null;
@@ -33,13 +96,9 @@ function AdminOrderItemCard({ item }: { item: any }) {
   return (
     <div className="admin-order-item-card">
       <div className="admin-order-item-image-container">
-        {fullImageUrl ? (
+        {photoId ? (
           <img
-            src={fullImageUrl && fullImageUrl.startsWith('/api/photos/')
-              ? fullImageUrl
-              : (fullImageUrl && !fullImageUrl.startsWith('http') && !fullImageUrl.startsWith('/')
-                  ? useSasUrl(fullImageUrl) || ''
-                  : fullImageUrl || '')}
+            src={`/api/photos/${photoId}/asset`}
             alt={item.photo?.fileName || 'Photo'}
             className="admin-order-item-image"
           />
@@ -62,8 +121,16 @@ function AdminOrderItemCard({ item }: { item: any }) {
   );
 }
 
+
 const AdminOrders: React.FC = () => {
   const { user } = useAuth();
+  // Cancel Order Dialog State (moved inside component)
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelRefund, setCancelRefund] = useState(false);
+  const [cancelOrderId, setCancelOrderId] = useState<number | null>(null);
+  const [cancelLoading, setCancelLoading] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [batchQueue, setBatchQueue] = useState<BatchQueueSummary | null>(null);
   const [batchAddress, setBatchAddress] = useState<ShippingAddress>({
@@ -112,7 +179,8 @@ const AdminOrders: React.FC = () => {
     if (!trackedOrderIds.length) return;
 
     try {
-      const latestOrders = await orderService.getAdminOrders({ includeItems: false, limit: 500 });
+      const latestOrdersResponse = await orderService.getAdminOrders({ includeItems: false, pageSize: 500 });
+      const latestOrders = latestOrdersResponse.orders;
       const trackedSet = new Set(trackedOrderIds);
       const trackedOrders = latestOrders.filter((order) => trackedSet.has(order.id));
 
@@ -184,11 +252,11 @@ const AdminOrders: React.FC = () => {
     setLoading(true);
     try {
       const [ordersData, queueData, config] = await Promise.all([
-        orderService.getAdminOrders({ includeItems: false, limit: 200 }),
+        orderService.getAdminOrders({ includeItems: false, pageSize: 200 }),
         orderService.getBatchQueue(),
         shippingService.getConfig(),
       ]);
-      setOrders(ordersData || []);
+      setOrders((ordersData && ordersData.orders) || []);
       setBatchQueue(queueData);
       const configuredAddress = queueData.batchShippingAddress || config.batchShippingAddress;
       if (configuredAddress) {
@@ -488,6 +556,57 @@ const AdminOrders: React.FC = () => {
 
   const renderOrderDetails = (order: Order) => (
     <div className="admin-order-detail-panel">
+      {/* Cancel Order Button for Studio Admins */}
+      {user?.role === 'studio_admin' &&
+        !['cancelled', 'refunded', 'shipped', 'completed'].includes(String(order.status).toLowerCase()) && (
+          <div style={{ marginBottom: 16 }}>
+            <button
+              className="btn btn-danger"
+              onClick={() => handleShowCancelDialog(order)}
+              style={{ fontWeight: 600 }}
+            >
+              Cancel Order
+            </button>
+          </div>
+        )}
+            {/* Cancel Order Dialog */}
+            {showCancelDialog && (
+              <div className="modal-overlay" style={{ zIndex: 1000 }}>
+                <div className="modal-content" style={{ maxWidth: 420, margin: '10vh auto', background: '#fff', borderRadius: 8, padding: 24, boxShadow: '0 2px 16px rgba(0,0,0,0.18)' }}>
+                  <h2 style={{ marginTop: 0 }}>Cancel Order</h2>
+                  <label style={{ display: 'block', marginBottom: 8, fontWeight: 500 }}>Reason for cancellation</label>
+                  <textarea
+                    value={cancelReason}
+                    onChange={e => setCancelReason(e.target.value)}
+                    rows={3}
+                    style={{ width: '100%', marginBottom: 16, borderRadius: 4, border: '1px solid #ccc', padding: 8 }}
+                    placeholder="Enter reason (required)"
+                    disabled={cancelLoading}
+                  />
+                  <label style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
+                    <input
+                      type="checkbox"
+                      checked={cancelRefund}
+                      onChange={e => setCancelRefund(e.target.checked)}
+                      disabled={cancelLoading}
+                      style={{ marginRight: 8 }}
+                    />
+                    Issue refund to customer (Stripe)
+                  </label>
+                  {cancelError && <div style={{ color: 'red', marginBottom: 12 }}>{cancelError}</div>}
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                    <button className="btn btn-secondary" onClick={handleCloseCancelDialog} disabled={cancelLoading}>Cancel</button>
+                    <button
+                      className="btn btn-danger"
+                      onClick={handleSubmitCancelOrder}
+                      disabled={cancelLoading || !cancelReason.trim()}
+                    >
+                      {cancelLoading ? 'Cancelling…' : 'Confirm Cancel Order'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
       {(() => {
         const hasWhccData = Boolean(
           order.whccConfirmationId ||
