@@ -1,3 +1,71 @@
+// Admin: Resend digital download links for an order
+router.post('/admin/:orderId/resend-digital-download', adminRequired, async (req, res) => {
+  try {
+    const orderId = Number(req.params.orderId);
+    if (!orderId) return res.status(400).json({ success: false, message: 'Invalid orderId', digitalItemCount: 0 });
+
+    // Fetch order and items
+    const order = await queryRow(
+      `SELECT o.id, o.user_id as userId, o.total as totalAmount, o.subtotal, o.tax_amount as taxAmount, o.shipping_cost as shippingCost, o.stripe_fee_amount as stripeFeeAmount, o.shipping_address as shippingAddress, o.created_at as createdAt, u.email as customerEmail, u.name as customerName
+       FROM orders o
+       INNER JOIN users u ON u.id = o.user_id
+       WHERE o.id = $1`,
+      [orderId]
+    );
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found', digitalItemCount: 0 });
+
+    const items = await queryRows(
+      `SELECT oi.id, oi.photo_id as photoId, oi.quantity, oi.price as unitPrice, ph.file_name as photoFileName, p.options as productOptions, p.category as productCategory, p.name as productName
+         FROM order_items oi
+         INNER JOIN photos ph ON ph.id = oi.photo_id
+         LEFT JOIN products p ON p.id = oi.product_id
+         WHERE oi.order_id = $1`,
+      [orderId]
+    );
+
+    // Build digital download links
+    const appBase = String(process.env.APP_BASE_URL || process.env.CANONICAL_APP_URL || 'https://labs.campeaphotography.com').trim().replace(/\/$/, '');
+    const digitalDownloads = items
+      .filter((item) => isDigitalProductRow(item))
+      .map((item) => {
+        const token = createDigitalDownloadToken({
+          orderId: order.id,
+          userId: order.userId,
+          orderItemId: item.id,
+          photoId: item.photoId,
+        });
+        const relativeUrl = `/api/orders/digital-download/${token}`;
+        return {
+          orderItemId: item.id,
+          photoId: item.photoId,
+          productName: item.productName,
+          photoFileName: item.photoFileName,
+          url: appBase ? `${appBase}${relativeUrl}` : relativeUrl,
+        };
+      });
+
+    if (!digitalDownloads.length) {
+      return res.status(400).json({ success: false, message: 'No digital items in this order', digitalItemCount: 0 });
+    }
+
+    const parsedShippingAddress = safeJsonParse(order.shippingAddress, {});
+    const recipientEmail = parsedShippingAddress?.email || order.customerEmail;
+    const customerName = parsedShippingAddress?.fullName || order.customerName;
+
+    // Send the email
+    await orderReceiptService.sendCustomerReceipt({
+      to: recipientEmail,
+      customerName,
+      order,
+      items,
+      digitalDownloads,
+    });
+
+    return res.json({ success: true, message: `Resent digital download links to ${recipientEmail}`, digitalItemCount: digitalDownloads.length, recipientEmail });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message, digitalItemCount: 0 });
+  }
+});
 
 import express from 'express';
 import jwt from 'jsonwebtoken';
@@ -1216,13 +1284,18 @@ const sendOrderReceipts = async (orderId) => {
   }
 
   if (customerSent || anyStudioSent) {
-    await query(
-      `UPDATE orders
-       SET customer_receipt_sent_at = CASE WHEN $1 = 1 THEN CURRENT_TIMESTAMP ELSE customer_receipt_sent_at END,
-           studio_receipt_sent_at = CASE WHEN $2 = 1 THEN CURRENT_TIMESTAMP ELSE studio_receipt_sent_at END
-       WHERE id = $3`,
-      [customerSent ? 1 : 0, anyStudioSent ? 1 : 0, orderId]
-    );
+    // Check if all items are digital
+    const allDigital = items.length > 0 && items.every(isDigitalProductRow);
+    let updateSql = `UPDATE orders
+      SET customer_receipt_sent_at = CASE WHEN $1 = 1 THEN CURRENT_TIMESTAMP ELSE customer_receipt_sent_at END,
+          studio_receipt_sent_at = CASE WHEN $2 = 1 THEN CURRENT_TIMESTAMP ELSE studio_receipt_sent_at END`;
+    const params = [customerSent ? 1 : 0, anyStudioSent ? 1 : 0];
+    if (allDigital) {
+      updateSql += ', status = \'completed\'';
+    }
+    updateSql += ' WHERE id = $3';
+    params.push(orderId);
+    await query(updateSql, params);
   }
 };
 

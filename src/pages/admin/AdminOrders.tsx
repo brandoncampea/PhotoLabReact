@@ -376,8 +376,16 @@ const AdminOrders: React.FC = () => {
 
   // Exclude cancelled orders from batch queue
   const queuedBatchOrders = orders.filter((order) => order.isBatch && !order.labSubmitted && String(order.status).toLowerCase() !== 'cancelled');
-  // Include cancelled batch orders in recentDirectOrders so they show in recent orders
-  const recentDirectOrders = orders.filter((order) => !order.isBatch || order.labSubmitted || String(order.status).toLowerCase() === 'cancelled');
+  // Include non-batch, submitted, cancelled, or completed batch orders in recentDirectOrders
+  const recentDirectOrders = orders.filter((order) =>
+    !order.isBatch ||
+    order.labSubmitted ||
+    String(order.status).toLowerCase() === 'cancelled' ||
+    String(order.status).toLowerCase() === 'completed' ||
+    String(order.status).toLowerCase() === 'complete'
+  );
+  // --- Digital Download Resend Logic ---
+  // ...existing code...
   // visibleOrders is used for showWhccColumn logic
   const visibleOrders = [...queuedBatchOrders, ...recentDirectOrders];
   const recentVisibleOrders = [...recentDirectOrders];
@@ -692,6 +700,22 @@ const AdminOrders: React.FC = () => {
             {[order.shippingAddress?.city, order.shippingAddress?.state, order.shippingAddress?.zipCode].filter(Boolean).join(', ')}
           </span>
           <span>{order.shippingAddress?.country || 'US'}</span>
+            {hasDigitalItems(order) && (
+              <div style={{ marginTop: 8 }}>
+                <button
+                  onClick={() => handleDigitalResend(order.id)}
+                  disabled={digitalResendingOrderId === order.id}
+                  style={{ padding: '6px 14px', borderRadius: 6, background: '#6ee7b7', color: '#0f172a', fontWeight: 700, border: 'none', cursor: 'pointer' }}
+                >
+                  {digitalResendingOrderId === order.id ? 'Resending…' : 'Resend Download Link'}
+                </button>
+                {digitalResendMessageByOrder[order.id] && (
+                  <div style={{ marginTop: 4, color: digitalResendMessageByOrder[order.id].tone === 'error' ? '#dc2626' : '#059669' }}>
+                    {digitalResendMessageByOrder[order.id].text}
+                  </div>
+                )}
+              </div>
+            )}
         </div>
         <div className="admin-order-detail-box">
           <strong>Shipping</strong>
