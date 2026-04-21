@@ -1,3 +1,8 @@
+// Utility: check if order has digital items
+function hasDigitalItems(order: Order): boolean {
+  if (!order || !order.items) return false;
+  return order.items.some((item: any) => item.productType === 'digital' || item.isDigital);
+}
 
 import React, { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';

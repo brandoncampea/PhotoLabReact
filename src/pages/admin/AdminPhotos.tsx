@@ -1,3 +1,4 @@
+import React, { useState, useEffect } from 'react';
 import { autoTagPhotoFromFilenameAndFaces } from '../../utils/autoTagPhotoFromFilenameAndFaces';
 import { useDropzone } from 'react-dropzone';
 // --- Shared types and utilities ---
@@ -60,21 +61,7 @@ type DetectionResult = {
 };
 
 // --- Implemented functions for auto-tagging and batch detection ---
-// (extractPlayerNameFromFilename is unused, removed)
-
-
-
-// Dummy face detection (can be replaced with real model)
-const detectFaceBoxesInBrowser = async (_photo: Photo): Promise<{ faceBoxes: FaceTagBox[]; error?: string }> => {
-  // Placeholder: return empty array
-  return { faceBoxes: [] };
-};
-
-
-
 const setImageRef = (_photoId: number, _el: HTMLImageElement | null) => {};
-import React, { useState, useEffect } from 'react';
-
 // Collapsible Upload Progress Panel (must be top-level)
 interface UploadProgressPanelProps {
   uploadItems: UploadItem[];
@@ -109,19 +96,13 @@ function UploadProgressPanel({ uploadItems, uploading, handleRetryUploadItem, se
       <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.5rem', overflowX: 'auto', paddingBottom: 4 }}>
         {uploadItems.map((item: UploadItem) => (
           <div key={item.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 48 }}>
-            <img
-              src={item.previewUrl}
-              alt={item.file.name}
-              style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border-color)' }}
-            />
-            <div style={{ width: 36, height: 5, background: 'var(--bg-primary)', borderRadius: 3, marginTop: 2, overflow: 'hidden', border: '1px solid var(--border-color)' }}>
-              <div style={{ width: `${item.progress}%`, height: '100%', background: item.status === 'error' ? 'var(--error-color)' : 'var(--primary-color)', transition: 'width 0.2s' }} />
-            </div>
-          </div>
-        ))}
-        <span style={{ fontSize: '0.85rem', color: 'var(--muted-color)', marginLeft: 8 }}>
-          {uploadingCount > 0 && `${uploadingCount} uploading`}
-          {doneCount > 0 && ` • ${doneCount} done`}
+
+            // Dummy face detection (can be replaced with real model)
+            const detectFaceBoxesInBrowser = async (_photo: Photo): Promise<{ faceBoxes: FaceTagBox[]; error?: string }> => {
+              // Placeholder: return empty array
+              return { faceBoxes: [] };
+            };
+            const setImageRef = (_photoId: number, _el: HTMLImageElement | null) => {};
           {failedCount > 0 && ` • ${failedCount} failed`}
         </span>
       </div>
@@ -382,19 +363,7 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
               ...photo,
               playerNames: keep ? keep : undefined,
               playerNumbers: keep ? photo.playerNumbers : undefined,
-            };
-          })
-        : [];
-      setPhotos(cleaned);
-    } catch (error) {
-      console.error('Failed to load photos:', error);
-      setPhotos([]);
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  const loadRoster = async () => {
     if (!albumId) return;
     try {
       const roster = await photoService.getAlbumRoster(albumId);
