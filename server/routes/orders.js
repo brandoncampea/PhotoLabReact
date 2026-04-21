@@ -1124,9 +1124,6 @@ const sendOrderReceipts = async (orderId) => {
      WHERE oi.order_id = $1`,
     [orderId]
   );
-  // Debug logging for items
-  console.log('Order items for orderId', orderId);
-  console.log(items);
 
   // Ensure APP_BASE_URL is set, fallback to canonical public URL
   const appBase = String(process.env.APP_BASE_URL || process.env.CANONICAL_APP_URL || 'https://labs.campeaphotography.com').trim().replace(/\/$/, '');
@@ -1669,7 +1666,6 @@ router.get('/', async (req, res) => {
     const limit = Number.isFinite(requestedLimit) && requestedLimit > 0
       ? Math.min(Math.floor(requestedLimit), 200)
       : 100;
-    console.log('ORDERS ROUTE: actingStudioId:', actingStudioId);
     let orders;
     if (actingStudioId) {
       orders = await queryRows(`
@@ -2194,10 +2190,12 @@ router.get('/admin/order-details/:orderId', adminRequired, async (req, res) => {
       params.push(req.user.studio_id);
     }
 
+
     const order = await queryRow(queryText, params);
     if (!order) {
       return res.status(404).json({ error: 'Order not found' });
     }
+
 
     const items = await queryRows(
       `SELECT oi.id,
@@ -2218,7 +2216,6 @@ router.get('/admin/order-details/:orderId', adminRequired, async (req, res) => {
        WHERE oi.order_id = $1`,
       [order.id]
     );
-    // Debug logging for admin order details items
     console.log('ADMIN ORDER DETAILS: items for orderId', order.id);
     console.log(items);
 
@@ -2290,7 +2287,7 @@ router.get('/admin/order-details/:orderId', adminRequired, async (req, res) => {
       trackingUrl: canViewWhccFields ? order.trackingUrl : undefined,
       shippedAt: canViewWhccFields ? order.shippedAt : undefined,
       items: itemsWithPhotos,
-      excludedItemsNote: excludedCount > 0 ? `${excludedCount} product(s) with amount were excluded from profit calculations because they are not linked to a valid product.` : undefined,
+      // excludedItemsNote removed to fix ReferenceError
     });
   } catch (error) {
     res.status(500).json({ error: error.message });

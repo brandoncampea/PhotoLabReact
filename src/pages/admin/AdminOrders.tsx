@@ -27,7 +27,7 @@
     }));
     try {
       const orderDetails = await orderService.getAdminOrderDetails(orderId);
-      setOrders((current) => current.map((entry) => (entry.id === orderId ? { ...entry, ...orderDetails } : entry)));
+      setOrders((current) => current.map((entry) => (entry.id === orderId ? orderDetails : entry)));
     } catch {
       setMessage(`Failed to load details for order #${orderId}`);
     } finally {
@@ -281,10 +281,10 @@ const AdminOrders: React.FC = () => {
   };
 
 
-  // Always reload orders when the page is loaded or when selectedOrderId changes
+  // Only reload orders when the page is loaded (mount)
   useEffect(() => {
     loadData();
-  }, [selectedOrderId]);
+  }, []);
 
   useEffect(() => () => {
     stopBatchProgressPolling();
@@ -1081,14 +1081,8 @@ const AdminOrders: React.FC = () => {
                                   // Fallback to summary order if no details
                                   const fallbackOrder = getOrderById(order.id);
                                   if (fallbackOrder) {
-                                    // Debug: log the fallback order to diagnose missing items
-                                    // eslint-disable-next-line no-console
-                                    console.log('DEBUG: fallbackOrder for order details', fallbackOrder);
                                     return renderOrderDetails(fallbackOrder as Order);
                                   }
-                                  // Debug: log that no order was found
-                                  // eslint-disable-next-line no-console
-                                  console.log('DEBUG: No order found for orderId', order.id, orders);
                                   return <div className="loading-state">Order details unavailable.</div>;
                                 })()}
                               </td>
@@ -1221,9 +1215,14 @@ const AdminOrders: React.FC = () => {
                           <td colSpan={tableColumnCount}>
                             {loadingOrderDetails[order.id] ? (
                               <div className="loading-state">Loading order details...</div>
-                            ) : (
-                              renderOrderDetails(order)
-                            )}
+                            ) : (() => {
+                              // Always use the latest order object from state (with items if loaded)
+                              const latestOrder = orders.find(o => o.id === order.id);
+                              if (latestOrder) {
+                                return renderOrderDetails(latestOrder as Order);
+                              }
+                              return <div className="loading-state">Order details unavailable.</div>;
+                            })()}
                           </td>
                         </tr>
                       )}
