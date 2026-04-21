@@ -4,10 +4,10 @@ import { Order, CartItem, ShippingAddress, BatchQueueSummary } from '../types';
 import { taxService } from './taxService';
 
 export const orderService = {
-  async cancelOrder(orderId: number, reason: string, refund: boolean): Promise<{ success: boolean; message?: string }> {
+  async cancelOrder(orderId: number, cancelReason: string, refund: boolean): Promise<{ success: boolean; message?: string }> {
     const response = await api.patch(`/orders/admin/${orderId}/status`, {
       status: 'cancelled',
-      reason,
+      cancelReason,
       refund,
     });
     return response.data;

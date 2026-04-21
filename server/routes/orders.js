@@ -2308,18 +2308,30 @@ router.patch('/admin/:orderId/status', adminRequired, async (req, res) => {
       return res.status(400).json({ error: 'orderId and status are required' });
     }
 
-    const allowedStatuses = ['pending', 'processing', 'completed', 'shipped', 'cancelled'];
+    const allowedStatuses = ['pending', 'processing', 'completed', 'shipped', 'cancelled', 'waiting'];
     if (!allowedStatuses.includes(String(status).toLowerCase())) {
       return res.status(400).json({ error: 'Invalid order status' });
     }
 
     // Fetch order details for validation and refund
-    const order = await queryRow(
+
+    // Fetch order and join user email if order.email is null
+    let order = await queryRow(
       `SELECT o.id, o.user_id as userId, o.status, o.total_amount as totalAmount, o.payment_intent_id as paymentIntentId, o.stripe_charge_id as stripeChargeId, o.email, o.studio_id as studioId
        FROM orders o
        WHERE o.id = $1`,
       [orderId]
     );
+    if (order && !order.email) {
+      // Fallback: fetch user email
+      const user = await queryRow(
+        'SELECT email FROM users WHERE id = $1',
+        [order.userId]
+      );
+      if (user && user.email) {
+        order.email = user.email;
+      }
+    }
 
     if (!order) {
       return res.status(404).json({ error: 'Order not found' });
@@ -2337,9 +2349,14 @@ router.patch('/admin/:orderId/status', adminRequired, async (req, res) => {
 
     // Only allow cancellation if not already cancelled or shipped/completed
     if (String(status).toLowerCase() === 'cancelled') {
-      if (['cancelled', 'shipped', 'completed'].includes(String(order.status).toLowerCase())) {
+      // Treat 'waiting' as a cancellable state (like 'pending')
+      const nonCancellable = ['cancelled', 'shipped', 'completed'];
+      const orderStatus = String(order.status).toLowerCase();
+      console.log('[CANCEL DEBUG] Order #', orderId, 'status from DB:', JSON.stringify(order.status));
+      if (nonCancellable.includes(orderStatus)) {
         return res.status(400).json({ error: 'Order cannot be cancelled in its current state.' });
       }
+      // If status is 'waiting', allow cancellation (treat as 'pending')
       if (!cancelReason || typeof cancelReason !== 'string' || cancelReason.length < 3) {
         return res.status(400).json({ error: 'Cancel reason is required.' });
       }
@@ -2385,6 +2402,7 @@ router.patch('/admin/:orderId/status', adminRequired, async (req, res) => {
       );
 
       // Send cancellation email to customer
+
       try {
         // Fetch order items for email
         const items = await queryRows(
@@ -2395,13 +2413,16 @@ router.patch('/admin/:orderId/status', adminRequired, async (req, res) => {
            WHERE oi.order_id = $1`,
           [orderId]
         );
-        await orderReceiptService.sendCustomerReceipt({
+        const { sendOrderCancellationEmail } = await import('../services/orderReceiptService.js');
+        console.log('[CANCEL EMAIL] Attempting to send cancellation email to:', order.email, 'for order:', orderId, 'reason:', cancelReason);
+        const emailResult = await sendOrderCancellationEmail({
           to: order.email,
           customerName: '',
           order: { ...order, status: 'cancelled' },
           items,
-          digitalDownloads: [],
+          cancelReason
         });
+        console.log('[CANCEL EMAIL] sendOrderCancellationEmail result:', emailResult);
       } catch (emailErr) {
         // Log but do not fail
         console.error('Failed to send cancellation email:', emailErr);
@@ -2587,6 +2608,7 @@ router.get('/admin/batch-queue', adminRequired, async (req, res) => {
         o.user_id as userId,
         o.batch_ready_date as batchReadyDate,
         o.created_at as createdAt,
+        o.status,
         u.name as customerName,
         u.email as customerEmail
       FROM orders o
@@ -2602,9 +2624,10 @@ router.get('/admin/batch-queue', adminRequired, async (req, res) => {
     queryText += ` ORDER BY o.created_at ASC`;
 
     const queuedOrders = await queryRows(queryText, params);
-    // Filter out orders that are digital-only (all items are digital)
+    // Filter out orders that are digital-only (all items are digital) and those that are cancelled
     const filteredOrders = [];
     for (const order of queuedOrders) {
+      if (String(order.status).toLowerCase() === 'cancelled') continue;
       // Fetch order items for this order
       const items = await queryRows(
         `SELECT oi.id, oi.product_id, oi.product_size_id, p.options as productOptions, p.category as productCategory, p.name as productName

@@ -1,3 +1,64 @@
+/**
+ * Send a cancellation email to the customer with order info and reason.
+ * @param {object} opts
+ * @param {string} opts.to - recipient email
+ * @param {string} [opts.customerName]
+ * @param {object} opts.order - order object
+ * @param {Array} opts.items - order items
+ * @param {string} opts.cancelReason - reason for cancellation
+ */
+export async function sendOrderCancellationEmail({ to, customerName, order, items, cancelReason }) {
+  if (!isConfigured() || !to) return false;
+  const html = renderOrderCancellationHtml({ customerName, order, items, cancelReason });
+  await mailtrapClient.send({
+    from: {
+      email: mailtrapSenderEmail,
+      name: mailtrapSenderName,
+    },
+    to: Array.isArray(to) ? to.map(email => ({ email })) : [{ email: to }],
+    subject: `Order #${order.id} Cancelled — Photo Lab`,
+    html,
+    text: `Your order #${order.id} has been cancelled.\nReason: ${cancelReason}\nTotal: ${currency(order.totalAmount)}\nIf you have questions, please contact support.`,
+    reply_to: smtpReplyTo,
+    category: 'Order Cancelled',
+  });
+  return true;
+}
+
+function renderOrderCancellationHtml({ customerName, order, items, cancelReason }) {
+  return `
+    <div style="font-family:Arial,sans-serif;background:#0f131a;color:#eaf1fb;max-width:760px;margin:0 auto;padding:20px;border:2px solid #e11d48;border-radius:12px;">
+      <div style="font-size:24px;font-weight:700;color:#fff;">Order Cancelled</div>
+      <div style="margin-top:10px;font-size:15px;color:#fca5a5;">We're sorry, but your order has been cancelled.</div>
+      <div style="margin-top:10px;font-size:14px;color:#fff;">Reason: <span style="color:#f87171;">${esc(cancelReason)}</span></div>
+      <div style="margin-top:18px;font-size:14px;color:#d3dceb;">Order #${esc(order.id)}${customerName ? ` for ${esc(customerName)}` : ''}</div>
+      <table style="width:100%;border-collapse:collapse;margin-top:18px;background:#111722;border:1px solid #303846;border-radius:8px;overflow:hidden;">
+        <thead>
+          <tr style="background:#1a2330;color:#b9c7da;font-size:12px;text-transform:uppercase;letter-spacing:0.03em;">
+            <th style="text-align:left;padding:10px 8px;">Product</th>
+            <th style="text-align:left;padding:10px 8px;">Image Name</th>
+            <th style="text-align:right;padding:10px 8px;">Unit Price</th>
+            <th style="text-align:right;padding:10px 8px;">Qty</th>
+            <th style="text-align:right;padding:10px 8px;">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${renderItemsRows(items)}
+        </tbody>
+      </table>
+      <div style="margin-top:18px;display:flex;justify-content:flex-end;">
+        <table style="width:300px;border-collapse:collapse;color:#d3dceb;">
+          <tr><td style="padding:4px 0;">Item(s) Subtotal:</td><td style="padding:4px 0;text-align:right;">${currency(order.subtotal)}</td></tr>
+          <tr><td style="padding:4px 0;">Shipping:</td><td style="padding:4px 0;text-align:right;">${currency(order.shippingCost)}</td></tr>
+          <tr><td style="padding:4px 0;">Sales Tax:</td><td style="padding:4px 0;text-align:right;">${currency(order.taxAmount)}</td></tr>
+          <tr><td style="padding:8px 0 0 0;font-weight:700;color:#fff;">Grand Total:</td><td style="padding:8px 0 0 0;text-align:right;font-weight:700;color:#fff;">${currency(order.totalAmount)}</td></tr>
+        </table>
+      </div>
+      <div style="margin-top:18px;font-size:13px;color:#b8c2d1;">If you have questions, please reply to this email.</div>
+      ${appBaseUrl ? `<div style="margin-top:18px;font-size:13px;"><a href="${esc(appBaseUrl)}" style="color:#7cc7ff;">Open Photo Lab</a></div>` : ''}
+    </div>
+  `;
+}
 
 import { MailtrapClient } from 'mailtrap';
 

@@ -183,6 +183,140 @@ async function transaction(callback) {
 
 
 async function initializeDatabase() {
+																// Ensure cancel_reason column in order_cancellation_audit allows NULLs
+																await query(`
+																	IF COL_LENGTH('order_cancellation_audit', 'cancel_reason') IS NOT NULL
+																	BEGIN
+																		ALTER TABLE order_cancellation_audit ALTER COLUMN cancel_reason NVARCHAR(255) NULL
+																	END
+																`);
+													// Ensure 'cancelled_at' column exists on order_cancellation_audit
+													await query(`
+														IF COL_LENGTH('order_cancellation_audit', 'cancelled_at') IS NULL
+														BEGIN
+															ALTER TABLE order_cancellation_audit ADD cancelled_at DATETIME2 NULL
+														END
+													`);
+										// Ensure all columns used in order cancellation and refund logic exist
+										const orderColumns = [
+											{ name: 'refund_id', type: 'NVARCHAR(255)' },
+											{ name: 'cancel_reason', type: 'NVARCHAR(255)' },
+											{ name: 'cancel_by', type: 'NVARCHAR(255)' },
+											{ name: 'cancel_at', type: 'DATETIME2' },
+											{ name: 'cancelled_at', type: 'DATETIME2' },
+											{ name: 'refund_status', type: 'NVARCHAR(100)' },
+											{ name: 'refund_error', type: 'NVARCHAR(255)' },
+											{ name: 'email', type: 'NVARCHAR(255)' },
+											{ name: 'total_amount', type: 'FLOAT' }
+										];
+										for (const col of orderColumns) {
+											await query(`
+												IF COL_LENGTH('orders', '${col.name}') IS NULL
+												BEGIN
+													ALTER TABLE orders ADD ${col.name} ${col.type} NULL
+												END
+											`);
+										}
+
+										const auditColumns = [
+											{ name: 'refund_error', type: 'NVARCHAR(255)' },
+											{ name: 'reason', type: 'NVARCHAR(255)' }
+										];
+										for (const col of auditColumns) {
+											await query(`
+												IF COL_LENGTH('order_cancellation_audit', '${col.name}') IS NULL
+												BEGIN
+													ALTER TABLE order_cancellation_audit ADD ${col.name} ${col.type} NULL
+												END
+											`);
+										}
+							// Ensure new columns exist for cancellation and refund audit
+							await query(`
+								IF COL_LENGTH('orders', 'refund_error') IS NULL
+								BEGIN
+									ALTER TABLE orders ADD refund_error NVARCHAR(255) NULL
+								END
+							`);
+							await query(`
+								IF COL_LENGTH('orders', 'cancelled_at') IS NULL
+								BEGIN
+									ALTER TABLE orders ADD cancelled_at DATETIME2 NULL
+								END
+							`);
+							await query(`
+								IF COL_LENGTH('order_cancellation_audit', 'refund_error') IS NULL
+								BEGIN
+									ALTER TABLE order_cancellation_audit ADD refund_error NVARCHAR(255) NULL
+								END
+							`);
+							await query(`
+								IF COL_LENGTH('order_cancellation_audit', 'reason') IS NULL
+								BEGIN
+									ALTER TABLE order_cancellation_audit ADD reason NVARCHAR(255) NULL
+								END
+							`);
+				// Ensure order_cancellation_audit table exists
+				await query(`
+					IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='order_cancellation_audit' AND xtype='U')
+					BEGIN
+						CREATE TABLE order_cancellation_audit (
+							id INT IDENTITY(1,1) PRIMARY KEY,
+							order_id INT NOT NULL,
+							cancelled_by NVARCHAR(255) NOT NULL,
+							cancel_reason NVARCHAR(255) NOT NULL,
+							refund_requested BIT DEFAULT 0,
+							refund_id NVARCHAR(255) NULL,
+							refund_status NVARCHAR(100) NULL,
+							created_at DATETIME2 DEFAULT GETDATE(),
+							updated_at DATETIME2 DEFAULT GETDATE()
+						)
+					END
+				`);
+			// Ensure cancellation and refund columns exist on orders
+			await query(`
+				IF COL_LENGTH('orders', 'refund_id') IS NULL
+				BEGIN
+					ALTER TABLE orders ADD refund_id NVARCHAR(255) NULL
+				END
+			`);
+			await query(`
+				IF COL_LENGTH('orders', 'cancel_reason') IS NULL
+				BEGIN
+					ALTER TABLE orders ADD cancel_reason NVARCHAR(255) NULL
+				END
+			`);
+			await query(`
+				IF COL_LENGTH('orders', 'cancel_by') IS NULL
+				BEGIN
+					ALTER TABLE orders ADD cancel_by NVARCHAR(255) NULL
+				END
+			`);
+			await query(`
+				IF COL_LENGTH('orders', 'cancel_at') IS NULL
+				BEGIN
+					ALTER TABLE orders ADD cancel_at DATETIME2 NULL
+				END
+			`);
+			await query(`
+				IF COL_LENGTH('orders', 'refund_status') IS NULL
+				BEGIN
+					ALTER TABLE orders ADD refund_status NVARCHAR(100) NULL
+				END
+			`);
+		// Ensure 'email' column exists on orders
+		await query(`
+			IF COL_LENGTH('orders', 'email') IS NULL
+			BEGIN
+				ALTER TABLE orders ADD email NVARCHAR(255) NULL
+			END
+		`);
+		// Ensure 'total_amount' column exists on orders
+		await query(`
+			IF COL_LENGTH('orders', 'total_amount') IS NULL
+			BEGIN
+				ALTER TABLE orders ADD total_amount FLOAT NULL
+			END
+		`);
 	// Create all required tables if they do not exist
 	await query(`
 		IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'whcc_shipping_rubric')

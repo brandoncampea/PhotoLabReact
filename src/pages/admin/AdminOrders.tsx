@@ -1,65 +1,3 @@
-  // ...existing code...
-
-  const handleShowCancelDialog = (order: Order) => {
-    setCancelOrderId(order.id);
-    setCancelReason('');
-    setCancelRefund(false);
-    setCancelError(null);
-    setShowCancelDialog(true);
-  };
-
-  const handleCloseCancelDialog = () => {
-    setShowCancelDialog(false);
-    setCancelOrderId(null);
-    setCancelReason('');
-    setCancelRefund(false);
-    setCancelError(null);
-  };
-
-  // Ensure order details are loaded (move this above handleSubmitCancelOrder)
-  const ensureOrderDetailsLoaded = async (orderId: number) => {
-    if (loadingOrderDetails[orderId]) {
-      return;
-    }
-    setLoadingOrderDetails((current) => ({
-      ...current,
-      [orderId]: true,
-    }));
-    try {
-      const orderDetails = await orderService.getAdminOrderDetails(orderId);
-      setOrders((current) => current.map((entry) => (entry.id === orderId ? orderDetails : entry)));
-    } catch {
-      setMessage(`Failed to load details for order #${orderId}`);
-    } finally {
-      setLoadingOrderDetails((current) => {
-        const next = { ...current };
-        delete next[orderId];
-        return next;
-      });
-    }
-  };
-
-  // Cancel order submit handler
-  const handleSubmitCancelOrder = async () => {
-    if (!cancelOrderId) return;
-    setCancelLoading(true);
-    setCancelError(null);
-    try {
-      const result = await orderService.cancelOrder(cancelOrderId, cancelReason, cancelRefund);
-      if (!result.success) {
-        setCancelError(result.message || 'Failed to cancel order.');
-        setCancelLoading(false);
-        return;
-      }
-      // Refresh order details
-      await ensureOrderDetailsLoaded(cancelOrderId);
-      setShowCancelDialog(false);
-    } catch (err: any) {
-      setCancelError(err?.response?.data?.error || err.message || 'Failed to cancel order.');
-    } finally {
-      setCancelLoading(false);
-    }
-  };
 
 import React, { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -70,6 +8,10 @@ import { shippingService } from '../../services/shippingService';
 import AdminLayout from '../../components/AdminLayout';
 import './AdminOrders.css';
 import { useSasUrl } from '../../hooks/useSasUrl';
+
+// ...existing code...
+
+
 
 function AdminOrderItemCard({ item }: { item: any }) {
   // Defensive: ensure item fields exist
@@ -124,6 +66,51 @@ function AdminOrderItemCard({ item }: { item: any }) {
 
 
 const AdminOrders: React.FC = () => {
+      // Cancel order submit handler
+      const handleSubmitCancelOrder = async () => {
+        if (!cancelOrderId) return;
+        setCancelLoading(true);
+        setCancelError(null);
+        try {
+          const result = await orderService.cancelOrder(cancelOrderId, cancelReason, cancelRefund);
+          if (!result.success) {
+            setCancelError(result.message || 'Failed to cancel order.');
+            setCancelLoading(false);
+            return;
+          }
+          // Refresh order details
+            // Optimistically update local orders state
+            setOrders((current) =>
+              current.map((entry) =>
+                entry.id === cancelOrderId
+                  ? { ...entry, status: 'cancelled' }
+                  : entry
+              )
+            );
+          setShowCancelDialog(false);
+        } catch (err: any) {
+          setCancelError(err?.response?.data?.error || err.message || 'Failed to cancel order.');
+        } finally {
+          setCancelLoading(false);
+        }
+      };
+    // Show cancel dialog for a specific order
+    const handleShowCancelDialog = (order: Order) => {
+      setCancelOrderId(order.id);
+      setShowCancelDialog(true);
+      setCancelReason('');
+      setCancelRefund(false);
+      setCancelError(null);
+    };
+
+    // Close cancel dialog
+    const handleCloseCancelDialog = () => {
+      setShowCancelDialog(false);
+      setCancelOrderId(null);
+      setCancelReason('');
+      setCancelRefund(false);
+      setCancelError(null);
+    };
   const { user } = useAuth();
   // Cancel Order Dialog State (moved inside component)
   const [showCancelDialog, setShowCancelDialog] = useState(false);
@@ -387,8 +374,11 @@ const AdminOrders: React.FC = () => {
     }
   };
 
-  const queuedBatchOrders = orders.filter((order) => order.isBatch && !order.labSubmitted);
-  const recentDirectOrders = orders.filter((order) => !order.isBatch || order.labSubmitted);
+  // Exclude cancelled orders from batch queue
+  const queuedBatchOrders = orders.filter((order) => order.isBatch && !order.labSubmitted && String(order.status).toLowerCase() !== 'cancelled');
+  // Include cancelled batch orders in recentDirectOrders so they show in recent orders
+  const recentDirectOrders = orders.filter((order) => !order.isBatch || order.labSubmitted || String(order.status).toLowerCase() === 'cancelled');
+  // visibleOrders is used for showWhccColumn logic
   const visibleOrders = [...queuedBatchOrders, ...recentDirectOrders];
   const recentVisibleOrders = [...recentDirectOrders];
   const canViewWhccDetails = user?.role === 'super_admin' || user?.role === 'studio_admin' || user?.role === 'admin';
@@ -418,8 +408,12 @@ const AdminOrders: React.FC = () => {
   const tableColumnCount = showWhccColumn ? 7 : 6;
   const getOrderById = (orderId: number) => orders.find((entry) => entry.id === orderId);
 
-  const submittedBatchOrders = filteredRecentOrders.filter((order) => order.isBatch && order.labSubmitted);
-  const nonSubmittedBatchOrders = filteredRecentOrders.filter((order) => !(order.isBatch && order.labSubmitted));
+  // Exclude cancelled orders from batch tables
+  const submittedBatchOrders = filteredRecentOrders.filter((order) => order.isBatch && order.labSubmitted && String(order.status).toLowerCase() !== 'cancelled');
+  const nonSubmittedBatchOrders = filteredRecentOrders.filter((order) => !(order.isBatch && order.labSubmitted) && String(order.status).toLowerCase() !== 'cancelled');
+
+  // Ensure cancelled orders appear in recent orders section
+  const cancelledRecentOrders = filteredRecentOrders.filter((order) => String(order.status).toLowerCase() === 'cancelled');
 
   const shippingReport = filteredRecentOrders.reduce(
     (acc, order) => {
@@ -561,9 +555,9 @@ const AdminOrders: React.FC = () => {
 
   const renderOrderDetails = (order: Order) => (
       <div className="admin-order-detail-panel">
-      {/* Cancel Order Button for Studio Admins */}
-      {user?.role === 'studio_admin' &&
-        !['cancelled', 'refunded', 'shipped', 'completed'].includes(String(order.status).toLowerCase()) && (
+      {/* Cancel Order Button for Studio Admins and Super Admins */}
+      {(user?.role === 'studio_admin' || user?.role === 'super_admin') &&
+        ['pending', 'waiting'].includes(String(order.status).toLowerCase()) && (
           <div style={{ marginBottom: 16 }}>
             <button
               className="btn btn-danger"
@@ -1149,28 +1143,22 @@ const AdminOrders: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
+
+                  {/* Render non-submitted batch orders */}
                   {nonSubmittedBatchOrders.map((order) => (
                     <React.Fragment key={order.id}>
+                      {/* ...existing code for nonSubmittedBatchOrders row rendering... */}
                       <tr
                         className={`admin-order-row ${selectedOrderId === order.id ? 'admin-order-row-selected' : ''}`}
-                        onClick={() => {
-                          void handleRowSelect(order.id);
-                        }}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter' || event.key === ' ') {
-                            event.preventDefault();
-                            void handleRowSelect(order.id);
-                          }
-                        }}
+                        onClick={() => { void handleRowSelect(order.id); }}
+                        onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); void handleRowSelect(order.id); } }}
                         role="button"
                         tabIndex={0}
                       >
                         <td><span className="order-id">#{order.id}</span></td>
                         <td>{new Date(order.orderDate).toLocaleDateString()}</td>
                         <td>
-                          <span className={`order-status status-${order.status}`}>
-                            {order.status}
-                          </span>
+                          <span className={`order-status status-${order.status}`}>{order.status}</span>
                         </td>
                         <td>{order.shippingAddress?.fullName || 'Unknown customer'}</td>
                         <td>${order.totalAmount.toFixed(2)}</td>
@@ -1209,14 +1197,82 @@ const AdminOrders: React.FC = () => {
                           </td>
                         )}
                       </tr>
-
                       {selectedOrderId === order.id && (
                         <tr className="admin-order-details-row">
                           <td colSpan={tableColumnCount}>
                             {loadingOrderDetails[order.id] ? (
                               <div className="loading-state">Loading order details...</div>
                             ) : (() => {
-                              // Always use the latest order object from state (with items if loaded)
+                              const latestOrder = orders.find(o => o.id === order.id);
+                              if (latestOrder) {
+                                return renderOrderDetails(latestOrder as Order);
+                              }
+                              return <div className="loading-state">Order details unavailable.</div>;
+                            })()}
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  ))}
+
+                  {/* Render cancelled orders */}
+                  {cancelledRecentOrders.map((order) => (
+                    <React.Fragment key={order.id}>
+                      <tr
+                        className={`admin-order-row ${selectedOrderId === order.id ? 'admin-order-row-selected' : ''}`}
+                        onClick={() => { void handleRowSelect(order.id); }}
+                        onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); void handleRowSelect(order.id); } }}
+                        role="button"
+                        tabIndex={0}
+                      >
+                        <td><span className="order-id">#{order.id}</span></td>
+                        <td>{new Date(order.orderDate).toLocaleDateString()}</td>
+                        <td>
+                          <span className={`order-status status-${order.status}`}>{order.status}</span>
+                        </td>
+                        <td>{order.shippingAddress?.fullName || 'Unknown customer'}</td>
+                        <td>${order.totalAmount.toFixed(2)}</td>
+                        <td>{order.shippingOption}</td>
+                        {showWhccColumn && (
+                          <td>
+                            <div className="whcc-cell">
+                              {order.whccConfirmationId ? (
+                                <div className="whcc-pill whcc-success">ID: {order.whccConfirmationId}</div>
+                              ) : (
+                                <div className="whcc-pill whcc-muted">Not submitted</div>
+                              )}
+                              {order.whccSubmitResponse?.Received && (
+                                <div className="whcc-meta">Submitted: {String(order.whccSubmitResponse.Received)}</div>
+                              )}
+                              {order.whccSubmitResponse?.Confirmation && (
+                                <div className="whcc-meta">{String(order.whccSubmitResponse.Confirmation)}</div>
+                              )}
+                              {order.whccWebhookEvent && <div className="whcc-meta">Event: {order.whccWebhookEvent}</div>}
+                              {order.whccWebhookStatus && <div className="whcc-meta">Status: {order.whccWebhookStatus}</div>}
+                              {order.whccOrderNumber && <div className="whcc-meta">Order #: {order.whccOrderNumber}</div>}
+                              {(order.shippingCarrier || order.trackingNumber) && (
+                                <div className="whcc-tracking-box">
+                                  {order.shippingCarrier && <div className="whcc-meta"><strong>Carrier:</strong> {order.shippingCarrier}</div>}
+                                  {order.trackingNumber && <div className="whcc-meta"><strong>Tracking:</strong> {order.trackingNumber}</div>}
+                                  {order.shippedAt && <div className="whcc-meta"><strong>Shipped:</strong> {new Date(order.shippedAt).toLocaleString()}</div>}
+                                  {order.trackingUrl && (
+                                    <a className="whcc-link" href={order.trackingUrl} target="_blank" rel="noopener noreferrer" onClick={(event) => event.stopPropagation()}>
+                                      Open tracking
+                                    </a>
+                                  )}
+                                </div>
+                              )}
+                              {order.whccLastError && <div className="whcc-pill whcc-error">Error stored</div>}
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                      {selectedOrderId === order.id && (
+                        <tr className="admin-order-details-row">
+                          <td colSpan={tableColumnCount}>
+                            {loadingOrderDetails[order.id] ? (
+                              <div className="loading-state">Loading order details...</div>
+                            ) : (() => {
                               const latestOrder = orders.find(o => o.id === order.id);
                               if (latestOrder) {
                                 return renderOrderDetails(latestOrder as Order);
@@ -1350,8 +1406,8 @@ const AdminOrders: React.FC = () => {
           )}
         </div>
       </div>
+
     </AdminLayout>
   );
 };
-
 export default AdminOrders;
