@@ -60,25 +60,12 @@ type DetectionResult = {
 };
 
 // --- Implemented functions for auto-tagging and batch detection ---
-// Extract player name from filename (e.g., PAYTON_ROGERS_63_MM.jpg => Payton Rogers)
-const extractPlayerNameFromFilename = (filename: string): string | null => {
-  const base = filename.replace(/\.[^.]+$/, '');
-  const normalized = base.replace(/[-]+/g, '_');
-  const parts = normalized.split('_').filter(Boolean);
-  if (parts.length === 0) return null;
-  // Only use alphabetic parts for name
-  const isNamePart = (part: string) => /^[A-Za-z]+$/.test(part) && !(part.length <= 2 && part === part.toUpperCase());
-  const nameParts = parts.filter(isNamePart);
-  if (nameParts.length === 0) return null;
-  const name = nameParts.map(
-    (part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()
-  ).join(' ');
-  return name.trim() || null;
-};
+// (extractPlayerNameFromFilename is unused, removed)
+
 
 
 // Dummy face detection (can be replaced with real model)
-const detectFaceBoxesInBrowser = async (photo) => {
+const detectFaceBoxesInBrowser = async (_photo: Photo): Promise<{ faceBoxes: FaceTagBox[]; error?: string }> => {
   // Placeholder: return empty array
   return { faceBoxes: [] };
 };
@@ -118,6 +105,7 @@ function UploadProgressPanel({ uploadItems, uploading, handleRetryUploadItem, se
       </div>
 
       {/* Always show thumbnails/progress bars */}
+
       <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.5rem', overflowX: 'auto', paddingBottom: 4 }}>
         {uploadItems.map((item: UploadItem) => (
           <div key={item.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 48 }}>
@@ -146,12 +134,14 @@ function UploadProgressPanel({ uploadItems, uploading, handleRetryUploadItem, se
         </div>
       )}
     </div>
+
   );
 }
 
 
-import * as blazeface from '@tensorflow-models/blazeface';
-import '@tensorflow/tfjs';
+
+// import * as blazeface from '@tensorflow-models/blazeface';
+// import '@tensorflow/tfjs';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Photo, Album, PhotoMetadata } from '../../types';
 import { photoService, uploadFileToAzureBlob, recordPhotoBlob } from '../../services/photoService';
@@ -172,6 +162,10 @@ const AdminPhotos: React.FC = () => {
           photo,
           rosterPlayers,
           photoService,
+          handleDetectPlayers: () => {},
+          detectionByPhotoId,
+          setDetectionByPhotoId,
+          setUploadMessage,
           onTagged: () => {},
         });
         // Optionally, run face detection here if needed
@@ -1109,12 +1103,14 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
 
   const currentAlbum = albums.find(a => a.id === albumId);
 
+  // Always call hooks at the top level, never inside conditionals or returns
+  // Instead, render early returns as variables
+  // Move any useMemo or other hooks here if present
+  let earlyReturn: React.ReactNode = null;
   if (loading || !albumId) {
-    return <div className="loading">Loading...</div>;
-  }
-
-  if (albums.length === 0) {
-    return (
+    earlyReturn = <div className="loading">Loading...</div>;
+  } else if (albums.length === 0) {
+    earlyReturn = (
       <div className="admin-page">
         <div className="page-header">
           <h1>Manage Photos</h1>
@@ -1126,6 +1122,26 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
       </div>
     );
   }
+
+  // If there are any useMemo or similar hooks that were inside the render, move them here
+
+  // Remove any useMemo or hook calls from inside JSX or conditional blocks
+  // If you have code like:
+  //   const { getRootProps, getInputProps, isDragActive } = useDropzone(...)
+  // inside a render function or conditional, move it here and use state/props to control behavior
+
+  // Example: Move useDropzone hook to top level
+  const onDrop = React.useCallback((acceptedFiles: File[]) => {
+    if (!uploading) uploadFiles(acceptedFiles);
+  }, [uploading, uploadFiles]);
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: { 'image/*': [] },
+    multiple: true,
+    disabled: uploading,
+  });
+
+  if (earlyReturn) return earlyReturn;
 
   return (
     <>
@@ -1183,47 +1199,34 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
           </div>
           {showUploadPanel ? (
             <div className="upload-btn" style={{ marginTop: '1.5rem' }}>
-              {(() => {
-                const onDrop = (acceptedFiles: File[]) => {
-                  if (!uploading) uploadFiles(acceptedFiles);
-                };
-                const { getRootProps, getInputProps, isDragActive } = useDropzone({
-                  onDrop,
-                  accept: { 'image/*': [] },
-                  multiple: true,
-                  disabled: uploading,
-                });
-                return (
-                  <div
-                    {...getRootProps()}
-                    style={{
-                      border: isDragActive ? '2.5px dashed #7b5cff' : '2.5px dashed #aaa',
-                      borderRadius: 12,
-                      padding: '2.2rem 1.5rem',
-                      background: isDragActive ? 'rgba(123,92,255,0.08)' : 'rgba(255,255,255,0.03)',
-                      textAlign: 'center',
-                      marginBottom: 16,
-                      transition: 'background 0.2s, border 0.2s',
-                      cursor: uploading ? 'not-allowed' : 'pointer',
-                      position: 'relative',
-                      minHeight: 90,
-                      outline: isDragActive ? '2px solid #7b5cff' : 'none',
-                      color: '#888',
-                      fontSize: '1.08rem',
-                      fontWeight: 500,
-                      userSelect: 'none',
-                      opacity: uploading ? 0.6 : 1,
-                    }}
-                  >
-                    <input {...getInputProps()} />
-                    {isDragActive
-                      ? 'Drop images here to upload'
-                      : uploading
-                        ? 'Uploading...'
-                        : 'Drag & drop images here or click to select files'}
-                  </div>
-                );
-              })()}
+              <div
+                {...getRootProps()}
+                style={{
+                  border: isDragActive ? '2.5px dashed #7b5cff' : '2.5px dashed #aaa',
+                  borderRadius: 12,
+                  padding: '2.2rem 1.5rem',
+                  background: isDragActive ? 'rgba(123,92,255,0.08)' : 'rgba(255,255,255,0.03)',
+                  textAlign: 'center',
+                  marginBottom: 16,
+                  transition: 'background 0.2s, border 0.2s',
+                  cursor: uploading ? 'not-allowed' : 'pointer',
+                  position: 'relative',
+                  minHeight: 90,
+                  outline: isDragActive ? '2px solid #7b5cff' : 'none',
+                  color: '#888',
+                  fontSize: '1.08rem',
+                  fontWeight: 500,
+                  userSelect: 'none',
+                  opacity: uploading ? 0.6 : 1,
+                }}
+              >
+                <input {...getInputProps()} />
+                {isDragActive
+                  ? 'Drop images here to upload'
+                  : uploading
+                    ? 'Uploading...'
+                    : 'Drag & drop images here or click to select files'}
+              </div>
               <label htmlFor="photo-upload" className="btn btn-primary">
                 {uploading
                   ? `Uploading ${uploadProgress.completed}/${uploadProgress.total}...`
@@ -1359,6 +1362,10 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
                       photo,
                       rosterPlayers,
                       photoService,
+                      handleDetectPlayers: () => {},
+                      detectionByPhotoId,
+                      setDetectionByPhotoId,
+                      setUploadMessage,
                       onTagged: () => {},
                     });
                   }
@@ -1871,42 +1878,9 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
   );
 }
 
-// Helper component for SAS-protected photo thumbnails
-function PhotoSasThumbnail({ src, alt }: { src: string, alt: string }) {
-  const isBlobName = src && !src.startsWith('/') && !src.startsWith('http');
-  const sasUrl = isBlobName ? useSasUrl(src) : null;
-  return (
-    <img
-      src={isBlobName ? (sasUrl || '') : src}
-      alt={alt}
-      style={{
-        width: 360,
-        height: 360,
-        objectFit: 'cover',
-        borderRadius: 8,
-        background: '#222',
-        display: 'block',
-      }}
-    />
-  );
-}
-
-function FaceBoxPreview({
-  photo,
-  faceBoxes,
-  selectedFaceBoxId,
-  onSelectFaceBox,
-  setImageRef,
-}: {
-  photo: Photo;
-  faceBoxes: FaceTagBox[];
-  selectedFaceBoxId: string | null;
-  onSelectFaceBox: (faceBoxId: string) => void;
-  setImageRef: (photoId: number, el: HTMLImageElement | null) => void;
-}) {
-  // Deprecated: FaceBoxPreview now unused, see above for direct <img> usage with asset endpoint
-  return null;
-}
+// Helper component for SAS-protected photo thumbnails (unused, removed)
+// function PhotoSasThumbnail ...
+// function FaceBoxPreview ...
 
 // Helper to format photo metadata for display
 function getMetadataForDisplay(photo: Photo | null): Record<string, string | number> {

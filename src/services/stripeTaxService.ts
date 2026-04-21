@@ -29,7 +29,7 @@ export const stripeTaxService = {
       currency,
     });
     // Stripe returns amount_total and tax_amount_exclusive
-    const { amount_total, tax_amount_exclusive } = response.data;
+    const { tax_amount_exclusive } = response.data;
     return {
       taxAmount: typeof tax_amount_exclusive === 'number' ? tax_amount_exclusive / 100 : 0,
       taxRate: 0, // Stripe Tax does not return a single rate
