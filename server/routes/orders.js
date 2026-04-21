@@ -1,3 +1,12 @@
+import express from 'express';
+import jwt from 'jsonwebtoken';
+import mssql from '../mssql.cjs';
+const { queryRow, queryRows, query } = mssql;
+import { authRequired, adminRequired, superAdminRequired } from '../middleware/auth.js';
+import { requireActiveSubscription } from '../middleware/subscription.js';
+import orderReceiptService from '../services/orderReceiptService.js';
+const router = express.Router();
+
 // Admin: Resend digital download links for an order
 router.post('/admin/:orderId/resend-digital-download', adminRequired, async (req, res) => {
   try {
@@ -67,14 +76,7 @@ router.post('/admin/:orderId/resend-digital-download', adminRequired, async (req
   }
 });
 
-import express from 'express';
-import jwt from 'jsonwebtoken';
-import mssql from '../mssql.cjs';
-const { queryRow, queryRows, query } = mssql;
-import { authRequired, adminRequired, superAdminRequired } from '../middleware/auth.js';
-import { requireActiveSubscription } from '../middleware/subscription.js';
-import orderReceiptService from '../services/orderReceiptService.js';
-const router = express.Router();
+
 
 // Update Stripe fee for an order after payment confirmation
 router.patch('/update-stripe-fee/:orderId', authRequired, async (req, res) => {
