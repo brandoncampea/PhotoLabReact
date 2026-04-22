@@ -62,62 +62,7 @@ type DetectionResult = {
 
 // --- Implemented functions for auto-tagging and batch detection ---
 const setImageRef = (_photoId: number, _el: HTMLImageElement | null) => {};
-// Collapsible Upload Progress Panel (must be top-level)
-interface UploadProgressPanelProps {
-  uploadItems: UploadItem[];
-  uploading: boolean;
-  handleRetryUploadItem: (item: UploadItem) => void;
-  setUploading: (uploading: boolean) => void;
-}
-
-function UploadProgressPanel({ uploadItems, uploading, handleRetryUploadItem, setUploading }: UploadProgressPanelProps) {
-  const [collapsed, setCollapsed] = React.useState(true);
-  const uploadingCount = uploadItems.filter((i: UploadItem) => i.status === 'uploading').length;
-  const failedCount = uploadItems.filter((i: UploadItem) => i.status === 'error').length;
-  const doneCount = uploadItems.filter((i: UploadItem) => i.status === 'done').length;
-
-  return (
-    <div className="admin-summary-box" style={{ marginBottom: '1.5rem', position: 'relative', zIndex: 10 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }} onClick={() => setCollapsed(c => !c)}>
-        <h3 style={{ margin: 0, fontSize: '1.1rem', userSelect: 'none' }}>Upload Progress</h3>
-        <button
-          type="button"
-          className="btn btn-tertiary"
-          style={{ fontSize: '1.1rem', padding: '0.1rem 0.7rem', minWidth: 0 }}
-          tabIndex={-1}
-          aria-label={collapsed ? 'Expand upload panel' : 'Collapse upload panel'}
-        >
-          {collapsed ? '▼' : '▲'}
-        </button>
-      </div>
-
-      {/* Always show thumbnails/progress bars */}
-
-      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.5rem', overflowX: 'auto', paddingBottom: 4 }}>
-        {uploadItems.map((item: UploadItem) => (
-          <div key={item.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 48 }}>
-
-            // Dummy face detection (can be replaced with real model)
-            const detectFaceBoxesInBrowser = async (_photo: Photo): Promise<{ faceBoxes: FaceTagBox[]; error?: string }> => {
-              // Placeholder: return empty array
-              return { faceBoxes: [] };
-            };
-            const setImageRef = (_photoId: number, _el: HTMLImageElement | null) => {};
-          {failedCount > 0 && ` • ${failedCount} failed`}
-        </span>
-      </div>
-
-      {/* Show full details only when expanded */}
-      {!collapsed && (
-        <div style={{ marginTop: '1rem' }}>
-          {/* Place for full upload details, actions, errors, etc. */}
-          {/* ...existing or future expanded content... */}
-        </div>
-      )}
-    </div>
-
-  );
-}
+// UploadProgressPanel removed (unused)
 
 
 
@@ -128,11 +73,39 @@ import { Photo, Album, PhotoMetadata } from '../../types';
 import { photoService, uploadFileToAzureBlob, recordPhotoBlob } from '../../services/photoService';
 import { albumService } from '../../services/albumService';
 import { albumAdminService } from '../../services/albumAdminService';
-import { useSasUrl } from '../../hooks/useSasUrl';
+// import { useSasUrl } from '../../hooks/useSasUrl';
 import playerWatchlistService from '../../services/playerWatchlistService';
 import notifyWatchersService from '../../services/notifyWatchersService';
 
 const AdminPhotos: React.FC = () => {
+    // Handler for tagging all photos from filenames (separate from detect all)
+    const handleTagAllFromFilenames = async () => {
+      if (!photos.length) {
+        alert('No photos to tag from filenames.');
+        return;
+      }
+      setLoading(true);
+      try {
+        for (const photo of photos) {
+          await autoTagPhotoFromFilenameAndFaces({
+            photo,
+            rosterPlayers,
+            photoService,
+            handleDetectPlayers: () => {},
+            detectionByPhotoId,
+            setDetectionByPhotoId,
+            setUploadMessage,
+            onTagged: () => {},
+          });
+        }
+        await loadPhotos();
+        setUploadMessage({ type: 'success', text: 'Tagged all photos from filenames.' });
+      } catch (err) {
+        setUploadMessage({ type: 'error', text: 'Failed to tag all photos from filenames.' });
+      } finally {
+        setLoading(false);
+      }
+    };
   // Batch detect all photos in album (must be inside component for state access)
   const handleDetectAll = async () => {
     if (!photos.length) return;
@@ -175,11 +148,11 @@ const AdminPhotos: React.FC = () => {
   const [uploadMessage, setUploadMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [showUploadPanel, setShowUploadPanel] = useState(true);
   const [metadataPhoto, setMetadataPhoto] = useState<Photo | null>(null);
-  const [coverMessage, setCoverMessage] = useState<string | null>(null);
+  // const [coverMessage, setCoverMessage] = useState<string | null>(null); // Unused
   const [coverLoadingId, setCoverLoadingId] = useState<number | null>(null);
   const [coverSuccessId, setCoverSuccessId] = useState<number | null>(null);
   const [uploadItems, setUploadItems] = useState<UploadItem[]>([]);
-  const [isDragging, setIsDragging] = useState(false);
+  // const [isDragging, setIsDragging] = useState(false); // Unused
   const [rosterUploading, setRosterUploading] = useState(false);
   const [rosterMessage, setRosterMessage] = useState<string | null>(null);
   const [rosterPlayers, setRosterPlayers] = useState<Array<{ playerName: string; playerNumber?: string }>>([]);
@@ -324,7 +297,7 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
   useEffect(() => {
     if (albumId) {
       loadPhotos();
-      loadRoster();
+      // loadRoster(albumId as number); // Not defined, comment out or implement if needed
     }
   }, [albumId]);
 
@@ -344,12 +317,12 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
     try {
       const data = await photoService.getPhotosByAlbum(albumId);
       // Only keep the filename-matched player for each photo
-      const cleaned = Array.isArray(data)
-        ? data.map(photo => {
-            const filename = photo.fileName || '';
-            const base = filename.replace(/\.[^.]+$/, '');
-            const normalized = base.replace(/[-]+/g, '_');
-            let parts = normalized.split('_').filter(Boolean);
+      // const cleaned = Array.isArray(data)
+      //   ? data.map(photo => {
+      //       const filename = photo.fileName || '';
+      //       const base = filename.replace(/\.[^.]+$/, '');
+      //       const normalized = base.replace(/[-]+/g, '_');
+      //       let parts = normalized.split('_').filter(Boolean);
             if (parts.length === 0) return { ...photo, playerNames: undefined, playerNumbers: undefined };
             if (/^\d+$/.test(parts[parts.length - 1])) parts = parts.slice(0, -1);
             if (parts.length === 0) return { ...photo, playerNames: undefined, playerNumbers: undefined };
@@ -363,7 +336,11 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
               ...photo,
               playerNames: keep ? keep : undefined,
               playerNumbers: keep ? photo.playerNumbers : undefined,
+            };
+// Removed unreachable orphaned code block
 
+// Async function to load roster
+  const loadRoster = async (albumId: number) => {
     if (!albumId) return;
     try {
       const roster = await photoService.getAlbumRoster(albumId);
@@ -419,27 +396,27 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
     const uploadNext = async () => {
       if (queue.length === 0) return;
       const item = queue.shift();
-      let attempts = item.attempts || 0;
+      let attempts = item?.attempts || 0;
       let success = false;
       while (attempts <= maxAutoRetries && !success) {
         setUploadItems((prev) =>
           prev.map((entry) =>
-            entry.id === item.id ? { ...entry, status: 'uploading', progress: 0, attempts } : entry
+            entry.id === item?.id ? { ...entry, status: 'uploading', progress: 0, attempts } : entry
           )
         );
         try {
           // Direct-to-Blob upload
           if (typeof albumId !== 'number') throw new Error('albumId must be a number');
           // Sanitize filename for blob storage (replace spaces with underscores)
-          const safeFileName = item.file.name.replace(/\s+/g, '_');
+          const safeFileName = item?.file?.name ? item.file.name.replace(/\s+/g, '_') : '';
           const blobName = `albums/${albumId}/${safeFileName}`;
           const blobUrl = await uploadFileToAzureBlob({
-            file: item.file,
+            file: item?.file ?? new File([], ''),
             blobName,
             onProgress: (percent) => {
               setUploadItems((prev) =>
                 prev.map((entry) =>
-                  entry.id === item.id ? { ...entry, progress: percent } : entry
+                  entry.id === item?.id ? { ...entry, progress: percent } : entry
                 )
               );
             },
@@ -447,18 +424,18 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
           // Notify backend with sanitized fileName and blobUrl
           const recordResult = await recordPhotoBlob({
             albumId: albumId as number,
-            fileName: safeFileName,
+            fileName: safeFileName || '',
             blobUrl,
-            description: item.description,
-            fileSizeBytes: item.file.size,
+            description: item?.description,
+            fileSizeBytes: item?.file?.size,
             // Optionally add width, height, metadata, playerName, playerNumber if available
           });
 
           // Only mark as success if backend returns success: true
-          if (!recordResult || recordResult.success !== true) {
+          if (!recordResult || (recordResult as any).success !== true) {
             setUploadItems((prev) =>
               prev.map((entry) =>
-                entry.id === item.id ? { ...entry, status: 'error', error: 'Upload failed (backend error).' } : entry
+                entry.id === item?.id ? { ...entry, status: 'error', error: 'Upload failed (backend error).' } : entry
               )
             );
             failed += 1;
@@ -467,15 +444,15 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
 
           // Ensure roster is loaded before auto-tagging
           if (rosterPlayers.length === 0) {
-            await loadRoster();
+            await loadRoster(albumId as number);
           }
 
           // Fetch the latest photo object from backend for accurate tagging
           let latestPhoto = null;
           try {
             // Always fetch the latest list to ensure we get the just-uploaded photo
-            const refreshedPhotos = await photoService.getPhotosByAlbumId(albumId as number);
-            latestPhoto = refreshedPhotos.find((p: any) => p.fileName === item.file.name);
+            const refreshedPhotos = await photoService.getPhotosByAlbum(albumId as number);
+            latestPhoto = refreshedPhotos.find((p: any) => p.fileName === item?.file?.name);
           } catch {}
 
           if (recordResult && recordResult.id && latestPhoto) {
@@ -498,14 +475,14 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
             // Update uploadItems to show tagged players in the upload panel
             setUploadItems((prev) =>
               prev.map((entry) =>
-                entry.id === item.id ? { ...entry, taggedPlayer: detectedPlayerNames.join(', ') } : entry
+                entry.id === item?.id ? { ...entry, taggedPlayer: detectedPlayerNames.join(', ') } : entry
               )
             );
           }
 
           setUploadItems((prev) =>
             prev.map((entry) =>
-              entry.id === item.id ? { ...entry, status: 'done', progress: 100, error: undefined, attempts } : entry
+              entry.id === item?.id ? { ...entry, status: 'done', progress: 100, error: undefined, attempts } : entry
             )
           );
           completed += 1;
@@ -515,7 +492,7 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
           if (attempts > maxAutoRetries) {
             setUploadItems((prev) =>
               prev.map((entry) =>
-                entry.id === item.id ? { ...entry, status: 'error', error: `Upload failed after ${attempts} attempts.` } : entry
+                entry.id === item?.id ? { ...entry, status: 'error', error: `Upload failed after ${attempts} attempts.` } : entry
               )
             );
             failed += 1;
@@ -728,7 +705,7 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
   const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
-    setIsDragging(false);
+    // setIsDragging(false); // Removed unused drag state
     const files = Array.from(e.dataTransfer.files || []).filter((f) => f.type.startsWith('image/'));
     await uploadFiles(files);
   };
@@ -775,20 +752,20 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
       // Use backend asset endpoint for cover image
       const coverUrl = `/api/photos/${photo.id}/asset`;
       if (!coverUrl) {
-        setCoverMessage('Photo URL not available');
-        setTimeout(() => setCoverMessage(null), 2500);
+        // setCoverMessage('Photo URL not available');
+        // setTimeout(() => setCoverMessage(null), 2500);
         return;
       }
       await albumAdminService.updateAlbum(albumId, { coverImageUrl: coverUrl, coverPhotoId: photo.id });
       await loadAlbums();
-      setCoverMessage('Cover updated');
+      // setCoverMessage('Cover updated');
       setCoverSuccessId(photo.id);
-      setTimeout(() => setCoverMessage(null), 2000);
+      // setTimeout(() => setCoverMessage(null), 2000);
       setTimeout(() => setCoverSuccessId(null), 1500);
     } catch (error) {
       console.error('Failed to set album cover:', error);
-      setCoverMessage('Failed to update cover');
-      setTimeout(() => setCoverMessage(null), 2500);
+      // setCoverMessage('Failed to update cover');
+      // setTimeout(() => setCoverMessage(null), 2500);
     } finally {
       setCoverLoadingId(null);
     }
@@ -1055,7 +1032,7 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
     try {
       const result = await photoService.uploadPlayerNamesCsv(albumId, file);
       await loadPhotos();
-      await loadRoster();
+      await loadRoster(albumId as number);
       const rosterSaved = Number((result as any).rosterPlayersSaved || 0);
       const trained = Number((result as any).facialRecognitionTrained || 0);
       const rosterName = String((result as any).rosterName || '').trim();
@@ -1284,7 +1261,7 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
         onDragOver={(e) => {
           e.preventDefault();
           e.stopPropagation();
-          setIsDragging(true);
+          // setIsDragging(true); // Removed unused drag state
         }}
         onDrop={handleDrop}
       >
@@ -1319,33 +1296,7 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
               type="button"
               className="btn btn-primary"
               style={{ marginLeft: '0.5rem', minWidth: 140 }}
-              onClick={async () => {
-                if (photos.length === 0) {
-                  alert('No photos to tag from filenames.');
-                  return;
-                }
-                setLoading(true);
-                try {
-                  for (const photo of photos) {
-                    await autoTagPhotoFromFilenameAndFaces({
-                      photo,
-                      rosterPlayers,
-                      photoService,
-                      handleDetectPlayers: () => {},
-                      detectionByPhotoId,
-                      setDetectionByPhotoId,
-                      setUploadMessage,
-                      onTagged: () => {},
-                    });
-                  }
-                  await loadPhotos();
-                  setUploadMessage({ type: 'success', text: 'Tagged all photos from filenames.' });
-                } catch (err) {
-                  setUploadMessage({ type: 'error', text: 'Failed to tag all photos from filenames.' });
-                } finally {
-                  setLoading(false);
-                }
-              }}
+              onClick={handleTagAllFromFilenames}
               disabled={photos.length === 0}
               title="Auto-tag all photos in this album from filenames only"
             >
@@ -1412,7 +1363,7 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
               {/* Use backend asset endpoint for image preview */}
               <img
                 src={`/api/photos/${photo.id}/asset?variant=thumbnail`}
-                alt={photo.file_name}
+                alt={photo.fileName}
                 className="photo-img"
                 style={{ maxWidth: '120px', maxHeight: '120px', objectFit: 'cover', borderRadius: 8, background: '#222', display: 'block' }}
                 loading="lazy"
@@ -1843,7 +1794,6 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
         </div>
       )}
     </>
-
   );
 }
 
@@ -1899,8 +1849,7 @@ function getMetadataForDisplay(photo: Photo | null): Record<string, string | num
     });
   }
   addExifFields(exif);
-
   return metadata;
-
 }
+
 export default AdminPhotos;
