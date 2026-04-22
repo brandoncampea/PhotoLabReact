@@ -18,15 +18,19 @@ router.post('/album/:albumId/clear-tags', async (req, res) => {
     // Clear player tags for all photos
     await query('UPDATE photos SET player_names = NULL, player_numbers = NULL WHERE album_id = $1', [albumId]);
 
-    // Remove face signatures for these photos (MSSQL compatible)
-    const photoIds = photos.map(p => p.id);
-    if (photoIds.length) {
-      // Build a parameterized IN clause for MSSQL with @p1, @p2, ...
-      const placeholders = photoIds.map((_, i) => `@p${i + 1}`).join(', ');
+    // Remove face signatures for all photos in the album by joining with photos table (MSSQL compatible)
+    try {
+      console.log('[CLEAR-TAGS] Deleting studio_player_face_signatures for albumId:', albumId);
       await query(
-        `DELETE FROM face_signatures WHERE source_photo_id IN (${placeholders})`,
-        photoIds
+        `DELETE sfs
+         FROM studio_player_face_signatures sfs
+         INNER JOIN photos p ON sfs.source_photo_id = p.id
+         WHERE p.album_id = @p1`,
+        [albumId]
       );
+    } catch (err) {
+      console.error('[CLEAR-TAGS] Error deleting from studio_player_face_signatures:', err.message);
+      // Continue even if this fails (table/column may not exist in all environments)
     }
 
     res.json({ cleared: photos.length });

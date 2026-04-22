@@ -78,6 +78,7 @@ export async function uploadFileToAzureBlob({
 
 import api from './api';
 import { Photo } from '../types';
+import { extractPlayerNamesFromFilename } from '../utils/playerTagging';
 
 
 const normalizeRecommendations = (data: any) => {
@@ -105,11 +106,46 @@ const normalizeRecommendations = (data: any) => {
       ? data.recommendations.map(mapRec)
       : [],
   };
-
 };
 
 
-export const photoService = {
+
+const photoService = {
+        async notifyWatchers(albumId: number): Promise<{ notified: number }> {
+          const response = await api.post<{ notified: number }>(`/photos/album/${albumId}/notify-watchers`);
+          return response.data;
+        },
+
+        async deleteAllPhotos(albumId: number): Promise<{ deleted: number }> {
+          const response = await api.delete<{ deleted: number }>(`/photos/album/${albumId}/all`);
+          return response.data;
+        },
+
+        async tagAllFromFilenames(albumId: number, photos: Array<{ id: number, fileName: string }>): Promise<{ tagged: number }> {
+          // For each photo, extract player name from filename
+          const updates = photos.map(photo => {
+            const names = extractPlayerNamesFromFilename(photo.fileName);
+            return names.length > 0 ? { id: photo.id, playerNames: names } : null;
+          }).filter(Boolean);
+          if (updates.length === 0) return { tagged: 0 };
+          const response = await api.post<{ updated: number }>(`/photos/batch-update-players`, { updates });
+          return { tagged: response.data.updated };
+        },
+
+        async detectAll(albumId: number): Promise<{ detected: number }> {
+          const response = await api.post<{ detected: number }>(`/photos/album/${albumId}/detect-all`);
+          return response.data;
+        },
+
+        async setAsCover(photoId: number): Promise<{ coverSet: boolean }> {
+          const response = await api.post<{ coverSet: boolean }>(`/photos/${photoId}/set-cover`);
+          return response.data;
+        },
+
+        async detectPhoto(photoId: number): Promise<{ detected: boolean }> {
+          const response = await api.post<{ detected: boolean }>(`/photos/${photoId}/detect`);
+          return response.data;
+        },
       async clearAllTagsInAlbum(albumId: number): Promise<{ cleared: number }> {
         const response = await api.post<{ cleared: number }>(`/photos/album/${albumId}/clear-tags`);
         return response.data;
@@ -238,3 +274,5 @@ export const photoService = {
       return response.data;
   },
 };
+
+export { photoService };
