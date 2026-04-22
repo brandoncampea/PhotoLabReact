@@ -1,3 +1,60 @@
+
+/* Responsive crop modal styles */
+.crop-modal-overlay {
+	position: fixed;
+	top: 0; left: 0; right: 0; bottom: 0;
+	background: rgba(0,0,0,0.7);
+	z-index: 1000;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0;
+}
+.crop-modal-content {
+	background: #1a1a24;
+	border-radius: 12px;
+	border: 1px solid #2a2740;
+	max-width: 600px;
+	width: 96vw;
+	max-height: 96vh;
+	overflow: auto;
+	padding: 16px 8px 12px 8px;
+	box-sizing: border-box;
+}
+.crop-modal-content h3 {
+	margin-top: 0;
+	margin-bottom: 16px;
+	font-size: 1.1rem;
+}
+.cropper-container {
+	margin-bottom: 16px;
+	max-height: 48vw;
+	min-height: 180px;
+}
+.crop-modal-actions {
+	display: flex;
+	gap: 10px;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+}
+@media (max-width: 600px) {
+	.crop-modal-content {
+		max-width: 99vw;
+		width: 99vw;
+		min-width: 0;
+		padding: 10px 2px 8px 2px;
+	}
+	.cropper-container {
+		max-height: 60vw;
+		min-height: 120px;
+	}
+	.crop-modal-actions button {
+		flex: 1 1 100%;
+		min-width: 0;
+		font-size: 1rem;
+		margin-bottom: 6px;
+	}
+}
 /* Player hover overlay for album photo grid */
 .player-hover-overlay {
 	display: none !important;
