@@ -1,7 +1,8 @@
 .sidebarCollapseBtn {
-  position: absolute;
+  position: relative;
   top: 10px;
-  right: -18px;
+  left: 10px;
+  right: auto;
   width: 28px;
   height: 28px;
   background: #23234a;
@@ -16,6 +17,7 @@
   justify-content: center;
   box-shadow: 0 2px 8px 0 rgba(30, 30, 60, 0.10);
   transition: background 0.18s, color 0.18s, border 0.18s;
+  margin-bottom: 10px;
 }
 .sidebarCollapseBtn:hover {
   background: #35356a;
