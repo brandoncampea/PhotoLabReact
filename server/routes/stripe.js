@@ -1,4 +1,3 @@
-
 import express from 'express';
 import mssql from '../mssql.cjs';
 const { queryRow, query } = mssql;
@@ -275,6 +274,44 @@ router.post('/confirm-payment/:paymentIntentId', authRequired, async (req, res) 
 
     res.status(500).json({ success: false, error: error.message });
   }
+});
+
+// --- STRIPE WEBHOOK FOR FEES ---
+
+router.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  const { secretKey, webhookSecret } = getNormalizedStripeKeys();
+  if (!secretKey || !webhookSecret) {
+    return res.status(503).json({ error: 'Stripe is not configured or webhook secret missing' });
+  }
+  const stripe = (await import('stripe')).default(secretKey);
+  const sig = req.headers['stripe-signature'];
+  let event;
+  try {
+    event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+  } catch (err) {
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  // Listen for payment_intent.succeeded and charge.succeeded
+  if (event.type === 'payment_intent.succeeded' || event.type === 'charge.succeeded') {
+    let paymentIntent = event.data.object;
+    let chargeId = paymentIntent.latest_charge || paymentIntent.id;
+    if (event.type === 'charge.succeeded') {
+      chargeId = paymentIntent.id;
+    }
+    try {
+      const charge = await stripe.charges.retrieve(chargeId, { expand: ['balance_transaction'] });
+      const fee = charge.balance_transaction.fee / 100; // Stripe fee in dollars
+      // Update your order in the DB (adjust for your schema)
+      await query(
+        `UPDATE orders SET stripe_fee_amount = @p1 WHERE payment_intent_id = @p2`,
+        [fee, paymentIntent.id]
+      );
+    } catch (err) {
+      console.error('Failed to update Stripe fee:', err);
+    }
+  }
+  res.json({ received: true });
 });
 
 export default router;

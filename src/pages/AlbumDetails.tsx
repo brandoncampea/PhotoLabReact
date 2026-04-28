@@ -16,95 +16,6 @@ type ProductWithMatch = Product & {
   isRecommended: boolean;
 };
 
-
-// Helper component for modal logic (must be top-level)
-interface CropModalCenteredProps {
-  selectedPhotoId: number;
-  productName?: string;
-  cropperRef: any;
-  getCropAspectRatio: (product: any) => number;
-  productToCrop: any;
-  addingKey: string;
-  handleResetCrop: () => void;
-  handleCancelCrop: () => void;
-  handleCropConfirm: () => void;
-}
-
-const CropModalCentered: React.FC<CropModalCenteredProps> = ({
-  selectedPhotoId,
-  productName,
-  cropperRef,
-  getCropAspectRatio,
-  productToCrop,
-  addingKey,
-  handleResetCrop,
-  handleCancelCrop,
-  handleCropConfirm,
-}) => {
-  React.useEffect(() => {
-    // Scroll the selected photo into view (centered)
-    const el = document.querySelector(`[data-photo-id='${selectedPhotoId}']`);
-    if (el && 'scrollIntoView' in el) {
-      el.scrollIntoView({ block: 'center', behavior: 'smooth' });
-    }
-  }, [selectedPhotoId]);
-  return (
-    <>
-      <div className="crop-modal-overlay" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }} />
-      <div
-        className="crop-modal-content"
-        style={{
-          position: 'fixed',
-          zIndex: 1100,
-          left: '50%',
-          top: '50%',
-          transform: 'translate(-50%, -50%)',
-          width: 'min(96vw, 600px)',
-          maxWidth: 600,
-        }}
-      >
-        <h3>Crop photo for {productName}</h3>
-        <div className="cropper-container">
-          <Cropper
-            ref={cropperRef}
-            src={selectedPhotoId ? `/api/photos/${selectedPhotoId}/asset` : ''}
-            crossOrigin="anonymous"
-            style={{ width: '100%' }}
-            aspectRatio={getCropAspectRatio(productToCrop)}
-            viewMode={1}
-            guides={true}
-            responsive={true}
-            autoCropArea={1}
-            minContainerHeight={120}
-            minContainerWidth={120}
-          />
-        </div>
-        <div className="crop-modal-actions">
-          <button
-            className="btn btn-secondary"
-            onClick={handleResetCrop}
-          >
-            Reset Crop
-          </button>
-          <button
-            className="btn btn-secondary"
-            onClick={handleCancelCrop}
-          >
-            Cancel
-          </button>
-          <button
-            className="btn btn-primary"
-            disabled={addingKey !== ''}
-            onClick={handleCropConfirm}
-          >
-            {addingKey !== '' ? 'Adding...' : 'Add to Cart'}
-          </button>
-        </div>
-      </div>
-    </>
-  );
-};
-
 const AlbumDetails: React.FC = () => {
     // Recommendation filter for product recommendations
     const [recommendationFilter, setRecommendationFilter] = useState('');
@@ -489,10 +400,6 @@ const AlbumDetails: React.FC = () => {
     setProductToCrop(product);
     setSizeToCrop(selectedSize);
     setShowCropModal(true);
-    // Scroll to top after modal is visible (for mobile ordering UX)
-    setTimeout(() => {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }, 10);
   };
 
   const handleCropConfirm = async () => {
@@ -905,22 +812,49 @@ const AlbumDetails: React.FC = () => {
       )}
 
       {/* Crop Modal */}
-      {/* Render crop modal centered in viewport and scroll photo into view */}
       {showCropModal && selectedPhoto && (
-        <CropModalCentered
-          selectedPhotoId={selectedPhoto.id}
-          productName={productToCrop?.name}
-          cropperRef={setCropperRef}
-          getCropAspectRatio={getCropAspectRatio}
-          productToCrop={productToCrop}
-          addingKey={addingKey}
-          handleResetCrop={handleResetCrop}
-          handleCancelCrop={handleCancelCrop}
-          handleCropConfirm={handleCropConfirm}
-        />
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#1a1a24', borderRadius: 12, border: '1px solid #2a2740', maxWidth: 600, maxHeight: 600, overflow: 'auto', padding: 20 }}>
+            <h3 style={{ marginTop: 0, marginBottom: 16 }}>Crop photo for {productToCrop?.name}</h3>
+            <div style={{ marginBottom: 16, maxHeight: 400 }}>
+              <Cropper
+                ref={setCropperRef}
+                src={selectedPhoto ? `/api/photos/${selectedPhoto.id}/asset` : ''}
+                crossOrigin="anonymous"
+                style={{ maxHeight: 400, width: '100%' }}
+                aspectRatio={getCropAspectRatio(productToCrop)}
+                viewMode={1}
+                guides={true}
+                responsive={true}
+                autoCropArea={1}
+                minContainerHeight={200}
+                minContainerWidth={200}
+              />
+            </div>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button
+                className="btn btn-secondary"
+                onClick={handleResetCrop}
+              >
+                Reset Crop
+              </button>
+              <button
+                className="btn btn-secondary"
+                onClick={handleCancelCrop}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn btn-primary"
+                disabled={addingKey !== ''}
+                onClick={handleCropConfirm}
+              >
+                {addingKey !== '' ? 'Adding...' : 'Add to Cart'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
-
-// ...existing code...
     </div>
   );
 };

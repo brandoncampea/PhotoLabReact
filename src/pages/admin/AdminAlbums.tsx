@@ -96,6 +96,7 @@ const AdminAlbums: React.FC = () => {
     setShowModal(true);
   };
   const handleAddCategory = async () => {
+    const category = newCategory.trim();
     if (!category) return;
     try {
       const updatedCategories = await categoryService.addCategory(category);

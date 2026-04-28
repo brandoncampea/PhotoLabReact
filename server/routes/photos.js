@@ -1,6 +1,7 @@
 import express from 'express';
 const router = express.Router();
 
+
 // Clear all player tags and face signatures for all photos in an album
 router.post('/album/:albumId/clear-tags', async (req, res) => {
   try {
@@ -344,7 +345,7 @@ const getProxySourceUrl = (source) => `/api/photos/proxy?source=${encodeURICompo
 
 import { signPhotoForResponse } from './photos.utils.js';
 
-import { pipeAssetToResponse } from './photos.utils.js';
+// (duplicate import removed)
 
 const photoUpload = multer({
   storage: multer.memoryStorage(),
@@ -1374,55 +1375,7 @@ router.get('/album/:albumId/roster', async (req, res) => {
   }
 });
 
-router.get('/proxy', async (req, res) => {
-  try {
-    const source = String(req.query.source || '');
-    if (!source) {
-      return res.status(400).json({ error: 'source is required' });
-    }
 
-    await pipeAssetToResponse(source, res);
-  } catch (error) {
-    if (!res.headersSent) {
-      res.status(500).json({ error: error.message });
-    }
-  }
-});
-
-router.get('/:id/asset', async (req, res) => {
-  try {
-    const variant = req.query.variant === 'thumbnail' ? 'thumbnail' : 'full';
-    const photo = await queryRow(
-      `SELECT id,
-              thumbnail_url as thumbnailUrl,
-              full_image_url as fullImageUrl
-       FROM photos
-       WHERE id = $1`,
-      [req.params.id]
-    );
-
-    if (!photo) {
-      console.error(`[ASSET ROUTE] Photo not found for id=${req.params.id}`);
-      return res.status(404).json({ error: 'Photo not found' });
-    }
-
-    const source = variant === 'thumbnail' ? photo.thumbnailUrl : photo.fullImageUrl;
-    console.log(`[ASSET ROUTE] id=${req.params.id} variant=${variant} source=`, source);
-
-    // External HTTP(S) sources (e.g. SmugMug/CDN) should be loaded directly by the browser.
-    // Proxy-fetching can fail due to upstream anti-hotlinking and incorrectly returns 404.
-    if (typeof source === 'string' && /^https?:\/\//i.test(source)) {
-      return res.redirect(302, source);
-    }
-
-    await pipeAssetToResponse(source, res);
-  } catch (error) {
-    console.error('[ASSET ROUTE] Error:', error);
-    if (!res.headersSent) {
-      res.status(500).json({ error: error.message });
-    }
-  }
-});
 
 router.get('/:id/detections', async (req, res) => {
   try {
@@ -2591,6 +2544,29 @@ router.get('/:id/recommendations', async (req, res) => {
       recommendations: sortedRecommendations
     });
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+// Serve photo asset (thumbnail or full image)
+import { pipeAssetToResponse } from './photos.utils.js';
+router.get('/:id/asset', async (req, res) => {
+  try {
+    const photoId = req.params.id;
+    const variant = req.query.variant === 'thumb' ? 'thumb' : 'full';
+    // Fetch photo from DB
+    const photo = await queryRow('SELECT thumbnail_url, full_image_url FROM photos WHERE id = $1', [photoId]);
+    if (!photo) {
+      return res.status(404).json({ error: 'Photo not found' });
+    }
+    const assetUrl = variant === 'thumb' ? photo.thumbnail_url : photo.full_image_url;
+    if (!assetUrl) {
+      return res.status(404).json({ error: 'Asset not found' });
+    }
+    await pipeAssetToResponse(assetUrl, res);
+  } catch (error) {
+    console.error('Error serving photo asset:', error);
     res.status(500).json({ error: error.message });
   }
 });

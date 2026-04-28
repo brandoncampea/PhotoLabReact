@@ -35,7 +35,7 @@ const getSavedListsFromLocal = (): string[] => {
   return Object.keys(lists);
 };
 
-const CartContext = createContext<CartContextType | undefined>(undefined);
+export const CartContext = createContext<CartContextType | undefined>(undefined);
 
 const saveCartToApi = async (items: CartItem[]) => {
   try {

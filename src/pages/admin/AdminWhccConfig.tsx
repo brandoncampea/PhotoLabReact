@@ -1,3 +1,4 @@
+  const [consumerKey, setConsumerKey] = useState('');
 import { useState, useEffect } from 'react';
 import { whccService, WhccWebhookStatus } from '../../services/whccService';
 import { orderService } from '../../services/orderService';

@@ -26,35 +26,12 @@ const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop, onOpenWhccEditor,
 
   // Removed unused cropDebugText variable
 
-  // Calculate crop preview overlay position (as percentage of image)
-  const getCropStyle = () => {
-    if (!item.cropData) return null;
-    const { x, y, width, height } = item.cropData;
-    const naturalWidth = Number(item.photo?.width || item.photo?.metadata?.width || 0);
-    const naturalHeight = Number(item.photo?.height || item.photo?.metadata?.height || 0);
-    if (naturalWidth === 0 || naturalHeight === 0) return null;
 
-    // Always treat cropData as pixel values and convert to percent for overlay
-    const left = (x / naturalWidth) * 100;
-    const top = (y / naturalHeight) * 100;
-    const boxWidth = (width / naturalWidth) * 100;
-    const boxHeight = (height / naturalHeight) * 100;
-
-    return {
-      position: 'absolute' as const,
-      left: `${left}%`,
-      top: `${top}%`,
-      width: `${boxWidth}%`,
-      height: `${boxHeight}%`,
-      border: '2px solid #7b61ff',
-      boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.5)',
-      pointerEvents: 'none' as const,
-    };
-  };
+  // Removed unused getCropStyle function
 
 
   // Always use centralized asset URL logic
-  let displayImageUrl = getPhotoAssetUrl(item.photo || item);
+  let displayImageUrl = getPhotoAssetUrl(item.photo || item, 'thumb');
 
   return (
     <div style={{ border: '1px solid #2a2740', borderRadius: 8, marginBottom: 16, overflow: 'hidden', background: '#0f0f16' }}>
@@ -85,12 +62,9 @@ const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop, onOpenWhccEditor,
                     const naturalHeight = Number(item.photo?.height || item.photo?.metadata?.height || 0);
                     // Determine orientation and aspect ratio
                     let aspectRatio = 1;
-                    if (item.productId && item.productSizeId && Array.isArray(item.photo?.products)) {
-                      const product = item.photo.products.find((p: any) => p.id === item.productId);
-                      const size = product?.sizes?.find((s: any) => s.id === item.productSizeId);
-                      if (size && size.width && size.height) {
-                        aspectRatio = Number(size.width) / Number(size.height);
-                      }
+                    // Use aspect ratio from productSize if available, otherwise fallback to photo dimensions
+                    if (item.productSizeName && naturalWidth > 0 && naturalHeight > 0) {
+                      aspectRatio = naturalWidth / naturalHeight;
                     } else if (naturalWidth > 0 && naturalHeight > 0) {
                       aspectRatio = naturalWidth / naturalHeight;
                     }

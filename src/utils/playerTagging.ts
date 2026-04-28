@@ -22,60 +22,34 @@ export function getDetectionOverlaysForPhoto(photo: Photo, faceBoxes: any[]): an
 // Tag a photo with player names extracted from its filename, regardless of roster
 
 /**
- * Extracts a real player name from a filename, skipping known prefixes/suffixes (like MM, numbers, team codes).
- * Only returns a tag if a valid first+last name is found (both alphabetic, not in known codes/teams).
- * Examples:
- *   MORIA_ST_JOHN_78.jpg → ["Moria St John"]
- *   KAIDEN_POTTER_09_MM.jpg → ["Kaiden Potter"]
- *   MM_ZOEY_WINTERROTH_43.jpg → ["Zoey Winterroth"]
- *   SOFTBALL_V.jpg → []
- *   MM.jpg → []
+ * Extracts player names from a filename and returns them as an array of strings.
+ * Example: "ADDISON_RICE_20.jpg" => ["Addison Rice"]
  */
 export function extractPlayerNamesFromFilename(filename: string): string[] {
   const base = filename.replace(/\.[^.]+$/, '');
   const normalized = base.replace(/[-]+/g, '_');
   let parts = normalized.split('_').filter(Boolean);
   if (parts.length < 2) return [];
-
-  // Known codes/teams to ignore
-  const KNOWN_CODES = [
-    'MM', 'JV', 'V', 'FROSH', 'VARSITY', 'SOFTBALL', 'BASEBALL', 'SOCCER', 'BASKETBALL', 'FOOTBALL',
-    'TEAM', 'SQUAD', 'GROUP', 'CLUB', 'ATHLETICS', 'ATHLETIC', 'RAMS', 'LADY', 'BOYS', 'GIRLS', 'COED', 'JV', 'SR', 'JR', 'FRESHMAN', 'SENIOR', 'JUNIOR'
-  ];
-
-  // Remove leading/trailing codes/numbers
-  while (parts.length > 2 && (KNOWN_CODES.includes(parts[0].toUpperCase()) || /^\d+$/.test(parts[0]))) {
-    parts = parts.slice(1);
-  }
-  while (parts.length > 2 && (KNOWN_CODES.includes(parts[parts.length - 1].toUpperCase()) || /^\d+$/.test(parts[parts.length - 1]))) {
+  // Remove trailing number if present
+  if (/^\d+$/.test(parts[parts.length - 1])) parts = parts.slice(0, -1);
+  // Remove trailing non-name codes (positions, etc.)
+  const NON_NAME_CODES = ['MM', 'GK', 'FWD', 'DEF', 'MID', 'POS', 'G', 'D', 'M', 'F', 'C', 'W', 'S', 'A'];
+  while (parts.length > 1 && NON_NAME_CODES.includes(parts[parts.length - 1].toUpperCase())) {
     parts = parts.slice(0, -1);
   }
-
-  // Find the first sequence of two or more consecutive alphabetic parts not in KNOWN_CODES
-  for (let i = 0; i < parts.length - 1; i++) {
-    const first = parts[i], second = parts[i + 1];
-    if (/^[A-Z]+$/i.test(first) && /^[A-Z]+$/i.test(second)
-      && !KNOWN_CODES.includes(first.toUpperCase()) && !KNOWN_CODES.includes(second.toUpperCase())) {
-      // Optionally include a third part if it's also a name (for e.g. double last names)
-      let nameParts = [first, second];
-      if (i + 2 < parts.length && /^[A-Z]+$/i.test(parts[i + 2]) && !KNOWN_CODES.includes(parts[i + 2].toUpperCase())) {
-        nameParts.push(parts[i + 2]);
-      }
-      const name = nameParts
-        .map(
-          (part) =>
-            part
-              .replace(/[^a-zA-Z]/g, ' ')
-              .toLowerCase()
-              .replace(/\b\w/g, (c) => c.toUpperCase())
-        )
-        .join(' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-      return name ? [name] : [];
-    }
-  }
-  return [];
+  // Join all as name, capitalize
+  const name = parts
+    .map(
+      (part) =>
+        part
+          .replace(/[^a-zA-Z]/g, ' ')
+          .toLowerCase()
+          .replace(/\b\w/g, (c) => c.toUpperCase())
+    )
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return name ? [name] : [];
 }
 
 /**
@@ -276,20 +250,5 @@ export async function handleTogglePlayerTag({
     upsertPhotoInState(setPhotos, photo);
     setUploadMessage && setUploadMessage({ type: 'error', text: 'Failed to update player tag.' });
   }
-}
-
-/**
- * Extracts valid player/team tags from a filename, filtered by roster and known teams.
- * Returns only names present in the roster or knownTeams.
- */
-export function getValidPlayerTagsFromFilename(
-  filename: string,
-  roster: Array<{ playerName: string; playerNumber?: string }>,
-  knownTeams: string[]
-): string[] {
-  const extracted = extractPlayerNamesFromFilename(filename);
-  return extracted.filter(
-    (name) => roster.some((player) => player.playerName === name)
-  );
 }
 

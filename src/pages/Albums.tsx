@@ -92,10 +92,8 @@ const Albums: React.FC = () => {
   const handleShare = async (e: React.MouseEvent, album: any) => {
     e.stopPropagation();
     // Try to get the studio slug from context or localStorage
-    let studioSlug = (user && (user as any).studioSlug) || localStorage.getItem('studioSlug') || '';
-    if (!studioSlug && user && (user as any).studioId) {
-      studioSlug = `studio${(user as any).studioId}`;
-    }
+    // user is not available in this context; fallback to localStorage only
+    let studioSlug = localStorage.getItem('studioSlug') || '';
     const url = studioSlug
       ? `${window.location.origin}/albums/${album.id}?studioSlug=${encodeURIComponent(studioSlug)}`
       : `${window.location.origin}/albums/${album.id}`;

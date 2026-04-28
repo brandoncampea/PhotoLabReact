@@ -13,18 +13,14 @@ const CustomerAccount: React.FC = () => {
   const [actionInProgress, setActionInProgress] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [roster, setRoster] = useState<any[]>([]);
-  const [loadingRoster, setLoadingRoster] = useState(true);
   // Load roster on mount
   useEffect(() => {
     async function loadRoster() {
-      setLoadingRoster(true);
       try {
         const data = await playerService.getRoster();
         setRoster(data);
       } catch {
         setRoster([]);
-      } finally {
-        setLoadingRoster(false);
       }
     }
     loadRoster();

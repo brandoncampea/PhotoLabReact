@@ -7,7 +7,6 @@ export const profileService = {
       const response = await api.get<ProfileConfig>('/profile');
       return response.data;
     } catch (error) {
-      console.error('Error fetching profile:', error);
       throw error;
     }
   },
@@ -17,7 +16,6 @@ export const profileService = {
       const response = await api.put<ProfileConfig>('/profile', data);
       return response.data;
     } catch (error) {
-      console.error('Error updating profile:', error);
       throw error;
     }
   },
@@ -29,7 +27,6 @@ export const watermarkService = {
       const response = await api.get<Watermark[]>('/watermarks');
       return response.data;
     } catch (error) {
-      console.error('Error fetching watermarks:', error);
       throw error;
     }
   },
@@ -39,7 +36,6 @@ export const watermarkService = {
       const response = await api.post<Watermark>('/watermarks', data);
       return response.data;
     } catch (error) {
-      console.error('Error creating watermark:', error);
       throw error;
     }
   },
@@ -49,7 +45,6 @@ export const watermarkService = {
       const response = await api.put<Watermark>(`/watermarks/${id}`, data);
       return response.data;
     } catch (error) {
-      console.error('Error updating watermark:', error);
       throw error;
     }
   },
@@ -58,7 +53,6 @@ export const watermarkService = {
     try {
       await api.delete(`/api/watermarks/${id}`);
     } catch (error) {
-      console.error('Error deleting watermark:', error);
       throw error;
     }
   },
@@ -70,7 +64,6 @@ export const discountCodeService = {
       const response = await api.get<DiscountCode[]>('/discount-codes');
       return response.data;
     } catch (error) {
-      console.error('Error fetching discount codes:', error);
       throw error;
     }
   },
@@ -80,7 +73,6 @@ export const discountCodeService = {
       const response = await api.post<DiscountCode>('/discount-codes', data);
       return response.data;
     } catch (error) {
-      console.error('Error creating discount code:', error);
       throw error;
     }
   },
@@ -90,7 +82,6 @@ export const discountCodeService = {
       const response = await api.put<DiscountCode>(`/discount-codes/${id}`, data);
       return response.data;
     } catch (error) {
-      console.error('Error updating discount code:', error);
       throw error;
     }
   },
@@ -99,7 +90,6 @@ export const discountCodeService = {
     try {
       await api.delete(`/api/discount-codes/${id}`);
     } catch (error) {
-      console.error('Error deleting discount code:', error);
       throw error;
     }
   },

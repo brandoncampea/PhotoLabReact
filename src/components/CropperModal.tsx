@@ -1,15 +1,13 @@
 
-import React from 'react';
 // Example: import Cropper from 'react-easy-crop'; // Uncomment and adjust for your cropper library
 
 type CropperModalProps = {
   photoUrl: string;
   photoWidth: number;
   photoHeight: number;
-  // ...other props as needed
 };
 
-export default function CropperModal({ photoUrl, photoWidth, photoHeight, ...props }: CropperModalProps) {
+export default function CropperModal({ photoUrl, photoWidth, photoHeight }: CropperModalProps) {
   // Determine orientation and aspect ratio
   const isLandscape = photoWidth > photoHeight;
   const aspect = isLandscape ? 10 / 8 : 8 / 10;

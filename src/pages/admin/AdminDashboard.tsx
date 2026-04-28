@@ -4,6 +4,7 @@ import DashboardChart from '../../components/DashboardChart';
 import AdminLayout from '../../components/AdminLayout';
 import './AdminDashboard.css';
 import { useSasUrl } from '../../hooks/useSasUrl';
+import api from '../../services/api';
 
 type DashboardStats = {
   totalRevenue: number;
@@ -45,13 +46,9 @@ const AdminDashboard: React.FC = () => {
     const fetchStats = async () => {
       setLoading(true);
       try {
-        const token = localStorage.getItem('token');
-        const statsResponse = await fetch(`/api/admin/dashboard-stats${analyticsRange && analyticsRange !== 'all' ? `?range=${analyticsRange}` : ''}`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        if (!statsResponse.ok) throw new Error('Failed to fetch dashboard stats');
-        const data = await statsResponse.json();
-        setStats(data);
+        const params = analyticsRange && analyticsRange !== 'all' ? { params: { range: analyticsRange } } : {};
+        const response = await api.get('/admin/dashboard-stats', params);
+        setStats(response.data);
       } catch (e) {
         setStats(null);
       } finally {
