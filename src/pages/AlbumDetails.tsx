@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { analyticsService } from '../services/analyticsService';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import WatermarkedImage from '../components/WatermarkedImage';
 import Cropper from 'react-cropper';
 import 'cropperjs/dist/cropper.css';
@@ -36,6 +36,7 @@ const AlbumDetails: React.FC = () => {
   // Recommendation filter for product recommendations
   const [recommendationFilter, setRecommendationFilter] = useState('');
   const { albumId, studioSlug } = useParams();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [album, setAlbum] = useState<Album | null>(null);
   const [photos, setPhotos] = useState<Photo[]>([]);
@@ -529,185 +530,7 @@ const AlbumDetails: React.FC = () => {
         {album.description && <p className="albums-description" style={{ marginTop: 0, color: '#a8a8b8' }}>{album.description}</p>}
       </div>
 
-      {selectedPhoto && (
-        <div style={{ marginBottom: 14, border: '1px solid #2a2740', borderRadius: 8, overflow: 'hidden', background: '#0f0f16', maxHeight: 520 }}>
-          {/* Overlay the studio watermark on the selected photo */}
-          <WatermarkedImage
-            src={`/api/photos/${selectedPhoto.id}/asset?variant=full`}
-            alt={selectedPhoto.fileName}
-            style={{ width: '100%', height: '100%', maxHeight: 520, objectFit: 'contain', display: 'block' }}
-            studioId={(album as any)?.studioId || (album as any)?.studio_id || (selectedPhoto as any)?.studioId || (selectedPhoto as any)?.studio_id}
-            fill={true}
-          />
-        </div>
-      )}
 
-      {selectedPhoto && (
-        <div style={{ marginBottom: 16, border: '1px solid #2a2740', borderRadius: 8, padding: 12 }}>
-          <h3 style={{ marginTop: 0, marginBottom: 8 }}>Order this photo</h3>
-          {addMessage && <div style={{ marginBottom: 8, color: addMessage.includes('Failed') ? '#ff9a9a' : '#79d279' }}>{addMessage}</div>}
-
-          {/* Recommendation filter input */}
-          <div style={{ marginBottom: 12 }}>
-            <input
-              type="text"
-              placeholder="Filter products by name or size..."
-              value={recommendationFilter}
-              onChange={e => setRecommendationFilter(e.target.value)}
-              style={{ padding: 6, width: '100%', maxWidth: 320 }}
-            />
-          </div>
-
-          {orderedProducts.length === 0 ? (
-            <div style={{ color: '#999' }}>No products available for this album.</div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              {/* Digital Products Section */}
-              {productsBySection.digital.length > 0 && (
-                <div>
-                  <h4 style={{ marginTop: 0, marginBottom: 10, color: '#7b61ff', fontSize: 14, fontWeight: 600 }}>Digital</h4>
-                  <div style={{ display: 'grid', gap: 8 }}>
-                    {productsBySection.digital.map((product) => {
-                      const defaultSize = getDefaultSize(product);
-                      const rowKey = `${product.id}-${defaultSize?.id || 0}`;
-                      return (
-                        <div key={product.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 10, alignItems: 'center', border: '1px solid #232036', borderRadius: 6, padding: '8px 10px' }}>
-                          <div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                              <strong>{product.name}</strong>
-                              <span className="badge">Digital</span>
-                            </div>
-                            <div style={{ fontSize: 12, color: '#aaa' }}>
-                              {defaultSize
-                                ? `${defaultSize.name}${defaultSize.width && defaultSize.height ? ` (${defaultSize.width}x${defaultSize.height})` : ''}`
-                                : 'No size available'}
-                            </div>
-                          </div>
-                          <div style={{ minWidth: 90, textAlign: 'right', fontWeight: 700 }}>
-                            ${Number(product.price || defaultSize?.price || 0).toFixed(2)}
-                          </div>
-                          <button
-                            className="btn btn-primary btn-sm"
-                            disabled={!defaultSize || addingKey === rowKey}
-                            onClick={() => handleAddToCart(product)}
-                          >
-                            {addingKey === rowKey ? 'Adding...' : 'Add to Cart'}
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Recommended Products Section */}
-              {productsBySection.recommended.length > 0 && (
-                <div>
-                  <h4 style={{ marginTop: 0, marginBottom: 10, color: '#7b61ff', fontSize: 14, fontWeight: 600 }}>Recommended</h4>
-                  <div style={{ display: 'grid', gap: 8 }}>
-                    {recommendedGrouped.map(({ category, products }) => (
-                      <details key={category} open style={{ border: '1px solid #232036', borderRadius: 8, padding: '6px 8px', background: 'rgba(123, 97, 255, 0.05)' }}>
-                        <summary style={{ cursor: 'pointer', fontSize: 13, color: '#8d81ff', fontWeight: 700 }}>
-                          {category}
-                        </summary>
-                        <div style={{ display: 'grid', gap: 8, marginTop: 6 }}>
-                          {products.map(({ name, items }) => (
-                            <div key={`${category}-${name}`} style={{ border: '1px solid #232036', borderRadius: 6, padding: '6px 8px' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 4 }}>
-                                <strong>{name}</strong>
-                                <span className="badge" style={{ background: '#2e2a52' }}>Recommended</span>
-                              </div>
-                              <div style={{ display: 'grid', gap: 6 }}>
-                                {items.map((product) => {
-                                  const defaultSize = getDefaultSize(product);
-                                  const rowKey = `${product.id}-${defaultSize?.id || 0}`;
-                                  return (
-                                    <div key={product.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 10, alignItems: 'center', border: '1px solid #1f1c33', borderRadius: 6, padding: '4px 6px' }}>
-                                      <div style={{ fontSize: 12, color: '#aaa' }}>
-                                        {defaultSize
-                                          ? `${defaultSize.name}${defaultSize.width && defaultSize.height ? ` (${defaultSize.width}x${defaultSize.height})` : ''}`
-                                          : 'No size available'}
-                                      </div>
-                                      <div style={{ minWidth: 90, textAlign: 'right', fontWeight: 700 }}>
-                                        ${Number(defaultSize?.price || 0).toFixed(2)}
-                                      </div>
-                                      <button
-                                        className="btn btn-primary btn-sm"
-                                        disabled={!defaultSize || addingKey === rowKey}
-                                        onClick={() => handleAddToCart(product)}
-                                      >
-                                        {addingKey === rowKey ? 'Adding...' : 'Add to Cart'}
-                                      </button>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </details>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* All Products Section */}
-              {allProductsGrouped.length > 0 && (
-                <div>
-                  <details style={{ border: '1px solid #232036', borderRadius: 8, padding: '10px 12px' }}>
-                    <summary style={{ cursor: 'pointer', color: '#7b61ff', fontSize: 14, fontWeight: 700 }}>
-                      All Products
-                    </summary>
-                    <div style={{ display: 'grid', gap: 14, marginTop: 10 }}>
-                      {allProductsGrouped.map(({ category, items }) => (
-                        <details key={category} style={{ border: '1px solid #232036', borderRadius: 8, padding: '10px 12px' }}>
-                          <summary style={{ cursor: 'pointer', fontSize: 13, color: '#8d81ff', fontWeight: 700 }}>
-                            {category}
-                          </summary>
-                          <div style={{ display: 'grid', gap: 10, marginTop: 10 }}>
-                            {items.map((product) => {
-                              const sizes = Array.isArray(product.sizes) ? product.sizes : [];
-                              return (
-                                <div key={product.id}>
-                                  <div style={{ fontWeight: 700, marginBottom: 6 }}>{product.name}</div>
-                                  <div style={{ display: 'grid', gap: 6 }}>
-                                    {sizes.length > 0 ? sizes.map((size) => {
-                                      const rowKey = `${product.id}-${size?.id || size?.name || 'size'}`;
-                                      return (
-                                        <div key={rowKey} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 10, alignItems: 'center', border: '1px solid #1f1c33', borderRadius: 6, padding: '6px 8px' }}>
-                                          <div style={{ fontSize: 12, color: '#bbb' }}>
-                                            {size?.name || 'Default'}{size?.width && size?.height ? ` (${size.width}x${size.height})` : ''}
-                                          </div>
-                                          <div style={{ minWidth: 90, textAlign: 'right', fontWeight: 700 }}>
-                                            ${Number(size?.price || 0).toFixed(2)}
-                                          </div>
-                                          <button
-                                            className="btn btn-primary btn-sm"
-                                            disabled={!size || addingKey === rowKey}
-                                            onClick={() => handleAddToCart(product, size)}
-                                          >
-                                            {addingKey === rowKey ? 'Adding...' : 'Add to Cart'}
-                                          </button>
-                                        </div>
-                                      );
-                                    }) : (
-                                      <div style={{ fontSize: 12, color: '#aaa' }}>No size available</div>
-                                    )}
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </details>
-                      ))}
-                    </div>
-                  </details>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
 
       <div style={{ marginBottom: 14, border: '1px solid #2a2740', borderRadius: 8, padding: 12 }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 10 }}>
@@ -762,72 +585,401 @@ const AlbumDetails: React.FC = () => {
             const playerNames = (photo.playerNames || '').split(',').filter((p) => p.trim());
             const playerNumbers = (photo.playerNumbers || '').split(',').filter((p) => p.trim());
             const hasPlayers = playerNames.length > 0 || playerNumbers.length > 0;
+            const isSelected = selectedPhotoId === photo.id;
 
             return (
-              <Link
-                key={photo.id}
-                to={`?photo=${photo.id}`}
-                className="album-card"
-                style={{
-                  padding: 0,
-                  overflow: 'hidden',
-                  border: selectedPhotoId === photo.id ? '2px solid #7b61ff' : undefined,
-                  position: 'relative',
-                }}
-              >
-                {(() => {
-                   const studioId = (album as any)?.studioId || (album as any)?.studio_id || (photos.length > 0 ? (photos[0] as any)?.studioId || (photos[0] as any)?.studio_id : undefined);
-                  return (
-                    <WatermarkedImage
-                      src={`/api/photos/${photo.id}/asset?variant=full`}
-                      alt={photo.fileName}
-                      style={{ width: '100%', height: 220, objectFit: 'cover', display: 'block' }}
-                      studioId={studioId}
-                    />
-                  );
-                })()}
-                {hasPlayers && (
+              <React.Fragment key={photo.id}>
+                <div
+                  className="album-card"
+                  style={{
+                    padding: 0,
+                    overflow: 'hidden',
+                    border: isSelected ? '2px solid #7b61ff' : undefined,
+                    position: 'relative',
+                    cursor: 'pointer',
+                  }}
+                  onClick={() => {
+                    // Set ?photo=photo.id without refreshing
+                    const url = new URL(window.location.href);
+                    url.searchParams.set('photo', String(photo.id));
+                    navigate(url.pathname + url.search, { replace: false });
+                  }}
+                  tabIndex={0}
+                  role="button"
+                  aria-label={`Select photo ${photo.fileName}`}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      const url = new URL(window.location.href);
+                      url.searchParams.set('photo', String(photo.id));
+                      navigate(url.pathname + url.search, { replace: false });
+                    }
+                  }}
+                >
+                  {(() => {
+                    const studioId = (album as any)?.studioId || (album as any)?.studio_id || (photos.length > 0 ? (photos[0] as any)?.studioId || (photos[0] as any)?.studio_id : undefined);
+                    return (
+                      <WatermarkedImage
+                        src={`/api/photos/${photo.id}/asset?variant=full`}
+                        alt={photo.fileName}
+                        style={{ width: '100%', height: 220, objectFit: 'cover', display: 'block' }}
+                        studioId={studioId}
+                      />
+                    );
+                  })()}
+                  {hasPlayers && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        background: 'rgba(20, 19, 32, 0.9)',
+                        display: 'none',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '12px',
+                        borderRadius: 0,
+                      }}
+                      className="player-hover-overlay"
+                    >
+                      <div style={{ textAlign: 'center', color: '#fff' }}>
+                        {playerNames.length > 0 && (
+                          <div style={{ marginBottom: playerNumbers.length > 0 ? 8 : 0 }}>
+                            <div style={{ fontSize: '0.85rem', color: '#a8a8b8', marginBottom: 4 }}>Players</div>
+                            <div style={{ fontSize: '1rem', fontWeight: 600, lineHeight: 1.4 }}>
+                              {playerNames.map((name, idx) => (
+                                <div key={idx}>{name.trim()}</div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {playerNumbers.length > 0 && (
+                          <div>
+                            <div style={{ fontSize: '0.85rem', color: '#a8a8b8', marginBottom: 4 }}>Numbers</div>
+                            <div style={{ fontSize: '1rem', fontWeight: 600, lineHeight: 1.4 }}>
+                              {playerNumbers.map((num, idx) => (
+                                <div key={idx}>#{num.trim()}</div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                {/* Inline order panel below selected photo, spanning all columns */}
+                {isSelected && (
                   <div
                     style={{
-                      position: 'absolute',
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      background: 'rgba(20, 19, 32, 0.9)',
-                      display: 'none',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      padding: '12px',
-                      borderRadius: 0,
+                      gridColumn: '1 / -1',
+                      margin: '0 0 24px 0',
+                      border: '2px solid #7b61ff',
+                      borderRadius: 12,
+                      padding: 18,
+                      background: '#18162a',
+                      boxShadow: '0 4px 24px 0 rgba(123,97,255,0.10)',
+                      width: '100%',
+                      maxWidth: '100%',
+                      boxSizing: 'border-box',
+                      zIndex: 2,
+                      display: 'block',
+                      position: 'relative',
                     }}
-                    className="player-hover-overlay"
                   >
-                    <div style={{ textAlign: 'center', color: '#fff' }}>
-                      {playerNames.length > 0 && (
-                        <div style={{ marginBottom: playerNumbers.length > 0 ? 8 : 0 }}>
-                          <div style={{ fontSize: '0.85rem', color: '#a8a8b8', marginBottom: 4 }}>Players</div>
-                          <div style={{ fontSize: '1rem', fontWeight: 600, lineHeight: 1.4 }}>
-                            {playerNames.map((name, idx) => (
-                              <div key={idx}>{name.trim()}</div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      {playerNumbers.length > 0 && (
-                        <div>
-                          <div style={{ fontSize: '0.85rem', color: '#a8a8b8', marginBottom: 4 }}>Numbers</div>
-                          <div style={{ fontSize: '1rem', fontWeight: 600, lineHeight: 1.4 }}>
-                            {playerNumbers.map((num, idx) => (
-                              <div key={idx}>#{num.trim()}</div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
+                    {/* Close (X) button */}
+                    <button
+                      aria-label="Close order panel"
+                      onClick={() => {
+                        const url = new URL(window.location.href);
+                        url.searchParams.delete('photo');
+                        navigate(url.pathname + url.search, { replace: false });
+                      }}
+                      style={{
+                        position: 'absolute',
+                        top: 10,
+                        right: 14,
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#b9aaff',
+                        fontSize: 22,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        zIndex: 10,
+                        lineHeight: 1,
+                        padding: 0,
+                      }}
+                    >
+                      ×
+                    </button>
+                    <h3 style={{ marginTop: 0, marginBottom: 8, fontSize: 20, color: '#fff', textAlign: 'center' }}>Order this photo</h3>
+                    {addMessage && <div style={{ marginBottom: 8, color: addMessage.includes('Failed') ? '#ff9a9a' : '#79d279', textAlign: 'center' }}>{addMessage}</div>}
+                    <div style={{ marginBottom: 12 }}>
+                      <input
+                        type="text"
+                        placeholder="Filter products by name or size..."
+                        value={recommendationFilter}
+                        onChange={e => setRecommendationFilter(e.target.value)}
+                        style={{ padding: 8, width: '100%', borderRadius: 6, border: '1px solid #3a3656', background: '#141320', color: '#fff' }}
+                      />
                     </div>
+                    {orderedProducts.length === 0 ? (
+                      <div style={{ color: '#999', textAlign: 'center' }}>No products available for this album.</div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                        {/* Digital Products Section */}
+                        {productsBySection.digital.length > 0 && (
+                          <div>
+                            <h4 style={{ marginTop: 0, marginBottom: 10, color: '#7b61ff', fontSize: 14, fontWeight: 600 }}>Digital</h4>
+                            <div style={{ display: 'grid', gap: 8 }}>
+                              {productsBySection.digital.map((product) => {
+                                const defaultSize = getDefaultSize(product);
+                                const rowKey = `${product.id}-${defaultSize?.id || 0}`;
+                                return (
+                                  <div
+                                    key={product.id}
+                                    style={{
+                                      display: 'flex',
+                                      flexDirection: 'row',
+                                      alignItems: 'center',
+                                      border: '1px solid #232036',
+                                      borderRadius: 6,
+                                      padding: '8px 10px',
+                                      background: '#232036',
+                                      gap: 10,
+                                      flexWrap: 'wrap',
+                                    }}
+                                  >
+                                    <div>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                        <strong>{product.name}</strong>
+                                        <span className="badge">Digital</span>
+                                      </div>
+                                      <div style={{ fontSize: 12, color: '#aaa' }}>
+                                        {defaultSize
+                                          ? `${defaultSize.name}${defaultSize.width && defaultSize.height ? ` (${defaultSize.width}x${defaultSize.height})` : ''}`
+                                          : 'No size available'}
+                                      </div>
+                                    </div>
+                                    <div
+                                      style={{
+                                        minWidth: 90,
+                                        textAlign: 'right',
+                                        fontWeight: 700,
+                                        flex: '0 0 auto',
+                                        width: 'auto',
+                                      }}
+                                    >
+                                      ${Number(product.price || defaultSize?.price || 0).toFixed(2)}
+                                    </div>
+                                    <button
+                                      className="btn btn-primary btn-sm"
+                                      disabled={!defaultSize || addingKey === rowKey}
+                                      onClick={() => handleAddToCart(product)}
+                                      style={{
+                                        fontSize: 'clamp(13px, 3vw, 16px)',
+                                        padding: 'clamp(7px, 2vw, 12px) clamp(18px, 5vw, 28px)',
+                                        borderRadius: 24,
+                                        minWidth: 110,
+                                        width: 'auto',
+                                        whiteSpace: 'nowrap',
+                                        fontWeight: 700,
+                                        boxShadow: '0 2px 8px 0 rgba(123,97,255,0.10)',
+                                        marginLeft: 4,
+                                        letterSpacing: 0.1,
+                                        flex: '1 1 100%',
+                                        maxWidth: '100%',
+                                        marginTop: 8,
+                                      }}
+                                    >
+                                      {addingKey === rowKey ? 'Adding...' : 'Add to Cart'}
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                        {/* Recommended Products Section */}
+                        {productsBySection.recommended.length > 0 && (
+                          <div>
+                            <h4 style={{ marginTop: 0, marginBottom: 10, color: '#7b61ff', fontSize: 14, fontWeight: 600 }}>Recommended</h4>
+                            <div style={{ display: 'grid', gap: 8 }}>
+                              {recommendedGrouped.map(({ category, products }) => (
+                                <details key={category} open style={{ border: '1px solid #232036', borderRadius: 8, padding: '6px 8px', background: 'rgba(123, 97, 255, 0.05)' }}>
+                                  <summary style={{ cursor: 'pointer', fontSize: 13, color: '#8d81ff', fontWeight: 700 }}>
+                                    {category}
+                                  </summary>
+                                  <div style={{ display: 'grid', gap: 8, marginTop: 6 }}>
+                                    {products.map(({ name, items }) => (
+                                      <div key={`${category}-${name}`} style={{ border: '1px solid #232036', borderRadius: 6, padding: '6px 8px', background: '#232036' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 4 }}>
+                                          <strong>{name}</strong>
+                                          <span className="badge" style={{ background: '#2e2a52' }}>Recommended</span>
+                                        </div>
+                                        <div style={{ display: 'grid', gap: 6 }}>
+                                          {items.map((product) => {
+                                            const defaultSize = getDefaultSize(product);
+                                            const rowKey = `${product.id}-${defaultSize?.id || 0}`;
+                                            return (
+                                              <div
+                                                key={product.id}
+                                                style={{
+                                                  display: 'flex',
+                                                  flexDirection: 'row',
+                                                  alignItems: 'center',
+                                                  border: '1px solid #1f1c33',
+                                                  borderRadius: 6,
+                                                  padding: '4px 6px',
+                                                  background: '#29264a',
+                                                  gap: 10,
+                                                  flexWrap: 'wrap',
+                                                }}
+                                              >
+                                                <div style={{ fontSize: 12, color: '#aaa', flex: '1 1 100%' }}>
+                                                  {defaultSize
+                                                    ? `${defaultSize.name}${defaultSize.width && defaultSize.height ? ` (${defaultSize.width}x${defaultSize.height})` : ''}`
+                                                    : 'No size available'}
+                                                </div>
+                                                <div
+                                                  style={{
+                                                    minWidth: 90,
+                                                    textAlign: 'right',
+                                                    fontWeight: 700,
+                                                    flex: '0 0 auto',
+                                                    width: 'auto',
+                                                  }}
+                                                >
+                                                  ${Number(defaultSize?.price || 0).toFixed(2)}
+                                                </div>
+                                                <button
+                                                  className="btn btn-primary btn-sm"
+                                                  disabled={!defaultSize || addingKey === rowKey}
+                                                  onClick={() => handleAddToCart(product)}
+                                                  style={{
+                                                    fontSize: 'clamp(13px, 3vw, 16px)',
+                                                    padding: 'clamp(7px, 2vw, 12px) clamp(18px, 5vw, 28px)',
+                                                    borderRadius: 24,
+                                                    minWidth: 110,
+                                                    width: 'auto',
+                                                    whiteSpace: 'nowrap',
+                                                    fontWeight: 700,
+                                                    boxShadow: '0 2px 8px 0 rgba(123,97,255,0.10)',
+                                                    marginLeft: 4,
+                                                    letterSpacing: 0.1,
+                                                    flex: '1 1 100%',
+                                                    maxWidth: '100%',
+                                                    marginTop: 8,
+                                                  }}
+                                                >
+                                                  {addingKey === rowKey ? 'Adding...' : 'Add to Cart'}
+                                                </button>
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </details>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {/* All Products Section */}
+                        {allProductsGrouped.length > 0 && (
+                          <div>
+                            <details style={{ border: '1px solid #232036', borderRadius: 8, padding: '10px 12px', background: '#232036' }}>
+                              <summary style={{ cursor: 'pointer', color: '#7b61ff', fontSize: 14, fontWeight: 700 }}>
+                                All Products
+                              </summary>
+                              <div style={{ display: 'grid', gap: 14, marginTop: 10 }}>
+                                {allProductsGrouped.map(({ category, items }) => (
+                                  <details key={category} style={{ border: '1px solid #232036', borderRadius: 8, padding: '10px 12px', background: '#232036' }}>
+                                    <summary style={{ cursor: 'pointer', fontSize: 13, color: '#8d81ff', fontWeight: 700 }}>
+                                      {category}
+                                    </summary>
+                                    <div style={{ display: 'grid', gap: 10, marginTop: 10 }}>
+                                      {items.map((product) => {
+                                        const sizes = Array.isArray(product.sizes) ? product.sizes : [];
+                                        return (
+                                          <div key={product.id}>
+                                            <div style={{ fontWeight: 700, marginBottom: 6 }}>{product.name}</div>
+                                            <div style={{ display: 'grid', gap: 6 }}>
+                                              {sizes.length > 0 ? sizes.map((size) => {
+                                                const rowKey = `${product.id}-${size?.id || size?.name || 'size'}`;
+                                                return (
+                                                  <div
+                                                    key={rowKey}
+                                                    style={{
+                                                      display: 'flex',
+                                                      flexDirection: 'row',
+                                                      alignItems: 'center',
+                                                      border: '1px solid #1f1c33',
+                                                      borderRadius: 6,
+                                                      padding: '6px 8px',
+                                                      background: '#29264a',
+                                                      gap: 10,
+                                                      flexWrap: 'wrap',
+                                                    }}
+                                                  >
+                                                    <div style={{ fontSize: 12, color: '#bbb', flex: '1 1 100%' }}>
+                                                      {size?.name || 'Default'}{size?.width && size?.height ? ` (${size.width}x${size.height})` : ''}
+                                                    </div>
+                                                    <div
+                                                      style={{
+                                                        minWidth: 90,
+                                                        textAlign: 'right',
+                                                        fontWeight: 700,
+                                                        flex: '0 0 auto',
+                                                        width: 'auto',
+                                                      }}
+                                                    >
+                                                      ${Number(size?.price || 0).toFixed(2)}
+                                                    </div>
+                                                    <button
+                                                      className="btn btn-primary btn-sm"
+                                                      disabled={!size || addingKey === rowKey}
+                                                      onClick={() => handleAddToCart(product, size)}
+                                                      style={{
+                                                        fontSize: 'clamp(13px, 3vw, 16px)',
+                                                        padding: 'clamp(7px, 2vw, 12px) clamp(18px, 5vw, 28px)',
+                                                        borderRadius: 24,
+                                                        minWidth: 110,
+                                                        width: 'auto',
+                                                        whiteSpace: 'nowrap',
+                                                        fontWeight: 700,
+                                                        boxShadow: '0 2px 8px 0 rgba(123,97,255,0.10)',
+                                                        marginLeft: 4,
+                                                        letterSpacing: 0.1,
+                                                        flex: '1 1 100%',
+                                                        maxWidth: '100%',
+                                                        marginTop: 8,
+                                                      }}
+                                                    >
+                                                      {addingKey === rowKey ? 'Adding...' : 'Add to Cart'}
+                                                    </button>
+                                                  </div>
+                                                );
+                                              }) : (
+                                                <div style={{ fontSize: 12, color: '#aaa' }}>No size available</div>
+                                              )}
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </details>
+                                ))}
+                              </div>
+                            </details>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
-              </Link>
+              </React.Fragment>
             );
           })}
         </div>
