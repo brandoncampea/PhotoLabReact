@@ -65,8 +65,11 @@ type DetectionResult = {
 
 
 // Dummy face detection (can be replaced with real model)
-const detectFaceBoxesInBrowser = async (_photo: Photo): Promise<{ faceBoxes: FaceTagBox[]; error?: string }> => {
-  // Placeholder: return empty array
+const detectFaceBoxesInBrowser = async (photo: Photo): Promise<{ faceBoxes: FaceTagBox[]; error?: string }> => {
+  // Use the full-size image for detection
+  const imageUrl = photo.fullImageUrl;
+  // TODO: Replace this placeholder with actual face detection logic using imageUrl
+  // Example: const faceBoxes = await runFaceDetection(imageUrl);
   return { faceBoxes: [] };
 };
 
@@ -158,24 +161,12 @@ const AdminPhotos: React.FC = () => {
     setLoading(true);
     try {
       for (const photo of photos) {
-        await autoTagPhotoFromFilenameAndFaces({
-          photo,
-          rosterPlayers,
-          photoService,
-          handleDetectPlayers: () => {},
-          detectionByPhotoId,
-          setDetectionByPhotoId,
-          setUploadMessage,
-          onTagged: () => {},
-        });
-        // Optionally, run face detection here if needed
-        // const detection = await detectFaceBoxesInBrowser(photo);
-        // setDetectionByPhotoId(prev => ({ ...prev, [photo.id]: detection }));
+        await handleDetectPlayers(photo, { silent: true });
       }
       await loadPhotos();
-      setUploadMessage({ type: 'success', text: 'Auto-tagged all photos from filenames.' });
+      setUploadMessage({ type: 'success', text: 'Auto-tagged and detected faces for all photos.' });
     } catch (err) {
-      setUploadMessage({ type: 'error', text: 'Failed to auto-tag all photos.' });
+      setUploadMessage({ type: 'error', text: 'Failed to auto-tag or detect faces for all photos.' });
     } finally {
       setLoading(false);
     }
@@ -1702,25 +1693,32 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
                   </div>
 
                   {/* Search / free-type input */}
-                  <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.45rem' }}>
+                  <div style={{ position: 'relative', display: 'flex', gap: '0.4rem', marginBottom: '0.45rem' }}>
                     <input
                       type="text"
                       placeholder={rosterPlayers.length > 0 ? 'Search roster…' : 'Type player name…'}
                       value={playerSearchByPhotoId[photo.id] ?? ''}
                       onChange={(e) => setPlayerSearchByPhotoId((prev) => ({ ...prev, [photo.id]: e.target.value }))}
                       onKeyDown={(e) => {
+                        const raw = (playerSearchByPhotoId[photo.id] ?? '').trim();
+                        const filtered = rosterPlayers.filter((p) => p.playerName.toLowerCase().includes(raw.toLowerCase()));
                         if (e.key === 'Enter') {
-                          const raw = (playerSearchByPhotoId[photo.id] ?? '').trim();
                           if (!raw) return;
-                          const exact = rosterPlayers.find(
-                            (p) => p.playerName.toLowerCase() === raw.toLowerCase()
-                          );
-                          const player = exact ?? { playerName: raw };
+                          let player = null;
+                          if (filtered.length > 0 && filtered[0].playerName.toLowerCase() === raw.toLowerCase()) {
+                            player = filtered[0];
+                          } else {
+                            player = { playerName: raw };
+                          }
                           const selectedFaceBoxId = selectedFaceBoxByPhotoId[photo.id];
                           if (selectedFaceBoxId) {
                             handleAssignPlayerToSelectedFace(photo, player);
                           } else {
                             handleTogglePlayerTag(photo, player);
+                          }
+                          // Add to roster if not present
+                          if (!rosterPlayers.some((p) => p.playerName.toLowerCase() === raw.toLowerCase())) {
+                            setRosterPlayers((prev) => [...prev, { playerName: raw }]);
                           }
                           setPlayerSearchByPhotoId((prev) => ({ ...prev, [photo.id]: '' }));
                         }
@@ -1738,7 +1736,57 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
                         color: 'var(--text-primary)',
                         outline: 'none',
                       }}
+                      autoComplete="off"
                     />
+                    {/* Modern dropdown suggestions */}
+                    {(() => {
+                      const raw = (playerSearchByPhotoId[photo.id] ?? '').trim();
+                      if (!raw) return null;
+                      const filtered = rosterPlayers.filter((p) => p.playerName.toLowerCase().includes(raw.toLowerCase()));
+                      if (filtered.length === 0) return null;
+                      return (
+                        <div style={{
+                          position: 'absolute',
+                          top: '100%',
+                          left: 0,
+                          right: 0,
+                          background: 'var(--bg-primary)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '0 0 8px 8px',
+                          boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
+                          zIndex: 20,
+                          maxHeight: 180,
+                          overflowY: 'auto',
+                        }}>
+                          {filtered.map((p, idx) => (
+                            <div
+                              key={p.playerName + idx}
+                              style={{
+                                padding: '0.38rem 0.7rem',
+                                cursor: 'pointer',
+                                fontSize: '0.95em',
+                                color: '#fff',
+                                background: 'none',
+                                borderBottom: idx !== filtered.length - 1 ? '1px solid var(--border-color)' : 'none',
+                                transition: 'background 0.15s',
+                              }}
+                              onMouseDown={e => {
+                                e.preventDefault();
+                                const selectedFaceBoxId = selectedFaceBoxByPhotoId[photo.id];
+                                if (selectedFaceBoxId) {
+                                  handleAssignPlayerToSelectedFace(photo, p);
+                                } else {
+                                  handleTogglePlayerTag(photo, p);
+                                }
+                                setPlayerSearchByPhotoId((prev) => ({ ...prev, [photo.id]: '' }));
+                              }}
+                            >
+                              {p.playerName}
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
                     {/* Add by typed name if no exact match in roster */}
                     {(() => {
                       const raw = (playerSearchByPhotoId[photo.id] ?? '').trim();
@@ -1758,6 +1806,7 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
                             } else {
                               handleTogglePlayerTag(photo, player);
                             }
+                            setRosterPlayers((prev) => [...prev, { playerName: raw }]);
                             setPlayerSearchByPhotoId((prev) => ({ ...prev, [photo.id]: '' }));
                           }}
                           style={{

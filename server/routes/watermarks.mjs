@@ -1,4 +1,34 @@
 import express from 'express';
+const router = express.Router();
+import fetch from 'node-fetch';
+import { downloadBlob } from '../services/azureStorage.js';
+
+// Proxy watermark image (local or remote/Azure) to client
+router.get('/proxy', async (req, res) => {
+  const source = req.query.source;
+  console.log('[WATERMARK PROXY] source param:', source);
+  if (!source) return res.status(400).json({ error: 'Missing source parameter' });
+  try {
+    if (String(source).startsWith('http')) {
+      // Remote/Azure URL
+      const upstream = await fetch(source);
+      if (!upstream.ok) return res.status(404).json({ error: 'Failed to fetch remote watermark' });
+      res.setHeader('Content-Type', upstream.headers.get('content-type') || 'image/png');
+      upstream.body.pipe(res);
+      return;
+    }
+    // Azure/local blob path
+    const blob = await downloadBlob(source, 'stream');
+    console.log('[WATERMARK PROXY] downloadBlob result:', blob && typeof blob === 'object' ? Object.keys(blob) : blob);
+    const stream = blob?.blobDownloadStream || blob?.readableStreamBody;
+    if (!stream) return res.status(404).json({ error: 'Blob not found', debug: { source } });
+    res.setHeader('Content-Type', blob.contentType || 'image/png');
+    stream.pipe(res);
+  } catch (error) {
+    console.error('Watermark proxy error:', error);
+    res.status(500).json({ error: error.message, debug: { source } });
+  }
+});
 import { authRequired } from '../middleware/auth.js';
 import multer from 'multer';
 import path from 'path';
@@ -7,7 +37,6 @@ import { fileURLToPath } from 'url';
 import mssql from '../mssql.cjs';
 const { queryRow, queryRows, query } = mssql;
 import { uploadImageBufferToAzure } from '../services/azureStorage.js';
-const router = express.Router();
 
 const WATERMARK_URL_CACHE_TTL_MS = 5 * 60 * 1000;
 const watermarkUrlAvailabilityCache = new Map();

@@ -21,13 +21,9 @@ const WatermarkedImage: React.FC<WatermarkedImageProps> = ({ src, alt, className
   const [watermarkLoaded, setWatermarkLoaded] = useState(false);
   const [imgError, setImgError] = useState(false);
 
+  // Always use backend proxy for watermark overlay images
   const resolveWatermarkUrl = (raw: string): string => {
-    const value = String(raw || '');
-    if (!value) return '';
-    if (value.startsWith('http://') || value.startsWith('https://')) return value;
-    if (value.startsWith('/api/')) return value;
-    if (value.startsWith('/uploads/')) return value;
-    return getBlobUrl(value);
+    return watermarkService.getProxiedImageUrl(raw) || '';
   };
 
   useEffect(() => {

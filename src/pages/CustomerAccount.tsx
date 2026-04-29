@@ -10,7 +10,8 @@ const CustomerAccount: React.FC = () => {
   const [watchlist, setWatchlist] = useState<WatchlistEntry[]>([]);
   const [loadingWatchlist, setLoadingWatchlist] = useState(true);
   const [search, setSearch] = useState('');
-  const [actionInProgress, setActionInProgress] = useState(false);
+  // Use string for per-player loading state (player name), or '' for none
+  const [actionInProgress, setActionInProgress] = useState<string>('');
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [roster, setRoster] = useState<any[]>([]);
   // Load roster on mount
@@ -115,7 +116,7 @@ const CustomerAccount: React.FC = () => {
                   )}
                   <button
                     className="watchlist-remove-btn"
-                     disabled={typeof actionInProgress === 'string' && actionInProgress === entry.playerName.toLowerCase()}
+                     disabled={actionInProgress === entry.playerName.toLowerCase()}
                     onClick={() => {
                       const rosterPlayer = roster.find(
                         (r) => r.playerName.toLowerCase() === entry.playerName.toLowerCase()
@@ -124,19 +125,19 @@ const CustomerAccount: React.FC = () => {
                         // handleToggleWatch(rosterPlayer); // Commented out to fix TS2304
                       } else {
                         // Player may not be in the current roster — delete directly
-                        setActionInProgress(true);
+                        setActionInProgress(entry.playerName.toLowerCase());
                         playerWatchlistService.removePlayer(entry.id)
                           .then(() => {
                             showMessage('success', `Stopped watching ${entry.playerName}`);
                             return loadWatchlist();
                           })
                           .catch(() => showMessage('error', 'Failed to remove player.'))
-                           .finally(() => setActionInProgress(false));
+                          .finally(() => setActionInProgress(''));
                       }
                     }}
                     title="Stop watching"
                   >
-                     {typeof actionInProgress === 'string' && actionInProgress === entry.playerName.toLowerCase() ? '…' : '✕'}
+                     {actionInProgress === entry.playerName.toLowerCase() ? '…' : '✕'}
                   </button>
                 </li>
               ))}

@@ -1,4 +1,7 @@
 import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
+import { analyticsService } from '../services/analyticsService';
+import { AnalyticsData } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { studioFeatureService } from '../services/studioFeatureService';
 import AdminLayout from '../components/AdminLayout';
@@ -94,7 +97,13 @@ interface StudioPayoutHistoryItem {
 }
 
 export default function StudioAdminDashboard() {
+  const location = useLocation();
     // Editable shipping address state
+  // Analytics dashboard state
+  const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [analyticsError, setAnalyticsError] = useState('');
+  const [timeRange, setTimeRange] = useState<'day' | 'week' | 'month' | 'all'>('all');
     const [shipFrom, setShipFrom] = useState({
       ship_from_name: '',
       ship_from_address1: '',
@@ -169,6 +178,9 @@ export default function StudioAdminDashboard() {
   const [shareLinkNotice, setShareLinkNotice] = useState('');
 
   useEffect(() => {
+    // Track site visit and page view for analytics
+    analyticsService.trackVisit();
+    analyticsService.trackPageView(location.pathname);
     if (effectiveStudioId) {
       fetchSubscriptionInfo();
       fetchAvailablePlans();
@@ -177,8 +189,29 @@ export default function StudioAdminDashboard() {
       fetchProfitSummary();
       fetchPayoutHistory();
       fetchPublicStudioLink();
+      loadAnalytics(timeRange);
     }
   }, [user, effectiveStudioId]);
+
+  useEffect(() => {
+    if (effectiveStudioId) {
+      loadAnalytics(timeRange);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeRange, effectiveStudioId]);
+
+  const loadAnalytics = async (range: string) => {
+    setAnalyticsLoading(true);
+    setAnalyticsError('');
+    try {
+      const data = await analyticsService.getAnalytics(range);
+      setAnalytics(data);
+    } catch (error: any) {
+      setAnalyticsError('Failed to load analytics');
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  };
 
   const getAuthHeaders = () => {
     const token = localStorage.getItem('authToken');
@@ -470,6 +503,87 @@ export default function StudioAdminDashboard() {
   return (
     <AdminLayout>
       <h1>Studio Dashboard</h1>
+
+      {/* Analytics Dashboard Section */}
+      <div style={{ background: 'var(--bg-tertiary)', borderRadius: 12, padding: 24, marginBottom: 32, marginTop: 24 }}>
+        <h2 style={{ marginBottom: 16 }}>Analytics</h2>
+        <div style={{ marginBottom: 18, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {[
+            { label: 'Today', value: 'day' },
+            { label: 'This Week', value: 'week' },
+            { label: 'This Month', value: 'month' },
+            { label: 'All Time', value: 'all' },
+          ].map((range) => (
+            <button
+              key={range.value}
+              type="button"
+              className={
+                'btn btn-secondary' + (timeRange === range.value ? ' active' : '')
+              }
+              style={{ minWidth: 90, fontWeight: timeRange === range.value ? 600 : 400 }}
+              onClick={e => {
+                e.preventDefault();
+                setTimeRange(range.value as any);
+              }}
+              disabled={analyticsLoading && timeRange === range.value}
+            >
+              {range.label}
+            </button>
+          ))}
+        </div>
+        {analyticsLoading ? (
+          <div style={{ color: 'var(--text-secondary)', margin: '16px 0' }}>Loading analytics...</div>
+        ) : analyticsError ? (
+          <div style={{ color: 'var(--error-color)', margin: '16px 0' }}>{analyticsError}</div>
+        ) : analytics ? (
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 18, marginBottom: 18 }}>
+              <div style={{ background: 'var(--bg-primary)', borderRadius: 8, padding: 16, textAlign: 'center' }}>
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6 }}>VISITORS</div>
+                <div style={{ fontSize: 28, fontWeight: 700 }}>{analytics.totalVisitors ?? 0}</div>
+              </div>
+              <div style={{ background: 'var(--bg-primary)', borderRadius: 8, padding: 16, textAlign: 'center' }}>
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6 }}>PAGE VIEWS</div>
+                <div style={{ fontSize: 28, fontWeight: 700 }}>{analytics.totalPageViews ?? 0}</div>
+              </div>
+              <div style={{ background: 'var(--bg-primary)', borderRadius: 8, padding: 16, textAlign: 'center' }}>
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6 }}>ALBUM VIEWS</div>
+                <div style={{ fontSize: 28, fontWeight: 700 }}>{analytics.albumViews ? analytics.albumViews.reduce((sum, a) => sum + a.views, 0) : 0}</div>
+              </div>
+              <div style={{ background: 'var(--bg-primary)', borderRadius: 8, padding: 16, textAlign: 'center' }}>
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6 }}>PHOTO VIEWS</div>
+                <div style={{ fontSize: 28, fontWeight: 700 }}>{analytics.photoViews ? analytics.photoViews.reduce((sum, p) => sum + p.views, 0) : 0}</div>
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18 }}>
+              <div style={{ background: 'var(--bg-primary)', borderRadius: 8, padding: 16 }}>
+                <div style={{ fontWeight: 600, marginBottom: 8 }}>Top Albums</div>
+                {analytics.albumViews && analytics.albumViews.length > 0 ? (
+                  analytics.albumViews.slice(0, 5).map((album) => (
+                    <div key={album.albumId} style={{ fontSize: 15, marginBottom: 4 }}>
+                      {album.albumTitle || 'Untitled Album'} <span style={{ color: 'var(--text-secondary)' }}>({album.views} views)</span>
+                    </div>
+                  ))
+                ) : (
+                  <div style={{ color: 'var(--text-secondary)' }}>No album activity yet</div>
+                )}
+              </div>
+              <div style={{ background: 'var(--bg-primary)', borderRadius: 8, padding: 16 }}>
+                <div style={{ fontWeight: 600, marginBottom: 8 }}>Top Photos</div>
+                {analytics.photoViews && analytics.photoViews.length > 0 ? (
+                  analytics.photoViews.slice(0, 5).map((photo) => (
+                    <div key={photo.photoId} style={{ fontSize: 15, marginBottom: 4 }}>
+                      {photo.photoTitle || 'Untitled Photo'} <span style={{ color: 'var(--text-secondary)' }}>({photo.views} views)</span>
+                    </div>
+                  ))
+                ) : (
+                  <div style={{ color: 'var(--text-secondary)' }}>No photo activity yet</div>
+                )}
+              </div>
+            </div>
+          </>
+        ) : null}
+      </div>
 
       {error && <div style={{ color: 'var(--error-color)', marginBottom: '20px' }}>{error}</div>}
 

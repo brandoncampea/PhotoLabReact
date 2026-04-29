@@ -1,24 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { useSasUrl } from '../../hooks/useSasUrl';
+import { useAuth } from '../../contexts/AuthContext';
+// import { useSasUrl } from '../../hooks/useSasUrl';
 import { Watermark } from '../../types';
-import { watermarkService } from '../../services/watermarkService';
+// import { watermarkService } from '../../services/watermarkService';
 import './AdminWatermarks.css';
 import AdminLayout from '../../components/AdminLayout';
 
 // Helper component for SAS-protected watermark images
+import { watermarkService } from '../../services/watermarkService';
 function WatermarkSasImage({ src, alt }: { src: string, alt: string }) {
-  // Extract blob name from Azure or local URL
-  let blobName = '';
-  if (src?.startsWith('http') && src.includes('/watermarks/')) {
-    blobName = src.split('/watermarks/')[1]?.split('?')[0] || '';
-    blobName = `watermarks/${blobName}`;
-  } else if (src?.startsWith('/uploads/')) {
-    blobName = src.replace(/^\//, '');
-  }
-  const sasUrl = useSasUrl(blobName || src);
+  const proxiedUrl = watermarkService.getProxiedImageUrl(src);
   return (
     <img
-      src={sasUrl || ''}
+      src={proxiedUrl || ''}
       alt={alt}
       className="watermark-image"
       style={{ width: '72px', height: '72px', objectFit: 'contain', borderRadius: '8px', background: '#181825', border: '1px solid #393552', marginBottom: '0.75rem' }}
@@ -36,6 +30,7 @@ type WatermarkFormData = {
 };
 
 const AdminWatermarks: React.FC = () => {
+  const { user } = useAuth();
   const [watermarks, setWatermarks] = useState<Watermark[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -90,7 +85,7 @@ const AdminWatermarks: React.FC = () => {
       isDefault: watermark.isDefault,
       tiled: watermark.tiled,
     });
-    setPreviewUrl(watermark.imageUrl);
+    setPreviewUrl(watermarkService.getProxiedImageUrl(watermark.imageUrl));
     setShowModal(true);
   };
 
@@ -118,7 +113,7 @@ const AdminWatermarks: React.FC = () => {
     if (file) {
       setPreviewUrl(URL.createObjectURL(file));
     } else if (editingWatermark?.imageUrl) {
-      setPreviewUrl(editingWatermark.imageUrl);
+      setPreviewUrl(watermarkService.getProxiedImageUrl(editingWatermark.imageUrl));
     } else {
       setPreviewUrl(null);
     }
@@ -142,7 +137,11 @@ const AdminWatermarks: React.FC = () => {
       };
 
       if (editingWatermark) {
-        const updated = await watermarkService.update(editingWatermark.id, payload, formData.image || undefined);
+        if (!user?.studioId) {
+          setError('No studio ID found for user.');
+          return;
+        }
+        const updated = await watermarkService.update(editingWatermark.id, { ...payload, studioId: user.studioId } as any, formData.image || undefined);
         setWatermarks((prev) => prev.map((w) => (w.id === updated.id ? updated : w)));
         setMessage('Watermark updated.');
       } else {
@@ -150,7 +149,11 @@ const AdminWatermarks: React.FC = () => {
           setError('Please select an image file.');
           return;
         }
-        const created = await watermarkService.create(payload as any, formData.image);
+        if (!user?.studioId) {
+          setError('No studio ID found for user.');
+          return;
+        }
+        const created = await watermarkService.create({ ...payload, studioId: user.studioId } as any, formData.image);
         setWatermarks((prev) => [created, ...prev]);
         setMessage('Watermark created.');
       }
@@ -186,19 +189,20 @@ const AdminWatermarks: React.FC = () => {
       </div>
 
       <div className="watermarks-grid">
-        {watermarks.map((watermark) => (
-          <div key={watermark.id} className="watermark-card">
-            <WatermarkSasImage src={watermark.imageUrl} alt={watermark.name} />
-
-            <div className="watermark-info">
-              <h3>{watermark.name}</h3>
-              <p>Position: {watermark.tiled ? 'Tiled' : watermark.position}</p>
-              <p>Opacity: {(watermark.opacity * 100).toFixed(0)}%</p>
-              {watermark.isDefault && <span className="badge">Default</span>}
-              {watermark.tiled && <span className="badge badge-success" style={{ marginLeft: '0.5rem' }}>Tiled</span>}
-            </div>
-            <div className="watermark-actions">
-              <button onClick={() => handleEdit(watermark)} className="btn btn-secondary btn-sm">Edit</button>
+        {watermarks
+          .filter(w => w.studioId && user?.studioId && w.studioId === user.studioId)
+          .map((watermark) => (
+            <div key={watermark.id} className="watermark-card">
+              <WatermarkSasImage src={watermark.imageUrl} alt={watermark.name} />
+              <div className="watermark-info">
+                <h3>{watermark.name}</h3>
+                <p>Position: {watermark.tiled ? 'Tiled' : watermark.position}</p>
+                <p>Opacity: {(watermark.opacity * 100).toFixed(0)}%</p>
+                {watermark.isDefault && <span className="badge">Default</span>}
+                {watermark.tiled && <span className="badge badge-success" style={{ marginLeft: '0.5rem' }}>Tiled</span>}
+              </div>
+              <div className="watermark-actions">
+                <button onClick={() => handleEdit(watermark)} className="btn btn-secondary btn-sm">Edit</button>
               <button onClick={() => handleDelete(watermark.id)} className="btn btn-danger btn-sm">Delete</button>
             </div>
           </div>
@@ -240,7 +244,7 @@ const AdminWatermarks: React.FC = () => {
                   <div className="preview-box">
                     <p style={{ fontSize: '0.85rem', marginBottom: '0.5rem', fontWeight: 500 }}>Preview:</p>
                     <img 
-                      src={previewUrl} 
+                      src={previewUrl || ''} 
                       alt="Watermark preview" 
                       style={{ maxWidth: '200px', maxHeight: '100px', objectFit: 'contain' }}
                       onError={(e) => {

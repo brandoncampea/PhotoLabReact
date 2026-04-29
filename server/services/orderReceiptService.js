@@ -161,14 +161,33 @@ const renderCustomerReceiptHtml = ({ customerName, order, items, digitalDownload
 
 const renderStudioSaleHtml = ({ order, items, customerEmail, studioName }) => {
   const orderUrl = order?.orderUrl ? String(order.orderUrl) : null;
+  // Try to extract customer name/address from order.shippingAddress (JSON string) or fallback
+  let shipping = {};
+  try {
+    if (order.shippingAddress) shipping = JSON.parse(order.shippingAddress);
+  } catch {}
+  const customerName = shipping.fullName || order.customerName || '';
+  const addressLines = [
+    shipping.addressLine1,
+    shipping.addressLine2,
+    [shipping.city, shipping.state, shipping.zipCode].filter(Boolean).join(', '),
+    shipping.country
+  ].filter(Boolean);
+
   return `
     <div style="font-family:Arial,sans-serif;background:#0f131a;color:#eaf1fb;max-width:760px;margin:0 auto;padding:20px;border:1px solid #84cc16;border-radius:12px;">
       <div style="font-size:44px;line-height:1;">💸</div>
       <div style="font-size:44px;line-height:1;">🔥</div>
       <div style="font-size:42px;font-weight:800;color:#fff;margin-top:8px;">Cha-ching! You just made a sale.</div>
-      <div style="margin-top:14px;font-size:16px;color:#c7d2e3;">${studioName ? `${esc(studioName)} — ` : ''}New order${customerEmail ? ` from <strong style="color:#a3e635;">${esc(customerEmail)}</strong>` : ''}.</div>
+      <div style="margin-top:14px;font-size:16px;color:#c7d2e3;">${studioName ? `${esc(studioName)} — ` : ''}New order${customerEmail ? ` from <strong style=\"color:#a3e635;\">${esc(customerEmail)}</strong>` : ''}.</div>
 
-      ${orderUrl ? `<div style="margin-top:14px;"><a href="${esc(orderUrl)}" style="display:inline-block;padding:10px 14px;background:#16a34a;color:#fff;text-decoration:none;border-radius:999px;font-weight:700;">View Order</a></div>` : ''}
+      <div style="margin-top:18px;padding:14px 18px;background:#181e29;border-radius:8px;max-width:420px;">
+        <div style="font-size:15px;font-weight:700;color:#fff;margin-bottom:2px;">Customer Info</div>
+        <div style="font-size:14px;color:#eaf1fb;">${esc(customerName)}</div>
+        ${addressLines.length > 0 ? `<div style=\"font-size:13px;color:#b8c2d1;margin-top:2px;\">${addressLines.map(esc).join('<br/>')}</div>` : ''}
+      </div>
+
+      ${orderUrl ? `<div style=\"margin-top:14px;\"><a href=\"${esc(orderUrl)}\" style=\"display:inline-block;padding:10px 14px;background:#16a34a;color:#fff;text-decoration:none;border-radius:999px;font-weight:700;\">View Order</a></div>` : ''}
 
       <div style="margin-top:18px;font-size:24px;font-weight:700;color:#fff;">Here's what they ordered</div>
       <table style="width:100%;border-collapse:collapse;margin-top:14px;">
@@ -184,9 +203,9 @@ const renderStudioSaleHtml = ({ order, items, customerEmail, studioName }) => {
             const qty = Number(item.quantity || 0);
             const line = (Number(item.unitPrice ?? item.price ?? 0) * qty);
             return `<tr>
-              <td style="padding:8px 6px;border-bottom:1px solid #313a47;">${qty}</td>
-              <td style="padding:8px 6px;border-bottom:1px solid #313a47;">${esc(item.productName || 'Product')}<div style="font-size:12px;color:#95a3b8;">${esc(item.photoFileName || '')}</div></td>
-              <td style="padding:8px 6px;border-bottom:1px solid #313a47;text-align:right;">${currency(line)}</td>
+              <td style=\"padding:8px 6px;border-bottom:1px solid #313a47;\">${qty}</td>
+              <td style=\"padding:8px 6px;border-bottom:1px solid #313a47;\">${esc(item.productName || 'Product')}<div style=\"font-size:12px;color:#95a3b8;\">${esc(item.photoFileName || '')}</div></td>
+              <td style=\"padding:8px 6px;border-bottom:1px solid #313a47;text-align:right;\">${currency(line)}</td>
             </tr>`;
           }).join('')}
         </tbody>

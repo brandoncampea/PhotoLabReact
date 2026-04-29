@@ -92,11 +92,18 @@ const AdminDashboard: React.FC = () => {
             label="Revenue"
           />
         </div>
-        <div className="dashboard-card tallydark-card admin-dashboard-card" role="button" tabIndex={0}
-          onClick={() => window.location.href = '/admin/orders'}
-          onKeyDown={e => { if (e.key === 'Enter') window.location.href = '/admin/orders'; }}
-        >
-          <div className="dashboard-card-label">Total Orders</div>
+        <div className="dashboard-card tallydark-card admin-dashboard-card">
+          <div
+            className="dashboard-card-label dashboard-card-label-clickable"
+            role="button"
+            tabIndex={0}
+            onClick={() => window.location.href = '/admin/orders'}
+            onKeyDown={e => { if (e.key === 'Enter') window.location.href = '/admin/orders'; }}
+            style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
+          >
+            Total Orders
+            <span aria-label="Go to Orders" style={{ fontSize: 18 }}>↗️</span>
+          </div>
           <div className="dashboard-card-value orders">{stats.totalOrders}</div>
           <div className="dashboard-card-sub">{stats.totalOrders ? (((stats.totalOrders - (stats.pendingOrders || 0)) / stats.totalOrders) * 100).toFixed(1) : '0'}% completion rate</div>
           <div className="dashboard-range-controls">
@@ -110,11 +117,18 @@ const AdminDashboard: React.FC = () => {
             label="Orders"
           />
         </div>
-        <div className="dashboard-card tallydark-card admin-dashboard-card" role="button" tabIndex={0}
-          onClick={() => window.location.href = '/admin/customers'}
-          onKeyDown={e => { if (e.key === 'Enter') window.location.href = '/admin/customers'; }}
-        >
-          <div className="dashboard-card-label">Total Customers</div>
+        <div className="dashboard-card tallydark-card admin-dashboard-card">
+          <div
+            className="dashboard-card-label dashboard-card-label-clickable"
+            role="button"
+            tabIndex={0}
+            onClick={() => window.location.href = '/admin/customers'}
+            onKeyDown={e => { if (e.key === 'Enter') window.location.href = '/admin/customers'; }}
+            style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
+          >
+            Total Customers
+            <span aria-label="Go to Customers" style={{ fontSize: 18 }}>↗️</span>
+          </div>
           <div className="dashboard-card-value customers">{stats.totalCustomers}</div>
           <div className="dashboard-card-sub">Active user accounts</div>
           <div className="dashboard-range-controls">
@@ -128,11 +142,18 @@ const AdminDashboard: React.FC = () => {
             label="New Customers"
           />
         </div>
-        <div className="dashboard-card tallydark-card admin-dashboard-card" role="button" tabIndex={0}
-          onClick={() => window.location.href = '/admin/orders?status=pending'}
-          onKeyDown={e => { if (e.key === 'Enter') window.location.href = '/admin/orders?status=pending'; }}
-        >
-          <div className="dashboard-card-label">Pending Orders</div>
+        <div className="dashboard-card tallydark-card admin-dashboard-card">
+          <div
+            className="dashboard-card-label dashboard-card-label-clickable"
+            role="button"
+            tabIndex={0}
+            onClick={() => window.location.href = '/admin/orders?status=pending'}
+            onKeyDown={e => { if (e.key === 'Enter') window.location.href = '/admin/orders?status=pending'; }}
+            style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
+          >
+            Pending Orders
+            <span aria-label="Go to Pending Orders" style={{ fontSize: 18 }}>↗️</span>
+          </div>
           <div className="dashboard-card-value pending">{stats.pendingOrders}</div>
           <div className="dashboard-card-sub">Requires attention</div>
           <div className="dashboard-range-controls">
@@ -147,11 +168,18 @@ const AdminDashboard: React.FC = () => {
           />
         </div>
 
-        <div className="dashboard-card tallydark-card admin-dashboard-card" role="button" tabIndex={0}
-          onClick={() => window.location.href = '/admin/orders'}
-          onKeyDown={e => { if (e.key === 'Enter') window.location.href = '/admin/orders'; }}
-        >
-          <div className="dashboard-card-label">Batch Orders</div>
+        <div className="dashboard-card tallydark-card admin-dashboard-card">
+          <div
+            className="dashboard-card-label dashboard-card-label-clickable"
+            role="button"
+            tabIndex={0}
+            onClick={() => window.location.href = '/admin/orders'}
+            onKeyDown={e => { if (e.key === 'Enter') window.location.href = '/admin/orders'; }}
+            style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
+          >
+            Batch Orders
+            <span aria-label="Go to Orders" style={{ fontSize: 18 }}>↗️</span>
+          </div>
           <div className="dashboard-card-value batch">{stats.batchOrders || 0}</div>
           <div className="dashboard-card-sub">Orders queued for batch fulfillment</div>
           <div className="dashboard-range-controls">

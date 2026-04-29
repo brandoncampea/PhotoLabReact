@@ -1,3 +1,4 @@
+
 import axios from 'axios';
 import api from './api';
 import { Watermark } from '../types';
@@ -9,7 +10,19 @@ const _watermarkCache: Map<number, { watermark: Watermark | null; fetchedAt: num
 const WATERMARK_CACHE_TTL_MS = 5 * 60 * 1000;
 const _watermarkInFlight: Map<number, Promise<Watermark | null>> = new Map();
 
+
+
 export const watermarkService = {
+  /**
+   * Returns the proxied image URL for a watermark, so the image is always fetched through the backend.
+   * Usage: <img src={watermarkService.getProxiedImageUrl(watermark.imageUrl)} ... />
+   */
+  getProxiedImageUrl(imageUrl: string | undefined | null): string | undefined {
+    if (!imageUrl) return undefined;
+    // Avoid double-proxying if already proxied
+    if (imageUrl.includes('/api/watermarks/proxy')) return imageUrl;
+    return `${API_URL}/watermarks/proxy?source=${encodeURIComponent(imageUrl)}`;
+  },
   async getDefaultWatermark(studioId: number): Promise<Watermark | null> {
     try {
       if (!studioId) throw new Error('studioId is required');
@@ -71,8 +84,7 @@ export const watermarkService = {
     return response.data;
   },
 
-  async create(watermark: Omit<Watermark, 'id' | 'createdDate'>, file?: File): Promise<Watermark> {
-    
+  async create(watermark: Omit<Watermark, 'id' | 'createdDate'> & { studioId?: number }, file?: File): Promise<Watermark> {
     if (file) {
       const formData = new FormData();
       formData.append('image', file);
@@ -81,23 +93,22 @@ export const watermarkService = {
       formData.append('opacity', watermark.opacity.toString());
       formData.append('isDefault', watermark.isDefault.toString());
       formData.append('tiled', watermark.tiled.toString());
-      
+      if (watermark.studioId) {
+        formData.append('studioId', watermark.studioId.toString());
+      }
       // Create a new axios instance for this request without transformRequest
       const instance = axios.create({
         baseURL: import.meta.env.VITE_API_URL || '/api',
         timeout: 30000,
       });
-      
       // Add auth token
       const token = localStorage.getItem('authToken');
       if (token) {
         instance.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       }
-      
       const response = await instance.post<Watermark>('/watermarks', formData);
       return response.data;
     }
-    
     const response = await api.post<Watermark>('/watermarks', watermark);
     return response.data;
   },

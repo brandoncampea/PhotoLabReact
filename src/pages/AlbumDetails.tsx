@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { analyticsService } from '../services/analyticsService';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import WatermarkedImage from '../components/WatermarkedImage';
 import Cropper from 'react-cropper';
@@ -17,8 +18,23 @@ type ProductWithMatch = Product & {
 };
 
 const AlbumDetails: React.FC = () => {
-    // Recommendation filter for product recommendations
-    const [recommendationFilter, setRecommendationFilter] = useState('');
+  // Utility must be defined before use
+  const normalizeMetadata = (metadata: unknown): Record<string, any> => {
+    if (!metadata) return {};
+    if (typeof metadata === 'string') {
+      try {
+        const parsed = JSON.parse(metadata);
+        return parsed && typeof parsed === 'object' ? parsed : {};
+      } catch {
+        return {};
+      }
+    }
+    if (typeof metadata === 'object') return metadata as Record<string, any>;
+    return {};
+  };
+
+  // Recommendation filter for product recommendations
+  const [recommendationFilter, setRecommendationFilter] = useState('');
   const { albumId, studioSlug } = useParams();
   const [searchParams] = useSearchParams();
   const [album, setAlbum] = useState<Album | null>(null);
@@ -36,7 +52,14 @@ const AlbumDetails: React.FC = () => {
   const [metadataFilter, setMetadataFilter] = useState<'all' | 'camera' | 'iso' | 'aperture' | 'shutterSpeed' | 'focalLength' | 'dateTaken' | 'any'>('all');
   const { addToCart } = useCart();
 
+
+
+
+
+
   const selectedPhotoId = Number(searchParams.get('photo') || 0);
+
+
   const studioSlugFromQuery = searchParams.get('studioSlug');
   // Navigation logic
   // If viewing a photo, 'Back to Album' returns to album grid (removes ?photo=...)
@@ -54,49 +77,6 @@ const AlbumDetails: React.FC = () => {
     window.location.href = url.pathname + url.search;
   };
 
-  useEffect(() => {
-    const id = Number(albumId);
-    if (!Number.isInteger(id) || id <= 0) {
-      setError('Invalid album id');
-      setLoading(false);
-      return;
-    }
-
-    const load = async () => {
-      setLoading(true);
-      setError('');
-      try {
-        const [albumRes, photosRes, productsRes] = await Promise.all([
-          api.get<Album>(`/albums/${id}`),
-          photoService.getPhotosByAlbum(id),
-          productService.getActiveProducts(id),
-        ]);
-        setAlbum(albumRes.data);
-        setPhotos(Array.isArray(photosRes) ? photosRes : []);
-        setProducts(Array.isArray(productsRes) ? productsRes : []);
-      } catch {
-        setError('Failed to load album');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    load();
-  }, [albumId]);
-
-  const normalizeMetadata = (metadata: unknown): Record<string, any> => {
-    if (!metadata) return {};
-    if (typeof metadata === 'string') {
-      try {
-        const parsed = JSON.parse(metadata);
-        return parsed && typeof parsed === 'object' ? parsed : {};
-      } catch {
-        return {};
-      }
-    }
-    if (typeof metadata === 'object') return metadata as Record<string, any>;
-    return {};
-  };
 
   const filteredPhotos = useMemo(() => {
     const query = photoQuery.trim().toLowerCase();
@@ -152,6 +132,45 @@ const AlbumDetails: React.FC = () => {
     () => filteredPhotos.find((p) => p.id === selectedPhotoId) || null,
     [filteredPhotos, selectedPhotoId]
   );
+
+  useEffect(() => {
+    const id = Number(albumId);
+    if (!Number.isInteger(id) || id <= 0) {
+      setError('Invalid album id');
+      setLoading(false);
+      return;
+    }
+
+    const load = async () => {
+      setLoading(true);
+      setError('');
+      try {
+        const [albumRes, photosRes, productsRes] = await Promise.all([
+          api.get<Album>(`/albums/${id}`),
+          photoService.getPhotosByAlbum(id),
+          productService.getActiveProducts(id),
+        ]);
+        setAlbum(albumRes.data);
+        setPhotos(Array.isArray(photosRes) ? photosRes : []);
+        setProducts(Array.isArray(productsRes) ? productsRes : []);
+        // Track album view for analytics
+        analyticsService.trackAlbumView(id, albumRes.data?.name || '');
+      } catch {
+        setError('Failed to load album');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    load();
+  }, [albumId]);
+  // Track photo view for analytics when selectedPhoto changes
+  useEffect(() => {
+    if (selectedPhoto && album) {
+      analyticsService.trackPhotoView(selectedPhoto.id, selectedPhoto.fileName, album.id, album.name);
+    }
+  }, [selectedPhoto, album]);
+
 
   const orderedProducts = useMemo((): ProductWithMatch[] => {
     if (!selectedPhoto) return [];
@@ -511,11 +530,14 @@ const AlbumDetails: React.FC = () => {
       </div>
 
       {selectedPhoto && (
-        <div style={{ marginBottom: 14, border: '1px solid #2a2740', borderRadius: 8, overflow: 'hidden' }}>
-          <img
+        <div style={{ marginBottom: 14, border: '1px solid #2a2740', borderRadius: 8, overflow: 'hidden', background: '#0f0f16', maxHeight: 520 }}>
+          {/* Overlay the studio watermark on the selected photo */}
+          <WatermarkedImage
             src={`/api/photos/${selectedPhoto.id}/asset?variant=full`}
             alt={selectedPhoto.fileName}
-            style={{ width: '100%', maxHeight: 520, objectFit: 'contain', background: '#0f0f16' }}
+            style={{ width: '100%', height: '100%', maxHeight: 520, objectFit: 'contain', display: 'block' }}
+            studioId={(album as any)?.studioId || (album as any)?.studio_id || (selectedPhoto as any)?.studioId || (selectedPhoto as any)?.studio_id}
+            fill={true}
           />
         </div>
       )}

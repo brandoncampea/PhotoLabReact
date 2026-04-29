@@ -509,6 +509,8 @@ const AdminOrders: React.FC = () => {
     const queryOrderId = Number(new URLSearchParams(location.search).get('orderId'));
     if (Number.isInteger(queryOrderId) && queryOrderId > 0) {
       setSelectedOrderId(queryOrderId);
+      // Also ensure order details are loaded if navigating directly
+      ensureOrderDetailsLoaded(queryOrderId);
       return;
     }
     setSelectedOrderId(null);

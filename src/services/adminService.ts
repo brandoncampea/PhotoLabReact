@@ -98,7 +98,18 @@ export const discountCodeService = {
 export const userAdminService = {
   async getAll(): Promise<UserAccount[]> {
     const response = await api.get('/users');
-    const users = response.data as Array<{ id: number; email: string; name: string; role: 'customer' | 'admin' | 'super_admin' | 'studio_admin'; isActive: boolean; createdAt: string; lastLoginAt?: string; totalOrders: number; totalSpent: number }>;
+    const users = response.data as Array<{
+      id: number;
+      email: string;
+      name: string;
+      role: 'customer' | 'admin' | 'super_admin' | 'studio_admin';
+      isActive: boolean;
+      createdAt: string;
+      lastLoginAt?: string;
+      totalOrders: number;
+      totalSpent: number;
+      watchedPlayers?: string[];
+    }>;
     return users.map(u => {
       const parts = (u.name || '').trim().split(' ');
       const firstName = parts.shift() || '';
@@ -114,6 +125,7 @@ export const userAdminService = {
         totalSpent: u.totalSpent || 0,
         isActive: !!u.isActive,
         lastLoginDate: u.lastLoginAt || undefined,
+        watchedPlayers: u.watchedPlayers || [],
       } as UserAccount;
     });
   },

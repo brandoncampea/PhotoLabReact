@@ -48,7 +48,7 @@ import whccProxyRoutes from './routes/whccProxy.js';
 import packageRoutes from './routes/packages.js';
 import profileRoutes from './routes/profile.js';
 import cartRoutes from './routes/cart.js';
-import watermarkRoutes from './routes/watermarks.js';
+import watermarkRoutes from './routes/watermarks.mjs';
 import discountCodeRoutes from './routes/discountCodes.js';
 import userRoutes from './routes/users.js';
 import categoryRoutes from './routes/categories.js';
