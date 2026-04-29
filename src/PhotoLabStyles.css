@@ -1,3 +1,72 @@
+/* Responsive Navbar Styles */
+@media (max-width: 900px) {
+	.navbar {
+		flex-direction: row;
+		padding: 1rem 1rem;
+		position: relative;
+	}
+	.navbar-links {
+		display: none;
+		position: absolute;
+		top: 100%;
+		left: 0;
+		width: 100%;
+		background: var(--bg-secondary, #23232a);
+		flex-direction: column;
+		gap: 0;
+		margin: 0;
+		box-shadow: 0 2px 8px rgba(0,0,0,0.13);
+		z-index: 100;
+	}
+	.navbar-links.open {
+		display: flex;
+	}
+	.navbar-link {
+		width: 100%;
+		border-radius: 0;
+		justify-content: flex-start;
+		padding: 1rem 1.5rem;
+		font-size: 1.1rem;
+		background: none;
+		border-bottom: 1px solid rgba(255,255,255,0.07);
+	}
+	.navbar-user {
+		margin-left: 0;
+		margin-top: 0.5rem;
+		width: 100%;
+		justify-content: flex-start;
+		background: none;
+		box-shadow: none;
+		padding: 0.5rem 1.5rem;
+	}
+	.navbar-toggle {
+		display: flex !important;
+		align-items: center;
+		justify-content: center;
+		background: none;
+		border: none;
+		color: var(--text-primary, #fff);
+		font-size: 2rem;
+		cursor: pointer;
+		margin-left: auto;
+		z-index: 101;
+	}
+}
+
+@media (max-width: 600px) {
+	.navbar {
+		flex-direction: row;
+		padding: 0.7rem 0.5rem;
+	}
+	.navbar-brand {
+		font-size: 1.3rem;
+		gap: 0.4rem;
+	}
+	.navbar-link {
+		font-size: 1rem;
+		padding: 0.8rem 1rem;
+	}
+}
 /* Dashboard pill-style quick action buttons */
 /* Modern dashboard pill-style quick action buttons */
 .dashboard-pill {

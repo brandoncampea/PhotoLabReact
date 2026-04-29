@@ -1,3 +1,142 @@
+/* Cart icon and badge styling */
+.cartIconWrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-left: 1.2rem;
+  cursor: pointer;
+}
+.cartIcon {
+  font-size: 2rem;
+  color: #fff;
+  transition: color 0.2s;
+}
+.cartIconWrapper:hover .cartIcon {
+  color: #ffb300;
+}
+.cartBadge {
+  position: absolute;
+  top: -0.3rem;
+  right: -0.5rem;
+  background: #ff3b3b;
+  color: #fff;
+  border-radius: 50%;
+  min-width: 1.2rem;
+  height: 1.2rem;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.18);
+  z-index: 2;
+  padding: 0 0.3rem;
+}
+
+/* Show cart icon outside hamburger on mobile */
+.cartMobile {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .cartMobile {
+    display: flex !important;
+    align-items: center;
+    margin-left: auto;
+    margin-right: 0.5rem;
+  }
+  .desktopOnly.cartIconWrapper {
+    display: none !important;
+  }
+}
+/* Responsive hamburger toggle */
+.navbarToggle {
+  display: none;
+}
+
+/* Utility classes for responsive menu rendering */
+.desktopOnly {
+  display: flex !important;
+}
+.mobileOnly {
+  display: none !important;
+}
+
+@media (max-width: 900px) {
+  .desktopOnly {
+    display: none !important;
+  }
+  .mobileOnly {
+    display: block !important;
+  }
+  .mobileMenuWrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+  .navbarToggle {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    color: #fff;
+    font-size: 2rem;
+    cursor: pointer;
+    margin-left: auto;
+    z-index: 101;
+  }
+  .navbarLinks {
+    display: none !important;
+    position: absolute;
+    top: 100%;
+    right: 0;
+    min-width: 180px;
+    background: #191a22;
+    flex-direction: column;
+    gap: 0;
+    margin: 0;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.13);
+    z-index: 100;
+    padding-bottom: 1rem;
+    border-radius: 0 0 1rem 1rem;
+    animation: fadeIn 0.15s;
+    border: 2px solid #23232a;
+    border-top: none;
+  }
+  .navbarLinks.open {
+    display: flex !important;
+  }
+  .navbarLink {
+    width: 100%;
+    border-radius: 0;
+    justify-content: flex-start;
+    padding: 1rem 1.5rem;
+    font-size: 1.1rem;
+    background: none;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+  }
+  .navbarUser {
+    margin-left: 0;
+    margin-top: 0.5rem;
+    width: 100%;
+    justify-content: flex-start;
+    background: none;
+    box-shadow: none;
+    padding: 0.5rem 1.5rem;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
 /* Modern dark navbar styles */
 .navbar {
   display: flex;
@@ -21,11 +160,11 @@
   color: #e0e0e0;
 }
 .navbarBrandImg {
-  height: 2.2rem;
-  width: 2.2rem;
+  height: 6rem;
+  width: 5rem;
   border-radius: 0.5rem;
-  background: #fff;
-  object-fit: cover;
+  background: transparent;
+  object-fit: contain;
   box-shadow: 0 2px 8px rgba(0,0,0,0.10);
 }
 .navbarLinks {

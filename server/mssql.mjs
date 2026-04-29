@@ -299,15 +299,21 @@ throw new Error('Do not import mssql.mjs. Use mssql.cjs instead.');
       IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'profile_config')
       BEGIN
         CREATE TABLE profile_config (
-          id INT PRIMARY KEY,
+          id INT IDENTITY(1,1) PRIMARY KEY,
+          studio_id INT NOT NULL UNIQUE FOREIGN KEY REFERENCES studios(id) ON DELETE CASCADE,
           owner_name NVARCHAR(255),
           business_name NVARCHAR(255),
           email NVARCHAR(255),
           receive_order_notifications BIT DEFAULT 1,
           logo_url NVARCHAR(MAX),
-          updated_at DATETIME2 DEFAULT CURRENT_TIMESTAMP,
-          CONSTRAINT ck_profile_config_id CHECK (id = 1)
+          updated_at DATETIME2 DEFAULT CURRENT_TIMESTAMP
         )
+      END
+      ELSE IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'profile_config' AND COLUMN_NAME = 'studio_id')
+      BEGIN
+        ALTER TABLE profile_config ADD studio_id INT NULL;
+        -- Optionally, migrate existing data: set studio_id = id where studio_id IS NULL
+        UPDATE profile_config SET studio_id = id WHERE studio_id IS NULL AND id IS NOT NULL;
       END
     `);
 

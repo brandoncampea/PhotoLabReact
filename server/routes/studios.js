@@ -377,7 +377,7 @@ router.get('/public/:slug', async (req, res) => {
                   pc.business_name as businessName,
                   pc.logo_url as logoUrl
            FROM studios s
-           LEFT JOIN profile_config pc ON pc.id = s.id
+           LEFT JOIN profile_config pc ON pc.studio_id = s.id
            WHERE s.public_slug = $1`
         : `SELECT id,
                   name,

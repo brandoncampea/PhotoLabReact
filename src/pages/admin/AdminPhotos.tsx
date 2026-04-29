@@ -64,13 +64,48 @@ type DetectionResult = {
 
 
 
-// Dummy face detection (can be replaced with real model)
+
+// Real face detection using BlazeFace
+import * as blazeface from '@tensorflow-models/blazeface';
+import '@tensorflow/tfjs';
+
 const detectFaceBoxesInBrowser = async (photo: Photo): Promise<{ faceBoxes: FaceTagBox[]; error?: string }> => {
-  // Use the full-size image for detection
-  const imageUrl = photo.fullImageUrl;
-  // TODO: Replace this placeholder with actual face detection logic using imageUrl
-  // Example: const faceBoxes = await runFaceDetection(imageUrl);
-  return { faceBoxes: [] };
+  try {
+    const imageUrl = photo.fullImageUrl;
+    if (!imageUrl) return { faceBoxes: [], error: 'No image URL' };
+    // Load image
+    const img = new window.Image();
+    img.crossOrigin = 'anonymous';
+    img.src = imageUrl;
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = reject;
+    });
+    // Load BlazeFace model
+    const model = await blazeface.load();
+    // Run detection
+    const predictions = await model.estimateFaces(img, false);
+    // Convert predictions to FaceTagBox[]
+    const faceBoxes: FaceTagBox[] = predictions.map((pred, idx) => {
+      // pred.topLeft and pred.bottomRight are [x, y] arrays
+      const [x1, y1] = pred.topLeft as [number, number];
+      const [x2, y2] = pred.bottomRight as [number, number];
+      const width = img.width;
+      const height = img.height;
+      return {
+        id: `face-${idx}`,
+        leftPct: (x1 / width) * 100,
+        topPct: (y1 / height) * 100,
+        widthPct: ((x2 - x1) / width) * 100,
+        heightPct: ((y2 - y1) / height) * 100,
+        playerName: null,
+        playerNumber: null,
+      };
+    });
+    return { faceBoxes };
+  } catch (err: any) {
+    return { faceBoxes: [], error: err?.message || 'Face detection failed' };
+  }
 };
 
 
@@ -1029,7 +1064,11 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
           numberMatchingAvailable: !!result.numberMatchingAvailable,
           rosterPlayersWithNumbersCount: Number(result.rosterPlayersWithNumbersCount || 0),
           faceMatchingAvailable: !!result.faceMatchingAvailable,
-          faceMatches: result.faceMatches || [],
+          faceMatches: (result.faceMatches || []).map(fm => ({
+            playerName: fm.playerName,
+            playerNumber: fm.playerNumber ?? undefined, // allow null
+            distance: fm.distance,
+          })),
           faceBoxes: mergedFaceBoxes,
           faceDetectionError: faceBoxResult.error || null,
           numberMatches: result.numberMatches || [],

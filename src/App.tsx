@@ -55,8 +55,8 @@ const CustomerAccount = lazy(() => import('./pages/CustomerAccount'));
 function App() {
   return (
     <AuthProvider>
-      <Layout>
-        <CartProvider>
+      <CartProvider>
+        <Layout>
           <Suspense fallback={<div className="loader">Loading...</div>}>
             <Routes>
               <Route path="/" element={<LandingPage />} />
@@ -114,8 +114,8 @@ function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Suspense>
-        </CartProvider>
-      </Layout>
+        </Layout>
+      </CartProvider>
     </AuthProvider>
   );
 }

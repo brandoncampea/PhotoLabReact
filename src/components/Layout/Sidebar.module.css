@@ -1,3 +1,64 @@
+.sidebarCollapseBtn {
+  background: none;
+  border: none;
+  color: #bcbcff;
+  font-size: 1.3rem;
+  font-weight: 700;
+  padding: 0.5rem 0.5rem 0.5rem 0.2rem;
+  border-radius: 50%;
+  margin-bottom: 1.2rem;
+  margin-left: 0.2rem;
+  cursor: pointer;
+  transition: background 0.18s, color 0.18s;
+  align-self: flex-end;
+}
+.sidebarCollapseBtn:hover {
+  background: #23234a;
+  color: #fff;
+}
+.sidebarCollapsed {
+  width: 56px !important;
+  min-width: 56px !important;
+  padding: 16px 4px 16px 4px !important;
+  align-items: center !important;
+  overflow-x: hidden;
+}
+.sidebarCollapsed .sidebarMenuGroup {
+  margin: 0;
+  padding: 0;
+  border-radius: 16px;
+  border: none;
+  background: none;
+  box-shadow: none;
+  gap: 0.2rem;
+}
+.sidebarCollapsed .sidebarLink {
+  padding: 0.7rem 0.2rem;
+  margin: 0.2rem 0;
+  font-size: 1.35rem;
+  border-radius: 12px;
+  text-align: center;
+  justify-content: center;
+  min-width: 0;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.sidebarCollapsed .sidebarSuperAdminGroup {
+  margin: 0.5rem 0 0 0;
+  padding: 0;
+  border: none;
+  background: none;
+  box-shadow: none;
+}
+.sidebarCollapsed .sidebarExpandBtn {
+  padding: 0.7rem 0.2rem;
+  font-size: 1.35rem;
+  border-radius: 12px;
+  text-align: center;
+  margin: 0.2rem 0;
+}
 /* Super Admin group uses the same style as sidebarMenuGroup for consistency */
 .sidebarSuperAdminGroup {
   margin: 10px 10px 0 10px;
