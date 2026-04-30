@@ -244,6 +244,8 @@ const AdminAlbums: React.FC = () => {
                   <th style={{ padding: '8px 12px', textAlign: 'left' }}>Description</th>
                   <th style={{ padding: '8px 12px', textAlign: 'left' }}>Protected</th>
                   <th style={{ padding: '8px 12px', textAlign: 'left' }}>Photos</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Products Ordered</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Est. Net Revenue</th>
                   <th style={{ padding: '8px 12px', textAlign: 'left' }}>Created</th>
                   <th style={{ padding: '8px 12px', textAlign: 'left' }}>Actions</th>
                 </tr>
@@ -283,6 +285,10 @@ const AdminAlbums: React.FC = () => {
                       <td style={{ padding: '8px 12px', color: '#fff' }}>{album.description}</td>
                       <td style={{ padding: '8px 12px', color: '#fff' }}>{album.isPasswordProtected ? 'Yes' : 'No'}</td>
                       <td style={{ padding: '8px 12px', color: '#fff' }}>{album.photoCount}</td>
+                      <td style={{ padding: '8px 12px', color: '#fff' }}>{album.productCount ?? 0}</td>
+                      <td style={{ padding: '8px 12px', color: '#fff' }}>
+                        {typeof album.netRevenue === 'number' ? `$${album.netRevenue.toFixed(2)}` : '$0.00'}
+                      </td>
                       <td style={{ padding: '8px 12px', color: '#fff' }}>{new Date(album.createdDate).toLocaleDateString()}</td>
                       <td style={{ padding: '8px 12px' }}>
                         <div className="action-buttons" style={{ display: 'flex', gap: 8 }}>

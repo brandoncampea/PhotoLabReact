@@ -33,6 +33,8 @@ export interface Album {
   passwordHint?: string;
   batchShippingActive?: boolean;
   batchDeadline?: string;
+  productCount?: number;
+  netRevenue?: number;
 }
 
 export interface Photo {

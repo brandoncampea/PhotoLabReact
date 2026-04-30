@@ -102,7 +102,6 @@ router.get('/', authRequired, async (req, res) => {
     let albums;
     const studioId = user?.studio_id;
     if (studioId) {
-      // If studioId is present (even for super_admin), filter by studio
       albums = await queryRows(`
         SELECT 
           a.id,
@@ -123,7 +122,6 @@ router.get('/', authRequired, async (req, res) => {
         ORDER BY a.created_at DESC
       `, [studioId]);
     } else if (user?.role === 'super_admin') {
-      // Only show all albums if super_admin and no studioId
       albums = await queryRows(`
         SELECT 
           a.id,
@@ -143,13 +141,42 @@ router.get('/', authRequired, async (req, res) => {
         ORDER BY a.created_at DESC
       `);
     } else {
-      // No studioId and not super_admin
       console.log('ALBUMS ROUTE: No studioId and not super_admin, returning empty array');
       return res.json([]);
     }
+
+    // Fetch product count and net revenue for each album
+    const albumIds = albums.map(a => a.id);
+    let statsMap = new Map();
+    if (albumIds.length > 0) {
+      const placeholders = albumIds.map((_, i) => `$${i + 1}`).join(',');
+      const statsRows = await queryRows(`
+        SELECT ph.album_id as albumId,
+               SUM(oi.quantity) as productCount,
+               SUM((oi.price - COALESCE(ps.cost, prod.cost, 0)) * oi.quantity) as netRevenue
+        FROM order_items oi
+        INNER JOIN photos ph ON ph.id = oi.photo_id
+        INNER JOIN albums p ON p.id = ph.album_id
+        LEFT JOIN products prod ON prod.id = oi.product_id
+        LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id
+        WHERE p.id IN (${placeholders})
+        GROUP BY ph.album_id
+      `, albumIds);
+      statsMap = new Map(statsRows.map(row => [row.albumId, row]));
+    }
+
     const albumsWithPreviews = await addAlbumPreviewImages(albums);
-    res.json(albumsWithPreviews.map(signAlbumForResponse));
+    const albumsWithStats = albumsWithPreviews.map(album => {
+      const stats = statsMap.get(album.id) || {};
+      return {
+        ...signAlbumForResponse(album),
+        productCount: Number(stats.productCount) || 0,
+        netRevenue: Number(stats.netRevenue) || 0,
+      };
+    });
+    res.json(albumsWithStats);
   } catch (error) {
+    console.error('[GET /albums] Internal Server Error:', error);
     res.status(500).json({ error: error.message });
   }
 });
