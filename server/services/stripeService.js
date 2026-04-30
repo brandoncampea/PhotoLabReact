@@ -9,23 +9,15 @@ const stripe = new Stripe(stripeSecretKey, {
 });
 
 const getConfiguredStripeClient = async () => {
-  try {
-    const config = await queryRow('SELECT * FROM subscription_stripe_config WHERE id = 1');
-    const secretKey = config?.secret_key ? String(config.secret_key).trim() : '';
-    const isActive = Boolean(config?.is_active);
-
-    if (isActive && secretKey && !secretKey.includes('example')) {
-      return {
-        client: new Stripe(secretKey, { apiVersion: '2023-10-16' }),
-        config,
-      };
-    }
-  } catch (error) {
-    // ...existing code...
+  const envKey = String(process.env.STRIPE_SECRET_KEY || '').trim();
+  if (!envKey || envKey.includes('example') || envKey.includes('***')) {
+    return {
+      client: stripe,
+      config: null,
+    };
   }
-
   return {
-    client: stripe,
+    client: new Stripe(envKey, { apiVersion: '2023-10-16' }),
     config: null,
   };
 };

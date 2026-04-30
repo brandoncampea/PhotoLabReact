@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import './TicketModal.css';
 import { getTicket, addComment, updateTicket } from './api';
 import { Ticket, TicketComment } from './types';
 
@@ -37,7 +38,7 @@ export const TicketDetails: React.FC<TicketDetailsProps> = ({ ticketId, currentU
   if (!ticket) return <div>Ticket not found.</div>;
 
   return (
-    <div>
+    <div className="ticket-modal">
       <button onClick={onBack}>Back to tickets</button>
       <h3>{ticket.subject}</h3>
       <p>{ticket.description}</p>

@@ -29,11 +29,7 @@ const Navbar: React.FC = () => {
     return '';
   }, [location.pathname, location.search]);
 
-  // Debug: Log studioSlug and logoUrl
-  useEffect(() => {
-    // eslint-disable-next-line no-console
-    console.log('[Navbar DEBUG]', { studioSlug, logoUrl: publicStudioBrand?.logoUrl });
-  }, [studioSlug, publicStudioBrand?.logoUrl]);
+  // ...existing code...
 
   useEffect(() => {
     let cancelled = false;

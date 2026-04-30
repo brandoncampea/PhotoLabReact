@@ -237,13 +237,12 @@ const getSuperAdminReceiptBcc = async () => {
 };
 
 const getConfiguredStripeClient = async () => {
-  const config = await queryRow('SELECT secret_key as secretKey, is_active as isActive FROM stripe_config WHERE id = 1');
-  const secretKey = String(config?.secretKey || '').trim();
-  if (!config?.isActive || !secretKey || secretKey.includes('example') || secretKey.includes('***')) {
+  const envKey = String(process.env.STRIPE_SECRET_KEY || '').trim();
+  if (!envKey || envKey.includes('example') || envKey.includes('***')) {
     return null;
   }
   const Stripe = (await import('stripe')).default;
-  return new Stripe(secretKey, { apiVersion: '2023-10-16' });
+  return new Stripe(envKey, { apiVersion: '2023-10-16' });
 };
 
 const fetchPaymentIntentAccounting = async (paymentIntentId) => {
