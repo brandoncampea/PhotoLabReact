@@ -52,7 +52,6 @@ const SearchPage: React.FC = () => {
       const photos = photosArrays.flat();
       setAllPhotos(photos);
     } catch (error) {
-      console.error('Error loading photos:', error);
     } finally {
       setLoading(false);
     }
@@ -142,7 +141,6 @@ const SearchPage: React.FC = () => {
         setShareNotification('Photo link copied to clipboard!');
         setTimeout(() => setShareNotification(''), 3000);
       } catch (err) {
-        console.error('Failed to copy link:', err);
       }
     }
   };

@@ -35,11 +35,11 @@ type DashboardStats = {
 const AdminDashboard: React.FC = () => {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [revenueRange, setRevenueRange] = useState<'day' | 'week' | 'month'>('month');
-  const [ordersRange, setOrdersRange] = useState<'day' | 'week' | 'month'>('month');
-  const [customersRange, setCustomersRange] = useState<'day' | 'week' | 'month'>('month');
-  const [pendingRange, setPendingRange] = useState<'day' | 'week' | 'month'>('month');
-  const [batchRange, setBatchRange] = useState<'day' | 'week' | 'month'>('month');
+  const [revenueRange, setRevenueRange] = useState<'day' | 'week' | 'month'>('day');
+  const [ordersRange, setOrdersRange] = useState<'day' | 'week' | 'month'>('day');
+  const [customersRange, setCustomersRange] = useState<'day' | 'week' | 'month'>('day');
+  const [pendingRange, setPendingRange] = useState<'day' | 'week' | 'month'>('day');
+  const [batchRange, setBatchRange] = useState<'day' | 'week' | 'month'>('day');
   const [analyticsRange, setAnalyticsRange] = useState<'today' | 'week' | 'month' | 'all'>('all');
 
   useEffect(() => {

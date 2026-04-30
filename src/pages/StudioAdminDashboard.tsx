@@ -1025,9 +1025,17 @@ export default function StudioAdminDashboard() {
                   </div>
                 </div>
                 <div className="admin-summary-box">
-                  <div className="muted-text" style={{ fontSize: '12px' }}>Studio Revenue</div>
-                  <div style={{ fontSize: '22px', fontWeight: 'bold' }}>
-                    ${profitSummary.totalStudioRevenue.toFixed(2)}
+                  <div className="muted-text" style={{ fontSize: '12px' }}>Total Revenue (Gross Margin)</div>
+                  <div style={{ fontSize: '22px', fontWeight: 'bold', color: '#86efac' }}>
+                    ${(
+                      profitSummary.totalStudioRevenue -
+                      profitSummary.totalBaseRevenue +
+                      (profitSummary.totalShippingMargin || 0) -
+                      profitSummary.totalStripeFees
+                    ).toFixed(2)}
+                  </div>
+                  <div className="admin-summary-box-sub" style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                    Formula: Studio Price Total - Base Cost Total + Shipping Margin - Stripe Fees
                   </div>
                 </div>
                 <div className="admin-summary-box">

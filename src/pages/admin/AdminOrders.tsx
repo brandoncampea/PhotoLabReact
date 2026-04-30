@@ -675,9 +675,11 @@ const AdminOrders: React.FC = () => {
             : 'Direct order: customer charged flat fee';
         const taxAmount = Number(order.taxAmount) || 0;
         const stripeFeeAmount = Number(order.stripeFeeAmount) || 0;
+        // Only include uncovered shipping cost (not tax or stripe fees)
         const uncoveredShippingCost = Math.max(0, studioShippingCost - shippingCost);
-        const otherOrderCosts = uncoveredShippingCost + taxAmount + stripeFeeAmount;
-        const grossMargin = studioRevenue - baseRevenue - otherOrderCosts;
+        const otherOrderCosts = uncoveredShippingCost;
+        // Gross Margin = Studio Price Total - Base Cost Total + Shipping Margin - Stripe Fees
+        const grossMargin = studioRevenue - baseRevenue + shippingMargin - stripeFeeAmount;
         const importRunAt =
           order.whccRequestLog?.importResponseMeta?.runAt ||
           order.whccImportResponse?.Received ||

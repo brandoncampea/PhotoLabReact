@@ -13,10 +13,10 @@ const SuperAdminDashboard: React.FC = () => {
   const [expandedStudio, setExpandedStudio] = useState<number | null>(null);
 
   // Chart range state
-  const [revenueRange, setRevenueRange] = useState<'day' | 'week' | 'month'>('month');
-  const [ordersRange, setOrdersRange] = useState<'day' | 'week' | 'month'>('month');
-  const [customersRange, setCustomersRange] = useState<'day' | 'week' | 'month'>('month');
-  const [pendingRange, setPendingRange] = useState<'day' | 'week' | 'month'>('month');
+  const [revenueRange, setRevenueRange] = useState<'day' | 'week' | 'month'>('day');
+  const [ordersRange, setOrdersRange] = useState<'day' | 'week' | 'month'>('day');
+  const [customersRange, setCustomersRange] = useState<'day' | 'week' | 'month'>('day');
+  const [pendingRange, setPendingRange] = useState<'day' | 'week' | 'month'>('day');
 
   // Chart data state
   const [chartLabels, setChartLabels] = useState<{ [key: string]: string[] }>({ day: [], week: [], month: [] });
