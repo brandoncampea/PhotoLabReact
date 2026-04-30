@@ -16,10 +16,28 @@ const AlbumCoverCarousel: React.FC<AlbumCoverCarouselProps> = ({
   previewImageUrls = [],
   studioId,
 }) => {
+  const toThumbnail = (url: string): string => {
+    if (!url) return url;
+    // If already a thumbnail API variant, return as is
+    if (url.includes('/asset?variant=thumbnail')) return url;
+    // If it's a photo API call, force thumbnail variant
+    const photoApiMatch = url.match(/^\/api\/photos\/(\d+)(\/asset)?/);
+    if (photoApiMatch) {
+      const photoId = photoApiMatch[1];
+      return `/api/photos/${photoId}/asset?variant=thumbnail`;
+    }
+    // If it's a blob path, use proxy endpoint with thumbnail
+    if (/^albums\//.test(url)) {
+      return `/api/photos/asset?blobName=${encodeURIComponent(url)}&variant=thumbnail`;
+    }
+    // Otherwise, return as is (external URLs, etc.)
+    return url;
+  };
+
   const images = useMemo(() => {
     // Always show coverImageUrl first if present, then unique previewImageUrls (excluding duplicates)
-    const cover = coverImageUrl ? [coverImageUrl] : [];
-    const previews = (previewImageUrls || []).filter(Boolean).filter(url => url !== coverImageUrl);
+    const cover = coverImageUrl ? [toThumbnail(coverImageUrl)] : [];
+    const previews = (previewImageUrls || []).filter(Boolean).filter(url => url !== coverImageUrl).map(toThumbnail);
     const deduped = Array.from(new Set([...cover, ...previews]));
     if (deduped.length > 0) {
       return deduped;

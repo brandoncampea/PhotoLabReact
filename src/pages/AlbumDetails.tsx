@@ -619,7 +619,7 @@ const AlbumDetails: React.FC = () => {
                     const studioId = (album as any)?.studioId || (album as any)?.studio_id || (photos.length > 0 ? (photos[0] as any)?.studioId || (photos[0] as any)?.studio_id : undefined);
                     return (
                       <WatermarkedImage
-                        src={`/api/photos/${photo.id}/asset?variant=full`}
+                        src={`/api/photos/${photo.id}/asset?variant=thumbnail`}
                         alt={photo.fileName}
                         style={{ width: '100%', height: 220, objectFit: 'cover', display: 'block' }}
                         studioId={studioId}
