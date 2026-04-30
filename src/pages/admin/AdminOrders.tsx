@@ -8,6 +8,7 @@ import { shippingService } from '../../services/shippingService';
 import AdminLayout from '../../components/AdminLayout';
 import './AdminOrders.css';
 import { useSasUrl } from '../../hooks/useSasUrl';
+import { updateStripeFee } from '../../services/stripeFeeService';
 
 // ...existing code...
 
@@ -120,6 +121,35 @@ const AdminOrders: React.FC = () => {
   const [cancelLoading, setCancelLoading] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
+    // Auto-recalculate Stripe fee for orders with $0 fee and valid paymentIntentId
+    useEffect(() => {
+      const recalcStripeFees = async () => {
+        // Only run if orders are loaded
+        if (!orders || !orders.length) return;
+        // Find orders with $0 stripe fee and a valid paymentIntentId
+        const ordersToUpdate = orders.filter(
+          (order) =>
+            (Number(order.stripeFeeAmount) === 0 || order.stripeFeeAmount === undefined || order.stripeFeeAmount === null)
+            && order.paymentIntentId && typeof order.paymentIntentId === 'string' && order.paymentIntentId.startsWith('pi_')
+        );
+        if (!ordersToUpdate.length) return;
+        // For each, call updateStripeFee and refresh the order in state
+        for (const order of ordersToUpdate) {
+          try {
+            await updateStripeFee(order.id);
+            // Optionally, reload orders after update
+            // (for now, just reload all orders after all updates)
+          } catch (err) {
+            // Ignore errors for now
+          }
+        }
+        // After all updates, reload orders
+        loadData();
+      };
+      recalcStripeFees();
+      // Only run when orders change
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [orders]);
   const [batchQueue, setBatchQueue] = useState<BatchQueueSummary | null>(null);
   const [batchAddress, setBatchAddress] = useState<ShippingAddress>({
     fullName: '',
