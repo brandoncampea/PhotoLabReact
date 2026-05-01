@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import DashboardChart from '../../components/DashboardChart';
 import AdminLayout from '../../components/AdminLayout';
 import './AdminDashboard.css';
-import { useSasUrl } from '../../hooks/useSasUrl';
 import api from '../../services/api';
 
 type DashboardStats = {
@@ -35,24 +34,36 @@ type DashboardStats = {
 const AdminDashboard: React.FC = () => {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [revenueRange, setRevenueRange] = useState<'day' | 'week' | 'month'>('day');
   const [ordersRange, setOrdersRange] = useState<'day' | 'week' | 'month'>('day');
   const [customersRange, setCustomersRange] = useState<'day' | 'week' | 'month'>('day');
   const [pendingRange, setPendingRange] = useState<'day' | 'week' | 'month'>('day');
   const [batchRange, setBatchRange] = useState<'day' | 'week' | 'month'>('day');
-  const [analyticsRange, setAnalyticsRange] = useState<'today' | 'week' | 'month' | 'all'>('all');
+  const [analyticsRange, setAnalyticsRange] = useState<'today' | 'week' | 'month' | 'all'>('today');
 
   useEffect(() => {
     const fetchStats = async () => {
-      setLoading(true);
+      const isInitialLoad = !stats;
+      if (isInitialLoad) {
+        setLoading(true);
+      } else {
+        setAnalyticsLoading(true);
+      }
       try {
         const params = analyticsRange && analyticsRange !== 'all' ? { params: { range: analyticsRange } } : {};
         const response = await api.get('/admin/dashboard-stats', params);
         setStats(response.data);
       } catch (e) {
-        setStats(null);
+        if (!stats) {
+          setStats(null);
+        }
       } finally {
-        setLoading(false);
+        if (isInitialLoad) {
+          setLoading(false);
+        } else {
+          setAnalyticsLoading(false);
+        }
       }
     };
     fetchStats();
@@ -66,6 +77,10 @@ const AdminDashboard: React.FC = () => {
   if (!stats) {
     return <div className="loading">No dashboard data available.</div>;
   }
+
+  const totalVisitors = stats.analytics?.totalVisitors || 0;
+  const totalPageViews = stats.analytics?.totalPageViews || 0;
+  const showVisitorPageCards = totalVisitors > 0 || totalPageViews > 0;
 
   return (
     <AdminLayout>
@@ -209,12 +224,16 @@ const AdminDashboard: React.FC = () => {
           ].map((range) => (
             <button
               key={range.value}
+              type="button"
               className={
                 'dashboard-pill' + (analyticsRange === range.value ? ' active' : '')
               }
               style={{ minWidth: 90, fontWeight: analyticsRange === range.value ? 600 : 400 }}
-              onClick={() => setAnalyticsRange(range.value as any)}
-              disabled={loading && analyticsRange === range.value}
+              onClick={(e) => {
+                e.preventDefault();
+                setAnalyticsRange(range.value as any);
+              }}
+              disabled={analyticsRange === range.value}
             >
               {range.label}
             </button>
@@ -222,14 +241,18 @@ const AdminDashboard: React.FC = () => {
         </div>
 
         <div className="admin-dashboard-analytics-stats">
-          <div className="admin-dashboard-analytics-stat">
-            <div className="admin-dashboard-analytics-value">{(stats.analytics?.totalVisitors || 0).toLocaleString()}</div>
-            <div className="admin-dashboard-analytics-label">Visitors</div>
-          </div>
-          <div className="admin-dashboard-analytics-stat">
-            <div className="admin-dashboard-analytics-value">{(stats.analytics?.totalPageViews || 0).toLocaleString()}</div>
-            <div className="admin-dashboard-analytics-label">Page Views</div>
-          </div>
+          {showVisitorPageCards && (
+            <>
+              <div className="admin-dashboard-analytics-stat">
+                <div className="admin-dashboard-analytics-value">{totalVisitors.toLocaleString()}</div>
+                <div className="admin-dashboard-analytics-label">Visitors</div>
+              </div>
+              <div className="admin-dashboard-analytics-stat">
+                <div className="admin-dashboard-analytics-value">{totalPageViews.toLocaleString()}</div>
+                <div className="admin-dashboard-analytics-label">Page Views</div>
+              </div>
+            </>
+          )}
           <div className="admin-dashboard-analytics-stat">
             <div className="admin-dashboard-analytics-value">{(stats.analytics?.albumViews?.reduce((sum, a) => sum + a.views, 0) || 0).toLocaleString()}</div>
             <div className="admin-dashboard-analytics-label">Album Views</div>
@@ -261,34 +284,42 @@ const AdminDashboard: React.FC = () => {
           <div className="admin-dashboard-analytics-panel">
             <h3 className="admin-dashboard-analytics-title">Top Photos</h3>
             <ul className="admin-dashboard-analytics-list">
-              {(stats.analytics?.photoViews || []).slice().sort((a, b) => b.views - a.views).slice(0, 5).map((photo) => (
-                <li key={photo.photoId}>
-                  <span className="admin-dashboard-photo-hover-wrap">
-                    <Link
-                      className="admin-dashboard-analytics-link"
-                      to={photo.albumId ? `/albums/${photo.albumId}?photo=${photo.photoId}` : '#'}
-                      onClick={(event) => {
-                        if (!photo.albumId) event.preventDefault();
-                      }}
-                    >
-                      {photo.photoFileName}
-                    </Link>
-                    {photo.fullImageUrl && (
-                      <span className="admin-dashboard-photo-hover-preview" role="tooltip">
-                        <img
-                          src={photo.fullImageUrl && photo.fullImageUrl.startsWith('/api/photos/')
-                            ? photo.fullImageUrl
-                            : (photo.fullImageUrl && !photo.fullImageUrl.startsWith('http') && !photo.fullImageUrl.startsWith('/')
-                                ? useSasUrl(photo.fullImageUrl) || ''
-                                : photo.fullImageUrl || '')}
-                          alt={photo.photoFileName}
-                        />
-                      </span>
-                    )}
-                  </span>
-                  <strong>{photo.views}</strong>
-                </li>
-              ))}
+              {(stats.analytics?.photoViews || []).slice().sort((a, b) => b.views - a.views).slice(0, 5).map((photo) => {
+                let previewSrc = '';
+                // Match AlbumDetails behavior: prefer ID-based thumbnail endpoint
+                if (photo.photoId) {
+                  previewSrc = `/api/photos/${photo.photoId}/asset?variant=thumbnail`;
+                } else if (photo.thumbnailUrl) {
+                  if (photo.thumbnailUrl.startsWith('/api/') || photo.thumbnailUrl.startsWith('/uploads/') || photo.thumbnailUrl.startsWith('http')) {
+                    previewSrc = photo.thumbnailUrl;
+                  }
+                }
+
+                return (
+                  <li key={photo.photoId}>
+                    <span className="admin-dashboard-photo-hover-wrap">
+                      <Link
+                        className="admin-dashboard-analytics-link"
+                        to={photo.albumId ? `/albums/${photo.albumId}?photo=${photo.photoId}` : '#'}
+                        onClick={(event) => {
+                          if (!photo.albumId) event.preventDefault();
+                        }}
+                      >
+                        {photo.photoFileName}
+                      </Link>
+                      {previewSrc && (
+                        <span className="admin-dashboard-photo-hover-preview" role="tooltip">
+                          <img
+                            src={previewSrc}
+                            alt={photo.photoFileName}
+                          />
+                        </span>
+                      )}
+                    </span>
+                    <strong>{photo.views}</strong>
+                  </li>
+                );
+              })}
               {!stats.analytics?.photoViews?.length && <li className="empty">No photo activity yet</li>}
             </ul>
           </div>

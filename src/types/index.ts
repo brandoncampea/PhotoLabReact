@@ -35,6 +35,8 @@ export interface Album {
   batchDeadline?: string;
   productCount?: number;
   netRevenue?: number;
+  viewCount?: number;
+  studioPublicSlug?: string;
 }
 
 export interface Photo {
@@ -54,6 +56,7 @@ export interface Photo {
     face?: number;
     number?: number;
   };
+  viewCount?: number;
 }
 
 export interface PhotoMetadata {

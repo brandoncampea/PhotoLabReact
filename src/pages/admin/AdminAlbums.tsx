@@ -244,6 +244,7 @@ const AdminAlbums: React.FC = () => {
                   <th style={{ padding: '8px 12px', textAlign: 'left' }}>Description</th>
                   <th style={{ padding: '8px 12px', textAlign: 'left' }}>Protected</th>
                   <th style={{ padding: '8px 12px', textAlign: 'left' }}>Photos</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Views</th>
                   <th style={{ padding: '8px 12px', textAlign: 'left' }}>Products Ordered</th>
                   <th style={{ padding: '8px 12px', textAlign: 'left' }}>Est. Net Revenue</th>
                   <th style={{ padding: '8px 12px', textAlign: 'left' }}>Created</th>
@@ -253,19 +254,15 @@ const AdminAlbums: React.FC = () => {
             <tbody>
               {albums.length === 0 ? (
                 <tr>
-                  <td colSpan={9} style={{ textAlign: 'center', padding: '2rem', color: '#aaa', fontSize: '1.1rem' }}>
+                  <td colSpan={12} style={{ textAlign: 'center', padding: '2rem', color: '#aaa', fontSize: '1.1rem' }}>
                     No albums found.
                   </td>
                 </tr>
               ) : (
                 albums.map((album) => {
                   // Always link directly to the customer album page
-                  // Try to get the studio slug from user context or localStorage
-                  let studioSlug = user?.studioSlug || localStorage.getItem('studioSlug') || '';
-                  if (!studioSlug && user?.studioId) {
-                    // fallback: try to get from studioId if available
-                      studioSlug = `studio${(user as any).studioId}`;
-                  }
+                  // Use the real public_slug from the studio (returned by the API)
+                  const studioSlug = (album as any).studioPublicSlug || user?.studioSlug || localStorage.getItem('studioSlug') || '';
                   const shareUrl = studioSlug
                     ? `${window.location.origin}/albums/${album.id}?studioSlug=${encodeURIComponent(studioSlug)}`
                     : `${window.location.origin}/albums/${album.id}`;
@@ -285,6 +282,7 @@ const AdminAlbums: React.FC = () => {
                       <td style={{ padding: '8px 12px', color: '#fff' }}>{album.description}</td>
                       <td style={{ padding: '8px 12px', color: '#fff' }}>{album.isPasswordProtected ? 'Yes' : 'No'}</td>
                       <td style={{ padding: '8px 12px', color: '#fff' }}>{album.photoCount}</td>
+                      <td style={{ padding: '8px 12px', color: '#fff' }}>{album.viewCount ?? 0}</td>
                       <td style={{ padding: '8px 12px', color: '#fff' }}>{album.productCount ?? 0}</td>
                       <td style={{ padding: '8px 12px', color: '#fff' }}>
                         {typeof album.netRevenue === 'number' ? `$${album.netRevenue.toFixed(2)}` : '$0.00'}

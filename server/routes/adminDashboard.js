@@ -263,15 +263,22 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
                 ? ` AND JSON_VALUE(event_data, '$.studioId') = '${studioId}'`
                 : '';
 
+            const albumPhotoStudioFilter = studioId
+                ? ` AND (
+                        al.studio_id = ${studioId}
+                        OR (al.id IS NULL AND JSON_VALUE(a.event_data, '$.studioId') = '${studioId}')
+                    )`
+                : '';
+
             // Determine time range
             let analyticsTimeFilter = '';
             const range = req.query.range;
             if (range === 'today') {
-                analyticsTimeFilter = `event_time >= CAST(GETDATE() AS date)`;
+                analyticsTimeFilter = `created_at >= CAST(GETDATE() AS date)`;
             } else if (range === 'week') {
-                analyticsTimeFilter = `event_time >= DATEADD(day, -6, CAST(GETDATE() AS date))`;
+                analyticsTimeFilter = `created_at >= DATEADD(day, -6, CAST(GETDATE() AS date))`;
             } else if (range === 'month') {
-                analyticsTimeFilter = `event_time >= DATEADD(month, -1, CAST(GETDATE() AS date))`;
+                analyticsTimeFilter = `created_at >= DATEADD(month, -1, CAST(GETDATE() AS date))`;
             }
 
             // Helper to build WHERE clause
@@ -305,29 +312,34 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
               console.log('[analytics] totalPageViewsRow:', totalPageViewsRow);
 
               const albumViewsQuery = `SELECT TOP 5
-                    TRY_CAST(JSON_VALUE(event_data, '$.albumId') AS INT) as albumId,
-                    JSON_VALUE(event_data, '$.albumName') as albumName,
+                                        TRY_CAST(JSON_VALUE(a.event_data, '$.albumId') AS INT) as albumId,
+                                        COALESCE(NULLIF(JSON_VALUE(a.event_data, '$.albumName'), ''), al.name, CONCAT('Album #', TRY_CAST(JSON_VALUE(a.event_data, '$.albumId') AS INT))) as albumName,
+                                        al.cover_image_url as coverImageUrl,
                     COUNT(*) as views
-                  FROM analytics
-                  ${buildWhere("event_type = 'album_view'", analyticsStudioFilter, analyticsTimeFilter)}
-                  GROUP BY JSON_VALUE(event_data, '$.albumId'), JSON_VALUE(event_data, '$.albumName')
+                                    FROM analytics a
+                                    LEFT JOIN albums al ON al.id = TRY_CAST(JSON_VALUE(a.event_data, '$.albumId') AS INT)
+                                      ${buildWhere("a.event_type = 'album_view'", '', analyticsTimeFilter ? analyticsTimeFilter.replace(/\bcreated_at\b/g, 'a.created_at') : '')}
+                                    ${albumPhotoStudioFilter}
+                                    GROUP BY JSON_VALUE(a.event_data, '$.albumId'), JSON_VALUE(a.event_data, '$.albumName'), al.name, al.cover_image_url
                   ORDER BY views DESC`;
               console.log('[analytics] albumViewsQuery:', albumViewsQuery);
               const albumViewsRows = await queryRows(albumViewsQuery);
               console.log('[analytics] albumViewsRows:', albumViewsRows);
 
               const photoViewsQuery = `SELECT TOP 5
-                    TRY_CAST(JSON_VALUE(event_data, '$.photoId') AS INT) as photoId,
-                    TRY_CAST(JSON_VALUE(event_data, '$.albumId') AS INT) as albumId,
-                    JSON_VALUE(event_data, '$.photoFileName') as photoFileName,
-                    JSON_VALUE(event_data, '$.albumName') as albumName,
+                                        TRY_CAST(JSON_VALUE(a.event_data, '$.photoId') AS INT) as photoId,
+                                        COALESCE(TRY_CAST(JSON_VALUE(a.event_data, '$.albumId') AS INT), p.album_id) as albumId,
+                                        COALESCE(NULLIF(JSON_VALUE(a.event_data, '$.photoFileName'), ''), p.file_name) as photoFileName,
+                                        COALESCE(NULLIF(JSON_VALUE(a.event_data, '$.albumName'), ''), al.name) as albumName,
                     p.thumbnail_url as thumbnailUrl,
                     p.full_image_url as fullImageUrl,
                     COUNT(*) as views
-                  FROM analytics
-                  LEFT JOIN photos p ON p.id = TRY_CAST(JSON_VALUE(event_data, '$.photoId') AS INT)
-                  ${buildWhere("event_type = 'photo_view'", analyticsStudioFilter, analyticsTimeFilter)}
-                  GROUP BY JSON_VALUE(event_data, '$.photoId'), JSON_VALUE(event_data, '$.albumId'), JSON_VALUE(event_data, '$.photoFileName'), JSON_VALUE(event_data, '$.albumName'), p.thumbnail_url, p.full_image_url
+                                    FROM analytics a
+                                    LEFT JOIN photos p ON p.id = TRY_CAST(JSON_VALUE(a.event_data, '$.photoId') AS INT)
+                                    LEFT JOIN albums al ON al.id = COALESCE(TRY_CAST(JSON_VALUE(a.event_data, '$.albumId') AS INT), p.album_id)
+                                      ${buildWhere("a.event_type = 'photo_view'", '', analyticsTimeFilter ? analyticsTimeFilter.replace(/\bcreated_at\b/g, 'a.created_at') : '')}
+                                    ${albumPhotoStudioFilter}
+                                    GROUP BY JSON_VALUE(a.event_data, '$.photoId'), JSON_VALUE(a.event_data, '$.albumId'), JSON_VALUE(a.event_data, '$.photoFileName'), JSON_VALUE(a.event_data, '$.albumName'), p.album_id, p.file_name, p.thumbnail_url, p.full_image_url, al.name
                   ORDER BY views DESC`;
               console.log('[analytics] photoViewsQuery:', photoViewsQuery);
               const photoViewsRows = await queryRows(photoViewsQuery);
@@ -339,6 +351,7 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
                 albumViews: (albumViewsRows || []).map((r) => ({
                     albumId: Number(r.albumId || 0),
                     albumName: r.albumName || 'Unknown Album',
+                    coverImageUrl: r.coverImageUrl || null,
                     views: Number(r.views || 0),
                 })),
                 photoViews: (photoViewsRows || []).map((r) => ({

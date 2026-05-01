@@ -116,8 +116,10 @@ router.get('/', authRequired, async (req, res) => {
           a.password,
           a.password_hint as passwordHint,
           a.created_at as createdDate,
-          a.studio_id as "studioId"
+          a.studio_id as "studioId",
+          s.public_slug as "studioPublicSlug"
         FROM albums a
+        LEFT JOIN studios s ON s.id = a.studio_id
         WHERE a.studio_id = $1
         ORDER BY a.created_at DESC
       `, [studioId]);
@@ -136,8 +138,10 @@ router.get('/', authRequired, async (req, res) => {
           a.password,
           a.password_hint as passwordHint,
           a.created_at as createdDate,
-          a.studio_id as "studioId"
+          a.studio_id as "studioId",
+          s.public_slug as "studioPublicSlug"
         FROM albums a
+        LEFT JOIN studios s ON s.id = a.studio_id
         ORDER BY a.created_at DESC
       `);
     } else {
@@ -148,6 +152,7 @@ router.get('/', authRequired, async (req, res) => {
     // Fetch product count and net revenue for each album
     const albumIds = albums.map(a => a.id);
     let statsMap = new Map();
+    let viewsMap = new Map();
     if (albumIds.length > 0) {
       const placeholders = albumIds.map((_, i) => `$${i + 1}`).join(',');
       const statsRows = await queryRows(`
@@ -163,6 +168,23 @@ router.get('/', authRequired, async (req, res) => {
         GROUP BY ph.album_id
       `, albumIds);
       statsMap = new Map(statsRows.map(row => [row.albumId, row]));
+
+      // Fetch total album views from analytics (if available)
+      try {
+        const viewRows = await queryRows(`
+          SELECT
+            TRY_CAST(JSON_VALUE(event_data, '$.albumId') AS INT) as albumId,
+            COUNT(*) as viewCount
+          FROM analytics
+          WHERE event_type = 'album_view'
+            AND TRY_CAST(JSON_VALUE(event_data, '$.albumId') AS INT) IN (${placeholders})
+          GROUP BY TRY_CAST(JSON_VALUE(event_data, '$.albumId') AS INT)
+        `, albumIds);
+        viewsMap = new Map(viewRows.map(row => [Number(row.albumId), Number(row.viewCount) || 0]));
+      } catch (analyticsError) {
+        // Analytics table may not exist in all environments.
+        console.warn('[GET /albums] analytics unavailable:', analyticsError?.message || analyticsError);
+      }
     }
 
     const albumsWithPreviews = await addAlbumPreviewImages(albums);
@@ -172,6 +194,8 @@ router.get('/', authRequired, async (req, res) => {
         ...signAlbumForResponse(album),
         productCount: Number(stats.productCount) || 0,
         netRevenue: Number(stats.netRevenue) || 0,
+        viewCount: Number(viewsMap.get(Number(album.id)) || 0),
+        studioPublicSlug: album.studioPublicSlug || null,
       };
     });
     res.json(albumsWithStats);

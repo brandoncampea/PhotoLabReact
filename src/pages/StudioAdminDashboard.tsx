@@ -103,7 +103,7 @@ export default function StudioAdminDashboard() {
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [analyticsError, setAnalyticsError] = useState('');
-  const [timeRange, setTimeRange] = useState<'day' | 'week' | 'month' | 'all'>('all');
+  const [timeRange, setTimeRange] = useState<'day' | 'week' | 'month' | 'all'>('day');
     const [shipFrom, setShipFrom] = useState({
       ship_from_name: '',
       ship_from_address1: '',
@@ -500,6 +500,8 @@ export default function StudioAdminDashboard() {
     return Math.min((used / limit) * 100, 100);
   };
 
+  const showVisitorPageCards = (analytics?.totalVisitors ?? 0) > 0 || (analytics?.totalPageViews ?? 0) > 0;
+
   return (
     <AdminLayout>
       <h1>Studio Dashboard</h1>
@@ -525,7 +527,7 @@ export default function StudioAdminDashboard() {
                 e.preventDefault();
                 setTimeRange(range.value as any);
               }}
-              disabled={analyticsLoading && timeRange === range.value}
+              disabled={timeRange === range.value}
             >
               {range.label}
             </button>
@@ -538,14 +540,18 @@ export default function StudioAdminDashboard() {
         ) : analytics ? (
           <>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 18, marginBottom: 18 }}>
-              <div style={{ background: 'var(--bg-primary)', borderRadius: 8, padding: 16, textAlign: 'center' }}>
-                <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6 }}>VISITORS</div>
-                <div style={{ fontSize: 28, fontWeight: 700 }}>{analytics.totalVisitors ?? 0}</div>
-              </div>
-              <div style={{ background: 'var(--bg-primary)', borderRadius: 8, padding: 16, textAlign: 'center' }}>
-                <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6 }}>PAGE VIEWS</div>
-                <div style={{ fontSize: 28, fontWeight: 700 }}>{analytics.totalPageViews ?? 0}</div>
-              </div>
+              {showVisitorPageCards && (
+                <>
+                  <div style={{ background: 'var(--bg-primary)', borderRadius: 8, padding: 16, textAlign: 'center' }}>
+                    <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6 }}>VISITORS</div>
+                    <div style={{ fontSize: 28, fontWeight: 700 }}>{analytics.totalVisitors ?? 0}</div>
+                  </div>
+                  <div style={{ background: 'var(--bg-primary)', borderRadius: 8, padding: 16, textAlign: 'center' }}>
+                    <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6 }}>PAGE VIEWS</div>
+                    <div style={{ fontSize: 28, fontWeight: 700 }}>{analytics.totalPageViews ?? 0}</div>
+                  </div>
+                </>
+              )}
               <div style={{ background: 'var(--bg-primary)', borderRadius: 8, padding: 16, textAlign: 'center' }}>
                 <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6 }}>ALBUM VIEWS</div>
                 <div style={{ fontSize: 28, fontWeight: 700 }}>{analytics.albumViews ? analytics.albumViews.reduce((sum, a) => sum + a.views, 0) : 0}</div>
@@ -561,7 +567,7 @@ export default function StudioAdminDashboard() {
                 {analytics.albumViews && analytics.albumViews.length > 0 ? (
                   analytics.albumViews.slice(0, 5).map((album) => (
                     <div key={album.albumId} style={{ fontSize: 15, marginBottom: 4 }}>
-                      {album.albumTitle || 'Untitled Album'} <span style={{ color: 'var(--text-secondary)' }}>({album.views} views)</span>
+                      {album.albumName || 'Untitled Album'} <span style={{ color: 'var(--text-secondary)' }}>({album.views} views)</span>
                     </div>
                   ))
                 ) : (
@@ -571,11 +577,27 @@ export default function StudioAdminDashboard() {
               <div style={{ background: 'var(--bg-primary)', borderRadius: 8, padding: 16 }}>
                 <div style={{ fontWeight: 600, marginBottom: 8 }}>Top Photos</div>
                 {analytics.photoViews && analytics.photoViews.length > 0 ? (
-                  analytics.photoViews.slice(0, 5).map((photo) => (
-                    <div key={photo.photoId} style={{ fontSize: 15, marginBottom: 4 }}>
-                      {photo.photoTitle || 'Untitled Photo'} <span style={{ color: 'var(--text-secondary)' }}>({photo.views} views)</span>
-                    </div>
-                  ))
+                  analytics.photoViews.slice(0, 5).map((photo) => {
+                    // Prefer backend-provided thumbnailUrl, else fallback to API route
+                    let thumbUrl = photo.photoId ? `/api/photos/${photo.photoId}/asset?variant=thumbnail` : photo.thumbnailUrl;
+                    if (!thumbUrl && photo.photoId) {
+                      thumbUrl = `/api/photos/${photo.photoId}/asset?variant=thumbnail`;
+                    }
+                    return (
+                      <div key={photo.photoId} style={{ display: 'flex', alignItems: 'center', fontSize: 15, marginBottom: 8 }}>
+                        {thumbUrl && (
+                          <img
+                            src={thumbUrl}
+                            alt={photo.photoTitle || 'Photo'}
+                            style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 6, marginRight: 12, border: '1px solid #222' }}
+                          />
+                        )}
+                        <div>
+                          {photo.photoFileName || 'Untitled Photo'} <span style={{ color: 'var(--text-secondary)' }}>({photo.views} views)</span>
+                        </div>
+                      </div>
+                    );
+                  })
                 ) : (
                   <div style={{ color: 'var(--text-secondary)' }}>No photo activity yet</div>
                 )}

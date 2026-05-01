@@ -1317,7 +1317,7 @@ function makeBlobName(albumId, originalName) {
 router.get('/album/:albumId', async (req, res) => {
   try {
     const { playerName } = req.query;
-    let query = `
+    let sql = `
       SELECT 
         id, album_id as albumId, file_name as fileName, 
         thumbnail_url as thumbnailUrl, full_image_url as fullImageUrl,
@@ -1331,14 +1331,43 @@ router.get('/album/:albumId', async (req, res) => {
     
     // Filter by player name if provided
     if (playerName) {
-      query += ` AND player_names LIKE $2`;
+      sql += ` AND player_names LIKE $2`;
       params.push(`%${playerName}%`);
     }
     
-    query += ` ORDER BY created_at DESC`;
+    sql += ` ORDER BY created_at DESC`;
     
-    const photos = await queryRows(query, params);
-    res.json(photos.map(signPhotoForResponse));
+    const photos = await queryRows(sql, params);
+
+    let viewMap = new Map();
+    if (Array.isArray(photos) && photos.length > 0) {
+      const photoIds = photos.map((p) => Number(p.id)).filter((id) => Number.isInteger(id) && id > 0);
+      if (photoIds.length > 0) {
+        const placeholders = photoIds.map((_, i) => `$${i + 1}`).join(',');
+        try {
+          const viewRows = await queryRows(`
+            SELECT
+              TRY_CAST(JSON_VALUE(event_data, '$.photoId') AS INT) as photoId,
+              COUNT(*) as viewCount
+            FROM analytics
+            WHERE event_type = 'photo_view'
+              AND TRY_CAST(JSON_VALUE(event_data, '$.photoId') AS INT) IN (${placeholders})
+            GROUP BY TRY_CAST(JSON_VALUE(event_data, '$.photoId') AS INT)
+          `, photoIds);
+          viewMap = new Map(viewRows.map((row) => [Number(row.photoId), Number(row.viewCount) || 0]));
+        } catch (analyticsError) {
+          // Analytics table may not exist in all environments.
+          console.warn('[GET /photos/album/:albumId] analytics unavailable:', analyticsError?.message || analyticsError);
+        }
+      }
+    }
+
+    const signed = photos.map(signPhotoForResponse).map((photo) => ({
+      ...photo,
+      viewCount: Number(viewMap.get(Number(photo.id)) || 0),
+    }));
+
+    res.json(signed);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

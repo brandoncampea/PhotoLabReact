@@ -1494,6 +1494,9 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
                   i
                 </button>
               </div>
+              <p style={{ margin: '0.35rem 0 0 0', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                Views: {Number((photo as any).viewCount || 0).toLocaleString()}
+              </p>
               {/* Show auto-tag chips (current tags on the photo) */}
               {!!(photo as any).playerNames && (
                 <div style={{ margin: '0.35rem 0 0 0' }}>
