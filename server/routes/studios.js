@@ -375,7 +375,9 @@ router.get('/public/:slug', async (req, res) => {
                   s.email,
                   s.public_slug as publicSlug,
                   pc.business_name as businessName,
-                  pc.logo_url as logoUrl
+                  pc.logo_url as logoUrl,
+                  pc.instagram_url as instagramUrl,
+                  pc.facebook_url as facebookUrl
            FROM studios s
            LEFT JOIN profile_config pc ON pc.studio_id = s.id
            WHERE s.public_slug = $1`
@@ -384,7 +386,9 @@ router.get('/public/:slug', async (req, res) => {
                   email,
                   public_slug as publicSlug,
                   CAST(NULL AS NVARCHAR(255)) as businessName,
-                  CAST(NULL AS NVARCHAR(MAX)) as logoUrl
+                  CAST(NULL AS NVARCHAR(MAX)) as logoUrl,
+                  CAST(NULL AS NVARCHAR(500)) as instagramUrl,
+                  CAST(NULL AS NVARCHAR(500)) as facebookUrl
            FROM studios
            WHERE public_slug = $1`,
       [slug]

@@ -372,6 +372,8 @@ export interface ProfileConfig {
   email: string;
   receiveOrderNotifications: boolean;
   logoUrl?: string;
+  instagramUrl?: string;
+  facebookUrl?: string;
 }
 
 export interface AnalyticsData {

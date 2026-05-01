@@ -19,6 +19,8 @@ const AdminProfile: React.FC = () => {
   const [logoUrl, setLogoUrl] = useState('');
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState('');
+  const [instagramUrl, setInstagramUrl] = useState('');
+  const [facebookUrl, setFacebookUrl] = useState('');
   const [subscription, setSubscription] = useState<any>(null);
   const [watermarkUrl, setWatermarkUrl] = useState<string>('');
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
@@ -53,6 +55,8 @@ const AdminProfile: React.FC = () => {
       setReceiveOrderNotifications(data.receiveOrderNotifications);
       setLogoUrl(data.logoUrl || '');
       setLogoPreview(data.logoUrl || '');
+      setInstagramUrl(data.instagramUrl || '');
+      setFacebookUrl(data.facebookUrl || '');
     } catch (error) {
       console.error('Failed to load profile config:', error);
     } finally {
@@ -161,6 +165,8 @@ const AdminProfile: React.FC = () => {
             email,
             receiveOrderNotifications,
             logoUrl: finalLogoUrl,
+            instagramUrl,
+            facebookUrl,
           });
       setConfig(updatedConfig);
       alert('Profile saved successfully!');
@@ -350,6 +356,34 @@ const AdminProfile: React.FC = () => {
           </label>
           <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
             Get email notifications when new orders are placed
+          </p>
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="instagramUrl">Instagram URL</label>
+          <input
+            type="url"
+            id="instagramUrl"
+            value={instagramUrl}
+            onChange={(e) => setInstagramUrl(e.target.value)}
+            placeholder="https://www.instagram.com/yourstudio"
+          />
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+            Your Instagram profile link — shown as an icon next to your studio name
+          </p>
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="facebookUrl">Facebook URL</label>
+          <input
+            type="url"
+            id="facebookUrl"
+            value={facebookUrl}
+            onChange={(e) => setFacebookUrl(e.target.value)}
+            placeholder="https://www.facebook.com/yourstudio"
+          />
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+            Your Facebook page link — shown as an icon next to your studio name
           </p>
         </div>
 

@@ -15,7 +15,14 @@ const defaultProfile = {
 
 const ensureProfileConfigTable = async () => {
   const exists = await tableExists('profile_config');
-  if (exists) return true;
+  if (exists) {
+    // Ensure new columns exist (safe to run each time)
+    try {
+      await query(`IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='profile_config' AND COLUMN_NAME='instagram_url') ALTER TABLE profile_config ADD instagram_url NVARCHAR(500) NULL`);
+      await query(`IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='profile_config' AND COLUMN_NAME='facebook_url') ALTER TABLE profile_config ADD facebook_url NVARCHAR(500) NULL`);
+    } catch (e) { /* ignore */ }
+    return true;
+  }
 
   await query(`
     CREATE TABLE profile_config (
@@ -25,6 +32,8 @@ const ensureProfileConfigTable = async () => {
       email NVARCHAR(255) NULL,
       receive_order_notifications BIT DEFAULT 1,
       logo_url NVARCHAR(MAX) NULL,
+      instagram_url NVARCHAR(500) NULL,
+      facebook_url NVARCHAR(500) NULL,
       updated_at DATETIME2 DEFAULT CURRENT_TIMESTAMP
     )
   `);
@@ -50,7 +59,8 @@ router.get('/', authRequired, async (req, res) => {
     let profile = await queryRow(`
       SELECT id, owner_name as ownerName, business_name as businessName, 
              email, receive_order_notifications as receiveOrderNotifications, 
-             logo_url as logoUrl
+             logo_url as logoUrl,
+             instagram_url as instagramUrl, facebook_url as facebookUrl
       FROM profile_config
       WHERE id = $1
     `, [studioId]);
@@ -67,7 +77,8 @@ router.get('/', authRequired, async (req, res) => {
       profile = await queryRow(`
         SELECT id, owner_name as ownerName, business_name as businessName, 
                email, receive_order_notifications as receiveOrderNotifications, 
-               logo_url as logoUrl
+               logo_url as logoUrl,
+               instagram_url as instagramUrl, facebook_url as facebookUrl
         FROM profile_config
         WHERE id = $1
       `, [studioId]);
@@ -97,7 +108,7 @@ router.put('/', authRequired, async (req, res) => {
     if (!studioId) {
       return res.status(403).json({ error: 'Studio ID required' });
     }
-    const { ownerName, businessName, email, receiveOrderNotifications, logoUrl } = req.body;
+    const { ownerName, businessName, email, receiveOrderNotifications, logoUrl, instagramUrl, facebookUrl } = req.body;
     await query(`
       IF EXISTS (SELECT 1 FROM profile_config WHERE id = $1)
       BEGIN
@@ -107,19 +118,22 @@ router.put('/', authRequired, async (req, res) => {
             email = $4,
             receive_order_notifications = $5,
             logo_url = $6,
+            instagram_url = $7,
+            facebook_url = $8,
             updated_at = CURRENT_TIMESTAMP
         WHERE id = $1
       END
       ELSE
       BEGIN
-        INSERT INTO profile_config (id, owner_name, business_name, email, receive_order_notifications, logo_url)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        INSERT INTO profile_config (id, owner_name, business_name, email, receive_order_notifications, logo_url, instagram_url, facebook_url)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       END
-    `, [studioId, ownerName, businessName, email, !!receiveOrderNotifications, logoUrl]);
+    `, [studioId, ownerName, businessName, email, !!receiveOrderNotifications, logoUrl, instagramUrl || null, facebookUrl || null]);
     const profile = await queryRow(`
       SELECT id, owner_name as ownerName, business_name as businessName, 
              email, receive_order_notifications as receiveOrderNotifications, 
-             logo_url as logoUrl
+             logo_url as logoUrl,
+             instagram_url as instagramUrl, facebook_url as facebookUrl
       FROM profile_config
       WHERE id = $1
     `, [studioId]);
@@ -130,6 +144,8 @@ router.put('/', authRequired, async (req, res) => {
       email,
       receiveOrderNotifications: !!receiveOrderNotifications,
       logoUrl: logoUrl || '',
+      instagramUrl: instagramUrl || null,
+      facebookUrl: facebookUrl || null,
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
