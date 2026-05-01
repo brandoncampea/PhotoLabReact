@@ -28,6 +28,11 @@ export const stripeTaxService = {
       },
       currency,
     });
+
+    if (response.data?.calculation_source === 'fallback') {
+      throw new Error(response.data?.reason || 'stripe_tax_fallback');
+    }
+
     // Stripe returns amount_total and tax_amount_exclusive
     const { tax_amount_exclusive } = response.data;
     return {

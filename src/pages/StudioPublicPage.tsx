@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { formatDateInStudioTimezone, setStudioTimezone } from '../utils/studioDateTime';
 
 type PublicStudio = {
   id: number;
   name: string;
   email?: string;
   publicSlug: string;
+  timezone?: string;
 };
 
 type PublicAlbum = {
@@ -40,6 +42,9 @@ export default function StudioPublicPage() {
         const studioData = await studioRes.json();
         const albumsData = albumsRes.ok ? await albumsRes.json() : [];
 
+        if (studioData?.timezone) {
+          setStudioTimezone(studioData.timezone);
+        }
         setStudio(studioData);
         setAlbums(Array.isArray(albumsData) ? albumsData : []);
         setError('');
@@ -95,7 +100,7 @@ export default function StudioPublicPage() {
                   <p className="gallery-card-desc">{album.description || 'No description'}</p>
                   <div className="gallery-card-meta">
                     <span className="gallery-card-count">{album.photoCount || 0} photos</span>
-                    <span className="gallery-card-date">{new Date(album.createdDate).toLocaleDateString()}</span>
+                    <span className="gallery-card-date">{formatDateInStudioTimezone(album.createdDate)}</span>
                   </div>
                 </div>
               </Link>

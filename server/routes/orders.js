@@ -1158,6 +1158,8 @@ const sendOrderReceipts = async (orderId) => {
             o.tax_amount as taxAmount,
             o.shipping_cost as shippingCost,
             o.stripe_fee_amount as stripeFeeAmount,
+            o.payment_intent_id as paymentIntentId,
+            o.stripe_charge_id as stripeChargeId,
             o.shipping_address as shippingAddress,
             o.created_at as createdAt,
             u.email as customerEmail,
@@ -1169,6 +1171,28 @@ const sendOrderReceipts = async (orderId) => {
   );
 
   if (!order) return;
+
+  if (Number(order.stripeFeeAmount || 0) <= 0 && order.paymentIntentId) {
+    const refreshedAccounting = await fetchPaymentIntentAccounting(order.paymentIntentId);
+    const refreshedStripeFee = Number(refreshedAccounting?.stripeFeeAmount || 0);
+
+    if (refreshedStripeFee > 0 || refreshedAccounting?.chargeId) {
+      order.stripeFeeAmount = refreshedStripeFee;
+      if (refreshedAccounting?.chargeId) {
+        order.stripeChargeId = refreshedAccounting.chargeId;
+      }
+
+      await query(
+        `UPDATE orders
+         SET stripe_fee_amount = CASE WHEN $1 > 0 THEN $1 ELSE COALESCE(stripe_fee_amount, 0) END,
+             stripe_charge_id = COALESCE($2, stripe_charge_id)
+         WHERE id = $3`,
+        [refreshedStripeFee, refreshedAccounting?.chargeId || null, order.id]
+      ).catch((err) => {
+        console.error('Failed to persist refreshed Stripe accounting before receipts:', err?.message || err);
+      });
+    }
+  }
 
   const items = await queryRows(
     `SELECT oi.id,
@@ -1560,6 +1584,16 @@ router.post('/', requireActiveSubscription, async (req, res) => {
     ]);
 
     const orderId = orderResult.id;
+
+    if (discountCode) {
+      await query(
+        `UPDATE discount_codes
+         SET usage_count = usage_count + 1,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE UPPER(code) = UPPER($1) AND studio_id = $2`,
+        [discountCode, orderStudioId]
+      ).catch(() => {});
+    }
 
     // Insert order items
     for (const item of items) {

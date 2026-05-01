@@ -27,6 +27,19 @@ const defaultProfile = {
   logoUrl: '',
   instagramUrl: null,
   facebookUrl: null,
+  timezone: 'UTC',
+};
+
+const normalizeTimezone = (value) => {
+  const fallback = 'UTC';
+  const zone = String(value || '').trim();
+  if (!zone) return fallback;
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: zone }).format(new Date());
+    return zone;
+  } catch {
+    return fallback;
+  }
 };
 
 const ensureProfileConfigTable = async () => {
@@ -36,6 +49,7 @@ const ensureProfileConfigTable = async () => {
     await query(`IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='profile_config' AND COLUMN_NAME='studio_id') ALTER TABLE profile_config ADD studio_id INT NULL`);
     await query(`IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='profile_config' AND COLUMN_NAME='instagram_url') ALTER TABLE profile_config ADD instagram_url NVARCHAR(500) NULL`);
     await query(`IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='profile_config' AND COLUMN_NAME='facebook_url') ALTER TABLE profile_config ADD facebook_url NVARCHAR(500) NULL`);
+    await query(`IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='profile_config' AND COLUMN_NAME='timezone') ALTER TABLE profile_config ADD timezone NVARCHAR(100) NULL`);
 
     // Legacy schema could have CHECK constraints forcing id=1. Drop all CHECK constraints on this table.
     await query(`
@@ -78,6 +92,7 @@ const ensureProfileConfigTable = async () => {
       logo_url NVARCHAR(MAX) NULL,
       instagram_url NVARCHAR(500) NULL,
       facebook_url NVARCHAR(500) NULL,
+      timezone NVARCHAR(100) NULL,
       updated_at DATETIME2 DEFAULT CURRENT_TIMESTAMP
     )
   `);
@@ -123,7 +138,8 @@ router.get('/', authRequired, async (req, res) => {
           SELECT id, owner_name as ownerName, business_name as businessName,
                  email, receive_order_notifications as receiveOrderNotifications,
                  logo_url as logoUrl,
-                 instagram_url as instagramUrl, facebook_url as facebookUrl
+                 instagram_url as instagramUrl, facebook_url as facebookUrl,
+                 timezone
           FROM profile_config
           WHERE studio_id = $1
         `, [studioId])
@@ -131,7 +147,8 @@ router.get('/', authRequired, async (req, res) => {
           SELECT id, owner_name as ownerName, business_name as businessName,
                  email, receive_order_notifications as receiveOrderNotifications,
                  logo_url as logoUrl,
-                 instagram_url as instagramUrl, facebook_url as facebookUrl
+                 instagram_url as instagramUrl, facebook_url as facebookUrl,
+                 timezone
           FROM profile_config
           WHERE id = 1
         `);
@@ -162,7 +179,8 @@ router.get('/', authRequired, async (req, res) => {
             SELECT id, owner_name as ownerName, business_name as businessName,
                    email, receive_order_notifications as receiveOrderNotifications,
                    logo_url as logoUrl,
-                   instagram_url as instagramUrl, facebook_url as facebookUrl
+                   instagram_url as instagramUrl, facebook_url as facebookUrl,
+                   timezone
             FROM profile_config
             WHERE studio_id = $1
           `, [studioId])
@@ -170,12 +188,16 @@ router.get('/', authRequired, async (req, res) => {
             SELECT id, owner_name as ownerName, business_name as businessName,
                    email, receive_order_notifications as receiveOrderNotifications,
                    logo_url as logoUrl,
-                   instagram_url as instagramUrl, facebook_url as facebookUrl
+                   instagram_url as instagramUrl, facebook_url as facebookUrl,
+                   timezone
             FROM profile_config
             WHERE id = 1
           `);
     }
-    res.json(withResolvedLogoUrl(profile || defaultProfile));
+    res.json(withResolvedLogoUrl({
+      ...(profile || defaultProfile),
+      timezone: normalizeTimezone(profile?.timezone || defaultProfile.timezone),
+    }));
   } catch (error) {
     console.error('Get profile config error:', error);
     res.status(500).json({ error: 'Failed to load profile config' });
@@ -201,6 +223,7 @@ router.put('/', authRequired, async (req, res) => {
       return res.status(403).json({ error: 'Studio ID required' });
     }
     const { ownerName, businessName, email, receiveOrderNotifications, logoUrl, instagramUrl, facebookUrl } = req.body;
+    const timezone = normalizeTimezone(req.body?.timezone);
     const hasStudioId = await columnExists('profile_config', 'studio_id');
 
     if (hasStudioId) {
@@ -215,16 +238,17 @@ router.put('/', authRequired, async (req, res) => {
               logo_url = $6,
               instagram_url = $7,
               facebook_url = $8,
+              timezone = $9,
               updated_at = CURRENT_TIMESTAMP
           WHERE studio_id = $1
         END
         ELSE
         BEGIN
-          INSERT INTO profile_config (id, studio_id, owner_name, business_name, email, receive_order_notifications, logo_url, instagram_url, facebook_url)
-          SELECT ISNULL(MAX(id), 0) + 1, $1, $2, $3, $4, $5, $6, $7, $8
+          INSERT INTO profile_config (id, studio_id, owner_name, business_name, email, receive_order_notifications, logo_url, instagram_url, facebook_url, timezone)
+          SELECT ISNULL(MAX(id), 0) + 1, $1, $2, $3, $4, $5, $6, $7, $8, $9
           FROM profile_config
         END
-      `, [studioId, ownerName, businessName, email, !!receiveOrderNotifications, logoUrl, instagramUrl || null, facebookUrl || null]);
+      `, [studioId, ownerName, businessName, email, !!receiveOrderNotifications, logoUrl, instagramUrl || null, facebookUrl || null, timezone]);
     } else {
       // Legacy single-row schema fallback
       await query(`
@@ -238,15 +262,16 @@ router.put('/', authRequired, async (req, res) => {
               logo_url = $5,
               instagram_url = $6,
               facebook_url = $7,
+              timezone = $8,
               updated_at = CURRENT_TIMESTAMP
           WHERE id = 1
         END
         ELSE
         BEGIN
-          INSERT INTO profile_config (id, owner_name, business_name, email, receive_order_notifications, logo_url, instagram_url, facebook_url)
-          VALUES (1, $1, $2, $3, $4, $5, $6, $7)
+          INSERT INTO profile_config (id, owner_name, business_name, email, receive_order_notifications, logo_url, instagram_url, facebook_url, timezone)
+          VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8)
         END
-      `, [ownerName, businessName, email, !!receiveOrderNotifications, logoUrl, instagramUrl || null, facebookUrl || null]);
+      `, [ownerName, businessName, email, !!receiveOrderNotifications, logoUrl, instagramUrl || null, facebookUrl || null, timezone]);
     }
 
     const profile = hasStudioId
@@ -254,7 +279,8 @@ router.put('/', authRequired, async (req, res) => {
           SELECT id, owner_name as ownerName, business_name as businessName,
                  email, receive_order_notifications as receiveOrderNotifications,
                  logo_url as logoUrl,
-                 instagram_url as instagramUrl, facebook_url as facebookUrl
+                 instagram_url as instagramUrl, facebook_url as facebookUrl,
+                 timezone
           FROM profile_config
           WHERE studio_id = $1
         `, [studioId])
@@ -262,11 +288,12 @@ router.put('/', authRequired, async (req, res) => {
           SELECT id, owner_name as ownerName, business_name as businessName,
                  email, receive_order_notifications as receiveOrderNotifications,
                  logo_url as logoUrl,
-                 instagram_url as instagramUrl, facebook_url as facebookUrl
+                 instagram_url as instagramUrl, facebook_url as facebookUrl,
+                 timezone
           FROM profile_config
           WHERE id = 1
         `);
-    res.json(withResolvedLogoUrl(profile || {
+    res.json(withResolvedLogoUrl({
       ...defaultProfile,
       ownerName,
       businessName,
@@ -275,6 +302,8 @@ router.put('/', authRequired, async (req, res) => {
       logoUrl: logoUrl || '',
       instagramUrl: instagramUrl || null,
       facebookUrl: facebookUrl || null,
+      timezone,
+      ...(profile || {}),
     }));
   } catch (error) {
     console.error('Update profile config error:', error);

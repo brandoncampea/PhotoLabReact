@@ -1348,13 +1348,19 @@ router.get('/album/:albumId', async (req, res) => {
           const viewRows = await queryRows(`
             SELECT
               TRY_CAST(JSON_VALUE(event_data, '$.photoId') AS INT) as photoId,
+              SUM(CASE WHEN event_type = 'photo_view' THEN 1 ELSE 0 END) as viewOpenCount,
+              SUM(CASE WHEN event_type = 'photo_thumbnail_click' THEN 1 ELSE 0 END) as viewClickCount,
               COUNT(*) as viewCount
             FROM analytics
-            WHERE event_type = 'photo_view'
+            WHERE event_type IN ('photo_view', 'photo_thumbnail_click')
               AND TRY_CAST(JSON_VALUE(event_data, '$.photoId') AS INT) IN (${placeholders})
             GROUP BY TRY_CAST(JSON_VALUE(event_data, '$.photoId') AS INT)
           `, photoIds);
-          viewMap = new Map(viewRows.map((row) => [Number(row.photoId), Number(row.viewCount) || 0]));
+          viewMap = new Map(viewRows.map((row) => [Number(row.photoId), {
+            viewCount: Number(row.viewCount) || 0,
+            viewOpenCount: Number(row.viewOpenCount) || 0,
+            viewClickCount: Number(row.viewClickCount) || 0,
+          }]));
         } catch (analyticsError) {
           // Analytics table may not exist in all environments.
           console.warn('[GET /photos/album/:albumId] analytics unavailable:', analyticsError?.message || analyticsError);
@@ -1364,7 +1370,9 @@ router.get('/album/:albumId', async (req, res) => {
 
     const signed = photos.map(signPhotoForResponse).map((photo) => ({
       ...photo,
-      viewCount: Number(viewMap.get(Number(photo.id)) || 0),
+      viewCount: Number(viewMap.get(Number(photo.id))?.viewCount || 0),
+      viewOpenCount: Number(viewMap.get(Number(photo.id))?.viewOpenCount || 0),
+      viewClickCount: Number(viewMap.get(Number(photo.id))?.viewClickCount || 0),
     }));
 
     res.json(signed);

@@ -63,7 +63,8 @@
   background: rgba(102, 102, 204, 0.1);
 }
 
-.admin-albums-page .modal-overlay {
+.admin-albums-page .modal-overlay,
+.modal-overlay {
   position: fixed !important;
   inset: 0;
   z-index: 1200;
@@ -74,7 +75,8 @@
   background: rgba(9, 12, 25, 0.86) !important;
 }
 
-.admin-albums-page .admin-modal-content {
+.admin-albums-page .admin-modal-content,
+.admin-modal-content {
   width: min(760px, 96vw) !important;
   max-width: 760px !important;
   max-height: 90vh !important;
@@ -86,7 +88,8 @@
   padding: 0 !important;
 }
 
-.admin-albums-page .admin-modal-header {
+.admin-albums-page .admin-modal-header,
+.admin-modal-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -95,21 +98,25 @@
   background: rgba(40, 40, 60, 0.75);
 }
 
-.admin-albums-page .admin-modal-header h2 {
+.admin-albums-page .admin-modal-header h2,
+.admin-modal-header h2 {
   margin: 0;
   color: #fff;
   font-size: 1.2rem;
 }
 
-.admin-albums-page .admin-modal-header .btn-close {
+.admin-albums-page .admin-modal-header .btn-close,
+.admin-modal-header .btn-close {
   color: #c8c8ea;
 }
 
-.admin-albums-page .admin-modal-header .btn-close:hover {
+.admin-albums-page .admin-modal-header .btn-close:hover,
+.admin-modal-header .btn-close:hover {
   color: #fff;
 }
 
-.admin-albums-page .admin-modal-body {
+.admin-albums-page .admin-modal-body,
+.admin-modal-body {
   background: transparent !important;
   padding: 1.1rem 1.25rem 1.25rem !important;
 }

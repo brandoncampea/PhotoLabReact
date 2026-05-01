@@ -43,13 +43,45 @@ export const analyticsService = {
   },
 
   // Track album view
-  trackAlbumView(albumId: number, albumName: string) {
-    this.trackEvent('album_view', { albumId, albumName });
+  trackAlbumView(albumId: number, albumName: string, studioId?: number) {
+    this.trackEvent('album_view', {
+      albumId,
+      albumName,
+      studioId: studioId || undefined,
+    });
   },
 
   // Track photo view
-  trackPhotoView(photoId: number, photoFileName: string, albumId: number, albumName: string) {
-    this.trackEvent('photo_view', { photoId, photoFileName, albumId, albumName });
+  trackPhotoView(photoId: number, photoFileName: string, albumId: number, albumName: string, studioId?: number) {
+    this.trackEvent('photo_view', {
+      photoId,
+      photoFileName,
+      albumId,
+      albumName,
+      studioId: studioId || undefined,
+    });
+  },
+
+  // Track click on album card from the albums grid
+  trackAlbumCardClick(albumId: number, albumName: string, studioId?: number) {
+    this.trackEvent('album_card_click', {
+      albumId,
+      albumName,
+      studioId: studioId || undefined,
+      path: window.location.pathname + window.location.search,
+    });
+  },
+
+  // Track click on a photo thumbnail within album details
+  trackPhotoThumbnailClick(photoId: number, photoFileName: string, albumId: number, albumName: string, studioId?: number) {
+    this.trackEvent('photo_thumbnail_click', {
+      photoId,
+      photoFileName,
+      albumId,
+      albumName,
+      studioId: studioId || undefined,
+      path: window.location.pathname + window.location.search,
+    });
   },
 
 

@@ -104,7 +104,99 @@ router.get('/active', async (req, res) => {
     const user = req.user;
     const isSuperAdmin = user?.role === 'super_admin';
     let studioId = user?.studio_id;
+    const requestedStudioId = Number(req.query.studioId);
+    if (Number.isInteger(requestedStudioId) && requestedStudioId > 0) {
+      if (isSuperAdmin) {
+        studioId = requestedStudioId;
+      } else if (!studioId || Number(studioId) !== requestedStudioId) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+    }
     const albumId = Number(req.query.albumId);
+
+    const getOfferedProductsFromStudioPriceList = async (effectiveStudioId, preferredStudioPriceListId = null) => {
+      if (!effectiveStudioId) return null;
+
+      let studioPriceList = null;
+      const preferredId = Number(preferredStudioPriceListId || 0) || null;
+      if (preferredId) {
+        studioPriceList = await queryRow(
+          `SELECT TOP 1 id, super_price_list_id as superPriceListId
+           FROM studio_price_lists
+           WHERE id = $1 AND studio_id = $2`,
+          [preferredId, effectiveStudioId]
+        );
+      }
+
+      if (!studioPriceList?.id) {
+        studioPriceList = await queryRow(
+          `SELECT TOP 1 id, super_price_list_id as superPriceListId
+           FROM studio_price_lists
+           WHERE studio_id = $1
+           ORDER BY is_default DESC, id ASC`,
+          [effectiveStudioId]
+        );
+      }
+
+      if (!studioPriceList?.id) {
+        return null;
+      }
+
+      const rows = await queryRows(
+        `SELECT
+           p.id as productId, p.name as productName, p.category, p.description, p.options,
+           ps.id as sizeId, ps.size_name as sizeName, ps.cost as sizeCost,
+           COALESCE(spi.price, ps.price) as sizePrice
+         FROM studio_price_list_items spi
+         JOIN studio_price_lists spl ON spl.id = spi.studio_price_list_id
+         JOIN product_sizes ps ON ps.id = spi.product_size_id
+         JOIN products p ON p.id = ps.product_id
+         LEFT JOIN super_price_list_items sspi
+           ON sspi.super_price_list_id = spl.super_price_list_id
+          AND sspi.product_size_id = spi.product_size_id
+         WHERE spi.studio_price_list_id = $1
+           AND spi.is_offered = 1
+           AND COALESCE(sspi.is_active, 1) = 1
+         ORDER BY p.category, p.name, ps.size_name`,
+        [studioPriceList.id]
+      );
+
+      const productMap = new Map();
+      for (const row of rows) {
+        const pid = Number(row.productId);
+        if (!productMap.has(pid)) {
+          const options = row.options ? JSON.parse(row.options) : null;
+          productMap.set(pid, {
+            id: pid,
+            name: row.productName,
+            category: row.category,
+            description: row.description,
+            price: 0,
+            sizes: [],
+            isActive: options?.isActive !== undefined ? !!options.isActive : true,
+            popularity: Number(options?.popularity) || 0,
+            isDigital: !!(options?.isDigital || String(row.productName || '').toLowerCase().includes('digital')),
+          });
+        }
+        const decoded = decodeSizeName(row.sizeName);
+        const sizePrice = Number(row.sizePrice) || 0;
+        const entry = productMap.get(pid);
+        entry.sizes.push({
+          id: Number(row.sizeId),
+          name: decoded.name,
+          width: decoded.width,
+          height: decoded.height,
+          price: sizePrice,
+          cost: Number(row.sizeCost) || 0,
+        });
+        if (entry.price === 0 || sizePrice < entry.price) {
+          entry.price = sizePrice;
+        }
+      }
+
+      return Array.from(productMap.values()).filter((p) => p.isActive !== false);
+    };
+
     if (Number.isInteger(albumId) && albumId > 0) {
       // Only allow super admin to see any album, others only their own
       const album = await queryRow(
@@ -116,85 +208,9 @@ router.get('/active', async (req, res) => {
       const effectiveStudioId = Number(studioId || album?.studioId || 0) || null;
 
       // ── NEW SYSTEM: studio_price_list_items (preferred) ──────────────────
-      // Check if the album's studio has configured offerings in the new system
       if (effectiveStudioId) {
-        // Prefer the album-linked studio price list when available.
-        // (Important when a studio has multiple price lists with different offered items.)
-        let studioPriceList = null;
-        const albumLinkedStudioPriceListId = Number(album?.priceListId || 0) || null;
-        if (albumLinkedStudioPriceListId) {
-          studioPriceList = await queryRow(
-            `SELECT TOP 1 id, super_price_list_id as superPriceListId
-             FROM studio_price_lists
-             WHERE id = $1 AND studio_id = $2`,
-            [albumLinkedStudioPriceListId, effectiveStudioId]
-          );
-        }
-
-        if (!studioPriceList?.id) {
-          studioPriceList = await queryRow(
-            `SELECT TOP 1 id, super_price_list_id as superPriceListId
-             FROM studio_price_lists
-             WHERE studio_id = $1
-             ORDER BY is_default DESC, id ASC`,
-            [effectiveStudioId]
-          );
-        }
-
-        if (studioPriceList?.id) {
-          const rows = await queryRows(
-            `SELECT
-               p.id as productId, p.name as productName, p.category, p.description, p.options,
-               ps.id as sizeId, ps.size_name as sizeName, ps.cost as sizeCost,
-               COALESCE(spi.price, ps.price) as sizePrice
-             FROM studio_price_list_items spi
-             JOIN studio_price_lists spl ON spl.id = spi.studio_price_list_id
-             JOIN product_sizes ps ON ps.id = spi.product_size_id
-             JOIN products p ON p.id = ps.product_id
-             LEFT JOIN super_price_list_items sspi
-               ON sspi.super_price_list_id = spl.super_price_list_id
-              AND sspi.product_size_id = spi.product_size_id
-             WHERE spi.studio_price_list_id = $1
-               AND spi.is_offered = 1
-               AND COALESCE(sspi.is_active, 1) = 1
-             ORDER BY p.category, p.name, ps.size_name`,
-            [studioPriceList.id]
-          );
-          // Group rows by product
-          const productMap = new Map();
-          for (const row of rows) {
-            const pid = Number(row.productId);
-            if (!productMap.has(pid)) {
-              const options = row.options ? JSON.parse(row.options) : null;
-              productMap.set(pid, {
-                id: pid,
-                name: row.productName,
-                category: row.category,
-                description: row.description,
-                price: 0,
-                sizes: [],
-                isActive: options?.isActive !== undefined ? !!options.isActive : true,
-                popularity: Number(options?.popularity) || 0,
-                isDigital: !!(options?.isDigital || String(row.productName || '').toLowerCase().includes('digital')),
-              });
-            }
-            const decoded = decodeSizeName(row.sizeName);
-            const sizePrice = Number(row.sizePrice) || 0;
-            const entry = productMap.get(pid);
-            entry.sizes.push({
-              id: Number(row.sizeId),
-              name: decoded.name,
-              width: decoded.width,
-              height: decoded.height,
-              price: sizePrice,
-              cost: Number(row.sizeCost) || 0,
-            });
-            // Product price = lowest offered size price
-            if (entry.price === 0 || sizePrice < entry.price) {
-              entry.price = sizePrice;
-            }
-          }
-          const parsedProducts = Array.from(productMap.values()).filter((p) => p.isActive !== false);
+        const parsedProducts = await getOfferedProductsFromStudioPriceList(effectiveStudioId, album?.priceListId || null);
+        if (Array.isArray(parsedProducts) && parsedProducts.length > 0) {
           return res.json(parsedProducts);
         }
       }
@@ -275,6 +291,15 @@ router.get('/active', async (req, res) => {
         return res.json(parsedProducts.filter((product) => product.isActive !== false));
       }
     }
+
+    // Studio-scoped offered products without album context
+    if (studioId) {
+      const parsedProducts = await getOfferedProductsFromStudioPriceList(Number(studioId), null);
+      if (Array.isArray(parsedProducts) && parsedProducts.length > 0) {
+        return res.json(parsedProducts);
+      }
+    }
+
     // Fallback: only return products for this studio, or all for super admin
     let products;
     if (user?.role === 'super_admin') {

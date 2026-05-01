@@ -368,6 +368,7 @@ router.get('/public/:slug', async (req, res) => {
     }
 
     const hasProfileConfig = await tableExists('profile_config');
+    const hasProfileTimezone = hasProfileConfig ? await columnExists('profile_config', 'timezone') : false;
 
     const studio = await queryRow(
       hasProfileConfig
@@ -378,7 +379,8 @@ router.get('/public/:slug', async (req, res) => {
                   pc.business_name as businessName,
                   pc.logo_url as logoUrl,
                   pc.instagram_url as instagramUrl,
-                  pc.facebook_url as facebookUrl
+                      pc.facebook_url as facebookUrl,
+                      ${hasProfileTimezone ? 'pc.timezone' : "CAST('UTC' AS NVARCHAR(100))"} as timezone
            FROM studios s
            LEFT JOIN profile_config pc ON pc.studio_id = s.id
            WHERE s.public_slug = $1`
@@ -389,7 +391,8 @@ router.get('/public/:slug', async (req, res) => {
                   CAST(NULL AS NVARCHAR(255)) as businessName,
                   CAST(NULL AS NVARCHAR(MAX)) as logoUrl,
                   CAST(NULL AS NVARCHAR(500)) as instagramUrl,
-                  CAST(NULL AS NVARCHAR(500)) as facebookUrl
+                     CAST(NULL AS NVARCHAR(500)) as facebookUrl,
+                     CAST('UTC' AS NVARCHAR(100)) as timezone
            FROM studios
            WHERE public_slug = $1`,
       [slug]
@@ -403,6 +406,7 @@ router.get('/public/:slug', async (req, res) => {
       ...studio,
       logoUrl: studio.logoUrl ? (getSignedReadUrl(studio.logoUrl) || studio.logoUrl) : null,
       displayName: studio.businessName || studio.name,
+      timezone: String(studio.timezone || 'UTC'),
       publicUrl: `${getPublicStudioBaseUrl(req)}/s/${studio.publicSlug}`,
     });
   } catch (error) {

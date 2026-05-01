@@ -5,6 +5,7 @@ import { profileService } from '../../services/profileService';
 import { watermarkService } from '../../services/watermarkService';
 import { useAuth } from '../../contexts/AuthContext';
 import { SUBSCRIPTION_PLANS } from '../../services/subscriptionService';
+import { getAvailableTimezones, getBrowserTimezone, setStudioTimezone, formatDateInStudioTimezone } from '../../utils/studioDateTime';
 import AdminLayout from '../../components/AdminLayout';
 
 const AdminProfile: React.FC = () => {
@@ -21,6 +22,7 @@ const AdminProfile: React.FC = () => {
   const [logoPreview, setLogoPreview] = useState('');
   const [instagramUrl, setInstagramUrl] = useState('');
   const [facebookUrl, setFacebookUrl] = useState('');
+  const [timezone, setTimezoneValue] = useState(getBrowserTimezone());
   const [subscription, setSubscription] = useState<any>(null);
   const [watermarkUrl, setWatermarkUrl] = useState<string>('');
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
@@ -57,6 +59,8 @@ const AdminProfile: React.FC = () => {
       setLogoPreview(data.logoUrl || '');
       setInstagramUrl(data.instagramUrl || '');
       setFacebookUrl(data.facebookUrl || '');
+      setTimezoneValue(data.timezone || getBrowserTimezone());
+      setStudioTimezone(data.timezone || getBrowserTimezone());
     } catch (error) {
       console.error('Failed to load profile config:', error);
     } finally {
@@ -180,10 +184,13 @@ const AdminProfile: React.FC = () => {
         logoUrl: finalLogoUrl,
         instagramUrl,
         facebookUrl,
+        timezone,
       });
       setConfig(updatedConfig);
       setLogoUrl(finalLogoUrl);
       setLogoPreview(finalLogoUrl);
+      setTimezoneValue(updatedConfig?.timezone || timezone);
+      setStudioTimezone(updatedConfig?.timezone || timezone);
       window.dispatchEvent(new Event('studio-brand-updated'));
       alert('Profile saved successfully!');
     } catch (error) {
@@ -360,6 +367,22 @@ const AdminProfile: React.FC = () => {
         </div>
 
         <div className="form-group">
+          <label htmlFor="timezone">Timezone</label>
+          <select
+            id="timezone"
+            value={timezone}
+            onChange={(e) => setTimezoneValue(e.target.value)}
+          >
+            {getAvailableTimezones().map((zone) => (
+              <option key={zone} value={zone}>{zone}</option>
+            ))}
+          </select>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+            All studio-facing date/time values are displayed in this timezone.
+          </p>
+        </div>
+
+        <div className="form-group">
           <label htmlFor="receiveOrderNotifications">
             <input
               type="checkbox"
@@ -426,6 +449,7 @@ const AdminProfile: React.FC = () => {
               <li>Owner: <strong>{ownerName}</strong></li>
               <li>Business: <strong>{businessName}</strong></li>
               <li>Email: <strong>{email}</strong></li>
+              <li>Timezone: <strong>{timezone}</strong></li>
               <li>Order Notifications: <strong>{receiveOrderNotifications ? 'Enabled ✓' : 'Disabled'}</strong></li>
             </ul>
           </div>
@@ -455,7 +479,7 @@ const AdminProfile: React.FC = () => {
               </h3>
               <p style={{ color: '#fde68a', margin: '0 0 15px 0' }}>
                 Your subscription will end on {subscription.studio.subscription_end 
-                  ? new Date(subscription.studio.subscription_end).toLocaleDateString()
+                  ? formatDateInStudioTimezone(subscription.studio.subscription_end, timezone)
                   : 'the renewal date'}. 
                 You will continue to have full access until then.
               </p>
@@ -508,7 +532,7 @@ const AdminProfile: React.FC = () => {
                 }}>
                   {subscription.studio.cancellation_requested 
                     ? `Active (Cancels ${subscription.studio.subscription_end 
-                        ? new Date(subscription.studio.subscription_end).toLocaleDateString()
+                      ? formatDateInStudioTimezone(subscription.studio.subscription_end, timezone)
                         : 'at renewal'})`
                     : subscription.studio.subscription_status}
                 </p>
@@ -518,7 +542,7 @@ const AdminProfile: React.FC = () => {
                 <h4>Renewal Date</h4>
                 <p style={{ fontSize: '16px' }}>
                   {subscription.studio.subscription_end 
-                    ? new Date(subscription.studio.subscription_end).toLocaleDateString()
+                    ? formatDateInStudioTimezone(subscription.studio.subscription_end, timezone)
                     : 'Not set'}
                 </p>
               </div>

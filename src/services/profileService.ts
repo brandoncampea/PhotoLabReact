@@ -1,13 +1,16 @@
 import api from './api';
+import { setStudioTimezone } from '../utils/studioDateTime';
 
 export const profileService = {
   async getConfig(): Promise<any> {
     const response = await api.get('/profile');
+    setStudioTimezone(response?.data?.timezone);
     return response.data;
   },
 
   async updateConfig(data: any): Promise<any> {
     const response = await api.put('/profile', data);
+    setStudioTimezone(response?.data?.timezone || data?.timezone);
     return response.data;
   },
 

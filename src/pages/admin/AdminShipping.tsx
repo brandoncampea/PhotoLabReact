@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { shippingService } from '../../services/shippingService';
 import { useAuth } from '../../contexts/AuthContext';
 import { ShippingAddress } from '../../types';
+import { formatDateTimeInStudioTimezone } from '../../utils/studioDateTime';
 import './AdminShipping.css';
 
 const toDateTimeLocalValue = (value?: string | null) => {
@@ -145,7 +146,7 @@ const AdminShipping: React.FC = () => {
             </div>
             <div className="admin-shipping-stat-card">
               <span className="admin-shipping-stat-label">Batch Deadline</span>
-              <strong>{batchDeadline ? new Date(batchDeadline).toLocaleString() : 'Not set'}</strong>
+              <strong>{batchDeadline ? formatDateTimeInStudioTimezone(batchDeadline) : 'Not set'}</strong>
               <small>Orders after this date remain queued until the next release.</small>
             </div>
           </div>

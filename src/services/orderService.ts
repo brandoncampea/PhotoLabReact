@@ -1,7 +1,6 @@
 import api from './api';
 // import { mockApi } from './mockApi'; // Removed: unused
 import { Order, CartItem, ShippingAddress, BatchQueueSummary } from '../types';
-import { taxService } from './taxService';
 
 export const orderService = {
   async cancelOrder(orderId: number, cancelReason: string, refund: boolean): Promise<{ success: boolean; message?: string }> {
@@ -20,7 +19,13 @@ export const orderService = {
     discountCode?: string,
     studioFeeType?: string,
     studioFeeValue?: number,
-    paymentIntentId?: string
+    paymentIntentId?: string,
+    pricing?: {
+      taxAmount: number;
+      taxRate: number;
+      total: number;
+      subtotalBeforeDiscount?: number;
+    }
   ): Promise<Order> {
     // Calculate subtotal with studio fees applied to each item
     let itemsTotal = items.reduce((sum, item) => {
@@ -38,9 +43,11 @@ export const orderService = {
       
       return sum + itemPrice;
     }, 0);
-    
-    const subtotal = itemsTotal + shippingCost;
-    const { taxAmount, taxRate, total } = taxService.calculateTotal(subtotal, shippingAddress);
+
+    const subtotal = pricing?.subtotalBeforeDiscount ?? (itemsTotal + shippingCost);
+    const taxAmount = pricing?.taxAmount ?? 0;
+    const taxRate = pricing?.taxRate ?? 0;
+    const total = pricing?.total ?? subtotal + taxAmount;
     
     const response = await api.post<Order>('/orders', {
       items: items.map(item => {

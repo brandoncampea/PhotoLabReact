@@ -200,11 +200,11 @@
 	box-shadow: 0 2px 12px #7b61ff33;
 }
 /* Inline style replacements for Albums page */
-.albums-flex-row { display: flex; align-items: center; margin-bottom: 24px; }
-.albums-mr-16 { margin-right: 16px; }
-.albums-h2 { margin: 0; color: var(--primary-color); }
+.albums-flex-row, .albumsFlexRow { display: flex; align-items: center; margin-bottom: 24px; }
+.albums-mr-16, .albumsMr16 { margin-right: 16px; }
+.albums-h2, .albumsH2 { margin: 0; color: var(--primary-color); }
 
-.albums-batch-notice {
+.albums-batch-notice, .albumsBatchNotice {
 	display: grid;
 	gap: 6px;
 	margin-bottom: 18px;
@@ -215,11 +215,12 @@
 	color: #ddd6fe;
 }
 
-.albums-batch-notice strong {
+.albums-batch-notice strong,
+.albumsBatchNotice strong {
 	color: #f5f3ff;
 }
 
-.albums-batch-badge {
+.albums-batch-badge, .albumsBatchBadge {
 	display: inline-flex;
 	align-items: center;
 	margin-top: 4px;
@@ -232,4 +233,112 @@
 	font-size: 0.75rem;
 	font-weight: 700;
 	letter-spacing: 0.02em;
+}
+
+.albums-deals-panel, .albumsDealsPanel {
+	margin-bottom: 18px;
+	padding: 14px;
+	border-radius: 12px;
+	border: 1px solid rgba(139, 92, 246, 0.5);
+	background: rgba(39, 30, 72, 0.5);
+}
+
+.albums-deals-panel-header, .albumsDealsPanelHeader {
+	display: flex;
+	justify-content: space-between;
+	align-items: flex-start;
+	gap: 12px;
+	margin-bottom: 10px;
+	flex-wrap: wrap;
+}
+
+.albums-deals-title, .albumsDealsTitle {
+	margin: 0;
+	font-size: 1rem;
+	font-weight: 700;
+	color: #ede9fe;
+}
+
+.albums-deals-muted, .albumsDealsMuted {
+	margin: 0;
+	color: #c4b5fd;
+	font-size: 0.9rem;
+}
+
+.albums-deals-grid, .albumsDealsGrid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+	gap: 10px;
+}
+
+.albums-deal-card, .albumsDealCard {
+	border: 1px solid rgba(139, 92, 246, 0.35);
+	background: rgba(17, 24, 39, 0.45);
+	border-radius: 10px;
+	padding: 10px;
+	display: grid;
+	gap: 6px;
+}
+
+.albums-deal-top-row, .albumsDealTopRow {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+.albums-deal-headline, .albumsDealHeadline {
+	color: #e9d5ff;
+	font-weight: 700;
+	font-size: 0.92rem;
+}
+
+.albums-deal-code, .albumsDealCode {
+	background: rgba(49, 46, 129, 0.9);
+	border: 1px solid rgba(167, 139, 250, 0.45);
+	border-radius: 8px;
+	padding: 2px 8px;
+	color: #ede9fe;
+	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	font-size: 0.82rem;
+	font-weight: 700;
+	white-space: nowrap;
+}
+
+.albums-deal-description, .albumsDealDescription {
+	margin: 0;
+	color: #ddd6fe;
+	font-size: 0.86rem;
+}
+
+.albums-deal-meta, .albumsDealMeta {
+	color: #c4b5fd;
+	font-size: 0.8rem;
+}
+
+.albumsDealsPanelHeader :global(.btn),
+.albums-deals-panel-header :global(.btn) {
+	margin: 0;
+	position: relative;
+	z-index: 1;
+	align-self: flex-start;
+}
+
+@media (max-width: 640px) {
+	.albumsDealsPanelHeader,
+	.albums-deals-panel-header {
+		flex-direction: column;
+		align-items: flex-start;
+	}
+
+	.albumsDealsPanelHeader :global(.btn),
+	.albums-deals-panel-header :global(.btn) {
+		display: inline-flex;
+	}
+
+	.albumsDealsGrid,
+	.albums-deals-grid {
+		grid-template-columns: 1fr;
+	}
 }

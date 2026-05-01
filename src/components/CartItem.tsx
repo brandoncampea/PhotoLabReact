@@ -54,55 +54,13 @@ const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop, onOpenWhccEditor,
           <div>
             <div style={{ marginBottom: 12, borderRadius: 6, overflow: 'hidden', background: '#000', height: 280, position: 'relative' }}>
               {displayImageUrl ? (
-                (() => {
-                  // If cropData and photo dimensions are available, render the cropped preview
-                  if (item.cropData && (item.photo?.width || item.photo?.metadata?.width) && (item.photo?.height || item.photo?.metadata?.height)) {
-                    const crop = item.cropData;
-                    const naturalWidth = Number(item.photo?.width || item.photo?.metadata?.width || 0);
-                    const naturalHeight = Number(item.photo?.height || item.photo?.metadata?.height || 0);
-                    // Determine orientation and aspect ratio
-                    let aspectRatio = 1;
-                    // Use aspect ratio from productSize if available, otherwise fallback to photo dimensions
-                    if (item.productSizeName && naturalWidth > 0 && naturalHeight > 0) {
-                      aspectRatio = naturalWidth / naturalHeight;
-                    } else if (naturalWidth > 0 && naturalHeight > 0) {
-                      aspectRatio = naturalWidth / naturalHeight;
-                    }
-                    // Calculate crop and container dimensions
-                    const cropLeft = (crop.x / naturalWidth) * 100;
-                    const cropTop = (crop.y / naturalHeight) * 100;
-                    const cropWidth = (crop.width / naturalWidth) * 100;
-                    const cropHeight = (crop.height / naturalHeight) * 100;
-                    // Use aspect ratio to set container height
-                    return (
-                      <div style={{ width: '100%', height: `calc(100% / ${aspectRatio})`, position: 'relative', overflow: 'hidden' }}>
-                        <WatermarkedImage
-                          src={displayImageUrl}
-                          alt={item.productName || item.photo?.fileName || 'Product'}
-                          style={{
-                            width: `${100 / (cropWidth / 100)}%`,
-                            height: `${100 / (cropHeight / 100)}%`,
-                            objectFit: 'cover',
-                            position: 'absolute',
-                            left: `-${cropLeft / (cropWidth / 100)}%`,
-                            top: `-${cropTop / (cropHeight / 100)}%`,
-                          }}
-                          studioId={studioId}
-                        />
-                      </div>
-                    );
-                  } else {
-                    // No crop, show full image
-                    return (
-                      <WatermarkedImage
-                        src={displayImageUrl}
-                        alt={item.productName || item.photo?.fileName || 'Product'}
-                        style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                        studioId={studioId}
-                      />
-                    );
-                  }
-                })()
+                <WatermarkedImage
+                  src={displayImageUrl}
+                  alt={item.productName || item.photo?.fileName || 'Product'}
+                  style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                  studioId={studioId}
+                  showWatermark={false}
+                />
               ) : (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#666' }}>
                   No Image

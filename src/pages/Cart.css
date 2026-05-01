@@ -165,7 +165,17 @@
 
 .cart-discount-entry {
   display: flex;
+  flex-direction: column;
   gap: 0.5rem;
+}
+
+.cart-discount-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.cart-discount-actions .btn {
+  white-space: nowrap;
 }
 
 .cart-discount-input {
@@ -339,7 +349,8 @@
 
 @media (max-width: 640px) {
   .cart-form-grid-two-col,
-  .cart-discount-entry {
+  .cart-discount-entry,
+  .cart-discount-actions {
     grid-template-columns: 1fr;
     display: grid;
   }

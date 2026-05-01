@@ -5,6 +5,7 @@ import { loadStripe } from '@stripe/stripe-js';
 import Cropper from 'react-cropper';
 import { getPhotoAssetUrl } from '../utils/getPhotoAssetUrl';
 import { getCropAspectRatioForPhotoAndProduct } from '../utils/getCropAspectRatio';
+import { formatDateInStudioTimezone } from '../utils/studioDateTime';
 import 'cropperjs/dist/cropper.css';
 import './Cart.css';
 import { useCart } from '../contexts/CartContext';
@@ -20,7 +21,7 @@ import { discountCodeService } from '../services/discountCodeService';
 import { taxService } from '../services/taxService';
 import { whccEditorService } from '../services/whccEditorService';
 import { superPriceListService } from '../services/superPriceListService';
-import { ShippingConfig, StripeConfig, Product, DiscountCode, ShippingAddress, CartItem as CartItemType, PaymentIntent, ShippingQuote } from '../types';
+import { ShippingConfig, StripeConfig, Product, DiscountCode, DiscountValidation, ShippingAddress, CartItem as CartItemType, PaymentIntent, ShippingQuote } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 
 const Cart: React.FC = () => {
@@ -37,7 +38,10 @@ const Cart: React.FC = () => {
   const [processingPayment, setProcessingPayment] = useState(false);
   const [discountCode, setDiscountCode] = useState('');
   const [appliedDiscount, setAppliedDiscount] = useState<DiscountCode | null>(null);
+  const [discountValidation, setDiscountValidation] = useState<DiscountValidation | null>(null);
   const [discountError, setDiscountError] = useState('');
+  const [discountInfo, setDiscountInfo] = useState('');
+  const [bestDiscountSearchLoading, setBestDiscountSearchLoading] = useState(false);
   const [editingItem, setEditingItem] = useState<CartItemType | null>(null);
   const [cropperRef, setCropperRef] = useState<any>(null);
   const [activePaymentIntent, setActivePaymentIntent] = useState<PaymentIntent | null>(null);
@@ -277,62 +281,113 @@ const Cart: React.FC = () => {
   // For backward compatibility in other usages
   const getShippingCost = () => getShippingCostFor(shippingOption);
 
-  const handleApplyDiscount = async () => {
-    if (!discountCode.trim()) return;
-    
+  const cartSubtotal = getTotalPrice();
+  const currentShippingCost = getShippingCost();
+
+  const runDiscountValidation = async (codeValue: string) => {
+    const validation = await discountCodeService.validate(codeValue.trim(), {
+      items,
+      subtotal: cartSubtotal,
+      shippingCost: currentShippingCost,
+    });
+
+    if (!validation.valid || !validation.code) {
+      setAppliedDiscount(null);
+      setDiscountValidation(null);
+      setDiscountError(validation.reason || 'Invalid discount code');
+      setDiscountInfo('');
+      return null;
+    }
+
+    setAppliedDiscount(validation.code);
+    setDiscountValidation(validation);
     setDiscountError('');
+    setDiscountInfo('');
+    return validation;
+  };
+
+  const findAndApplyBestDiscount = async (origin: 'auto' | 'manual') => {
+    if (items.length === 0) return;
+
+    if (origin === 'manual') {
+      setDiscountError('');
+      setDiscountInfo('');
+    }
+
+    setBestDiscountSearchLoading(true);
     try {
-      const code = await discountCodeService.getByCode(discountCode.trim());
-      
-      if (!code) {
-        setDiscountError('Invalid or expired discount code');
+      const result = await discountCodeService.findBest({
+        items,
+        subtotal: cartSubtotal,
+        shippingCost: currentShippingCost,
+        studioId: user?.studioId,
+      });
+
+      if (!result.valid || !result.code) {
+        if (origin === 'manual') {
+          setDiscountInfo('No eligible discount found for this cart.');
+        }
         return;
       }
-      
-      setAppliedDiscount(code);
+
+      setAppliedDiscount(result.code);
+      setDiscountValidation(result);
+      setDiscountCode('');
       setDiscountError('');
+      setDiscountInfo(origin === 'auto'
+        ? `Best available discount applied: ${result.code.code}`
+        : `Applied best available discount: ${result.code.code}`);
+    } catch {
+      if (origin === 'manual') {
+        setDiscountError('Failed to find best discount code.');
+      }
+    } finally {
+      setBestDiscountSearchLoading(false);
+    }
+  };
+
+  const handleApplyDiscount = async () => {
+    if (!discountCode.trim()) return;
+
+    setDiscountError('');
+    setDiscountInfo('');
+    try {
+      await runDiscountValidation(discountCode.trim());
     } catch (error) {
-      setDiscountError('Failed to apply discount code');
+      setDiscountError('Failed to validate discount code');
     }
   };
 
   const handleRemoveDiscount = () => {
     setAppliedDiscount(null);
+    setDiscountValidation(null);
     setDiscountCode('');
     setDiscountError('');
+    setDiscountInfo('');
   };
 
   const getDiscountAmount = () => {
-    if (!appliedDiscount) return 0;
-    
-    const subtotal = getTotalPrice();
-    
-    if (appliedDiscount.applicationType === 'entire-order') {
-      if (appliedDiscount.discountType === 'percentage') {
-        return (subtotal * appliedDiscount.discountValue) / 100;
-      } else {
-        return Math.min(appliedDiscount.discountValue, subtotal);
-      }
-    } else {
-      // Specific products
-      let discountableTotal = 0;
-      items.forEach(item => {
-        if (item.productId && appliedDiscount.applicableProductIds.includes(item.productId)) {
-          const product = products.find(p => p.id === item.productId);
-          const size = product?.sizes.find(s => s.id === item.productSizeId);
-          if (product && size) {
-            const itemPrice = size.price;
-            discountableTotal += itemPrice * item.quantity;
-          }
-        }
-      });
-      
-      if (appliedDiscount.discountType === 'percentage') {
-        return (discountableTotal * appliedDiscount.discountValue) / 100;
-      } else {
-        return Math.min(appliedDiscount.discountValue, discountableTotal);
-      }
+    return discountValidation?.discountAmount || 0;
+  };
+
+  const getDiscountSummaryText = () => {
+    if (!appliedDiscount) return '';
+
+    if (appliedDiscount.discountType === 'bundle-price') {
+      const matchingProducts = (appliedDiscount.applicableProductIds || [])
+        .map((productId) => products.find((product) => Number(product.id) === Number(productId))?.name)
+        .filter(Boolean) as string[];
+
+      const productLabel = matchingProducts.length === 1
+        ? matchingProducts[0]
+        : matchingProducts.length > 1
+        ? 'selected products'
+        : 'eligible items';
+
+      return `Bundle applied: ${appliedDiscount.bundleQuantity || 0} for $${Number(appliedDiscount.bundlePrice || 0).toFixed(2)} on ${productLabel}`;
     }
+
+    return discountValidation?.summary || appliedDiscount.description || '';
   };
 
   const [taxAmount, setTaxAmount] = useState(0);
@@ -398,9 +453,69 @@ const Cart: React.FC = () => {
   };
 
   useEffect(() => {
+    if (discountCode.trim()) {
+      return;
+    }
+    if (appliedDiscount) {
+      return;
+    }
+    if (items.length === 0) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      findAndApplyBestDiscount('auto');
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [items, cartSubtotal, currentShippingCost, user?.studioId, appliedDiscount, discountCode]);
+
+  useEffect(() => {
+    if (!appliedDiscount?.code) {
+      return;
+    }
+
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      try {
+        const validation = await discountCodeService.validate(appliedDiscount.code, {
+          items,
+          subtotal: cartSubtotal,
+          shippingCost: currentShippingCost,
+        });
+
+        if (cancelled) return;
+
+        if (!validation.valid || !validation.code) {
+          setAppliedDiscount(null);
+          setDiscountValidation(null);
+          setDiscountCode('');
+          setDiscountError(validation.reason || 'This discount no longer applies to your cart.');
+          return;
+        }
+
+        setAppliedDiscount(validation.code);
+        setDiscountValidation(validation);
+        setDiscountError('');
+      } catch {
+        if (!cancelled) {
+          setDiscountError('Failed to refresh discount details.');
+        }
+      }
+    }, 150);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [appliedDiscount?.code, items, cartSubtotal, currentShippingCost]);
+
+  useEffect(() => {
     calculateTaxAmount();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, shippingOption, shippingAddress, appliedDiscount, studioFees, stripeConfig]);
+  }, [items, shippingOption, shippingAddress, appliedDiscount, discountValidation?.discountAmount, studioFees, stripeConfig]);
 
   const getFinalTotal = () => {
     const subtotal = getTotalPrice();
@@ -575,11 +690,6 @@ const Cart: React.FC = () => {
   };
 
   const finalizeSuccessfulCheckout = async (paymentIntentId: string) => {
-    // Increment discount usage if applied
-    if (appliedDiscount) {
-      await discountCodeService.incrementUsage(appliedDiscount.id);
-    }
-
     const digitalItems = items.filter(item => {
       const product = products.find(p => p.id === item.productId);
       return product?.isDigital === true;
@@ -607,7 +717,13 @@ const Cart: React.FC = () => {
       appliedDiscount?.code,
       studioFees?.feeType,
       studioFees?.feeValue,
-      paymentIntentId
+      paymentIntentId,
+      {
+        taxAmount,
+        taxRate,
+        total: getFinalTotal(),
+        subtotalBeforeDiscount: cartSubtotal + getStudioFeeAmount() + currentShippingCost,
+      }
     );
 
     // If we have an order id and paymentIntentId, update the Stripe fee
@@ -635,13 +751,13 @@ const Cart: React.FC = () => {
     } else if (digitalItems.length > 0) {
       successMessage += ` Download links for digital items have been sent to your email. Physical items will ${
         shippingOption === 'batch'
-          ? `ship on ${new Date(shippingConfig?.batchDeadline || '').toLocaleDateString()}.`
+          ? `ship on ${formatDateInStudioTimezone(shippingConfig?.batchDeadline)}.`
           : 'ship within 2-3 business days.'
       }`;
     } else {
       successMessage += ` ${
         shippingOption === 'batch'
-          ? `It will ship on ${new Date(shippingConfig?.batchDeadline || '').toLocaleDateString()}.`
+          ? `It will ship on ${formatDateInStudioTimezone(shippingConfig?.batchDeadline)}.`
           : 'It will ship within 2-3 business days.'
       }`;
     }
@@ -905,7 +1021,7 @@ const Cart: React.FC = () => {
                   <strong>Batch Shipping - FREE</strong>
                   {getBatchDeadlineDate() ? (
                     <p>
-                      Ships in {getDaysUntilDeadline()} days (by {getBatchDeadlineDate()!.toLocaleDateString()})
+                      Ships in {getDaysUntilDeadline()} days (by {formatDateInStudioTimezone(getBatchDeadlineDate())})
                     </p>
                   ) : (
                     <p>
@@ -965,18 +1081,33 @@ const Cart: React.FC = () => {
                       }
                     }}
                   />
-                  <button
-                    onClick={handleApplyDiscount}
-                    disabled={!discountCode.trim()}
-                    className="btn btn-secondary"
-                    style={{ whiteSpace: 'nowrap' }}
-                  >
-                    Apply Code
-                  </button>
+                  <div className="cart-discount-actions">
+                    <button
+                      onClick={handleApplyDiscount}
+                      disabled={!discountCode.trim()}
+                      className="btn btn-secondary"
+                      style={{ whiteSpace: 'nowrap' }}
+                    >
+                      Apply Code
+                    </button>
+                    <button
+                      onClick={() => findAndApplyBestDiscount('manual')}
+                      disabled={bestDiscountSearchLoading}
+                      className="btn btn-secondary"
+                      style={{ whiteSpace: 'nowrap' }}
+                    >
+                      {bestDiscountSearchLoading ? 'Checking…' : 'Best Code'}
+                    </button>
+                  </div>
                 </div>
                 {discountError && (
                   <p className="cart-discount-error">
                     {discountError}
+                  </p>
+                )}
+                {!discountError && discountInfo && (
+                  <p className="cart-discount-applied" style={{ marginTop: 8 }}>
+                    {discountInfo}
                   </p>
                 )}
               </div>
@@ -988,7 +1119,7 @@ const Cart: React.FC = () => {
                       {appliedDiscount.code}
                     </strong>
                     <p className="cart-discount-description">
-                      {appliedDiscount.description}
+                      {getDiscountSummaryText()}
                     </p>
                   </div>
                   <button
@@ -1010,10 +1141,15 @@ const Cart: React.FC = () => {
           </div>
           
           {appliedDiscount && (
-            <div className="summary-row cart-summary-row discount">
-              <span>Discount ({appliedDiscount.code})</span>
-              <span>-${getDiscountAmount().toFixed(2)}</span>
-            </div>
+            <>
+              <div className="summary-row cart-summary-row discount">
+                <span>Discount ({appliedDiscount.code})</span>
+                <span>-${getDiscountAmount().toFixed(2)}</span>
+              </div>
+              <div className="cart-discount-description" style={{ marginTop: -4, marginBottom: 10 }}>
+                {getDiscountSummaryText()}
+              </div>
+            </>
           )}
           
           {shippingAddress.state && (

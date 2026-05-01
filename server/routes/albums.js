@@ -7,9 +7,17 @@ import { authRequired } from '../middleware/auth.js';
 import { deleteBlobByUrl } from '../services/azureStorage.js';
 const router = express.Router();
 
+const ensureAlbumBatchShippingColumn = async () => {
+  await query(`
+    IF COL_LENGTH('albums', 'batch_shipping_active') IS NULL
+      ALTER TABLE albums ADD batch_shipping_active BIT NOT NULL CONSTRAINT DF_albums_batch_shipping_active DEFAULT 0;
+  `);
+};
+
 // Public: Get albums by studioSlug (for customer view)
 router.get('/public', async (req, res) => {
   try {
+    await ensureAlbumBatchShippingColumn();
     const { studioSlug } = req.query;
     if (!studioSlug) {
       return res.status(400).json({ error: 'studioSlug is required' });
@@ -33,7 +41,8 @@ router.get('/public', async (req, res) => {
         a.is_password_protected as isPasswordProtected,
         a.password,
         a.password_hint as passwordHint,
-        COALESCE(sc.is_active, 0) as batchShippingActive,
+        COALESCE(a.batch_shipping_active, 0) as batchShippingActive,
+        COALESCE(sc.is_active, 0) as studioBatchShippingActive,
         sc.batch_deadline as batchDeadline,
         a.created_at as createdDate
       FROM albums a
@@ -51,6 +60,7 @@ router.get('/public', async (req, res) => {
 const signAlbumForResponse = (album) => ({
   ...album,
   batchShippingActive: Boolean(album?.batchShippingActive),
+  studioBatchShippingActive: Boolean(album?.studioBatchShippingActive),
   coverImageUrl: album?.coverPhotoId
     ? String(album.coverPhotoId)
     : album?.coverImageUrl || '',
@@ -98,6 +108,7 @@ const addAlbumPreviewImages = async (albums) => {
 // Get all albums (auth required)
 router.get('/', authRequired, async (req, res) => {
   try {
+    await ensureAlbumBatchShippingColumn();
     const user = req.user;
     let albums;
     const studioId = user?.studio_id;
@@ -115,6 +126,7 @@ router.get('/', authRequired, async (req, res) => {
           a.is_password_protected as isPasswordProtected,
           a.password,
           a.password_hint as passwordHint,
+          COALESCE(a.batch_shipping_active, 0) as batchShippingActive,
           a.created_at as createdDate,
           a.studio_id as "studioId",
           s.public_slug as "studioPublicSlug"
@@ -137,6 +149,7 @@ router.get('/', authRequired, async (req, res) => {
           a.is_password_protected as isPasswordProtected,
           a.password,
           a.password_hint as passwordHint,
+          COALESCE(a.batch_shipping_active, 0) as batchShippingActive,
           a.created_at as createdDate,
           a.studio_id as "studioId",
           s.public_slug as "studioPublicSlug"
@@ -174,13 +187,19 @@ router.get('/', authRequired, async (req, res) => {
         const viewRows = await queryRows(`
           SELECT
             TRY_CAST(JSON_VALUE(event_data, '$.albumId') AS INT) as albumId,
+            SUM(CASE WHEN event_type = 'album_view' THEN 1 ELSE 0 END) as viewOpenCount,
+            SUM(CASE WHEN event_type = 'album_card_click' THEN 1 ELSE 0 END) as viewClickCount,
             COUNT(*) as viewCount
           FROM analytics
-          WHERE event_type = 'album_view'
+          WHERE event_type IN ('album_view', 'album_card_click')
             AND TRY_CAST(JSON_VALUE(event_data, '$.albumId') AS INT) IN (${placeholders})
           GROUP BY TRY_CAST(JSON_VALUE(event_data, '$.albumId') AS INT)
         `, albumIds);
-        viewsMap = new Map(viewRows.map(row => [Number(row.albumId), Number(row.viewCount) || 0]));
+        viewsMap = new Map(viewRows.map(row => [Number(row.albumId), {
+          viewCount: Number(row.viewCount) || 0,
+          viewOpenCount: Number(row.viewOpenCount) || 0,
+          viewClickCount: Number(row.viewClickCount) || 0,
+        }]));
       } catch (analyticsError) {
         // Analytics table may not exist in all environments.
         console.warn('[GET /albums] analytics unavailable:', analyticsError?.message || analyticsError);
@@ -190,11 +209,14 @@ router.get('/', authRequired, async (req, res) => {
     const albumsWithPreviews = await addAlbumPreviewImages(albums);
     const albumsWithStats = albumsWithPreviews.map(album => {
       const stats = statsMap.get(album.id) || {};
+      const views = viewsMap.get(Number(album.id)) || {};
       return {
         ...signAlbumForResponse(album),
         productCount: Number(stats.productCount) || 0,
         netRevenue: Number(stats.netRevenue) || 0,
-        viewCount: Number(viewsMap.get(Number(album.id)) || 0),
+        viewCount: Number(views.viewCount) || 0,
+        viewOpenCount: Number(views.viewOpenCount) || 0,
+        viewClickCount: Number(views.viewClickCount) || 0,
         studioPublicSlug: album.studioPublicSlug || null,
       };
     });
@@ -208,6 +230,7 @@ router.get('/', authRequired, async (req, res) => {
 // Get album by ID
 router.get('/:id', async (req, res) => {
   try {
+    await ensureAlbumBatchShippingColumn();
     const album = await queryRow(`
       SELECT 
         a.id,
@@ -221,7 +244,8 @@ router.get('/:id', async (req, res) => {
         a.is_password_protected as isPasswordProtected,
         a.password,
         a.password_hint as passwordHint,
-        COALESCE(sc.is_active, 0) as batchShippingActive,
+        COALESCE(a.batch_shipping_active, 0) as batchShippingActive,
+        COALESCE(sc.is_active, 0) as studioBatchShippingActive,
         sc.batch_deadline as batchDeadline,
         a.created_at as createdDate,
         a.studio_id as "studioId"
@@ -243,7 +267,8 @@ router.get('/:id', async (req, res) => {
 // Create new album (requires active subscription)
 router.post('/', requireActiveSubscription, async (req, res) => {
   try {
-    const { title, name, description, coverImageUrl, coverPhotoId, category, priceListId, isPasswordProtected, password, passwordHint } = req.body;
+    await ensureAlbumBatchShippingColumn();
+    const { title, name, description, coverImageUrl, coverPhotoId, category, priceListId, isPasswordProtected, password, passwordHint, batchShippingActive } = req.body;
     const albumName = title || name || '';
     
     if (!albumName) {
@@ -255,8 +280,8 @@ router.post('/', requireActiveSubscription, async (req, res) => {
     }
     
     const result = await queryRow(`
-      INSERT INTO albums (name, title, description, cover_image_url, cover_photo_id, category, price_list_id, is_password_protected, password, password_hint, studio_id)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      INSERT INTO albums (name, title, description, cover_image_url, cover_photo_id, category, price_list_id, is_password_protected, password, password_hint, studio_id, batch_shipping_active)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       RETURNING id
     `, [
       albumName,
@@ -270,6 +295,7 @@ router.post('/', requireActiveSubscription, async (req, res) => {
       isPasswordProtected ? password : null,
       isPasswordProtected ? passwordHint : null,
       req.studioId || null,
+      !!batchShippingActive,
     ]);
     
     const album = await queryRow(`
@@ -285,6 +311,7 @@ router.post('/', requireActiveSubscription, async (req, res) => {
         is_password_protected as isPasswordProtected,
         password,
         password_hint as passwordHint,
+        COALESCE(batch_shipping_active, 0) as batchShippingActive,
         created_at as createdDate
       FROM albums WHERE id = $1
     `, [result.id]);
@@ -300,7 +327,8 @@ router.post('/', requireActiveSubscription, async (req, res) => {
 // Update album
 router.put('/:id', async (req, res) => {
   try {
-    const { title, name, description, coverImageUrl, coverPhotoId, category, priceListId, isPasswordProtected, password, passwordHint } = req.body;
+    await ensureAlbumBatchShippingColumn();
+    const { title, name, description, coverImageUrl, coverPhotoId, category, priceListId, isPasswordProtected, password, passwordHint, batchShippingActive } = req.body;
     
     // Get the current album to preserve existing values
     const currentAlbum = await queryRow('SELECT * FROM albums WHERE id = $1', [req.params.id]);
@@ -325,12 +353,13 @@ router.put('/:id', async (req, res) => {
     const newIsProtected = isPasswordProtected !== undefined ? isPasswordProtected : currentAlbum.is_password_protected;
     const newPassword = newIsProtected ? (password !== undefined ? password : currentAlbum.password) : null;
     const newPasswordHint = newIsProtected ? (passwordHint !== undefined ? passwordHint : currentAlbum.password_hint) : null;
+    const newBatchShippingActive = batchShippingActive !== undefined ? !!batchShippingActive : !!currentAlbum.batch_shipping_active;
     
     await query(`
       UPDATE albums 
       SET name = $1, title = $2, description = $3, cover_image_url = $4, cover_photo_id = $5, category = $6, price_list_id = $7, 
-          is_password_protected = $8, password = $9, password_hint = $10
-      WHERE id = $11
+          is_password_protected = $8, password = $9, password_hint = $10, batch_shipping_active = $11
+        WHERE id = $12
     `, [
       albumName,
       albumName,
@@ -342,6 +371,7 @@ router.put('/:id', async (req, res) => {
       !!newIsProtected,
       newPassword,
       newPasswordHint,
+      newBatchShippingActive,
       req.params.id,
     ]);
     
@@ -358,6 +388,7 @@ router.put('/:id', async (req, res) => {
         is_password_protected as isPasswordProtected,
         password,
         password_hint as passwordHint,
+        COALESCE(batch_shipping_active, 0) as batchShippingActive,
         created_at as createdDate
       FROM albums WHERE id = $1
     `, [req.params.id]);

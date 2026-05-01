@@ -24,6 +24,7 @@ const LandingPage = lazy(() => import('./pages/LandingPage'));
 const Login = lazy(() => import('./pages/Login'));
 const Register = lazy(() => import('./pages/Register'));
 const Albums = lazy(() => import('./pages/Albums'));
+const Deals = lazy(() => import('./pages/Deals'));
 const AlbumDetails = lazy(() => import('./pages/AlbumDetails'));
 const Cart = lazy(() => import('./pages/Cart'));
 const Checkout = lazy(() => import('./pages/Checkout'));
@@ -64,6 +65,9 @@ function App() {
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
               <Route path="/albums" element={<Albums />} />
+              <Route path="/deals" element={<Deals />} />
+              <Route path="/studio/:studioSlug/deals" element={<Deals />} />
+              <Route path="/s/:studioSlug/deals" element={<Deals />} />
               <Route path="/albums/:albumId" element={<AlbumDetails />} />
               <Route path="/cart" element={<Cart />} />
               <Route path="/checkout" element={<Checkout />} />

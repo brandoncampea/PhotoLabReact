@@ -245,6 +245,40 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
              ORDER BY label ASC`
         );
 
+        const discountOverviewRow = await queryRow(
+            `SELECT
+                COUNT(*) as discountedOrders,
+                COALESCE(SUM(CASE
+                    WHEN discount_code IS NOT NULL AND discount_code <> ''
+                    THEN CASE
+                        WHEN (COALESCE(subtotal, 0) + COALESCE(tax_amount, 0) + COALESCE(shipping_cost, 0) - COALESCE(total, 0)) > 0
+                        THEN (COALESCE(subtotal, 0) + COALESCE(tax_amount, 0) + COALESCE(shipping_cost, 0) - COALESCE(total, 0))
+                        ELSE 0
+                    END
+                    ELSE 0
+                END), 0) as totalDiscountAmount,
+                COALESCE(SUM(CASE WHEN discount_code IS NOT NULL AND discount_code <> '' THEN COALESCE(total, 0) ELSE 0 END), 0) as discountedRevenue
+             FROM orders o
+             WHERE discount_code IS NOT NULL AND discount_code <> ''${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}`
+        );
+
+        const topDiscountCodes = await queryRows(
+            `SELECT TOP 5
+                discount_code as code,
+                COUNT(*) as uses,
+                COALESCE(SUM(CASE
+                    WHEN (COALESCE(subtotal, 0) + COALESCE(tax_amount, 0) + COALESCE(shipping_cost, 0) - COALESCE(total, 0)) > 0
+                    THEN (COALESCE(subtotal, 0) + COALESCE(tax_amount, 0) + COALESCE(shipping_cost, 0) - COALESCE(total, 0))
+                    ELSE 0
+                END), 0) as totalDiscountAmount,
+                COALESCE(SUM(COALESCE(total, 0)), 0) as revenueInfluenced,
+                MAX(created_at) as lastUsedAt
+             FROM orders o
+             WHERE discount_code IS NOT NULL AND discount_code <> ''${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}
+             GROUP BY discount_code
+             ORDER BY uses DESC, totalDiscountAmount DESC`
+        );
+
         const formatSeries = (rows) => ({
             labels: rows.map((r) => r.label),
             data: rows.map((r) => Number(r.value)),
@@ -315,10 +349,12 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
                                         TRY_CAST(JSON_VALUE(a.event_data, '$.albumId') AS INT) as albumId,
                                         COALESCE(NULLIF(JSON_VALUE(a.event_data, '$.albumName'), ''), al.name, CONCAT('Album #', TRY_CAST(JSON_VALUE(a.event_data, '$.albumId') AS INT))) as albumName,
                                         al.cover_image_url as coverImageUrl,
-                    COUNT(*) as views
+                                                                                SUM(CASE WHEN a.event_type = 'album_view' THEN 1 ELSE 0 END) as opens,
+                                                                                SUM(CASE WHEN a.event_type = 'album_card_click' THEN 1 ELSE 0 END) as clicks,
+                                                                                COUNT(*) as views
                                     FROM analytics a
                                     LEFT JOIN albums al ON al.id = TRY_CAST(JSON_VALUE(a.event_data, '$.albumId') AS INT)
-                                      ${buildWhere("a.event_type = 'album_view'", '', analyticsTimeFilter ? analyticsTimeFilter.replace(/\bcreated_at\b/g, 'a.created_at') : '')}
+                                                                            ${buildWhere("a.event_type IN ('album_view', 'album_card_click')", '', analyticsTimeFilter ? analyticsTimeFilter.replace(/\bcreated_at\b/g, 'a.created_at') : '')}
                                     ${albumPhotoStudioFilter}
                                     GROUP BY JSON_VALUE(a.event_data, '$.albumId'), JSON_VALUE(a.event_data, '$.albumName'), al.name, al.cover_image_url
                   ORDER BY views DESC`;
@@ -333,11 +369,13 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
                                         COALESCE(NULLIF(JSON_VALUE(a.event_data, '$.albumName'), ''), al.name) as albumName,
                     p.thumbnail_url as thumbnailUrl,
                     p.full_image_url as fullImageUrl,
-                    COUNT(*) as views
+                                                                                SUM(CASE WHEN a.event_type = 'photo_view' THEN 1 ELSE 0 END) as opens,
+                                                                                SUM(CASE WHEN a.event_type = 'photo_thumbnail_click' THEN 1 ELSE 0 END) as clicks,
+                                                                                COUNT(*) as views
                                     FROM analytics a
                                     LEFT JOIN photos p ON p.id = TRY_CAST(JSON_VALUE(a.event_data, '$.photoId') AS INT)
                                     LEFT JOIN albums al ON al.id = COALESCE(TRY_CAST(JSON_VALUE(a.event_data, '$.albumId') AS INT), p.album_id)
-                                      ${buildWhere("a.event_type = 'photo_view'", '', analyticsTimeFilter ? analyticsTimeFilter.replace(/\bcreated_at\b/g, 'a.created_at') : '')}
+                                                                            ${buildWhere("a.event_type IN ('photo_view', 'photo_thumbnail_click')", '', analyticsTimeFilter ? analyticsTimeFilter.replace(/\bcreated_at\b/g, 'a.created_at') : '')}
                                     ${albumPhotoStudioFilter}
                                     GROUP BY JSON_VALUE(a.event_data, '$.photoId'), JSON_VALUE(a.event_data, '$.albumId'), JSON_VALUE(a.event_data, '$.photoFileName'), JSON_VALUE(a.event_data, '$.albumName'), p.album_id, p.file_name, p.thumbnail_url, p.full_image_url, al.name
                   ORDER BY views DESC`;
@@ -352,6 +390,8 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
                     albumId: Number(r.albumId || 0),
                     albumName: r.albumName || 'Unknown Album',
                     coverImageUrl: r.coverImageUrl || null,
+                    opens: Number(r.opens || 0),
+                    clicks: Number(r.clicks || 0),
                     views: Number(r.views || 0),
                 })),
                 photoViews: (photoViewsRows || []).map((r) => ({
@@ -361,6 +401,8 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
                     albumName: r.albumName || 'Unknown Album',
                     thumbnailUrl: r.thumbnailUrl || null,
                     fullImageUrl: r.fullImageUrl || null,
+                    opens: Number(r.opens || 0),
+                    clicks: Number(r.clicks || 0),
                     views: Number(r.views || 0),
                 })),
             };
@@ -374,6 +416,18 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
             totalCustomers,
             pendingOrders,
             batchOrders,
+            discountOverview: {
+                discountedOrders: Number(discountOverviewRow?.discountedOrders || 0),
+                totalDiscountAmount: Number(discountOverviewRow?.totalDiscountAmount || 0),
+                discountedRevenue: Number(discountOverviewRow?.discountedRevenue || 0),
+            },
+            topDiscountCodes: (topDiscountCodes || []).map((row) => ({
+                code: row.code || '',
+                uses: Number(row.uses || 0),
+                totalDiscountAmount: Number(row.totalDiscountAmount || 0),
+                revenueInfluenced: Number(row.revenueInfluenced || 0),
+                lastUsedAt: row.lastUsedAt || null,
+            })),
             analytics,
             recentOrders,
             revenueSeries: {

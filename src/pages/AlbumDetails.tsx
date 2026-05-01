@@ -155,7 +155,11 @@ const AlbumDetails: React.FC = () => {
         setPhotos(Array.isArray(photosRes) ? photosRes : []);
         setProducts(Array.isArray(productsRes) ? productsRes : []);
         // Track album view for analytics
-        analyticsService.trackAlbumView(id, albumRes.data?.name || '');
+        analyticsService.trackAlbumView(
+          id,
+          albumRes.data?.name || '',
+          Number((albumRes.data as any)?.studioId || 0) || undefined
+        );
       } catch {
         setError('Failed to load album');
       } finally {
@@ -168,9 +172,19 @@ const AlbumDetails: React.FC = () => {
   // Track photo view for analytics when selectedPhoto changes
   useEffect(() => {
     if (selectedPhoto && album) {
-      analyticsService.trackPhotoView(selectedPhoto.id, selectedPhoto.fileName, album.id, album.name);
+      analyticsService.trackPhotoView(selectedPhoto.id, selectedPhoto.fileName, album.id, album.name, Number((album as any)?.studioId || 0) || undefined);
     }
   }, [selectedPhoto, album]);
+
+  const handleThumbnailSelect = (photo: Photo) => {
+    if (!album) return;
+    const studioId = Number((album as any)?.studioId || 0) || undefined;
+    analyticsService.trackPhotoThumbnailClick(photo.id, photo.fileName, album.id, album.name, studioId);
+
+    const url = new URL(window.location.href);
+    url.searchParams.set('photo', String(photo.id));
+    navigate(url.pathname + url.search, { replace: false });
+  };
 
 
   const orderedProducts = useMemo((): ProductWithMatch[] => {
@@ -599,19 +613,14 @@ const AlbumDetails: React.FC = () => {
                     cursor: 'pointer',
                   }}
                   onClick={() => {
-                    // Set ?photo=photo.id without refreshing
-                    const url = new URL(window.location.href);
-                    url.searchParams.set('photo', String(photo.id));
-                    navigate(url.pathname + url.search, { replace: false });
+                    handleThumbnailSelect(photo);
                   }}
                   tabIndex={0}
                   role="button"
                   aria-label={`Select photo ${photo.fileName}`}
                   onKeyDown={e => {
                     if (e.key === 'Enter' || e.key === ' ') {
-                      const url = new URL(window.location.href);
-                      url.searchParams.set('photo', String(photo.id));
-                      navigate(url.pathname + url.search, { replace: false });
+                      handleThumbnailSelect(photo);
                     }
                   }}
                 >

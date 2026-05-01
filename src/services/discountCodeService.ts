@@ -1,5 +1,5 @@
 import api from './api';
-import { DiscountCode } from '../types';
+import { CartItem, DiscountCode, DiscountValidation } from '../types';
 
 export const discountCodeService = {
   async getAll(): Promise<DiscountCode[]> {
@@ -7,12 +7,27 @@ export const discountCodeService = {
     return response.data;
   },
 
-  async getByCode(code: string): Promise<DiscountCode> {
-    const response = await api.get<DiscountCode>(`/discount-codes/code/${code}`);
+  async validate(code: string, payload: { items: CartItem[]; subtotal: number; shippingCost: number }): Promise<DiscountValidation> {
+    const response = await api.post<DiscountValidation>('/discount-codes/validate', {
+      code,
+      items: payload.items,
+      subtotal: payload.subtotal,
+      shippingCost: payload.shippingCost,
+    });
     return response.data;
   },
 
-  async create(data: Omit<DiscountCode, 'id' | 'createdDate'>): Promise<DiscountCode> {
+  async findBest(payload: { items: CartItem[]; subtotal: number; shippingCost: number; studioId?: number }): Promise<DiscountValidation & { searchedCount?: number }> {
+    const response = await api.post<DiscountValidation & { searchedCount?: number }>('/discount-codes/best', {
+      items: payload.items,
+      subtotal: payload.subtotal,
+      shippingCost: payload.shippingCost,
+      studioId: payload.studioId,
+    });
+    return response.data;
+  },
+
+  async create(data: Partial<DiscountCode>): Promise<DiscountCode> {
     const response = await api.post<DiscountCode>('/discount-codes', data);
     return response.data;
   },
@@ -24,6 +39,11 @@ export const discountCodeService = {
 
   async delete(id: number): Promise<void> {
     await api.delete(`/discount-codes/${id}`);
+  },
+
+  async duplicate(id: number): Promise<DiscountCode> {
+    const response = await api.post<DiscountCode>(`/discount-codes/${id}/duplicate`);
+    return response.data;
   },
 
   async incrementUsage(id: number): Promise<void> {

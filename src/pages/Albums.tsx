@@ -2,6 +2,8 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import AlbumCoverCarousel from '../components/AlbumCoverCarousel';
+import { analyticsService } from '../services/analyticsService';
+import { formatDateInStudioTimezone, formatDateTimeInStudioTimezone, setStudioTimezone } from '../utils/studioDateTime';
 import styles from './Albums.module.css';
 import studioCardStyles from './StudioCard.module.css';
 
@@ -20,8 +22,27 @@ type PublicAlbum = {
   photoCount: number;
   createdDate: string;
   batchShippingActive?: boolean;
+  studioBatchShippingActive?: boolean;
   batchDeadline?: string;
   category?: string;
+};
+
+type PublicDeal = {
+  id: number;
+  code: string;
+  description: string;
+  discountType: 'percentage' | 'fixed' | 'free-shipping' | 'bundle-price';
+  discountValue: number;
+  bundleQuantity?: number | null;
+  bundlePrice?: number | null;
+  expirationDate?: string | null;
+};
+
+const formatDealHeadline = (deal: PublicDeal) => {
+  if (deal.discountType === 'free-shipping') return 'Free Shipping';
+  if (deal.discountType === 'bundle-price') return `${deal.bundleQuantity || 0} for $${Number(deal.bundlePrice || 0).toFixed(2)}`;
+  if (deal.discountType === 'percentage') return `${deal.discountValue}% Off`;
+  return `$${deal.discountValue.toFixed(2)} Off`;
 };
 
 
@@ -36,6 +57,12 @@ const Albums: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [shareNotification, setShareNotification] = useState('');
+  const [deals, setDeals] = useState<PublicDeal[]>([]);
+  const [loadingDeals, setLoadingDeals] = useState(false);
+
+  const isBatchEnabledForAlbum = (album: PublicAlbum) => {
+    return Boolean(album.batchShippingActive) && Boolean(album.studioBatchShippingActive);
+  };
 
   useEffect(() => {
     if (!selectedStudio) {
@@ -46,12 +73,22 @@ const Albums: React.FC = () => {
   useEffect(() => {
     if (!studios.length || selectedStudio) return;
     const studioSlug = searchParams.get('studioSlug');
-    if (!studioSlug) return;
-    const match = studios.find((s) => s.publicSlug === studioSlug);
+    const persistedStudioSlug = localStorage.getItem('studioSlug') || '';
+    const effectiveSlug = studioSlug || persistedStudioSlug;
+    if (!effectiveSlug) return;
+    const match = studios.find((s) => s.publicSlug === effectiveSlug);
     if (match) {
       setSelectedStudio(match);
+      if (!studioSlug) {
+        setSearchParams({ studioSlug: match.publicSlug });
+      }
     }
   }, [studios, selectedStudio, searchParams]);
+
+  useEffect(() => {
+    if (!selectedStudio?.publicSlug) return;
+    localStorage.setItem('studioSlug', selectedStudio.publicSlug);
+  }, [selectedStudio?.publicSlug]);
 
   const fetchStudios = async () => {
     setLoading(true);
@@ -71,6 +108,17 @@ const Albums: React.FC = () => {
   useEffect(() => {
     if (selectedStudio) {
       fetchAlbums(selectedStudio.publicSlug);
+      fetchDeals(selectedStudio.publicSlug);
+      fetch(`/api/studios/public/${encodeURIComponent(selectedStudio.publicSlug)}`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((studio) => {
+          if (studio?.timezone) {
+            setStudioTimezone(studio.timezone);
+          }
+        })
+        .catch(() => {});
+    } else {
+      setDeals([]);
     }
   }, [selectedStudio]);
 
@@ -86,6 +134,20 @@ const Albums: React.FC = () => {
       setError(err.message || 'Failed to load albums');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchDeals = async (studioSlug: string) => {
+    setLoadingDeals(true);
+    try {
+      const res = await fetch(`/api/discount-codes/public?studioSlug=${encodeURIComponent(studioSlug)}`);
+      if (!res.ok) throw new Error('Failed to load deals');
+      const data = await res.json();
+      setDeals(Array.isArray(data) ? data : []);
+    } catch {
+      setDeals([]);
+    } finally {
+      setLoadingDeals(false);
     }
   };
 
@@ -173,6 +235,7 @@ const Albums: React.FC = () => {
                   className={studioCardStyles.studioCard}
                   onClick={() => {
                     setSelectedStudio(studio);
+                    localStorage.setItem('studioSlug', studio.publicSlug);
                     setSearchParams({ studioSlug: studio.publicSlug });
                   }}
                 >
@@ -185,16 +248,36 @@ const Albums: React.FC = () => {
       ) : (
         <>
           <div className={styles.albumsFlexRow}>
-            <button
-              className={`btn btn-secondary ${styles.albumsMr16}`}
-              onClick={() => {
-                setSelectedStudio(null);
-                setSearchParams({});
-              }}
-            >
-              ← Back to Studios
-            </button>
             <h2 className={styles.albumsH2}>{selectedStudio.name} Albums</h2>
+          </div>
+          <div className={styles.albumsDealsPanel}>
+            <div className={styles.albumsDealsPanelHeader}>
+              <h3 className={styles.albumsDealsTitle}>Current Deals</h3>
+              <Link to={`/studio/${encodeURIComponent(selectedStudio.publicSlug)}/deals`} className="btn btn-outline">
+                View All Deals
+              </Link>
+            </div>
+
+            {loadingDeals ? (
+              <p className={styles.albumsDealsMuted}>Loading deals...</p>
+            ) : deals.length === 0 ? (
+              <p className={styles.albumsDealsMuted}>No active deals right now.</p>
+            ) : (
+              <div className={styles.albumsDealsGrid}>
+                {deals.slice(0, 3).map((deal) => (
+                  <div key={deal.id} className={styles.albumsDealCard}>
+                    <div className={styles.albumsDealTopRow}>
+                      <span className={styles.albumsDealHeadline}>{formatDealHeadline(deal)}</span>
+                      <span className={styles.albumsDealCode}>{deal.code}</span>
+                    </div>
+                    <p className={styles.albumsDealDescription}>{deal.description || 'Limited-time studio promotion.'}</p>
+                    {deal.expirationDate && (
+                      <span className={styles.albumsDealMeta}>Ends {formatDateInStudioTimezone(deal.expirationDate)}</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
           {/* Filtering and sorting UI */}
           <div style={{ display: 'flex', gap: 12, marginBottom: 18, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -227,13 +310,13 @@ const Albums: React.FC = () => {
               Showing {filteredAlbums.length} of {albums.length} album{albums.length === 1 ? '' : 's'}
             </span>
           </div>
-          {albums.some((album) => album.batchShippingActive) && (
+          {albums.some((album) => Boolean(album.studioBatchShippingActive)) && (
             <div className={styles.albumsBatchNotice}>
-              <strong>Batch shipping is active for this studio.</strong>
+              <strong>Batch shipping is available for this studio.</strong>
               <span>
-                You can choose free batch shipping at checkout when available.
-                {albums.find((album) => album.batchShippingActive)?.batchDeadline
-                  ? ` Current release deadline: ${new Date(String(albums.find((album) => album.batchShippingActive)?.batchDeadline)).toLocaleString()}.`
+                Batch shipping can only be used for albums marked with the “Batch Shipping Available” badge.
+                {albums.find((album) => Boolean(album.studioBatchShippingActive))?.batchDeadline
+                  ? ` Current release deadline: ${formatDateTimeInStudioTimezone(albums.find((album) => Boolean(album.studioBatchShippingActive))?.batchDeadline)}.`
                   : ''}
               </span>
             </div>
@@ -245,7 +328,12 @@ const Albums: React.FC = () => {
               <p className="empty-state">No albums match your filter.</p>
             ) : (
               filteredAlbums.map((album) => (
-                <Link to={`/albums/${album.id}?studioSlug=${encodeURIComponent(selectedStudio.publicSlug)}`} key={album.id} className="album-card">
+                <Link
+                  to={`/albums/${album.id}?studioSlug=${encodeURIComponent(selectedStudio.publicSlug)}`}
+                  key={album.id}
+                  className="album-card"
+                  onClick={() => analyticsService.trackAlbumCardClick(album.id, album.name, selectedStudio.id)}
+                >
                   <div className="album-cover">
                     <AlbumCoverCarousel
                       albumId={album.id}
@@ -270,13 +358,13 @@ const Albums: React.FC = () => {
                   </div>
                   <div className="album-info">
                     <h3>{album.name}</h3>
-                    {album.batchShippingActive && (
+                    {isBatchEnabledForAlbum(album) && (
                       <div className={styles.albumsBatchBadge}>Batch Shipping Available</div>
                     )}
                     <p>{album.description}</p>
                     <div className="album-info-row">
                       <span className="album-date">
-                        {new Date(album.createdDate).toLocaleDateString()}
+                        {formatDateInStudioTimezone(album.createdDate)}
                       </span>
                       <button
                         onClick={(e) => handleShare(e, album)}

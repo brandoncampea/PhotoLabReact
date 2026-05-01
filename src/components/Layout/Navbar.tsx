@@ -3,6 +3,7 @@ import { useLocation, Link } from 'react-router-dom';
 import { useCart } from '../../contexts/CartContext';
 import { useAuth } from '../../contexts/AuthContext';
 import api from '../../services/api';
+import { setStudioTimezone } from '../../utils/studioDateTime';
 import styles from './Navbar.module.css';
 
 type StudioBrand = {
@@ -50,6 +51,16 @@ const Navbar: React.FC = () => {
     return fromQuery ? decodeURIComponent(fromQuery) : '';
   }, [location.pathname, location.search]);
 
+  const persistedStudioSlug = useMemo(() => {
+    try {
+      return decodeURIComponent(String(localStorage.getItem('studioSlug') || '').trim());
+    } catch {
+      return '';
+    }
+  }, [location.pathname, location.search]);
+
+  const studioNavSlug = studioSlug || persistedStudioSlug;
+
   // Create a stable studio context key to avoid re-fetching on every auth change
   const studioContextKey = useMemo(() => {
     if (studioSlug) {
@@ -77,6 +88,9 @@ const Navbar: React.FC = () => {
         instagramUrl: data.instagramUrl || null,
         facebookUrl: data.facebookUrl || null,
       });
+      if (data?.timezone) {
+        setStudioTimezone(data.timezone);
+      }
       setBrandLogoFailed(false);
     };
 
@@ -192,7 +206,8 @@ const Navbar: React.FC = () => {
       </div>
 
       <div className={styles.navbarLinks + ' ' + styles.desktopOnly}>
-        <Link to={studioSlug ? `/albums?studioSlug=${encodeURIComponent(studioSlug)}` : '/albums'} className={styles.navbarLink}>Albums</Link>
+        <Link to={studioNavSlug ? `/albums?studioSlug=${encodeURIComponent(studioNavSlug)}` : '/albums'} className={styles.navbarLink}>Albums</Link>
+        <Link to={studioNavSlug ? `/studio/${encodeURIComponent(studioNavSlug)}/deals` : '/deals'} className={styles.navbarLink}>Deals</Link>
         <Link to="/orders" className={styles.navbarLink}>Orders</Link>
         <div className={styles.cartIconWrapper + ' ' + styles.desktopOnly}>
           <Link to="/cart" aria-label="Cart" className={styles.cartIcon} style={{ textDecoration: 'none', position: 'relative' }}>
@@ -242,7 +257,8 @@ const Navbar: React.FC = () => {
           {menuOpen ? <span>&#x2715;</span> : <span>&#9776;</span>}
         </button>
         <div className={styles.navbarLinks + (menuOpen ? ' ' + styles.open : '')}>
-          <Link to={studioSlug ? `/albums?studioSlug=${encodeURIComponent(studioSlug)}` : '/albums'} className={styles.navbarLink}>Albums</Link>
+          <Link to={studioNavSlug ? `/albums?studioSlug=${encodeURIComponent(studioNavSlug)}` : '/albums'} className={styles.navbarLink}>Albums</Link>
+          <Link to={studioNavSlug ? `/studio/${encodeURIComponent(studioNavSlug)}/deals` : '/deals'} className={styles.navbarLink}>Deals</Link>
           <Link to="/orders" className={styles.navbarLink}>Orders</Link>
           {isLoggedIn ? (
             <>

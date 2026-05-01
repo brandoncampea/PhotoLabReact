@@ -11,11 +11,23 @@ type DashboardStats = {
   totalCustomers: number;
   pendingOrders: number;
   batchOrders: number;
+  discountOverview?: {
+    discountedOrders: number;
+    totalDiscountAmount: number;
+    discountedRevenue: number;
+  };
+  topDiscountCodes?: Array<{
+    code: string;
+    uses: number;
+    totalDiscountAmount: number;
+    revenueInfluenced: number;
+    lastUsedAt?: string | null;
+  }>;
   analytics?: {
     totalVisitors: number;
     totalPageViews: number;
-    albumViews: Array<{ albumId: number; albumName: string; views: number }>;
-    photoViews: Array<{ photoId: number; albumId: number; photoFileName: string; albumName: string; thumbnailUrl?: string | null; fullImageUrl?: string | null; views: number }>;
+    albumViews: Array<{ albumId: number; albumName: string; opens: number; clicks: number; views: number }>;
+    photoViews: Array<{ photoId: number; albumId: number; photoFileName: string; albumName: string; thumbnailUrl?: string | null; fullImageUrl?: string | null; opens: number; clicks: number; views: number }>;
   };
   recentOrders?: Array<{
     id: number;
@@ -81,6 +93,10 @@ const AdminDashboard: React.FC = () => {
   const totalVisitors = stats.analytics?.totalVisitors || 0;
   const totalPageViews = stats.analytics?.totalPageViews || 0;
   const showVisitorPageCards = totalVisitors > 0 || totalPageViews > 0;
+  const totalAlbumOpens = stats.analytics?.albumViews?.reduce((sum, album) => sum + (album.opens || 0), 0) || 0;
+  const totalAlbumClicks = stats.analytics?.albumViews?.reduce((sum, album) => sum + (album.clicks || 0), 0) || 0;
+  const totalPhotoOpens = stats.analytics?.photoViews?.reduce((sum, photo) => sum + (photo.opens || 0), 0) || 0;
+  const totalPhotoClicks = stats.analytics?.photoViews?.reduce((sum, photo) => sum + (photo.clicks || 0), 0) || 0;
 
   return (
     <AdminLayout>
@@ -210,6 +226,56 @@ const AdminDashboard: React.FC = () => {
         </div>
       </div>
 
+      <div className="dashboard-widget tallydark-card admin-dashboard-widget" style={{ marginTop: 18 }}>
+        <h2 className="admin-dashboard-section-title">Discount Analytics</h2>
+        <div className="admin-dashboard-analytics-stats" style={{ marginBottom: 12 }}>
+          <div className="admin-dashboard-analytics-stat">
+            <div className="admin-dashboard-analytics-value">${Number(stats.discountOverview?.totalDiscountAmount || 0).toFixed(2)}</div>
+            <div className="admin-dashboard-analytics-label">Total Discounts Given</div>
+          </div>
+          <div className="admin-dashboard-analytics-stat">
+            <div className="admin-dashboard-analytics-value">{Number(stats.discountOverview?.discountedOrders || 0)}</div>
+            <div className="admin-dashboard-analytics-label">Discounted Orders</div>
+          </div>
+          <div className="admin-dashboard-analytics-stat">
+            <div className="admin-dashboard-analytics-value">${Number(stats.discountOverview?.discountedRevenue || 0).toFixed(2)}</div>
+            <div className="admin-dashboard-analytics-label">Revenue with Discounts</div>
+          </div>
+        </div>
+
+        <h3 style={{ margin: '0 0 10px 0', fontSize: '1rem' }}>Top Discount Codes</h3>
+        <div style={{ overflowX: 'auto' }}>
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th>Code</th>
+                <th>Uses</th>
+                <th>Total Discount</th>
+                <th>Revenue Influenced</th>
+                <th>Last Used</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(stats.topDiscountCodes || []).length === 0 ? (
+                <tr>
+                  <td colSpan={5} style={{ textAlign: 'center' }}>No discount usage yet.</td>
+                </tr>
+              ) : (
+                (stats.topDiscountCodes || []).map((code) => (
+                  <tr key={code.code}>
+                    <td><strong>{code.code}</strong></td>
+                    <td>{Number(code.uses || 0)}</td>
+                    <td>${Number(code.totalDiscountAmount || 0).toFixed(2)}</td>
+                    <td>${Number(code.revenueInfluenced || 0).toFixed(2)}</td>
+                    <td>{code.lastUsedAt ? new Date(code.lastUsedAt).toLocaleDateString() : '—'}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       <div className="dashboard-widget tallydark-card admin-dashboard-widget">
         <h2 className="admin-dashboard-section-title">Analytics</h2>
 
@@ -255,11 +321,13 @@ const AdminDashboard: React.FC = () => {
           )}
           <div className="admin-dashboard-analytics-stat">
             <div className="admin-dashboard-analytics-value">{(stats.analytics?.albumViews?.reduce((sum, a) => sum + a.views, 0) || 0).toLocaleString()}</div>
-            <div className="admin-dashboard-analytics-label">Album Views</div>
+            <div className="admin-dashboard-analytics-label">Album Total</div>
+            <div className="dashboard-card-sub">{totalAlbumOpens.toLocaleString()} opens • {totalAlbumClicks.toLocaleString()} clicks</div>
           </div>
           <div className="admin-dashboard-analytics-stat">
             <div className="admin-dashboard-analytics-value">{(stats.analytics?.photoViews?.reduce((sum, p) => sum + p.views, 0) || 0).toLocaleString()}</div>
-            <div className="admin-dashboard-analytics-label">Photo Views</div>
+            <div className="admin-dashboard-analytics-label">Photo Total</div>
+            <div className="dashboard-card-sub">{totalPhotoOpens.toLocaleString()} opens • {totalPhotoClicks.toLocaleString()} clicks</div>
           </div>
         </div>
 
@@ -275,6 +343,7 @@ const AdminDashboard: React.FC = () => {
                     </Link>
                   </span>
                   <strong>{album.views}</strong>
+                  <span style={{ color: '#a0a0b8', fontSize: 12 }}>{album.opens} opens • {album.clicks} clicks</span>
                 </li>
               ))}
               {!stats.analytics?.albumViews?.length && <li className="empty">No album activity yet</li>}
@@ -317,6 +386,7 @@ const AdminDashboard: React.FC = () => {
                       )}
                     </span>
                     <strong>{photo.views}</strong>
+                    <span style={{ color: '#a0a0b8', fontSize: 12 }}>{photo.opens} opens • {photo.clicks} clicks</span>
                   </li>
                 );
               })}

@@ -17,4 +17,9 @@ export const productService = {
     const response = await api.get<Product[]>(url);
     return response.data;
   },
+
+  async getActiveProductsByStudio(studioId: number): Promise<Product[]> {
+    const response = await api.get<Product[]>(`/products/active?studioId=${studioId}`);
+    return response.data;
+  },
 };

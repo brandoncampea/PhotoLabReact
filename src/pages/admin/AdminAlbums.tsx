@@ -5,6 +5,7 @@ import api from '../../services/api';
 import { Album, PriceList } from '../../types';
 import { categoryService } from '../../services/categoryService';
 import { albumAdminService } from '../../services/albumAdminService';
+import { studioPriceListService } from '../../services/studioPriceListService';
 import AdminLayout from '../../components/AdminLayout';
 import './AdminAlbums.css';
 
@@ -40,6 +41,7 @@ function AlbumSasCover({ src, alt }: { src: string, alt: string }) {
 
 const AdminAlbums: React.FC = () => {
   const { user } = useAuth();
+  const effectiveStudioId = Number(localStorage.getItem('viewAsStudioId') || user?.studioId || 0);
   const emptyFormData = {
     name: '',
     description: '',
@@ -54,8 +56,8 @@ const AdminAlbums: React.FC = () => {
     batchShippingActive: false,
   };
   const [albums, setAlbums] = useState<Album[]>([]);
-  const [priceLists] = useState<PriceList[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [priceLists, setPriceLists] = useState<PriceList[]>([]);
+  const [, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingAlbum, setEditingAlbum] = useState<Album | null>(null);
   const [categories, setCategories] = useState<string[]>([]);
@@ -88,7 +90,20 @@ const AdminAlbums: React.FC = () => {
     }
   };
   // Load price lists from API
-  const loadPriceLists = async () => {};
+  const loadPriceLists = async () => {
+    if (!effectiveStudioId) {
+      setPriceLists([]);
+      return;
+    }
+
+    try {
+      const lists = await studioPriceListService.getLists(effectiveStudioId);
+      setPriceLists(Array.isArray(lists) ? lists : []);
+    } catch (error) {
+      console.error('Failed to load price lists:', error);
+      setPriceLists([]);
+    }
+  };
   const handleCreate = () => {
     setEditingAlbum(null);
     setFormData(emptyFormData);
@@ -197,7 +212,7 @@ const AdminAlbums: React.FC = () => {
     loadAlbums();
     loadCategories();
     loadPriceLists();
-  }, [user?.studioId]);
+  }, [effectiveStudioId]);
 
   return (
     <AdminLayout>
@@ -244,7 +259,7 @@ const AdminAlbums: React.FC = () => {
                   <th style={{ padding: '8px 12px', textAlign: 'left' }}>Description</th>
                   <th style={{ padding: '8px 12px', textAlign: 'left' }}>Protected</th>
                   <th style={{ padding: '8px 12px', textAlign: 'left' }}>Photos</th>
-                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Views</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Engagement</th>
                   <th style={{ padding: '8px 12px', textAlign: 'left' }}>Products Ordered</th>
                   <th style={{ padding: '8px 12px', textAlign: 'left' }}>Est. Net Revenue</th>
                   <th style={{ padding: '8px 12px', textAlign: 'left' }}>Created</th>
@@ -262,7 +277,7 @@ const AdminAlbums: React.FC = () => {
                 albums.map((album) => {
                   // Always link directly to the customer album page
                   // Use the real public_slug from the studio (returned by the API)
-                  const studioSlug = (album as any).studioPublicSlug || user?.studioSlug || localStorage.getItem('studioSlug') || '';
+                  const studioSlug = (album as any).studioPublicSlug || localStorage.getItem('studioSlug') || '';
                   const shareUrl = studioSlug
                     ? `${window.location.origin}/albums/${album.id}?studioSlug=${encodeURIComponent(studioSlug)}`
                     : `${window.location.origin}/albums/${album.id}`;
@@ -282,7 +297,13 @@ const AdminAlbums: React.FC = () => {
                       <td style={{ padding: '8px 12px', color: '#fff' }}>{album.description}</td>
                       <td style={{ padding: '8px 12px', color: '#fff' }}>{album.isPasswordProtected ? 'Yes' : 'No'}</td>
                       <td style={{ padding: '8px 12px', color: '#fff' }}>{album.photoCount}</td>
-                      <td style={{ padding: '8px 12px', color: '#fff' }}>{album.viewCount ?? 0}</td>
+                      <td style={{ padding: '8px 12px', color: '#fff', minWidth: 140 }}>
+                        <div style={{ display: 'grid', gap: 2 }}>
+                          <span>Opens: {Number(album.viewOpenCount || 0).toLocaleString()}</span>
+                          <span>Clicks: {Number(album.viewClickCount || 0).toLocaleString()}</span>
+                          <strong>Total: {Number(album.viewCount || 0).toLocaleString()}</strong>
+                        </div>
+                      </td>
                       <td style={{ padding: '8px 12px', color: '#fff' }}>{album.productCount ?? 0}</td>
                       <td style={{ padding: '8px 12px', color: '#fff' }}>
                         {typeof album.netRevenue === 'number' ? `$${album.netRevenue.toFixed(2)}` : '$0.00'}

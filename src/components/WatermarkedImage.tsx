@@ -10,13 +10,14 @@ interface WatermarkedImageProps {
   style?: React.CSSProperties;
   fill?: boolean;
   studioId?: number;
+  showWatermark?: boolean;
 }
 
 
 // Simple in-memory cache for watermark per studioId
 const watermarkCache: Record<string, Watermark | null> = {};
 
-const WatermarkedImage: React.FC<WatermarkedImageProps> = ({ src, alt, className, style, fill = true, studioId }) => {
+const WatermarkedImage: React.FC<WatermarkedImageProps> = ({ src, alt, className, style, fill = true, studioId, showWatermark = true }) => {
   const [watermark, setWatermark] = useState<Watermark | null>(null);
   const [watermarkLoaded, setWatermarkLoaded] = useState(false);
   const [imgError, setImgError] = useState(false);
@@ -179,18 +180,19 @@ const WatermarkedImage: React.FC<WatermarkedImageProps> = ({ src, alt, className
           onError={() => setImgError(true)}
         />
       )}
-      {/* Always render overlay for stacking consistency */}
-      <div style={{
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        width: '100%',
-        height: '100%',
-        pointerEvents: 'none',
-        zIndex: 2,
-      }}>
-        <div style={getWatermarkStyle()} />
-      </div>
+      {showWatermark && (
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          pointerEvents: 'none',
+          zIndex: 2,
+        }}>
+          <div style={getWatermarkStyle()} />
+        </div>
+      )}
     </div>
   );
 };

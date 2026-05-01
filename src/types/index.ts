@@ -36,6 +36,8 @@ export interface Album {
   productCount?: number;
   netRevenue?: number;
   viewCount?: number;
+  viewOpenCount?: number;
+  viewClickCount?: number;
   studioPublicSlug?: string;
 }
 
@@ -57,6 +59,8 @@ export interface Photo {
     number?: number;
   };
   viewCount?: number;
+  viewOpenCount?: number;
+  viewClickCount?: number;
 }
 
 export interface PhotoMetadata {
@@ -374,6 +378,7 @@ export interface ProfileConfig {
   logoUrl?: string;
   instagramUrl?: string;
   facebookUrl?: string;
+  timezone?: string;
 }
 
 export interface AnalyticsData {
@@ -446,16 +451,44 @@ export interface DiscountCode {
   id: number;
   code: string;
   description: string;
-  discountType: 'percentage' | 'fixed';
+  discountType: 'percentage' | 'fixed' | 'free-shipping' | 'bundle-price';
   discountValue: number;
-  applicationType: 'entire-order' | 'specific-products';
+  applicationType: 'entire-order' | 'specific-products' | 'specific-categories' | 'specific-albums' | 'shipping';
   applicableProductIds: number[];
-  expirationDate: string;
+  bundleQuantity?: number;
+  bundlePrice?: number;
+  applicableCategoryNames?: string[];
+  applicableAlbumIds?: number[];
+  startDate?: string;
+  expirationDate?: string;
+  minSubtotal?: number;
   isOneTimeUse: boolean;
   usageCount: number;
   maxUsages?: number;
+  perCustomerLimit?: number;
+  firstOrderOnly?: boolean;
   isActive: boolean;
   createdDate: string;
+  studioId?: number;
+  validationMessage?: string;
+  couponStats?: {
+    useCount: number;
+    totalCostToStudio: number;
+    firstUse?: string;
+    lastUse?: string;
+    orderCount: number;
+    customerCount?: number;
+  };
+}
+
+export interface DiscountValidation {
+  valid: boolean;
+  reason?: string;
+  code?: DiscountCode;
+  discountAmount: number;
+  eligibleSubtotal?: number;
+  matchedItemCount?: number;
+  summary?: string;
 }
 
 export interface DiscountCodeUsage {
