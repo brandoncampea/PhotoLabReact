@@ -61,8 +61,8 @@ const AdminAlbums: React.FC = () => {
   const [showModal, setShowModal] = useState(false);
   const [editingAlbum, setEditingAlbum] = useState<Album | null>(null);
   const [categories, setCategories] = useState<string[]>([]);
-  const [newCategory, setNewCategory] = useState('');
   const [newModalCategory, setNewModalCategory] = useState('');
+  const [albumSearch, setAlbumSearch] = useState('');
   const [formData, setFormData] = useState(emptyFormData);
 
   // Load albums from API
@@ -109,18 +109,6 @@ const AdminAlbums: React.FC = () => {
     setFormData(emptyFormData);
     setNewModalCategory('');
     setShowModal(true);
-  };
-  const handleAddCategory = async () => {
-    const category = newCategory.trim();
-    if (!category) return;
-    try {
-      const updatedCategories = await categoryService.addCategory(category);
-      setCategories(updatedCategories || []);
-      setNewCategory('');
-    } catch (error) {
-      console.error('Failed to add category:', error);
-      alert('Failed to add category. Please try again.');
-    }
   };
   const handleEdit = (album: Album) => {
     setEditingAlbum(album);
@@ -184,16 +172,6 @@ const AdminAlbums: React.FC = () => {
       }
     }
   };
-  const handleDeleteCategory = async (category: string) => {
-    if (confirm(`Delete category "${category}"? Albums with this category will have it removed.`)) {
-      try {
-        await categoryService.deleteCategory(category);
-        loadCategories();
-      } catch (error) {
-        console.error('Failed to delete category:', error);
-      }
-    }
-  };
   const handleAddCategoryFromModal = async () => {
     const category = newModalCategory.trim();
     if (!category) return;
@@ -214,35 +192,30 @@ const AdminAlbums: React.FC = () => {
     loadPriceLists();
   }, [effectiveStudioId]);
 
+  const normalizedSearch = albumSearch.trim().toLowerCase();
+  const filteredAlbums = normalizedSearch
+    ? albums.filter((album) => {
+        const name = String(album.name || '').toLowerCase();
+        const category = String(album.category || '').toLowerCase();
+        const description = String(album.description || '').toLowerCase();
+        return name.includes(normalizedSearch)
+          || category.includes(normalizedSearch)
+          || description.includes(normalizedSearch);
+      })
+    : albums;
+
   return (
     <AdminLayout>
       <div className="admin-albums-page">
-        <div className="dashboard-card" style={{ maxWidth: 400, marginBottom: 32 }}>
-          <h2 className="admin-albums-title">
-            Categories ({categories.length})
-          </h2>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-            <input
-              type="text"
-              placeholder="Add new category"
-              value={newCategory}
-              onChange={e => setNewCategory(e.target.value)}
-              style={{ flex: 1 }}
-            />
-            <button className="btn btn-primary" onClick={handleAddCategory}>Add</button>
-          </div>
-          <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-            {categories.map(cat => (
-              <li key={cat} style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
-                <span style={{ flex: 1 }}>{cat}</span>
-                <button className="btn btn-danger btn-xs" onClick={() => handleDeleteCategory(cat)} style={{ marginLeft: 8 }}>×</button>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        {/* Create Album Button */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+        {/* Search + Create Album */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+          <input
+            type="text"
+            placeholder="Search albums by name, category, or description"
+            value={albumSearch}
+            onChange={(e) => setAlbumSearch(e.target.value)}
+            style={{ minWidth: 320, flex: '1 1 420px' }}
+          />
           <button className="btn btn-primary" onClick={handleCreate}>+ Create Album</button>
         </div>
 
@@ -252,6 +225,7 @@ const AdminAlbums: React.FC = () => {
             <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0 }}>
               <thead>
                 <tr style={{ background: 'transparent', color: '#fff', fontWeight: 700, fontSize: 16 }}>
+                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Actions</th>
                   <th style={{ padding: '8px 12px', textAlign: 'left' }}>Cover</th>
                   <th style={{ padding: '8px 12px', textAlign: 'left' }}>Name</th>
                   <th style={{ padding: '8px 12px', textAlign: 'left' }}>Category</th>
@@ -263,18 +237,17 @@ const AdminAlbums: React.FC = () => {
                   <th style={{ padding: '8px 12px', textAlign: 'left' }}>Products Ordered</th>
                   <th style={{ padding: '8px 12px', textAlign: 'left' }}>Est. Net Revenue</th>
                   <th style={{ padding: '8px 12px', textAlign: 'left' }}>Created</th>
-                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Actions</th>
                 </tr>
               </thead>
             <tbody>
-              {albums.length === 0 ? (
+              {filteredAlbums.length === 0 ? (
                 <tr>
                   <td colSpan={12} style={{ textAlign: 'center', padding: '2rem', color: '#aaa', fontSize: '1.1rem' }}>
-                    No albums found.
+                    {albums.length === 0 ? 'No albums found.' : 'No matching albums found.'}
                   </td>
                 </tr>
               ) : (
-                albums.map((album) => {
+                filteredAlbums.map((album) => {
                   // Always link directly to the customer album page
                   // Use the real public_slug from the studio (returned by the API)
                   const studioSlug = (album as any).studioPublicSlug || localStorage.getItem('studioSlug') || '';
@@ -288,27 +261,6 @@ const AdminAlbums: React.FC = () => {
                       : album.coverImageUrl || '/default-cover.png';
                   return (
                     <tr key={album.id} style={{ borderBottom: '1px solid #29294a' }}>
-                      <td style={{ padding: '8px 12px' }}>
-                        <AlbumSasCover src={coverSrc} alt={album.name} />
-                      </td>
-                      <td style={{ fontWeight: 500, padding: '8px 12px', color: '#fff' }}>{album.name}</td>
-                      <td style={{ padding: '8px 12px', color: '#fff' }}>{album.category || '-'}</td>
-                      <td style={{ padding: '8px 12px', color: '#fff' }}>{priceLists.find(pl => pl.id === album.priceListId)?.name || 'Default'}</td>
-                      <td style={{ padding: '8px 12px', color: '#fff' }}>{album.description}</td>
-                      <td style={{ padding: '8px 12px', color: '#fff' }}>{album.isPasswordProtected ? 'Yes' : 'No'}</td>
-                      <td style={{ padding: '8px 12px', color: '#fff' }}>{album.photoCount}</td>
-                      <td style={{ padding: '8px 12px', color: '#fff', minWidth: 140 }}>
-                        <div style={{ display: 'grid', gap: 2 }}>
-                          <span>Opens: {Number(album.viewOpenCount || 0).toLocaleString()}</span>
-                          <span>Clicks: {Number(album.viewClickCount || 0).toLocaleString()}</span>
-                          <strong>Total: {Number(album.viewCount || 0).toLocaleString()}</strong>
-                        </div>
-                      </td>
-                      <td style={{ padding: '8px 12px', color: '#fff' }}>{album.productCount ?? 0}</td>
-                      <td style={{ padding: '8px 12px', color: '#fff' }}>
-                        {typeof album.netRevenue === 'number' ? `$${album.netRevenue.toFixed(2)}` : '$0.00'}
-                      </td>
-                      <td style={{ padding: '8px 12px', color: '#fff' }}>{new Date(album.createdDate).toLocaleDateString()}</td>
                       <td style={{ padding: '8px 12px' }}>
                         <div className="action-buttons" style={{ display: 'flex', gap: 8 }}>
                           <button onClick={() => handleEdit(album)} className="btn-icon">✏️</button>
@@ -330,6 +282,27 @@ const AdminAlbums: React.FC = () => {
                           >🔗</button>
                         </div>
                       </td>
+                      <td style={{ padding: '8px 12px' }}>
+                        <AlbumSasCover src={coverSrc} alt={album.name} />
+                      </td>
+                      <td style={{ fontWeight: 500, padding: '8px 12px', color: '#fff' }}>{album.name}</td>
+                      <td style={{ padding: '8px 12px', color: '#fff' }}>{album.category || '-'}</td>
+                      <td style={{ padding: '8px 12px', color: '#fff' }}>{priceLists.find(pl => pl.id === album.priceListId)?.name || 'Default'}</td>
+                      <td style={{ padding: '8px 12px', color: '#fff' }}>{album.description}</td>
+                      <td style={{ padding: '8px 12px', color: '#fff' }}>{album.isPasswordProtected ? 'Yes' : 'No'}</td>
+                      <td style={{ padding: '8px 12px', color: '#fff' }}>{album.photoCount}</td>
+                      <td style={{ padding: '8px 12px', color: '#fff', minWidth: 140 }}>
+                        <div style={{ display: 'grid', gap: 2 }}>
+                          <span>Opens: {Number(album.viewOpenCount || 0).toLocaleString()}</span>
+                          <span>Clicks: {Number(album.viewClickCount || 0).toLocaleString()}</span>
+                          <strong>Total: {Number(album.viewCount || 0).toLocaleString()}</strong>
+                        </div>
+                      </td>
+                      <td style={{ padding: '8px 12px', color: '#fff' }}>{album.productCount ?? 0}</td>
+                      <td style={{ padding: '8px 12px', color: '#fff' }}>
+                        {typeof album.netRevenue === 'number' ? `$${album.netRevenue.toFixed(2)}` : '$0.00'}
+                      </td>
+                      <td style={{ padding: '8px 12px', color: '#fff' }}>{new Date(album.createdDate).toLocaleDateString()}</td>
                     </tr>
                   );
                 })
