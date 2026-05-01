@@ -148,6 +148,49 @@
 	white-space: nowrap;
 	overflow: hidden;
 }
+.album-schools-section, .albumSchoolsSection {
+	display: grid;
+	gap: 6px;
+	margin-top: 2px;
+	margin-bottom: 2px;
+}
+
+.album-schools-label, .albumSchoolsLabel {
+	color: #b8b4d9;
+	font-size: 0.78rem;
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+}
+
+.album-schools-list, .albumSchoolsList {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+.album-school-chip, .albumSchoolChip {
+	display: inline-flex;
+	align-items: center;
+	max-width: 100%;
+	padding: 4px 10px;
+	border-radius: 999px;
+	border: 1px solid rgba(96, 165, 250, 0.35);
+	background: rgba(30, 41, 59, 0.88);
+	color: #dbeafe;
+	font-size: 0.78rem;
+	font-weight: 600;
+	line-height: 1.1;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.album-info p {
+	margin: 0;
+	color: #bdbdd6;
+	line-height: 1.45;
+}
 .album-info-row {
 	display: flex;
 	align-items: center;

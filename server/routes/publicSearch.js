@@ -23,6 +23,7 @@ router.get('/', async (req, res) => {
 
     const searchPattern = `%${q}%`;
     const hasPublicSlug = await columnExists('studios', 'public_slug');
+    const hasAlbumSchoolTags = await columnExists('albums', 'school_tags');
 
     if (!hasPublicSlug) {
       return res.json({ studios: [], albums: [], photos: [] });
@@ -49,6 +50,7 @@ router.get('/', async (req, res) => {
            a.id,
            COALESCE(a.name, a.title) as name,
            a.description,
+           ${hasAlbumSchoolTags ? 'a.school_tags' : 'NULL'} as schoolTags,
            a.photo_count as photoCount,
            a.cover_photo_id as coverPhotoId,
            a.cover_image_url as coverImageUrl,
@@ -60,6 +62,7 @@ router.get('/', async (req, res) => {
            AND (
              COALESCE(a.name, a.title) LIKE $1
              OR a.description LIKE $1
+             ${hasAlbumSchoolTags ? 'OR a.school_tags LIKE $1' : ''}
              OR s.name LIKE $1
            )
          ORDER BY a.created_at DESC`,
@@ -103,6 +106,10 @@ router.get('/', async (req, res) => {
         id: album.id,
         name: album.name,
         description: album.description,
+        schoolTags: String(album.schoolTags || '')
+          .split(/[\n,;|]+/)
+          .map((tag) => tag.trim())
+          .filter(Boolean),
         photoCount: Number(album.photoCount) || 0,
         studioName: album.studioName,
         studioSlug: album.studioSlug,

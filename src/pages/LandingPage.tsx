@@ -136,7 +136,81 @@ export default function LandingPage() {
                   <div style={{ padding: '0.5rem 1rem', fontWeight: 700, color: '#fff', fontSize: '1rem' }}>Albums</div>
                 )}
                 {!loadingSuggestions && albumSuggestions.length > 0 && (
-                  <></>
+                  <>
+                    {albumSuggestions.map(album => (
+                      <div
+                        key={`album-${album.id}`}
+                        className="autocomplete-item"
+                        style={{ display: 'flex', alignItems: 'flex-start', padding: '0.75rem 1rem', cursor: 'pointer', borderBottom: '1px solid #333', gap: 12 }}
+                        onMouseDown={() => {
+                          setSearchQuery(album.name);
+                          setShowDropdown(false);
+                          navigate(album.url);
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: 48,
+                            height: 48,
+                            borderRadius: 10,
+                            background: album.coverImageUrl ? `center / cover no-repeat url(${album.coverImageUrl})` : '#312e81',
+                            flex: '0 0 48px',
+                            border: '1px solid rgba(255,255,255,0.12)',
+                          }}
+                        />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 600, fontSize: '1rem', color: '#fff' }}>{album.name}</div>
+                          <div style={{ fontSize: '0.85rem', color: '#aaa', marginTop: 2 }}>
+                            {album.studioName}{album.photoCount ? ` • ${album.photoCount} photos` : ''}
+                          </div>
+                          {Array.isArray(album.schoolTags) && album.schoolTags.length > 0 && (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                              {album.schoolTags.slice(0, 3).map((school: string) => (
+                                <span
+                                  key={`${album.id}-${school}`}
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    padding: '3px 8px',
+                                    borderRadius: 999,
+                                    background: 'rgba(30, 41, 59, 0.92)',
+                                    border: '1px solid rgba(96, 165, 250, 0.35)',
+                                    color: '#dbeafe',
+                                    fontSize: '0.75rem',
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  {school}
+                                </span>
+                              ))}
+                              {album.schoolTags.length > 3 && (
+                                <span
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    padding: '3px 8px',
+                                    borderRadius: 999,
+                                    background: 'rgba(49, 46, 129, 0.9)',
+                                    border: '1px solid rgba(167, 139, 250, 0.35)',
+                                    color: '#ede9fe',
+                                    fontSize: '0.75rem',
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  +{album.schoolTags.length - 3} more
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          {album.description && (
+                            <div style={{ fontSize: '0.82rem', color: '#c9c9d4', marginTop: 8, lineHeight: 1.35 }}>
+                              {album.description}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </>
                 )}
                 {!loadingSuggestions && photoSuggestions.length > 0 && (
                   <div style={{ padding: '0.5rem 1rem', fontWeight: 700, color: '#fff', fontSize: '1rem' }}>Photos</div>

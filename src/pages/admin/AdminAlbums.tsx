@@ -46,6 +46,7 @@ const AdminAlbums: React.FC = () => {
     name: '',
     description: '',
     category: '',
+    schoolTags: [] as string[],
     priceListId: undefined as number | undefined,
     isPasswordProtected: false,
     password: '',
@@ -62,6 +63,8 @@ const AdminAlbums: React.FC = () => {
   const [editingAlbum, setEditingAlbum] = useState<Album | null>(null);
   const [categories, setCategories] = useState<string[]>([]);
   const [newModalCategory, setNewModalCategory] = useState('');
+  const [newSchoolTag, setNewSchoolTag] = useState('');
+  const [studioSchoolRoster, setStudioSchoolRoster] = useState<string[]>([]);
   const [albumSearch, setAlbumSearch] = useState('');
   const [formData, setFormData] = useState(emptyFormData);
 
@@ -104,19 +107,59 @@ const AdminAlbums: React.FC = () => {
       setPriceLists([]);
     }
   };
+
+  const loadSchoolRoster = async () => {
+    try {
+      const res = await api.get('/albums/school-roster');
+      const names = Array.isArray(res.data)
+        ? Array.from(new Set(res.data.map((row: any) => String(row?.schoolName || '').trim()).filter(Boolean)))
+        : [];
+      setStudioSchoolRoster(names);
+    } catch (error) {
+      console.error('Failed to load school roster:', error);
+      setStudioSchoolRoster([]);
+    }
+  };
+
+  const normalizeSchoolTag = (value: string) => value.trim().replace(/\s+/g, ' ');
+
+  const addSchoolTag = (rawValue: string) => {
+    const next = normalizeSchoolTag(rawValue);
+    if (!next) return;
+
+    setFormData((prev) => {
+      const exists = prev.schoolTags.some((tag) => tag.toLowerCase() === next.toLowerCase());
+      if (exists) return prev;
+      return {
+        ...prev,
+        schoolTags: [...prev.schoolTags, next].slice(0, 30),
+      };
+    });
+    setNewSchoolTag('');
+  };
+
+  const removeSchoolTag = (tagToRemove: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      schoolTags: prev.schoolTags.filter((tag) => tag !== tagToRemove),
+    }));
+  };
   const handleCreate = () => {
     setEditingAlbum(null);
     setFormData(emptyFormData);
     setNewModalCategory('');
+    setNewSchoolTag('');
     setShowModal(true);
   };
   const handleEdit = (album: Album) => {
     setEditingAlbum(album);
     setNewModalCategory('');
+    setNewSchoolTag('');
     setFormData({
       name: album.name || '',
       description: album.description || '',
       category: album.category || '',
+      schoolTags: Array.isArray(album.schoolTags) ? album.schoolTags.filter(Boolean) : [],
       priceListId: album.priceListId,
       isPasswordProtected: album.isPasswordProtected || false,
       password: album.password || '',
@@ -134,6 +177,7 @@ const AdminAlbums: React.FC = () => {
       name: formData.name.trim(),
       description: formData.description?.trim() || '',
       category: formData.category || undefined,
+      schoolTags: formData.schoolTags,
       priceListId: formData.priceListId,
       isPasswordProtected: !!formData.isPasswordProtected,
       password: formData.isPasswordProtected ? formData.password : undefined,
@@ -153,8 +197,10 @@ const AdminAlbums: React.FC = () => {
       setShowModal(false);
       setEditingAlbum(null);
       setNewModalCategory('');
+      setNewSchoolTag('');
       setFormData(emptyFormData);
       await loadAlbums();
+      await loadSchoolRoster();
     } catch (error: any) {
       console.error('Failed to save album:', error);
       const message = error?.response?.data?.error || 'Failed to save album. Please try again.';
@@ -190,6 +236,7 @@ const AdminAlbums: React.FC = () => {
     loadAlbums();
     loadCategories();
     loadPriceLists();
+    loadSchoolRoster();
   }, [effectiveStudioId]);
 
   const normalizedSearch = albumSearch.trim().toLowerCase();
@@ -198,11 +245,24 @@ const AdminAlbums: React.FC = () => {
         const name = String(album.name || '').toLowerCase();
         const category = String(album.category || '').toLowerCase();
         const description = String(album.description || '').toLowerCase();
+        const schools = Array.isArray(album.schoolTags) ? album.schoolTags.join(' ').toLowerCase() : '';
         return name.includes(normalizedSearch)
           || category.includes(normalizedSearch)
-          || description.includes(normalizedSearch);
+          || description.includes(normalizedSearch)
+          || schools.includes(normalizedSearch);
       })
     : albums;
+
+  const schoolSuggestions = newSchoolTag.trim()
+    ? studioSchoolRoster.filter((school) => {
+        const lower = school.toLowerCase();
+        const q = newSchoolTag.trim().toLowerCase();
+        const selected = formData.schoolTags.some((tag) => tag.toLowerCase() === lower);
+        return !selected && lower.includes(q);
+      }).slice(0, 8)
+    : studioSchoolRoster
+        .filter((school) => !formData.schoolTags.some((tag) => tag.toLowerCase() === school.toLowerCase()))
+        .slice(0, 8);
 
   return (
     <AdminLayout>
@@ -211,7 +271,7 @@ const AdminAlbums: React.FC = () => {
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
           <input
             type="text"
-            placeholder="Search albums by name, category, or description"
+            placeholder="Search albums by name, category, description, or school"
             value={albumSearch}
             onChange={(e) => setAlbumSearch(e.target.value)}
             style={{ minWidth: 320, flex: '1 1 420px' }}
@@ -350,6 +410,70 @@ const AdminAlbums: React.FC = () => {
                   />
                   <button type="button" className="btn" onClick={handleAddCategoryFromModal}>Add</button>
                 </div>
+              </div>
+              <div className="form-group">
+                <label>Tagged Schools</label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input
+                    type="text"
+                    placeholder="Add school (e.g., Riverside High School)"
+                    value={newSchoolTag}
+                    onChange={e => setNewSchoolTag(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        addSchoolTag(newSchoolTag);
+                      }
+                    }}
+                  />
+                  <button type="button" className="btn" onClick={() => addSchoolTag(newSchoolTag)}>Add</button>
+                </div>
+
+                {schoolSuggestions.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                    {schoolSuggestions.map((school) => (
+                      <button
+                        key={school}
+                        type="button"
+                        className="btn"
+                        style={{ padding: '4px 8px', fontSize: 12 }}
+                        onClick={() => addSchoolTag(school)}
+                      >
+                        + {school}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {formData.schoolTags.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+                    {formData.schoolTags.map((school) => (
+                      <span
+                        key={school}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          background: 'rgba(123, 97, 255, 0.2)',
+                          border: '1px solid rgba(123, 97, 255, 0.5)',
+                          borderRadius: 999,
+                          padding: '4px 10px',
+                          fontSize: 13,
+                        }}
+                      >
+                        {school}
+                        <button
+                          type="button"
+                          onClick={() => removeSchoolTag(school)}
+                          style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer', lineHeight: 1 }}
+                          aria-label={`Remove ${school}`}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
               <div className="form-group">
                 <label>Price List</label>

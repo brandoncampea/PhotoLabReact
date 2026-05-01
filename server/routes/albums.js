@@ -14,10 +14,112 @@ const ensureAlbumBatchShippingColumn = async () => {
   `);
 };
 
+const ensureAlbumSchoolTagSchema = async () => {
+  await query(`
+    IF COL_LENGTH('albums', 'school_tags') IS NULL
+      ALTER TABLE albums ADD school_tags NVARCHAR(2000) NULL;
+  `);
+
+  await query(`
+    IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'studio_school_roster')
+    BEGIN
+      CREATE TABLE studio_school_roster (
+        id INT IDENTITY(1,1) PRIMARY KEY,
+        studio_id INT NOT NULL,
+        school_name NVARCHAR(255) NOT NULL,
+        school_type NVARCHAR(100) NULL,
+        source_album_id INT NULL,
+        created_at DATETIME2 NOT NULL DEFAULT GETDATE(),
+        updated_at DATETIME2 NOT NULL DEFAULT GETDATE()
+      );
+    END
+  `);
+
+  await query(`
+    IF NOT EXISTS (
+      SELECT 1
+      FROM sys.indexes
+      WHERE name = 'IX_studio_school_roster_studio_name'
+        AND object_id = OBJECT_ID('studio_school_roster')
+    )
+    BEGIN
+      CREATE INDEX IX_studio_school_roster_studio_name
+      ON studio_school_roster (studio_id, school_name);
+    END
+  `);
+};
+
+const ensureAlbumSchema = async () => {
+  await ensureAlbumBatchShippingColumn();
+  await ensureAlbumSchoolTagSchema();
+};
+
+const parseSchoolTags = (value) => {
+  if (Array.isArray(value)) {
+    return Array.from(new Set(
+      value
+        .map((item) => String(item || '').trim())
+        .filter(Boolean)
+    )).slice(0, 30);
+  }
+
+  if (typeof value !== 'string') {
+    return [];
+  }
+
+  return Array.from(new Set(
+    value
+      .split(/[\n,;|]+/)
+      .map((item) => item.trim())
+      .filter(Boolean)
+  )).slice(0, 30);
+};
+
+const toSchoolTagsCsv = (tags = []) => {
+  const parsed = parseSchoolTags(tags);
+  return parsed.length ? parsed.join(', ') : null;
+};
+
+const extractSchoolTags = (album = {}) => parseSchoolTags(album.schoolTags ?? album.school_tags);
+
+const syncStudioSchoolRoster = async (studioId, schoolTags = [], sourceAlbumId = null) => {
+  if (!studioId) return;
+
+  const normalized = parseSchoolTags(schoolTags);
+  if (!normalized.length) return;
+
+  for (const schoolName of normalized) {
+    const existing = await queryRow(
+      `SELECT TOP 1 id
+       FROM studio_school_roster
+       WHERE studio_id = $1
+         AND LOWER(school_name) = LOWER($2)`,
+      [studioId, schoolName]
+    );
+
+    if (existing?.id) {
+      await query(
+        `UPDATE studio_school_roster
+         SET updated_at = GETDATE(),
+             source_album_id = COALESCE(source_album_id, $1)
+         WHERE id = $2`,
+        [sourceAlbumId, existing.id]
+      );
+      continue;
+    }
+
+    await query(
+      `INSERT INTO studio_school_roster (studio_id, school_name, school_type, source_album_id)
+       VALUES ($1, $2, NULL, $3)`,
+      [studioId, schoolName, sourceAlbumId]
+    );
+  }
+};
+
 // Public: Get albums by studioSlug (for customer view)
 router.get('/public', async (req, res) => {
   try {
-    await ensureAlbumBatchShippingColumn();
+    await ensureAlbumSchema();
     const { studioSlug } = req.query;
     if (!studioSlug) {
       return res.status(400).json({ error: 'studioSlug is required' });
@@ -37,6 +139,7 @@ router.get('/public', async (req, res) => {
         a.cover_photo_id as coverPhotoId,
         a.photo_count as photoCount,
         a.category,
+        a.school_tags as schoolTags,
         a.price_list_id as priceListId,
         a.is_password_protected as isPasswordProtected,
         a.password,
@@ -61,6 +164,7 @@ const signAlbumForResponse = (album) => ({
   ...album,
   batchShippingActive: Boolean(album?.batchShippingActive),
   studioBatchShippingActive: Boolean(album?.studioBatchShippingActive),
+  schoolTags: extractSchoolTags(album),
   coverImageUrl: album?.coverPhotoId
     ? String(album.coverPhotoId)
     : album?.coverImageUrl || '',
@@ -108,7 +212,7 @@ const addAlbumPreviewImages = async (albums) => {
 // Get all albums (auth required)
 router.get('/', authRequired, async (req, res) => {
   try {
-    await ensureAlbumBatchShippingColumn();
+    await ensureAlbumSchema();
     const user = req.user;
     let albums;
     const studioId = user?.studio_id;
@@ -122,6 +226,7 @@ router.get('/', authRequired, async (req, res) => {
           a.cover_photo_id as coverPhotoId,
           a.photo_count as photoCount,
           a.category,
+          a.school_tags as schoolTags,
           a.price_list_id as priceListId,
           a.is_password_protected as isPasswordProtected,
           a.password,
@@ -145,6 +250,7 @@ router.get('/', authRequired, async (req, res) => {
           a.cover_photo_id as coverPhotoId,
           a.photo_count as photoCount,
           a.category,
+          a.school_tags as schoolTags,
           a.price_list_id as priceListId,
           a.is_password_protected as isPasswordProtected,
           a.password,
@@ -227,10 +333,40 @@ router.get('/', authRequired, async (req, res) => {
   }
 });
 
+router.get('/school-roster', authRequired, async (req, res) => {
+  try {
+    await ensureAlbumSchema();
+    const studioId = req.user?.studio_id;
+    if (!studioId) {
+      return res.json([]);
+    }
+
+    const rows = await queryRows(
+      `SELECT school_name as schoolName,
+              school_type as schoolType,
+              source_album_id as sourceAlbumId,
+              updated_at as updatedAt
+       FROM studio_school_roster
+       WHERE studio_id = $1
+       ORDER BY school_name ASC`,
+      [studioId]
+    );
+
+    res.json((rows || []).map((row) => ({
+      schoolName: row.schoolName,
+      schoolType: row.schoolType || null,
+      sourceAlbumId: row.sourceAlbumId || null,
+      updatedAt: row.updatedAt,
+    })));
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Get album by ID
 router.get('/:id', async (req, res) => {
   try {
-    await ensureAlbumBatchShippingColumn();
+    await ensureAlbumSchema();
     const album = await queryRow(`
       SELECT 
         a.id,
@@ -240,6 +376,7 @@ router.get('/:id', async (req, res) => {
         a.cover_photo_id as coverPhotoId,
         a.photo_count as photoCount,
         a.category,
+        a.school_tags as schoolTags,
         a.price_list_id as priceListId,
         a.is_password_protected as isPasswordProtected,
         a.password,
@@ -267,9 +404,10 @@ router.get('/:id', async (req, res) => {
 // Create new album (requires active subscription)
 router.post('/', requireActiveSubscription, async (req, res) => {
   try {
-    await ensureAlbumBatchShippingColumn();
-    const { title, name, description, coverImageUrl, coverPhotoId, category, priceListId, isPasswordProtected, password, passwordHint, batchShippingActive } = req.body;
+    await ensureAlbumSchema();
+    const { title, name, description, coverImageUrl, coverPhotoId, category, priceListId, isPasswordProtected, password, passwordHint, batchShippingActive, schoolTags } = req.body;
     const albumName = title || name || '';
+    const normalizedSchoolTags = parseSchoolTags(schoolTags);
     
     if (!albumName) {
       return res.status(400).json({ error: 'Album name is required' });
@@ -280,8 +418,8 @@ router.post('/', requireActiveSubscription, async (req, res) => {
     }
     
     const result = await queryRow(`
-      INSERT INTO albums (name, title, description, cover_image_url, cover_photo_id, category, price_list_id, is_password_protected, password, password_hint, studio_id, batch_shipping_active)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      INSERT INTO albums (name, title, description, cover_image_url, cover_photo_id, category, school_tags, price_list_id, is_password_protected, password, password_hint, studio_id, batch_shipping_active)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
       RETURNING id
     `, [
       albumName,
@@ -290,6 +428,7 @@ router.post('/', requireActiveSubscription, async (req, res) => {
       coverImageUrl || null,
       coverPhotoId || null,
       category || null,
+      toSchoolTagsCsv(normalizedSchoolTags),
       priceListId || null,
       !!isPasswordProtected,
       isPasswordProtected ? password : null,
@@ -297,6 +436,8 @@ router.post('/', requireActiveSubscription, async (req, res) => {
       req.studioId || null,
       !!batchShippingActive,
     ]);
+
+    await syncStudioSchoolRoster(req.studioId || null, normalizedSchoolTags, result.id);
     
     const album = await queryRow(`
       SELECT 
@@ -307,6 +448,7 @@ router.post('/', requireActiveSubscription, async (req, res) => {
         cover_photo_id as coverPhotoId,
         photo_count as photoCount,
         category,
+        school_tags as schoolTags,
         price_list_id as priceListId,
         is_password_protected as isPasswordProtected,
         password,
@@ -327,8 +469,8 @@ router.post('/', requireActiveSubscription, async (req, res) => {
 // Update album
 router.put('/:id', async (req, res) => {
   try {
-    await ensureAlbumBatchShippingColumn();
-    const { title, name, description, coverImageUrl, coverPhotoId, category, priceListId, isPasswordProtected, password, passwordHint, batchShippingActive } = req.body;
+    await ensureAlbumSchema();
+    const { title, name, description, coverImageUrl, coverPhotoId, category, priceListId, isPasswordProtected, password, passwordHint, batchShippingActive, schoolTags } = req.body;
     
     // Get the current album to preserve existing values
     const currentAlbum = await queryRow('SELECT * FROM albums WHERE id = $1', [req.params.id]);
@@ -349,6 +491,7 @@ router.put('/:id', async (req, res) => {
         }
 
     const newCategory = category !== undefined ? category : currentAlbum.category;
+    const newSchoolTags = schoolTags !== undefined ? parseSchoolTags(schoolTags) : parseSchoolTags(currentAlbum.school_tags);
     const newPriceListId = priceListId !== undefined ? priceListId : currentAlbum.price_list_id;
     const newIsProtected = isPasswordProtected !== undefined ? isPasswordProtected : currentAlbum.is_password_protected;
     const newPassword = newIsProtected ? (password !== undefined ? password : currentAlbum.password) : null;
@@ -357,9 +500,9 @@ router.put('/:id', async (req, res) => {
     
     await query(`
       UPDATE albums 
-      SET name = $1, title = $2, description = $3, cover_image_url = $4, cover_photo_id = $5, category = $6, price_list_id = $7, 
-          is_password_protected = $8, password = $9, password_hint = $10, batch_shipping_active = $11
-        WHERE id = $12
+      SET name = $1, title = $2, description = $3, cover_image_url = $4, cover_photo_id = $5, category = $6, school_tags = $7, price_list_id = $8, 
+          is_password_protected = $9, password = $10, password_hint = $11, batch_shipping_active = $12
+        WHERE id = $13
     `, [
       albumName,
       albumName,
@@ -367,6 +510,7 @@ router.put('/:id', async (req, res) => {
       newCoverUrl,
       newCoverPhotoId,
       newCategory,
+      toSchoolTagsCsv(newSchoolTags),
       newPriceListId,
       !!newIsProtected,
       newPassword,
@@ -374,6 +518,8 @@ router.put('/:id', async (req, res) => {
       newBatchShippingActive,
       req.params.id,
     ]);
+
+    await syncStudioSchoolRoster(currentAlbum.studio_id || null, newSchoolTags, Number(req.params.id));
     
     const album = await queryRow(`
       SELECT 
@@ -384,6 +530,7 @@ router.put('/:id', async (req, res) => {
         cover_photo_id as coverPhotoId,
         photo_count as photoCount,
         category,
+        school_tags as schoolTags,
         price_list_id as priceListId,
         is_password_protected as isPasswordProtected,
         password,

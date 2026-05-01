@@ -27,6 +27,7 @@ export interface Album {
   photoCount: number;
   createdDate: string;
   category?: string;
+  schoolTags?: string[];
   priceListId?: number;
   isPasswordProtected?: boolean;
   password?: string;

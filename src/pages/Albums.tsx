@@ -17,6 +17,7 @@ type PublicAlbum = {
   id: number;
   name: string;
   description?: string;
+  schoolTags?: string[];
   coverImageUrl?: string;
   previewImageUrls?: string[];
   photoCount: number;
@@ -190,7 +191,8 @@ const Albums: React.FC = () => {
     if (query) {
       filtered = filtered.filter((album) =>
         album.name.toLowerCase().includes(query) ||
-        (album.description || '').toLowerCase().includes(query)
+        (album.description || '').toLowerCase().includes(query) ||
+        (Array.isArray(album.schoolTags) ? album.schoolTags.join(' ').toLowerCase().includes(query) : false)
       );
     }
     if (selectedCategory) {
@@ -285,7 +287,7 @@ const Albums: React.FC = () => {
               type="text"
               value={albumQuery}
               onChange={e => setAlbumQuery(e.target.value)}
-              placeholder="Filter albums by name or description..."
+              placeholder="Filter albums by name, description, or school..."
               style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #3a3656', background: '#141320', color: '#fff', minWidth: 220 }}
             />
             <select
@@ -360,6 +362,19 @@ const Albums: React.FC = () => {
                     <h3>{album.name}</h3>
                     {isBatchEnabledForAlbum(album) && (
                       <div className={styles.albumsBatchBadge}>Batch Shipping Available</div>
+                    )}
+                    {Array.isArray(album.schoolTags) && album.schoolTags.length > 0 && (
+                      <div className={styles.albumSchoolsSection}>
+                        <span className={styles.albumSchoolsLabel}>Schools</span>
+                        <div className={styles.albumSchoolsList}>
+                          {album.schoolTags.slice(0, 4).map((school) => (
+                            <span key={school} className={styles.albumSchoolChip}>{school}</span>
+                          ))}
+                          {album.schoolTags.length > 4 && (
+                            <span className={styles.albumSchoolChip}>+{album.schoolTags.length - 4} more</span>
+                          )}
+                        </div>
+                      </div>
                     )}
                     <p>{album.description}</p>
                     <div className="album-info-row">

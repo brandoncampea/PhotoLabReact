@@ -541,6 +541,33 @@ const AlbumDetails: React.FC = () => {
           )}
         </div>
         <h1 className="gradient-text" style={{ marginBottom: 6, lineHeight: 1.15 }}>{album.name}</h1>
+        {Array.isArray(album.schoolTags) && album.schoolTags.length > 0 && (
+          <div style={{ display: 'grid', gap: 6, marginBottom: 10 }}>
+            <span style={{ color: '#b8b4d9', fontSize: '0.78rem', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+              Tagged Schools
+            </span>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {album.schoolTags.map((school) => (
+                <span
+                  key={school}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    padding: '4px 10px',
+                    borderRadius: 999,
+                    border: '1px solid rgba(96, 165, 250, 0.35)',
+                    background: 'rgba(30, 41, 59, 0.88)',
+                    color: '#dbeafe',
+                    fontSize: '0.82rem',
+                    fontWeight: 600,
+                  }}
+                >
+                  {school}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
         {album.description && <p className="albums-description" style={{ marginTop: 0, color: '#a8a8b8' }}>{album.description}</p>}
       </div>
 
