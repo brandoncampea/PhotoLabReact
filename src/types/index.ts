@@ -33,6 +33,7 @@ export interface Album {
   password?: string;
   passwordHint?: string;
   batchShippingActive?: boolean;
+  albumPurchaseEnabled?: boolean;
   batchDeadline?: string;
   productCount?: number;
   netRevenue?: number;
@@ -101,6 +102,9 @@ export interface PhotoMetadata {
 export interface CartItem {
   photoId: number; // primary photo id (for legacy compatibility)
   photo: Photo; // primary photo object
+  albumId?: number;
+  albumName?: string;
+  albumCoverImageUrl?: string;
   photoIds?: number[]; // all photos included in the product (multi-photo products)
   photos?: Array<{ photo: Photo; cropData: CropData; position: number }>; // full photo objects with crop data for multi-photo products
   quantity: number;
@@ -112,6 +116,8 @@ export interface CartItem {
   productSizeName?: string;
   product_image_url?: string;
   category_image_url?: string;
+  isDigital?: boolean;
+  digitalDownloadScope?: 'photo' | 'album';
 }
 
 export interface CropData {
@@ -197,6 +203,7 @@ export interface OrderItem {
   id: number;
   photoId: number;
   photo: Photo;
+  albumId?: number;
   photoIds?: number[];
   photos?: Photo[];
   quantity: number;
@@ -210,6 +217,14 @@ export interface OrderItem {
   isDigital?: boolean;
   basePrice?: number;
   labCost?: number;
+  digitalDownloadScope?: 'photo' | 'album' | string;
+  studioRevenueAmount?: number;
+  baseRevenueAmount?: number;
+  productionCostAmount?: number;
+  studioPayoutAmount?: number;
+  superAdminShareAmount?: number;
+  stripeFeeAllocatedAmount?: number;
+  studioNetPayoutAmount?: number;
 }
 
 export interface LoginCredentials {
@@ -254,6 +269,9 @@ export interface Product {
   isActive: boolean;
   popularity: number;
   isDigital: boolean;
+  digitalDownloadScope?: 'photo' | 'album' | string;
+  digitalPricingMode?: 'fixed' | 'percentage' | string | null;
+  superAdminPercentage?: number;
   minPhotos?: number; // Minimum photos required for multi-photo products
   maxPhotos?: number; // Maximum photos allowed for multi-photo products
 }

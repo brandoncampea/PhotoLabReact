@@ -35,6 +35,21 @@ const estimateProfit = (baseCost: unknown, priceInput: unknown) => {
 	return price - base;
 };
 
+const computedDisplayCost = (item: any, draftPrice: unknown) => {
+	const pricingMode = String(item?.digital_pricing_mode || '').trim().toLowerCase();
+	const pct = Number(item?.super_admin_percentage);
+	if (pricingMode === 'percentage' && Number.isFinite(pct)) {
+		const priceSource = draftPrice === '' || draftPrice === null || draftPrice === undefined
+			? item?.price
+			: draftPrice;
+		const studioPrice = Number(priceSource);
+		if (Number.isFinite(studioPrice)) {
+			return Number((studioPrice * (pct / 100)).toFixed(2));
+		}
+	}
+	return Number(item?.base_cost || 0);
+};
+
 
 const AdminPriceLists: React.FC = () => {
 const { user } = useAuth();
@@ -102,6 +117,18 @@ const [applyingMarkup, setApplyingMarkup] = useState(false);
 	const filteredItemIds = useMemo(
 		() => Object.values(filteredGroupedItems).flatMap((productsByName: any) =>
 			Object.values(productsByName || {}).flatMap((rows: any) => rows.map((item: any) => Number(item.id)).filter((id: number) => Number.isInteger(id)))
+		),
+		[filteredGroupedItems]
+	);
+
+	const filteredAlbumPurchaseItemIds = useMemo(
+		() => Object.values(filteredGroupedItems).flatMap((productsByName: any) =>
+			Object.values(productsByName || {}).flatMap((rows: any) =>
+				(rows || [])
+					.filter((item: any) => String(item?.digital_download_scope || '').trim().toLowerCase() === 'album')
+					.map((item: any) => Number(item.id))
+					.filter((id: number) => Number.isInteger(id))
+			)
 		),
 		[filteredGroupedItems]
 	);
@@ -370,6 +397,13 @@ const [applyingMarkup, setApplyingMarkup] = useState(false);
 						>
 							Unoffer All
 						</button>
+						<button
+							className="btn btn-secondary btn-sm"
+							onClick={() => handleToggleOfferedBulk(filteredAlbumPurchaseItemIds, true)}
+							disabled={filteredAlbumPurchaseItemIds.length === 0}
+						>
+							Offer Full Album Products
+						</button>
 						<button className="btn btn-secondary btn-sm" onClick={handleExpandAll}>Expand All</button>
 						<button className="btn btn-secondary btn-sm" onClick={handleContractAll}>Contract All</button>
 						<label style={{ color: '#aaa' }}>Markup % for all offered:</label>
@@ -474,8 +508,15 @@ const [applyingMarkup, setApplyingMarkup] = useState(false);
 																		/>
 																		<span style={{ fontSize: 12 }}>Offer</span>
 																	</label>
-																	<div>{item._sizeLabel || item.size_name || '—'}</div>
-																	<div>{toCurrency(item.base_cost)}</div>
+																	<div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+																		<span>{item._sizeLabel || item.size_name || '—'}</span>
+																		{String(item?.digital_download_scope || '').trim().toLowerCase() === 'album' && (
+																			<span style={{ fontSize: 11, padding: '2px 6px', borderRadius: 999, background: '#2f5dff', color: '#e8efff' }}>
+																				Full Album Purchase
+																			</span>
+																		)}
+																	</div>
+																	<div>{toCurrency(computedDisplayCost(item, draftPrices[item.id]))}</div>
 																	<input
 																		type="number"
 																		min={0}
@@ -488,7 +529,8 @@ const [applyingMarkup, setApplyingMarkup] = useState(false);
 																	/>
 																	<div style={{ fontSize: 12, color: '#aaa', textAlign: 'right' }}>
 																		{(() => {
-																			const profit = estimateProfit(item.base_cost, draftPrices[item.id]);
+																			const cost = computedDisplayCost(item, draftPrices[item.id]);
+																			const profit = estimateProfit(cost, draftPrices[item.id]);
 																			const color = profit >= 0 ? '#79d279' : '#ff9a9a';
 																			return <span style={{ color }}>Est. Profit {toCurrency(profit)}</span>;
 																		})()}

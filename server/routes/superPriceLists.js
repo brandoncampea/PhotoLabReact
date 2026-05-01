@@ -712,8 +712,22 @@ router.get('/:id/items', async (req, res) => {
         options = {};
       }
 
+      const digitalDownloadScope = String(options?.digitalDownloadScope ?? options?.downloadScope ?? options?.digital_download_scope ?? 'photo').trim().toLowerCase() === 'album'
+        ? 'album'
+        : 'photo';
+      const digitalPricingMode = String(options?.digitalPricingMode ?? options?.pricingMode ?? options?.digital_pricing_mode ?? 'fixed').trim().toLowerCase() === 'percentage'
+        ? 'percentage'
+        : 'fixed';
+      const superAdminPercentage = Number(options?.superAdminPercentage ?? options?.digitalCommissionPercent ?? options?.commissionPercent ?? 0);
+
       return {
         ...item,
+        isDigital: options?.isDigital === true || options?.is_digital_only === true,
+        digitalDownloadScope,
+        digitalPricingMode,
+        superAdminPercentage: Number.isFinite(superAdminPercentage)
+          ? Math.max(0, Math.min(100, superAdminPercentage))
+          : 0,
         whccProductUID: options?.whccProductUID ?? '',
         whccProductNodeID: options?.whccProductNodeID ?? '',
         whccItemAttributeUIDs: Array.isArray(options?.whccItemAttributeUIDs) ? options.whccItemAttributeUIDs : [],
@@ -731,6 +745,12 @@ router.post('/:id/items', async (req, res) => {
   const { product_size_id, base_cost, markup_percent } = req.body;
   try {
     const forceDigitalOnly = req.body?.is_digital_only === true;
+    const requestedDownloadScope = String(req.body?.digital_download_scope || req.body?.downloadScope || '').trim().toLowerCase() === 'album' ? 'album' : 'photo';
+    const requestedDigitalPricingMode = String(req.body?.digital_pricing_mode || req.body?.digitalPricingMode || '').trim().toLowerCase() === 'percentage' ? 'percentage' : null;
+    const requestedSuperAdminPercentage = Number(req.body?.super_admin_percentage ?? req.body?.superAdminPercentage);
+    const normalizedSuperAdminPercentage = Number.isFinite(requestedSuperAdminPercentage)
+      ? Math.max(0, Math.min(100, requestedSuperAdminPercentage))
+      : null;
     let resolvedProductSizeId = Number(product_size_id || 0);
 
     // Check existing size id first
@@ -764,7 +784,16 @@ router.post('/:id/items', async (req, res) => {
       let productRows = await mssql.query('SELECT TOP 1 id, options FROM products WHERE name = @p1 AND category = @p2', [productName, category]);
       let productId = productRows[0]?.id;
       if (!productId) {
-        const optionsJson = JSON.stringify({ isDigital: forceDigitalOnly, isActive: true });
+        const optionsPayload = {
+          isDigital: forceDigitalOnly,
+          isActive: true,
+          ...(forceDigitalOnly ? { digitalDownloadScope: requestedDownloadScope } : {}),
+          ...(forceDigitalOnly && requestedDigitalPricingMode ? { digitalPricingMode: requestedDigitalPricingMode } : {}),
+          ...(forceDigitalOnly && requestedDigitalPricingMode === 'percentage' && normalizedSuperAdminPercentage !== null
+            ? { superAdminPercentage: normalizedSuperAdminPercentage }
+            : {}),
+        };
+        const optionsJson = JSON.stringify(optionsPayload);
         try {
           await mssql.query(
             'INSERT INTO products (name, category, price, description, cost, options) VALUES (@p1, @p2, @p3, @p4, @p5, @p6)',
@@ -783,7 +812,17 @@ router.post('/:id/items', async (req, res) => {
         } catch (_) {
           currentOptions = {};
         }
-        await mssql.query('UPDATE products SET options = @p1 WHERE id = @p2', [JSON.stringify({ ...currentOptions, isDigital: true, isActive: currentOptions?.isActive !== false }), productId]);
+        const nextOptions = {
+          ...currentOptions,
+          isDigital: true,
+          isActive: currentOptions?.isActive !== false,
+          digitalDownloadScope: requestedDownloadScope,
+          ...(requestedDigitalPricingMode ? { digitalPricingMode: requestedDigitalPricingMode } : {}),
+        };
+        if (requestedDigitalPricingMode === 'percentage' && normalizedSuperAdminPercentage !== null) {
+          nextOptions.superAdminPercentage = normalizedSuperAdminPercentage;
+        }
+        await mssql.query('UPDATE products SET options = @p1 WHERE id = @p2', [JSON.stringify(nextOptions), productId]);
       }
 
       if (!productId || !bridgePriceListId) {
@@ -837,7 +876,20 @@ router.post('/:id/items', async (req, res) => {
 // PUT update product/size cost/markup/active in super price list
 router.put('/:id/items/:itemId', async (req, res) => {
   const { itemId } = req.params;
-  const { base_cost, markup_percent, is_active, whccProductUID, whccProductNodeID, whccItemAttributeUIDs } = req.body;
+  const {
+    base_cost,
+    markup_percent,
+    is_active,
+    whccProductUID,
+    whccProductNodeID,
+    whccItemAttributeUIDs,
+    digital_download_scope,
+    downloadScope,
+    digital_pricing_mode,
+    digitalPricingMode,
+    super_admin_percentage,
+    superAdminPercentage,
+  } = req.body;
   try {
     // Build dynamic SET to avoid overwriting fields not in payload
     const parts = [];
@@ -851,7 +903,14 @@ router.put('/:id/items/:itemId', async (req, res) => {
     }
 
     const hasWhccMappingUpdate = whccProductUID !== undefined || whccProductNodeID !== undefined || whccItemAttributeUIDs !== undefined;
-    if (hasWhccMappingUpdate) {
+    const hasDigitalConfigUpdate =
+      digital_download_scope !== undefined ||
+      downloadScope !== undefined ||
+      digital_pricing_mode !== undefined ||
+      digitalPricingMode !== undefined ||
+      super_admin_percentage !== undefined ||
+      superAdminPercentage !== undefined;
+    if (hasWhccMappingUpdate || hasDigitalConfigUpdate) {
       const itemRows = await mssql.query(`
         SELECT TOP 1 p.id as product_id, p.options as product_options
         FROM super_price_list_items spi
@@ -896,6 +955,30 @@ router.put('/:id/items/:itemId', async (req, res) => {
 
         if (normalizedAttributeUIDs.length) nextOptions.whccItemAttributeUIDs = normalizedAttributeUIDs;
         else delete nextOptions.whccItemAttributeUIDs;
+      }
+
+      if (hasDigitalConfigUpdate) {
+        nextOptions.isDigital = true;
+        nextOptions.isActive = nextOptions?.isActive !== false;
+
+        const normalizedDownloadScope = String(digital_download_scope ?? downloadScope ?? '').trim().toLowerCase() === 'album'
+          ? 'album'
+          : 'photo';
+        const normalizedPricingMode = String(digital_pricing_mode ?? digitalPricingMode ?? '').trim().toLowerCase() === 'percentage'
+          ? 'percentage'
+          : 'fixed';
+
+        nextOptions.digitalDownloadScope = normalizedDownloadScope;
+        nextOptions.digitalPricingMode = normalizedPricingMode;
+
+        const requestedSuperAdminPercentage = Number(super_admin_percentage ?? superAdminPercentage);
+        if (normalizedPricingMode === 'percentage') {
+          nextOptions.superAdminPercentage = Number.isFinite(requestedSuperAdminPercentage)
+            ? Math.max(0, Math.min(100, requestedSuperAdminPercentage))
+            : 0;
+        } else {
+          delete nextOptions.superAdminPercentage;
+        }
       }
 
       await mssql.query('UPDATE products SET options = @p1 WHERE id = @p2', [JSON.stringify(nextOptions), productId]);

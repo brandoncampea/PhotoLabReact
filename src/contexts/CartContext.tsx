@@ -5,7 +5,16 @@ import api from '../services/api';
 
 interface CartContextType {
   items: CartItem[];
-  addToCart: (photo: Photo, cropData: CropData, product: Product, size: ProductSize, quantity?: number, photoIds?: number[], photos?: { photo: Photo; cropData: CropData; position: number }[]) => Promise<void>;
+  addToCart: (
+    photo: Photo,
+    cropData: CropData,
+    product: Product,
+    size: ProductSize,
+    quantity?: number,
+    photoIds?: number[],
+    photos?: { photo: Photo; cropData: CropData; position: number }[],
+    options?: { albumId?: number; albumName?: string; albumCoverImageUrl?: string; digitalDownloadScope?: 'photo' | 'album' }
+  ) => Promise<void>;
   addPackageToCart: (pkg: Package, photo: Photo, cropData: CropData) => Promise<void>;
   removeFromCart: (photoId: number, productId?: number, productSizeId?: number) => void;
   updateQuantity: (photoId: number, quantity: number, productId?: number, productSizeId?: number) => void;
@@ -157,7 +166,8 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     size: ProductSize,
     quantity = 1,
     photoIds?: number[],
-    photos?: { photo: Photo; cropData: CropData; position: number }[]
+    photos?: { photo: Photo; cropData: CropData; position: number }[],
+    options?: { albumId?: number; albumName?: string; albumCoverImageUrl?: string; digitalDownloadScope?: 'photo' | 'album' }
   ) => {
     const price = size.price;
     const allPhotoIds = photoIds || [photo.id];
@@ -169,13 +179,29 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (existingItem) {
         return prevItems.map((item) =>
           item.photoId === photo.id && item.productId === product.id && item.productSizeId === size.id
-            ? { ...item, quantity: item.quantity + quantity, cropData, price, photoIds: allPhotoIds, photos: allPhotos, productName: product.name, productSizeName: size.name }
+            ? {
+                ...item,
+                quantity: item.quantity + quantity,
+                cropData,
+                price,
+                photoIds: allPhotoIds,
+                photos: allPhotos,
+                productName: product.name,
+                productSizeName: size.name,
+                albumId: options?.albumId ?? item.albumId,
+                albumName: options?.albumName ?? item.albumName,
+                albumCoverImageUrl: options?.albumCoverImageUrl ?? item.albumCoverImageUrl,
+                digitalDownloadScope: options?.digitalDownloadScope ?? item.digitalDownloadScope,
+              }
             : item
         );
       }
       return [...prevItems, { 
         photoId: photo.id, 
         photo, 
+        albumId: options?.albumId,
+        albumName: options?.albumName,
+        albumCoverImageUrl: options?.albumCoverImageUrl,
         photoIds: allPhotoIds, 
         photos: allPhotos, 
         quantity, 
@@ -184,6 +210,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         productSizeId: size.id, 
         productName: product.name,
         productSizeName: size.name,
+        digitalDownloadScope: options?.digitalDownloadScope,
         price 
       }];
     });

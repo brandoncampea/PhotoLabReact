@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { analyticsService } from '../services/analyticsService';
 import { Link, useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import WatermarkedImage from '../components/WatermarkedImage';
@@ -52,6 +52,7 @@ const AlbumDetails: React.FC = () => {
   const [photoQuery, setPhotoQuery] = useState('');
   const [metadataFilter, setMetadataFilter] = useState<'all' | 'camera' | 'iso' | 'aperture' | 'shutterSpeed' | 'focalLength' | 'dateTaken' | 'any'>('all');
   const { addToCart } = useCart();
+  const autoBuyAttemptedRef = useRef(false);
 
 
 
@@ -186,6 +187,11 @@ const AlbumDetails: React.FC = () => {
     navigate(url.pathname + url.search, { replace: false });
   };
 
+  const getDigitalScopeValue = (product: any): 'photo' | 'album' => {
+    const scope = String(product?.digitalDownloadScope || '').trim().toLowerCase();
+    return scope === 'album' ? 'album' : 'photo';
+  };
+
 
   const orderedProducts = useMemo((): ProductWithMatch[] => {
     if (!selectedPhoto) return [];
@@ -269,11 +275,17 @@ const AlbumDetails: React.FC = () => {
   }, [orderedProducts]);
 
   const productsBySection = useMemo(() => {
-    const digital = orderedProducts.filter((p) => p.isDigital);
+    const albumPurchaseEnabled = album?.albumPurchaseEnabled !== false;
+    const digital = orderedProducts.filter((p) => p.isDigital && (albumPurchaseEnabled || getDigitalScope(p) !== 'album'));
     const recommended = orderedProducts.filter((p) => !p.isDigital && recommendedProductIds.has(p.id));
     const remaining = orderedProducts.filter((p) => !p.isDigital && !recommendedProductIds.has(p.id));
     return { digital, recommended, remaining };
-  }, [orderedProducts, recommendedProductIds]);
+  }, [orderedProducts, recommendedProductIds, album]);
+
+  const albumPurchaseProducts = useMemo(
+    () => (products || []).filter((p) => !!p.isDigital && getDigitalScopeValue(p) === 'album'),
+    [products]
+  );
 
   const recommendedGrouped = useMemo(() => {
     const grouped: Record<string, Record<string, ProductWithMatch[]>> = {};
@@ -374,7 +386,9 @@ const AlbumDetails: React.FC = () => {
     const size = sizeToCrop || getDefaultSize(product);
     let width = Number(size?.width || 0);
     let height = Number(size?.height || 0);
-    const photoIsLandscape = selectedPhoto.width > selectedPhoto.height;
+    const photoWidth = Number(selectedPhoto.width || 0);
+    const photoHeight = Number(selectedPhoto.height || 0);
+    const photoIsLandscape = photoWidth > photoHeight;
     const sizeIsLandscape = width > height;
     // If photo and product size orientations don't match, swap
     if (photoIsLandscape !== sizeIsLandscape) {
@@ -400,8 +414,26 @@ const AlbumDetails: React.FC = () => {
     return baseSize;
   };
 
+  const getDigitalScope = (product: ProductWithMatch): 'photo' | 'album' => {
+    return getDigitalScopeValue(product);
+  };
+
   const handleAddToCart = async (product: ProductWithMatch, sizeOverride?: ProductSize | null) => {
-    if (!selectedPhoto) return;
+    const digitalScope = product.isDigital ? getDigitalScope(product) : 'photo';
+    const isAlbumDigitalPurchase = product.isDigital && digitalScope === 'album';
+    const albumPurchaseEnabled = album?.albumPurchaseEnabled !== false;
+    const fallbackPhoto = photos[0] || null;
+    const effectiveSelectedPhoto = selectedPhoto || (isAlbumDigitalPurchase ? fallbackPhoto : null);
+
+    if (isAlbumDigitalPurchase && !albumPurchaseEnabled) {
+      setAddMessage('Album purchase is disabled for this album.');
+      return;
+    }
+
+    if (!effectiveSelectedPhoto) {
+      setAddMessage(isAlbumDigitalPurchase ? 'No photos available in this album yet.' : 'Select a photo to order this product.');
+      return;
+    }
 
     const selectedSize = getSelectedSizeForCart(product, sizeOverride);
     if (!selectedSize) {
@@ -415,14 +447,28 @@ const AlbumDetails: React.FC = () => {
       setAddingKey(key);
       setAddMessage('');
       try {
+        const allAlbumPhotoIds = digitalScope === 'album'
+          ? photos.map((p) => Number(p.id)).filter((id) => Number.isInteger(id) && id > 0)
+          : [effectiveSelectedPhoto.id];
+        const effectivePhotoIds = allAlbumPhotoIds.length ? allAlbumPhotoIds : [effectiveSelectedPhoto.id];
+        const primaryPhotoId = effectivePhotoIds[0] || effectiveSelectedPhoto.id;
+        const primaryPhoto = photos.find((p) => p.id === primaryPhotoId) || effectiveSelectedPhoto;
         await addToCart(
-          selectedPhoto,
+          primaryPhoto,
           { x: 0, y: 0, width: 100, height: 100, rotate: 0, scaleX: 1, scaleY: 1 },
           product,
           selectedSize,
-          1
+          1,
+          effectivePhotoIds,
+          [{ photo: primaryPhoto, cropData: { x: 0, y: 0, width: 100, height: 100, rotate: 0, scaleX: 1, scaleY: 1 }, position: 1 }],
+          {
+            albumId: Number(album?.id || 0) || undefined,
+            albumName: String(album?.name || '').trim() || undefined,
+            albumCoverImageUrl: String((album as any)?.coverImageUrl || '').trim() || undefined,
+            digitalDownloadScope: digitalScope,
+          }
         );
-        setAddMessage(`${product.name} added to cart.`);
+        setAddMessage(digitalScope === 'album' ? `${product.name} (full album) added to cart.` : `${product.name} added to cart.`);
       } catch {
         setAddMessage('Failed to add item to cart.');
       } finally {
@@ -435,6 +481,22 @@ const AlbumDetails: React.FC = () => {
     setSizeToCrop(selectedSize);
     setShowCropModal(true);
   };
+
+  useEffect(() => {
+    const shouldAutoBuyAlbum = String(searchParams.get('buyAlbum') || '').trim() === '1';
+    if (!shouldAutoBuyAlbum) return;
+    if (autoBuyAttemptedRef.current) return;
+    if (!albumPurchaseProducts.length) return;
+
+    autoBuyAttemptedRef.current = true;
+    const firstProduct = albumPurchaseProducts[0] as ProductWithMatch;
+    void handleAddToCart(firstProduct);
+
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('buyAlbum');
+    const query = nextParams.toString();
+    navigate(`${window.location.pathname}${query ? `?${query}` : ''}`, { replace: true });
+  }, [albumPurchaseProducts, navigate, searchParams]);
 
   const handleCropConfirm = async () => {
     if (!selectedPhoto || !productToCrop) return;
@@ -570,6 +632,74 @@ const AlbumDetails: React.FC = () => {
         )}
         {album.description && <p className="albums-description" style={{ marginTop: 0, color: '#a8a8b8' }}>{album.description}</p>}
       </div>
+
+      {album?.albumPurchaseEnabled !== false && albumPurchaseProducts.length > 0 && (
+        <div style={{ marginBottom: 14, border: '1px solid #2f5dff', borderRadius: 8, padding: 12, background: 'rgba(47, 93, 255, 0.08)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+            <h3 style={{ margin: 0, color: '#c7d8ff' }}>Buy Entire Album</h3>
+            <span className="badge" style={{ background: '#2f5dff' }}>Full Album</span>
+          </div>
+          <div style={{ color: '#b3c1e8', fontSize: 12, marginBottom: 10 }}>
+            Purchase the full album as a digital download.
+          </div>
+          <div style={{ display: 'grid', gap: 8 }}>
+            {albumPurchaseProducts.map((product) => {
+              const defaultSize = getDefaultSize(product);
+              const rowKey = `${product.id}-${defaultSize?.id || 0}`;
+              return (
+                <div
+                  key={rowKey}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    border: '1px solid #2a407f',
+                    borderRadius: 6,
+                    padding: '8px 10px',
+                    background: '#1b2240',
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <div style={{ flex: '1 1 220px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      <strong>{product.name}</strong>
+                      <span className="badge">Digital</span>
+                      <span className="badge" style={{ background: '#2f5dff' }}>Full Album</span>
+                    </div>
+                    <div style={{ fontSize: 12, color: '#9fb2ea' }}>
+                      {defaultSize
+                        ? `${defaultSize.name}${defaultSize.width && defaultSize.height ? ` (${defaultSize.width}x${defaultSize.height})` : ''}`
+                        : 'No size available'}
+                    </div>
+                  </div>
+                  <div style={{ minWidth: 90, textAlign: 'right', fontWeight: 700 }}>
+                    ${Number(product.price || defaultSize?.price || 0).toFixed(2)}
+                  </div>
+                  <button
+                    className="btn btn-primary btn-sm"
+                    disabled={!defaultSize || addingKey === rowKey}
+                    onClick={() => handleAddToCart(product)}
+                    style={{ minWidth: 140, fontWeight: 700 }}
+                  >
+                    {addingKey === rowKey ? 'Adding...' : 'Buy Entire Album'}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+          {!!addMessage && (
+            <div style={{ marginTop: 10, color: addMessage.includes('Failed') ? '#ff9a9a' : '#79d279', fontSize: 12 }}>
+              {addMessage}
+            </div>
+          )}
+        </div>
+      )}
+
+      {album?.albumPurchaseEnabled !== false && albumPurchaseProducts.length === 0 && (
+        <div style={{ marginBottom: 14, border: '1px solid #3a3656', borderRadius: 8, padding: 10, background: '#161526', color: '#aaa', fontSize: 12 }}>
+          Album purchase is enabled, but no full-album digital product is currently offered for this album.
+        </div>
+      )}
 
 
 
@@ -790,6 +920,7 @@ const AlbumDetails: React.FC = () => {
                                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                                         <strong>{product.name}</strong>
                                         <span className="badge">Digital</span>
+                                        {getDigitalScope(product) === 'album' && <span className="badge" style={{ background: '#2f5dff' }}>Full Album</span>}
                                       </div>
                                       <div style={{ fontSize: 12, color: '#aaa' }}>
                                         {defaultSize

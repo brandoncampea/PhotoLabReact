@@ -49,7 +49,10 @@ const mapLegacyProducts = (products) => {
       sizes,
       isActive: opts?.isActive !== undefined ? !!opts.isActive : true,
       popularity: Number(opts?.popularity) || 0,
-      isDigital: !!opts?.isDigital,
+      isDigital: !!(opts?.isDigital || opts?.is_digital_only || opts?.digitalOnly || String(p.category || '').toLowerCase() === 'digital' || String(p.name || '').toLowerCase().includes('digital')),
+      digitalDownloadScope: opts?.digitalDownloadScope ?? opts?.downloadScope ?? opts?.digital_download_scope ?? 'photo',
+      digitalPricingMode: opts?.digitalPricingMode ?? opts?.pricingMode ?? opts?.digital_pricing_mode ?? null,
+      superAdminPercentage: Number(opts?.superAdminPercentage ?? opts?.digitalCommissionPercent ?? opts?.super_admin_percentage ?? 0) || 0,
     };
   });
 };
@@ -142,6 +145,34 @@ router.get('/active', async (req, res) => {
         return null;
       }
 
+      // Backfill missing studio rows for active source items so newly-added
+      // super-admin products (including full-album digital products) are
+      // available on customer album pages without manual refresh steps.
+      const sourceItems = await queryRows(
+        `SELECT product_size_id as productSizeId, base_cost as baseCost
+         FROM super_price_list_items
+         WHERE super_price_list_id = $1
+           AND is_active = 1`,
+        [studioPriceList.superPriceListId]
+      );
+      const studioItems = await queryRows(
+        `SELECT product_size_id as productSizeId
+         FROM studio_price_list_items
+         WHERE studio_price_list_id = $1`,
+        [studioPriceList.id]
+      );
+      const existingSizeIds = new Set((studioItems || []).map((row) => Number(row.productSizeId)).filter(Number.isFinite));
+      for (const source of sourceItems || []) {
+        const sizeId = Number(source?.productSizeId);
+        if (!Number.isFinite(sizeId) || existingSizeIds.has(sizeId)) continue;
+        await query(
+          `INSERT INTO studio_price_list_items (studio_price_list_id, product_size_id, price, is_offered)
+           VALUES ($1, $2, $3, 1)`,
+          [studioPriceList.id, sizeId, Number(source?.baseCost) || 0]
+        );
+        existingSizeIds.add(sizeId);
+      }
+
       const rows = await queryRows(
         `SELECT
            p.id as productId, p.name as productName, p.category, p.description, p.options,
@@ -175,7 +206,10 @@ router.get('/active', async (req, res) => {
             sizes: [],
             isActive: options?.isActive !== undefined ? !!options.isActive : true,
             popularity: Number(options?.popularity) || 0,
-            isDigital: !!(options?.isDigital || String(row.productName || '').toLowerCase().includes('digital')),
+            isDigital: !!(options?.isDigital || options?.is_digital_only || options?.digitalOnly || String(row.category || '').toLowerCase() === 'digital' || String(row.productName || '').toLowerCase().includes('digital')),
+            digitalDownloadScope: options?.digitalDownloadScope ?? options?.downloadScope ?? options?.digital_download_scope ?? 'photo',
+            digitalPricingMode: options?.digitalPricingMode ?? options?.pricingMode ?? options?.digital_pricing_mode ?? null,
+            superAdminPercentage: Number(options?.superAdminPercentage ?? options?.digitalCommissionPercent ?? options?.super_admin_percentage ?? 0) || 0,
           });
         }
         const decoded = decodeSizeName(row.sizeName);
@@ -285,7 +319,10 @@ router.get('/active', async (req, res) => {
             sizes,
             isActive: options?.isActive !== undefined ? !!options.isActive : true,
             popularity: Number(options?.popularity) || 0,
-            isDigital: !!options?.isDigital,
+            isDigital: !!(options?.isDigital || options?.is_digital_only || options?.digitalOnly || String(product.category || '').toLowerCase() === 'digital' || String(product.name || '').toLowerCase().includes('digital')),
+            digitalDownloadScope: options?.digitalDownloadScope ?? options?.downloadScope ?? options?.digital_download_scope ?? 'photo',
+            digitalPricingMode: options?.digitalPricingMode ?? options?.pricingMode ?? options?.digital_pricing_mode ?? null,
+            superAdminPercentage: Number(options?.superAdminPercentage ?? options?.digitalCommissionPercent ?? options?.super_admin_percentage ?? 0) || 0,
           };
         });
         return res.json(parsedProducts.filter((product) => product.isActive !== false));

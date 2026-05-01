@@ -88,6 +88,32 @@ const formatDateTime = (value) => {
   return date.toLocaleString();
 };
 
+const resolveDiscountDetails = (order = {}) => {
+  const code = String(order?.discountCode ?? order?.discount_code ?? '').trim();
+  const subtotal = Number(order?.subtotal || 0);
+  const taxAmount = Number(order?.taxAmount || 0);
+  const shippingCost = Number(order?.shippingCost || 0);
+  const totalAmount = Number(order?.totalAmount || 0);
+
+  // Preferred formula for current checkout payloads.
+  const preferredComputed = (subtotal + taxAmount) - totalAmount;
+  // Fallback for older payload variants where subtotal may exclude shipping.
+  const fallbackComputed = (subtotal + taxAmount + shippingCost) - totalAmount;
+
+  let amount = 0;
+  if (Number.isFinite(preferredComputed) && preferredComputed > 0) {
+    amount = preferredComputed;
+  } else if (Number.isFinite(fallbackComputed) && fallbackComputed > 0) {
+    amount = fallbackComputed;
+  }
+
+  return {
+    code,
+    amount: Number(amount.toFixed(2)),
+    hasDiscount: Boolean(code) || amount > 0,
+  };
+};
+
 const renderItemsRows = (items) => items.map((item) => {
   const photoName = item.photoFileName || `Photo #${item.photoId}`;
   const unitPrice = Number(item.unitPrice ?? item.price ?? 0);
@@ -103,6 +129,13 @@ const renderItemsRows = (items) => items.map((item) => {
 }).join('');
 
 const renderCustomerReceiptHtml = ({ customerName, order, items, digitalDownloads }) => {
+  const discount = resolveDiscountDetails(order);
+  const discountCodeRow = discount.code
+    ? `<tr><td style="padding:4px 0;">Discount code</td><td style="padding:4px 0;text-align:right;">${esc(discount.code)}</td></tr>`
+    : '';
+  const discountAmountRow = discount.amount > 0
+    ? `<tr><td style="padding:4px 0;">Discount</td><td style="padding:4px 0;text-align:right;color:#86efac;">-${currency(discount.amount)}</td></tr>`
+    : '';
   const downloadSection = Array.isArray(digitalDownloads) && digitalDownloads.length > 0
     ? `<div style="margin-top:20px;padding:16px;border:1px solid #3f4957;border-radius:10px;background:#141922;">
         <div style="font-size:16px;font-weight:700;color:#fff;margin-bottom:8px;">Digital Downloads</div>
@@ -150,6 +183,8 @@ const renderCustomerReceiptHtml = ({ customerName, order, items, digitalDownload
           <tr><td style="padding:4px 0;">Item(s) Subtotal:</td><td style="padding:4px 0;text-align:right;">${currency(order.subtotal)}</td></tr>
           <tr><td style="padding:4px 0;">Shipping:</td><td style="padding:4px 0;text-align:right;">${currency(order.shippingCost)}</td></tr>
           <tr><td style="padding:4px 0;">Sales Tax:</td><td style="padding:4px 0;text-align:right;">${currency(order.taxAmount)}</td></tr>
+          ${discountCodeRow}
+          ${discountAmountRow}
           <tr><td style="padding:8px 0 0 0;font-weight:700;color:#fff;">Grand Total:</td><td style="padding:8px 0 0 0;text-align:right;font-weight:700;color:#fff;">${currency(order.totalAmount)}</td></tr>
         </table>
       </div>
@@ -160,6 +195,13 @@ const renderCustomerReceiptHtml = ({ customerName, order, items, digitalDownload
 };
 
 const renderStudioSaleHtml = ({ order, items, customerEmail, studioName }) => {
+  const discount = resolveDiscountDetails(order);
+  const discountCodeRow = discount.code
+    ? `<tr><td style="padding:4px 0;">Discount code:</td><td style="padding:4px 0;text-align:right;">${esc(discount.code)}</td></tr>`
+    : '';
+  const discountAmountRow = discount.amount > 0
+    ? `<tr><td style="padding:4px 0;">Discount:</td><td style="padding:4px 0;text-align:right;color:#86efac;">-${currency(discount.amount)}</td></tr>`
+    : '';
   const orderUrl = order?.orderUrl ? String(order.orderUrl) : null;
   // Try to extract customer name/address from order.shippingAddress (JSON string) or fallback
   let shipping = {};
@@ -215,6 +257,8 @@ const renderStudioSaleHtml = ({ order, items, customerEmail, studioName }) => {
         <table style="width:300px;border-collapse:collapse;color:#d3dceb;">
           <tr><td style="padding:4px 0;">Order Subtotal:</td><td style="padding:4px 0;text-align:right;">${currency(order.subtotal)}</td></tr>
           <tr><td style="padding:4px 0;">Taxes:</td><td style="padding:4px 0;text-align:right;">${currency(order.taxAmount)}</td></tr>
+          ${discountCodeRow}
+          ${discountAmountRow}
           <tr><td style="padding:8px 0 0 0;font-weight:700;color:#fff;">Total:</td><td style="padding:8px 0 0 0;text-align:right;font-weight:700;color:#fff;">${currency(order.totalAmount)}</td></tr>
         </table>
       </div>
@@ -385,6 +429,10 @@ export const orderReceiptService = {
   async sendCustomerReceipt({ to, customerName, order, items, digitalDownloads = [] }) {
     if (!isConfigured() || !to) return false;
     const html = renderCustomerReceiptHtml({ customerName, order, items, digitalDownloads });
+    const discount = resolveDiscountDetails(order);
+    const discountText = discount.hasDiscount
+      ? `\nDiscount code: ${discount.code || 'N/A'}${discount.amount > 0 ? `\nDiscount amount: -${currency(discount.amount)}` : ''}`
+      : '';
     await mailtrapClient.send({
       from: {
         email: mailtrapSenderEmail,
@@ -393,7 +441,7 @@ export const orderReceiptService = {
       to: Array.isArray(to) ? to.map(email => ({ email })) : [{ email: to }],
       subject: `Photo Lab receipt — Order #${order.id}`,
       html,
-      text: `Order #${order.id}\nTotal charged: ${currency(order.totalAmount)}\nSubtotal: ${currency(order.subtotal)}\nShipping: ${currency(order.shippingCost)}\nTax: ${currency(order.taxAmount)}${digitalDownloads.length ? `\nDigital downloads:\n${digitalDownloads.map((entry) => `- ${entry.productName || 'Digital product'}: ${entry.url}`).join('\n')}` : ''}`,
+      text: `Order #${order.id}\nTotal charged: ${currency(order.totalAmount)}\nSubtotal: ${currency(order.subtotal)}\nShipping: ${currency(order.shippingCost)}\nTax: ${currency(order.taxAmount)}${discountText}${digitalDownloads.length ? `\nDigital downloads:\n${digitalDownloads.map((entry) => `- ${entry.productName || 'Digital product'}: ${entry.url}`).join('\n')}` : ''}`,
       reply_to: smtpReplyTo,
       category: 'Order Receipt',
     });
@@ -404,6 +452,10 @@ export const orderReceiptService = {
     if (!isConfigured() || !to) return false;
     // Only show studio markup, stripe fee, and studio profit in studio emails
     const html = `${renderStudioSaleHtml({ order, items, customerEmail, studioName })}${renderInternalAccounting(order)}`;
+    const discount = resolveDiscountDetails(order);
+    const discountText = discount.hasDiscount
+      ? `\nDiscount code: ${discount.code || 'N/A'}${discount.amount > 0 ? `\nDiscount amount: -${currency(discount.amount)}` : ''}`
+      : '';
     await mailtrapClient.send({
       from: {
         email: mailtrapSenderEmail,
@@ -413,7 +465,7 @@ export const orderReceiptService = {
       bcc: Array.isArray(bcc) && bcc.length > 0 ? bcc.map(email => ({ email })) : undefined,
       subject: `Studio receipt — Order #${order.id}`,
       html,
-      text: `Order #${order.id}\nStudio: ${studioName || 'Unknown'}\nCustomer: ${customerEmail || 'Unknown'}\nTotal charged: ${currency(order.totalAmount)}\nStudio revenue: ${currency(order.studioRevenue)}\nGross studio markup: ${currency(order.grossStudioMarkup)}\nStripe fee: ${currency(order.stripeFeeAmount)}\nEstimated studio profit: ${currency(order.studioProfitNet)}${order.orderUrl ? `\nOrder link: ${order.orderUrl}` : ''}`,
+      text: `Order #${order.id}\nStudio: ${studioName || 'Unknown'}\nCustomer: ${customerEmail || 'Unknown'}\nTotal charged: ${currency(order.totalAmount)}\nStudio revenue: ${currency(order.studioRevenue)}\nGross studio markup: ${currency(order.grossStudioMarkup)}\nStripe fee: ${currency(order.stripeFeeAmount)}\nEstimated studio profit: ${currency(order.studioProfitNet)}${discountText}${order.orderUrl ? `\nOrder link: ${order.orderUrl}` : ''}`,
       reply_to: smtpReplyTo,
       category: 'Studio Receipt',
     });

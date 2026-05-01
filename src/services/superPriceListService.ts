@@ -38,6 +38,9 @@ export const superPriceListService = {
       category?: string;
       description?: string;
       is_digital_only?: boolean;
+      digital_download_scope?: 'photo' | 'album';
+      digital_pricing_mode?: 'percentage' | 'fixed';
+      super_admin_percentage?: number;
     }
   ) {
     const res = await api.post(`/super-price-lists/${listId}/items`, {

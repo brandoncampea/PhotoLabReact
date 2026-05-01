@@ -78,6 +78,9 @@ type ItemDraft = {
   whccProductUID: string;
   whccProductNodeID: string;
   whccItemAttributeUIDs: string;
+  digitalDownloadScope: 'photo' | 'album';
+  digitalPricingMode: 'fixed' | 'percentage';
+  superAdminPercentage: string;
 };
 
 type WhccCatalogEntry = {
@@ -183,12 +186,17 @@ function normalizeWhccCatalog(rawCatalog: any): WhccCatalogEntry[] {
 function buildItemDrafts(items: any[]): Record<number, ItemDraft> {
   const drafts: Record<number, ItemDraft> = {};
   items.forEach(item => {
+    const scope = String(item.digitalDownloadScope || '').toLowerCase() === 'album' ? 'album' : 'photo';
+    const pricingMode = String(item.digitalPricingMode || '').toLowerCase() === 'percentage' ? 'percentage' : 'fixed';
     drafts[item.id] = {
       base_cost: String(item.base_cost ?? ''),
       markup_percent: String(item.markup_percent ?? ''),
       whccProductUID: String(item.whccProductUID ?? ''),
       whccProductNodeID: String(item.whccProductNodeID ?? ''),
       whccItemAttributeUIDs: Array.isArray(item.whccItemAttributeUIDs) ? item.whccItemAttributeUIDs.join(', ') : '',
+      digitalDownloadScope: scope,
+      digitalPricingMode: pricingMode,
+      superAdminPercentage: String(item.superAdminPercentage ?? ''),
     };
   });
   return drafts;
@@ -265,6 +273,9 @@ const SuperAdminPricing: React.FC = () => {
   const [manualCategory, setManualCategory] = useState('Digital');
   const [manualBaseCost, setManualBaseCost] = useState('');
   const [manualMarkup, setManualMarkup] = useState('');
+  const [manualDigitalScope, setManualDigitalScope] = useState<'photo' | 'album'>('photo');
+  const [manualDigitalPricingMode, setManualDigitalPricingMode] = useState<'fixed' | 'percentage'>('fixed');
+  const [manualSuperAdminPercentage, setManualSuperAdminPercentage] = useState('20');
   const [addingManual, setAddingManual] = useState(false);
   const [whccCatalog, setWhccCatalog] = useState<WhccCatalogEntry[]>([]);
   const [whccCatalogLoading, setWhccCatalogLoading] = useState(false);
@@ -438,6 +449,11 @@ const SuperAdminPricing: React.FC = () => {
           category: manualCategory.trim() || 'Digital',
           description: 'Digital download product added manually from Super Admin Pricing',
           is_digital_only: true,
+          digital_download_scope: manualDigitalScope,
+          digital_pricing_mode: manualDigitalPricingMode,
+          ...(manualDigitalPricingMode === 'percentage'
+            ? { super_admin_percentage: Number(manualSuperAdminPercentage || 0) }
+            : {}),
         }
       );
 
@@ -451,6 +467,9 @@ const SuperAdminPricing: React.FC = () => {
       setManualCategory('Digital');
       setManualBaseCost('');
       setManualMarkup('');
+      setManualDigitalScope('photo');
+      setManualDigitalPricingMode('fixed');
+      setManualSuperAdminPercentage('20');
     } catch (err: any) {
       const details = err?.response?.data?.error || err?.message || 'Failed to manually add item';
       setViewError(String(details));
@@ -473,21 +492,41 @@ const SuperAdminPricing: React.FC = () => {
       .filter(value => Number.isInteger(value) && value > 0);
     const newWhccProductUID = draft.whccProductUID !== '' ? Number(draft.whccProductUID) : null;
     const newWhccProductNodeID = draft.whccProductNodeID !== '' ? Number(draft.whccProductNodeID) : null;
+    const newDigitalDownloadScope = draft.digitalDownloadScope === 'album' ? 'album' : 'photo';
+    const newDigitalPricingMode = draft.digitalPricingMode === 'percentage' ? 'percentage' : 'fixed';
+    const newSuperAdminPercentage = draft.superAdminPercentage !== '' ? Number(draft.superAdminPercentage) : 0;
+    const normalizedSuperAdminPercentage = Number.isFinite(newSuperAdminPercentage)
+      ? Math.max(0, Math.min(100, newSuperAdminPercentage))
+      : 0;
     if (
       newCost === original.base_cost &&
       newMarkup === original.markup_percent &&
       String(newWhccProductUID ?? '') === String(original.whccProductUID ?? '') &&
       String(newWhccProductNodeID ?? '') === String(original.whccProductNodeID ?? '') &&
-      newAttributes.join(',') === originalAttributes
+      newAttributes.join(',') === originalAttributes &&
+      (!original.isDigital || (
+        newDigitalDownloadScope === (String(original.digitalDownloadScope || '').toLowerCase() === 'album' ? 'album' : 'photo') &&
+        newDigitalPricingMode === (String(original.digitalPricingMode || '').toLowerCase() === 'percentage' ? 'percentage' : 'fixed') &&
+        (newDigitalPricingMode !== 'percentage' || normalizedSuperAdminPercentage === (Number(original.superAdminPercentage) || 0))
+      ))
     ) return;
     setAutoSaving(prev => ({ ...prev, [itemId]: true }));
     try {
-      await superPriceListService.updateItem(viewList!.id, itemId, {
+      const updatePayload: any = {
         base_cost: newCost,
         markup_percent: newMarkup,
         whccProductUID: newWhccProductUID,
         whccProductNodeID: newWhccProductNodeID,
         whccItemAttributeUIDs: newAttributes,
+      };
+      if (original.isDigital) {
+        updatePayload.digital_download_scope = newDigitalDownloadScope;
+        updatePayload.digital_pricing_mode = newDigitalPricingMode;
+        updatePayload.super_admin_percentage = newDigitalPricingMode === 'percentage' ? normalizedSuperAdminPercentage : null;
+      }
+
+      await superPriceListService.updateItem(viewList!.id, itemId, {
+        ...updatePayload,
       });
       setViewItems(prev => prev.map(i => i.id === itemId ? {
         ...i,
@@ -496,6 +535,13 @@ const SuperAdminPricing: React.FC = () => {
         whccProductUID: newWhccProductUID,
         whccProductNodeID: newWhccProductNodeID,
         whccItemAttributeUIDs: newAttributes,
+        ...(original.isDigital
+          ? {
+              digitalDownloadScope: newDigitalDownloadScope,
+              digitalPricingMode: newDigitalPricingMode,
+              superAdminPercentage: newDigitalPricingMode === 'percentage' ? normalizedSuperAdminPercentage : 0,
+            }
+          : {}),
       } : i));
     } catch {
       setViewError('Failed to save item.');
@@ -957,6 +1003,36 @@ const SuperAdminPricing: React.FC = () => {
                   value={manualCategory}
                   onChange={e => setManualCategory(e.target.value)}
                 />
+                <select
+                  className="spl-search"
+                  style={{ maxWidth: 190 }}
+                  value={manualDigitalScope}
+                  onChange={e => setManualDigitalScope((e.target.value as 'photo' | 'album') || 'photo')}
+                >
+                  <option value="photo">Scope: Single photo</option>
+                  <option value="album">Scope: Full album ZIP</option>
+                </select>
+                <select
+                  className="spl-search"
+                  style={{ maxWidth: 200 }}
+                  value={manualDigitalPricingMode}
+                  onChange={e => setManualDigitalPricingMode((e.target.value as 'fixed' | 'percentage') || 'fixed')}
+                >
+                  <option value="fixed">Pricing: Fixed/base</option>
+                  <option value="percentage">Pricing: Percentage</option>
+                </select>
+                {manualDigitalPricingMode === 'percentage' && (
+                  <input
+                    className="spl-markup-input"
+                    type="number"
+                    min={0}
+                    max={100}
+                    step="0.01"
+                    placeholder="Super %"
+                    value={manualSuperAdminPercentage}
+                    onChange={e => setManualSuperAdminPercentage(e.target.value)}
+                  />
+                )}
                 <input
                   className="spl-markup-input"
                   type="number"
@@ -1105,13 +1181,13 @@ const SuperAdminPricing: React.FC = () => {
                                         </label>
                                         <div className="spl-field-group">
                                           <label>Cost $ (no markup)</label>
-                                          <div style={{ minWidth: 60 }}>
-                                            {(() => {
-                                              const cost = parseFloat(itemDrafts[item.id]?.base_cost ?? item.base_cost ?? 0);
-                                              if (isNaN(cost)) return '—';
-                                              return cost.toFixed(2);
-                                            })()}
-                                          </div>
+                                          <input
+                                            className={`spl-num-input${autoSaving[item.id] ? ' spl-saving' : ''}`}
+                                            type="number" min={0} step="0.01"
+                                            value={itemDrafts[item.id]?.base_cost ?? ''}
+                                            onChange={e => setItemDrafts(p => ({ ...p, [item.id]: { ...p[item.id], base_cost: e.target.value } }))}
+                                            onBlur={() => autoSaveItem(item.id)}
+                                          />
                                         </div>
                                         <div className="spl-field-group">
                                           <label>Markup %</label>
@@ -1145,6 +1221,52 @@ const SuperAdminPricing: React.FC = () => {
                                               return (cost + markup).toFixed(2);
                                             })()}
                                           </div>
+                                        </div>
+                                        <div className="spl-field-group">
+                                          <label>Digital Scope</label>
+                                          {item.isDigital ? (
+                                            <select
+                                              className={`spl-num-input${autoSaving[item.id] ? ' spl-saving' : ''}`}
+                                              value={itemDrafts[item.id]?.digitalDownloadScope ?? 'photo'}
+                                              onChange={e => setItemDrafts(p => ({ ...p, [item.id]: { ...p[item.id], digitalDownloadScope: (e.target.value as 'photo' | 'album') || 'photo' } }))}
+                                              onBlur={() => autoSaveItem(item.id)}
+                                            >
+                                              <option value="photo">Single photo</option>
+                                              <option value="album">Full album ZIP</option>
+                                            </select>
+                                          ) : (
+                                            <div style={{ minWidth: 90, color: 'var(--text-secondary)' }}>Physical</div>
+                                          )}
+                                        </div>
+                                        <div className="spl-field-group">
+                                          <label>Digital Pricing</label>
+                                          {item.isDigital ? (
+                                            <select
+                                              className={`spl-num-input${autoSaving[item.id] ? ' spl-saving' : ''}`}
+                                              value={itemDrafts[item.id]?.digitalPricingMode ?? 'fixed'}
+                                              onChange={e => setItemDrafts(p => ({ ...p, [item.id]: { ...p[item.id], digitalPricingMode: (e.target.value as 'fixed' | 'percentage') || 'fixed' } }))}
+                                              onBlur={() => autoSaveItem(item.id)}
+                                            >
+                                              <option value="fixed">Fixed/base</option>
+                                              <option value="percentage">Percentage</option>
+                                            </select>
+                                          ) : (
+                                            <div style={{ minWidth: 90, color: 'var(--text-secondary)' }}>—</div>
+                                          )}
+                                        </div>
+                                        <div className="spl-field-group" style={{ minWidth: 120 }}>
+                                          <label>Super %</label>
+                                          {item.isDigital && (itemDrafts[item.id]?.digitalPricingMode ?? 'fixed') === 'percentage' ? (
+                                            <input
+                                              className={`spl-num-input${autoSaving[item.id] ? ' spl-saving' : ''}`}
+                                              type="number" min={0} max={100} step="0.01"
+                                              value={itemDrafts[item.id]?.superAdminPercentage ?? ''}
+                                              onChange={e => setItemDrafts(p => ({ ...p, [item.id]: { ...p[item.id], superAdminPercentage: e.target.value } }))}
+                                              onBlur={() => autoSaveItem(item.id)}
+                                            />
+                                          ) : (
+                                            <div style={{ minWidth: 60, color: 'var(--text-secondary)' }}>—</div>
+                                          )}
                                         </div>
                                         <div className="spl-field-group">
                                           <label>WHCC Product UID</label>

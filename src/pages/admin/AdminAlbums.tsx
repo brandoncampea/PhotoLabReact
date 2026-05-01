@@ -55,6 +55,7 @@ const AdminAlbums: React.FC = () => {
     paperType: '',
     albumSize: '',
     batchShippingActive: false,
+    albumPurchaseEnabled: true,
   };
   const [albums, setAlbums] = useState<Album[]>([]);
   const [priceLists, setPriceLists] = useState<PriceList[]>([]);
@@ -168,6 +169,7 @@ const AdminAlbums: React.FC = () => {
       paperType: '',
       albumSize: '',
       batchShippingActive: !!album.batchShippingActive,
+      albumPurchaseEnabled: album.albumPurchaseEnabled !== false,
     });
     setShowModal(true);
   };
@@ -183,6 +185,7 @@ const AdminAlbums: React.FC = () => {
       password: formData.isPasswordProtected ? formData.password : undefined,
       passwordHint: formData.isPasswordProtected ? formData.passwordHint : undefined,
       batchShippingActive: !!formData.batchShippingActive,
+      albumPurchaseEnabled: formData.albumPurchaseEnabled !== false,
     };
     if (!payload.name) {
       alert('Album name is required.');
@@ -503,6 +506,13 @@ const AdminAlbums: React.FC = () => {
                 <input type="checkbox" checked={!!formData.batchShippingActive} onChange={e => setFormData(f => ({ ...f, batchShippingActive: e.target.checked }))} />
                 <span style={{ marginLeft: 8, fontSize: '0.92em', color: '#aaa' }}>
                   Enable batch shipping for this album
+                </span>
+              </div>
+              <div className="form-group">
+                <label>Album Purchase</label>
+                <input type="checkbox" checked={formData.albumPurchaseEnabled !== false} onChange={e => setFormData(f => ({ ...f, albumPurchaseEnabled: e.target.checked }))} />
+                <span style={{ marginLeft: 8, fontSize: '0.92em', color: '#aaa' }}>
+                  Allow customers to buy the entire album (enabled by default)
                 </span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24 }}>

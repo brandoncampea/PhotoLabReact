@@ -24,7 +24,7 @@ router.post('/admin/:orderId/resend-digital-download', adminRequired, async (req
     if (!order) return res.status(404).json({ success: false, message: 'Order not found', digitalItemCount: 0 });
 
     const items = await queryRows(
-      `SELECT oi.id, oi.photo_id as photoId, oi.quantity, oi.price as unitPrice, ph.file_name as photoFileName, p.options as productOptions, p.category as productCategory, p.name as productName
+      `SELECT oi.id, oi.photo_id as photoId, oi.photo_ids as photoIds, oi.source_album_id as sourceAlbumId, oi.digital_download_scope as digitalDownloadScope, oi.quantity, oi.price as unitPrice, ph.file_name as photoFileName, ph.album_id as photoAlbumId, COALESCE(oi.product_options_snapshot, p.options) as productOptions, p.category as productCategory, p.name as productName
          FROM order_items oi
          INNER JOIN photos ph ON ph.id = oi.photo_id
          LEFT JOIN products p ON p.id = oi.product_id
@@ -35,20 +35,27 @@ router.post('/admin/:orderId/resend-digital-download', adminRequired, async (req
     // Build digital download links
     const appBase = String(process.env.APP_BASE_URL || process.env.CANONICAL_APP_URL || 'https://labs.campeaphotography.com').trim().replace(/\/$/, '');
     const digitalDownloads = items
-      .filter((item) => isDigitalProductRow(item))
+      .filter((item) => isDigitalDownloadItem(item))
       .map((item) => {
+        const downloadScope = resolveDigitalDownloadScope({ item });
         const token = createDigitalDownloadToken({
           orderId: order.id,
           userId: order.userId,
           orderItemId: item.id,
           photoId: item.photoId,
+          downloadScope,
+          sourceAlbumId: resolveDigitalSourceAlbumId({ item }),
         });
         const relativeUrl = `/api/orders/digital-download/${token}`;
+        const parsedPhotoIds = safeJsonParse(item.photoIds, item.photoId ? [item.photoId] : []);
+        const photoCount = Array.isArray(parsedPhotoIds) ? parsedPhotoIds.length : 0;
         return {
           orderItemId: item.id,
           photoId: item.photoId,
           productName: item.productName,
-          photoFileName: item.photoFileName,
+          photoFileName: downloadScope === 'album'
+            ? `${photoCount || 0} photo${photoCount === 1 ? '' : 's'} in album`
+            : item.photoFileName,
           url: appBase ? `${appBase}${relativeUrl}` : relativeUrl,
         };
       });
@@ -106,6 +113,37 @@ const safeJsonParse = (value, fallback = null) => {
   }
 };
 
+const ensureOrderItemAccountingSchema = async () => {
+  await query(`
+    IF COL_LENGTH('order_items', 'product_options_snapshot') IS NULL
+      ALTER TABLE order_items ADD product_options_snapshot NVARCHAR(MAX) NULL;
+    IF COL_LENGTH('order_items', 'fulfillment_type') IS NULL
+      ALTER TABLE order_items ADD fulfillment_type NVARCHAR(32) NULL;
+    IF COL_LENGTH('order_items', 'digital_download_scope') IS NULL
+      ALTER TABLE order_items ADD digital_download_scope NVARCHAR(32) NULL;
+    IF COL_LENGTH('order_items', 'source_album_id') IS NULL
+      ALTER TABLE order_items ADD source_album_id INT NULL;
+    IF COL_LENGTH('order_items', 'pricing_snapshot') IS NULL
+      ALTER TABLE order_items ADD pricing_snapshot NVARCHAR(MAX) NULL;
+    IF COL_LENGTH('order_items', 'studio_revenue_amount') IS NULL
+      ALTER TABLE order_items ADD studio_revenue_amount FLOAT NULL;
+    IF COL_LENGTH('order_items', 'base_revenue_amount') IS NULL
+      ALTER TABLE order_items ADD base_revenue_amount FLOAT NULL;
+    IF COL_LENGTH('order_items', 'production_cost_amount') IS NULL
+      ALTER TABLE order_items ADD production_cost_amount FLOAT NULL;
+    IF COL_LENGTH('order_items', 'gross_studio_markup_amount') IS NULL
+      ALTER TABLE order_items ADD gross_studio_markup_amount FLOAT NULL;
+    IF COL_LENGTH('order_items', 'studio_payout_amount') IS NULL
+      ALTER TABLE order_items ADD studio_payout_amount FLOAT NULL;
+    IF COL_LENGTH('order_items', 'super_admin_share_amount') IS NULL
+      ALTER TABLE order_items ADD super_admin_share_amount FLOAT NULL;
+    IF COL_LENGTH('order_items', 'stripe_fee_allocated_amount') IS NULL
+      ALTER TABLE order_items ADD stripe_fee_allocated_amount FLOAT NULL;
+    IF COL_LENGTH('order_items', 'studio_net_payout_amount') IS NULL
+      ALTER TABLE order_items ADD studio_net_payout_amount FLOAT NULL;
+  `);
+};
+
 const stringifyForDb = (value) => {
   if (value === undefined || value === null) return null;
   try {
@@ -125,20 +163,138 @@ const previewSecret = (value) => {
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
 const DOWNLOAD_TOKEN_SECRET = String(process.env.DOWNLOAD_TOKEN_SECRET || process.env.JWT_SECRET || 'photo-lab-download-secret');
 
+const normalizeDigitalDownloadScope = (value) => {
+  const normalized = String(value || '').trim().toLowerCase();
+  return normalized === 'album' ? 'album' : 'photo';
+};
+
+const getDigitalDownloadScope = (productOptions = {}) => {
+  return normalizeDigitalDownloadScope(
+    productOptions?.digitalDownloadScope ??
+    productOptions?.downloadScope ??
+    productOptions?.digital_download_scope ??
+    'photo'
+  );
+};
+
+const hasExplicitDigitalDownloadScope = (item = {}) => {
+  const options = safeJsonParse(item?.productOptions ?? item?.productOptionsSnapshot, {}) || {};
+  return Boolean(
+    String(item?.digitalDownloadScope || '').trim() ||
+    String(options?.digitalDownloadScope || '').trim() ||
+    String(options?.downloadScope || '').trim() ||
+    String(options?.digital_download_scope || '').trim()
+  );
+};
+
+const resolveDigitalDownloadScope = ({ item = {}, tokenPayload = null, defaultScope = 'photo' } = {}) => {
+  const options = safeJsonParse(item?.productOptions ?? item?.productOptionsSnapshot, {}) || {};
+  const explicitScopes = [];
+
+  if (String(item?.digitalDownloadScope || '').trim()) {
+    explicitScopes.push(normalizeDigitalDownloadScope(item.digitalDownloadScope));
+  }
+
+  if (
+    String(options?.digitalDownloadScope || '').trim() ||
+    String(options?.downloadScope || '').trim() ||
+    String(options?.digital_download_scope || '').trim()
+  ) {
+    explicitScopes.push(getDigitalDownloadScope(options));
+  }
+
+  if (String(tokenPayload?.downloadScope || '').trim()) {
+    explicitScopes.push(normalizeDigitalDownloadScope(tokenPayload.downloadScope));
+  }
+
+  if (explicitScopes.includes('album')) return 'album';
+  if (explicitScopes.includes('photo')) return 'photo';
+  return normalizeDigitalDownloadScope(defaultScope);
+};
+
+const resolveDigitalSourceAlbumId = ({ item = {}, tokenPayload = null } = {}) => {
+  const candidates = [item?.sourceAlbumId, item?.photoAlbumId, tokenPayload?.sourceAlbumId];
+  for (const candidate of candidates) {
+    const value = Number(candidate);
+    if (Number.isInteger(value) && value > 0) return value;
+  }
+  return null;
+};
+
+const getDigitalPricingMode = (productOptions = {}) => {
+  const normalized = String(
+    productOptions?.digitalPricingMode ??
+    productOptions?.pricingMode ??
+    productOptions?.digital_pricing_mode ??
+    ''
+  ).trim().toLowerCase();
+  return normalized === 'percentage' ? 'percentage' : 'fixed';
+};
+
+const getDigitalSuperAdminPercentage = (productOptions = {}) => {
+  const value = Number(
+    productOptions?.superAdminPercentage ??
+    productOptions?.digitalCommissionPercent ??
+    productOptions?.commissionPercent ??
+    productOptions?.digital_percent ??
+    0
+  );
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(100, value));
+};
+
+const sanitizeDownloadFileName = (value, fallback = 'photo') => {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return fallback;
+  const cleaned = trimmed.replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, ' ').trim();
+  return cleaned || fallback;
+};
+
+const buildAssetBaseUrl = (req) => {
+  const configured = String(process.env.APP_BASE_URL || process.env.CANONICAL_APP_URL || '').trim().replace(/\/$/, '');
+  if (configured) return configured;
+  const proto = String(req.headers['x-forwarded-proto'] || req.protocol || 'http').split(',')[0].trim();
+  const host = String(req.headers['x-forwarded-host'] || req.get('host') || '').split(',')[0].trim();
+  if (!host) return '';
+  return `${proto}://${host}`.replace(/\/$/, '');
+};
+
+const resolveAssetRequestUrl = (assetUrl, req) => {
+  const rawUrl = String(assetUrl || '').trim();
+  if (!rawUrl) return '';
+
+  try {
+    return new URL(rawUrl).toString();
+  } catch {}
+
+  const baseUrl = buildAssetBaseUrl(req);
+  if (!baseUrl) return '';
+
+  try {
+    return new URL(rawUrl.startsWith('/') ? rawUrl : `/${rawUrl}`, `${baseUrl}/`).toString();
+  } catch {
+    return '';
+  }
+};
+
 const isDigitalProductRow = (item) => {
-  const options = safeJsonParse(item?.productOptions, {}) || {};
+  const options = safeJsonParse(item?.productOptions ?? item?.productOptionsSnapshot, {}) || {};
   const category = String(item?.productCategory || '').toLowerCase();
   const name = String(item?.productName || '').toLowerCase();
   return options?.isDigital === true || options?.is_digital_only === true || options?.digitalOnly === true || category.includes('digital') || name.includes('digital');
 };
 
-const createDigitalDownloadToken = ({ orderId, userId, orderItemId, photoId }) => jwt.sign(
+const isDigitalDownloadItem = (item) => hasExplicitDigitalDownloadScope(item) || isDigitalProductRow(item);
+
+const createDigitalDownloadToken = ({ orderId, userId, orderItemId, photoId = null, downloadScope = 'photo', sourceAlbumId = null }) => jwt.sign(
   {
     scope: 'digital-download',
     orderId: Number(orderId),
     userId: Number(userId),
     orderItemId: Number(orderItemId),
-    photoId: Number(photoId),
+    photoId: Number(photoId) || 0,
+    downloadScope: normalizeDigitalDownloadScope(downloadScope),
+    sourceAlbumId: Number(sourceAlbumId) || 0,
   },
   DOWNLOAD_TOKEN_SECRET,
   { expiresIn: '30d' }
@@ -283,6 +439,69 @@ const fetchPaymentIntentAccounting = async (paymentIntentId) => {
       stripeFeeAmount: 0,
     };
   }
+};
+
+const calculateItemAccountingSnapshot = ({
+  unitPrice,
+  quantity,
+  baseUnitPrice,
+  productionUnitCost,
+  isDigital,
+  productOptions,
+}) => {
+  const qty = Math.max(1, Number(quantity) || 1);
+  const retailUnitPrice = Number(unitPrice) || 0;
+  const grossRevenue = retailUnitPrice * qty;
+  const baseUnit = Number(baseUnitPrice) || 0;
+  const productionUnit = isDigital ? 0 : (Number(productionUnitCost) || 0);
+
+  if (isDigital && getDigitalPricingMode(productOptions) === 'percentage') {
+    const superAdminPercentage = getDigitalSuperAdminPercentage(productOptions);
+    const superAdminShare = grossRevenue * (superAdminPercentage / 100);
+    const studioPayout = grossRevenue - superAdminShare;
+    return {
+      fulfillmentType: 'digital',
+      digitalDownloadScope: getDigitalDownloadScope(productOptions),
+      studioRevenueAmount: grossRevenue,
+      baseRevenueAmount: superAdminShare,
+      productionCostAmount: 0,
+      grossStudioMarkupAmount: studioPayout,
+      studioPayoutAmount: studioPayout,
+      superAdminShareAmount: superAdminShare,
+      pricingSnapshot: {
+        retailUnitPrice,
+        quantity: qty,
+        accountingMode: 'digital-percentage',
+        superAdminPercentage,
+        digitalDownloadScope: getDigitalDownloadScope(productOptions),
+      },
+    };
+  }
+
+  const baseRevenue = baseUnit * qty;
+  const productionCost = productionUnit * qty;
+  const grossStudioMarkup = grossRevenue - baseRevenue;
+  const studioPayout = grossStudioMarkup;
+  const superAdminShare = baseRevenue - productionCost;
+
+  return {
+    fulfillmentType: isDigital ? 'digital' : 'physical',
+    digitalDownloadScope: isDigital ? getDigitalDownloadScope(productOptions) : null,
+    studioRevenueAmount: grossRevenue,
+    baseRevenueAmount: baseRevenue,
+    productionCostAmount: productionCost,
+    grossStudioMarkupAmount: grossStudioMarkup,
+    studioPayoutAmount: studioPayout,
+    superAdminShareAmount: superAdminShare,
+    pricingSnapshot: {
+      retailUnitPrice,
+      quantity: qty,
+      accountingMode: isDigital ? 'digital-fixed' : 'physical-base-price',
+      baseUnitPrice: baseUnit,
+      productionUnitCost: productionUnit,
+      digitalDownloadScope: isDigital ? getDigitalDownloadScope(productOptions) : null,
+    },
+  };
 };
 
 const submitOrderToWhcc = async (orderId, options = {}) => {
@@ -1157,6 +1376,7 @@ const sendOrderReceipts = async (orderId) => {
             o.subtotal,
             o.tax_amount as taxAmount,
             o.shipping_cost as shippingCost,
+          o.discount_code as discountCode,
             o.stripe_fee_amount as stripeFeeAmount,
             o.payment_intent_id as paymentIntentId,
             o.stripe_charge_id as stripeChargeId,
@@ -1197,17 +1417,24 @@ const sendOrderReceipts = async (orderId) => {
   const items = await queryRows(
     `SELECT oi.id,
             oi.photo_id as photoId,
+          oi.photo_ids as photoIds,
+          oi.source_album_id as sourceAlbumId,
+          oi.digital_download_scope as digitalDownloadScope,
             oi.quantity,
             oi.price as unitPrice,
             ph.file_name as photoFileName,
-            p.options as productOptions,
+          COALESCE(oi.product_options_snapshot, p.options) as productOptions,
             p.category as productCategory,
             p.name as productName,
             a.studio_id as studioId,
             s.name as studioName,
             s.email as studioEmail,
-            COALESCE(ps.price, p.price, 0) as basePrice,
-            COALESCE(ps.cost, p.cost, 0) as cost
+          COALESCE(oi.base_revenue_amount / NULLIF(oi.quantity, 0), COALESCE(ps.price, p.price, 0)) as basePrice,
+          COALESCE(oi.production_cost_amount / NULLIF(oi.quantity, 0), COALESCE(ps.cost, p.cost, 0)) as cost,
+          oi.studio_payout_amount as studioPayoutAmount,
+          oi.super_admin_share_amount as superAdminShareAmount,
+          oi.stripe_fee_allocated_amount as stripeFeeAllocatedAmount,
+          oi.studio_net_payout_amount as studioNetPayoutAmount
      FROM order_items oi
      INNER JOIN photos ph ON ph.id = oi.photo_id
      INNER JOIN albums a ON a.id = ph.album_id
@@ -1221,20 +1448,23 @@ const sendOrderReceipts = async (orderId) => {
   // Ensure APP_BASE_URL is set, fallback to canonical public URL
   const appBase = String(process.env.APP_BASE_URL || process.env.CANONICAL_APP_URL || 'https://labs.campeaphotography.com').trim().replace(/\/$/, '');
   const digitalDownloads = items
-    .filter((item) => isDigitalProductRow(item))
+    .filter((item) => isDigitalDownloadItem(item))
     .map((item) => {
+      const downloadScope = resolveDigitalDownloadScope({ item });
       const token = createDigitalDownloadToken({
         orderId: order.id,
         userId: order.userId,
         orderItemId: item.id,
         photoId: item.photoId,
+        downloadScope,
+        sourceAlbumId: resolveDigitalSourceAlbumId({ item }),
       });
       const relativeUrl = `/api/orders/digital-download/${token}`;
       return {
         orderItemId: item.id,
         photoId: item.photoId,
         productName: item.productName,
-        photoFileName: item.photoFileName,
+        photoFileName: downloadScope === 'album' ? `Album ${item.sourceAlbumId || ''}`.trim() : item.photoFileName,
         url: appBase ? `${appBase}${relativeUrl}` : relativeUrl,
       };
     });
@@ -1272,13 +1502,8 @@ const sendOrderReceipts = async (orderId) => {
     const studioRevenue = studioGroup.items.reduce((sum, item) => sum + ((Number(item.unitPrice) || 0) * (Number(item.quantity) || 0)), 0);
     const baseRevenue = studioGroup.items.reduce((sum, item) => sum + ((Number(item.basePrice) || 0) * (Number(item.quantity) || 0)), 0);
     const productionCost = studioGroup.items.reduce((sum, item) => sum + ((Number(item.cost) || 0) * (Number(item.quantity) || 0)), 0);
-    const superAdminProfit = studioGroup.items.reduce(
-      (sum, item) => sum + (((Number(item.basePrice) || 0) - (Number(item.cost) || 0)) * (Number(item.quantity) || 0)),
-      0
-    );
-    const stripeFeeAmount = totalItemRevenue > 0
-      ? (Number(order.stripeFeeAmount) || 0) * (studioRevenue / totalItemRevenue)
-      : 0;
+    const superAdminProfit = studioGroup.items.reduce((sum, item) => sum + (Number(item.superAdminShareAmount) || 0), 0);
+    const stripeFeeAmount = studioGroup.items.reduce((sum, item) => sum + (Number(item.stripeFeeAllocatedAmount) || 0), 0);
     const orderUrl = String(process.env.APP_BASE_URL || '').trim()
       ? `${String(process.env.APP_BASE_URL || '').trim().replace(/\/$/, '')}/admin/orders?orderId=${order.id}`
       : null;
@@ -1296,9 +1521,9 @@ const sendOrderReceipts = async (orderId) => {
         studioRevenue,
         baseRevenue,
         productionCost,
-        grossStudioMarkup: studioRevenue - baseRevenue,
+        grossStudioMarkup: studioGroup.items.reduce((sum, item) => sum + (Number(item.studioPayoutAmount) || 0), 0),
         stripeFeeAmount,
-        studioProfitNet: (studioRevenue - baseRevenue) - stripeFeeAmount,
+        studioProfitNet: studioGroup.items.reduce((sum, item) => sum + (Number(item.studioNetPayoutAmount) || 0), 0),
         superAdminProfit,
       },
       items: studioGroup.items,
@@ -1353,6 +1578,10 @@ router.get('/digital-download/:token', async (req, res) => {
     const orderItem = await queryRow(
       `SELECT oi.id as orderItemId,
               oi.photo_id as photoId,
+              oi.photo_ids as photoIds,
+              oi.source_album_id as sourceAlbumId,
+              oi.digital_download_scope as digitalDownloadScope,
+              oi.product_options_snapshot as productOptionsSnapshot,
               o.id as orderId,
               o.user_id as userId,
               p.name as productName,
@@ -1363,21 +1592,87 @@ router.get('/digital-download/:token', async (req, res) => {
        LEFT JOIN products p ON p.id = oi.product_id
        WHERE oi.id = $1
          AND o.id = $2
-         AND o.user_id = $3
-         AND oi.photo_id = $4`,
-      [payload.orderItemId, payload.orderId, payload.userId, payload.photoId]
+         AND o.user_id = $3`,
+      [payload.orderItemId, payload.orderId, payload.userId]
     );
 
     if (!orderItem) {
       return res.status(404).json({ error: 'Download item not found' });
     }
 
-    if (!isDigitalProductRow(orderItem)) {
+    if (!isDigitalDownloadItem(orderItem)) {
       return res.status(403).json({ error: 'This item is not a digital download product' });
     }
 
-    return res.redirect(302, `/api/photos/${orderItem.photoId}/asset?variant=full`);
+    const downloadScope = resolveDigitalDownloadScope({ item: orderItem, tokenPayload: payload });
+    if (downloadScope !== 'album') {
+      if (Number(payload.photoId || 0) > 0 && Number(orderItem.photoId || 0) !== Number(payload.photoId || 0)) {
+        return res.status(404).json({ error: 'Download item not found' });
+      }
+      return res.redirect(302, `/api/photos/${orderItem.photoId}/asset?variant=full`);
+    }
+
+    const parsedPhotoIds = safeJsonParse(orderItem.photoIds, orderItem.photoId ? [orderItem.photoId] : []);
+    const photoIds = Array.isArray(parsedPhotoIds)
+      ? parsedPhotoIds.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)
+      : [];
+
+    if (!photoIds.length) {
+      return res.status(404).json({ error: 'No album photos found for this download' });
+    }
+
+    const placeholders = photoIds.map((_, index) => `$${index + 1}`).join(',');
+    const photoRows = await queryRows(
+      `SELECT id, file_name as fileName, full_image_url as fullImageUrl
+       FROM photos
+       WHERE id IN (${placeholders})
+       ORDER BY id ASC`,
+      photoIds
+    );
+
+    if (!photoRows.length) {
+      return res.status(404).json({ error: 'Album photos are unavailable for download' });
+    }
+
+    const { default: archiver } = await import('archiver');
+    const axios = (await import('axios')).default;
+    const assetBaseUrl = buildAssetBaseUrl(req);
+    const sourceAlbumId = resolveDigitalSourceAlbumId({ item: orderItem, tokenPayload: payload });
+    const archiveName = sanitizeDownloadFileName(`${orderItem.productName || 'album-download'}-${sourceAlbumId || 'album'}`, 'album-download');
+
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${archiveName}.zip"`);
+
+    const archive = archiver('zip', { zlib: { level: 9 } });
+    archive.pipe(res);
+
+    const usedNames = new Map();
+    for (const photo of photoRows) {
+      const assetUrl = assetBaseUrl ? `${assetBaseUrl}/api/photos/${photo.id}/asset?variant=full` : '';
+      if (!assetUrl) continue;
+
+      const response = await axios.get(assetUrl, { responseType: 'stream' });
+      const rawName = sanitizeDownloadFileName(photo.fileName || `photo-${photo.id}.jpg`, `photo-${photo.id}.jpg`);
+      const currentCount = usedNames.get(rawName) || 0;
+      usedNames.set(rawName, currentCount + 1);
+      const finalName = currentCount === 0
+        ? rawName
+        : rawName.replace(/(\.[^.]+)?$/, `-${currentCount + 1}$1`);
+      archive.append(response.data, { name: finalName });
+    }
+
+    archive.on('error', (error) => {
+      throw error;
+    });
+    await archive.finalize();
+    return;
   } catch (error) {
+    if (res.headersSent) {
+      try {
+        res.end();
+      } catch {}
+      return;
+    }
     return res.status(500).json({ error: error.message });
   }
 });
@@ -1459,6 +1754,7 @@ router.get('/user/:userId', async (req, res) => {
 // Create order for current user (requires active subscription for studio selling)
 router.post('/', requireActiveSubscription, async (req, res) => {
   try {
+    await ensureOrderItemAccountingSchema();
     const userId = req.user.id;
     const { 
       items, 
@@ -1595,7 +1891,7 @@ router.post('/', requireActiveSubscription, async (req, res) => {
       ).catch(() => {});
     }
 
-    // Insert order items
+    const itemsWithAccounting = [];
     for (const item of items) {
       const photoIds = Array.isArray(item.photoIds)
         ? item.photoIds
@@ -1607,18 +1903,118 @@ router.post('/', requireActiveSubscription, async (req, res) => {
         throw new Error('Order item missing photo');
       }
 
+      const photoRow = await queryRow(
+        `SELECT album_id as albumId
+         FROM photos
+         WHERE id = $1`,
+        [primaryPhotoId]
+      );
+
+      let productRow = null;
+      if (item.productSizeId) {
+        productRow = await queryRow(
+          `SELECT TOP 1
+                  p.id as productId,
+                  p.name as productName,
+                  p.category as productCategory,
+                  p.options as productOptions,
+                  p.price as productBasePrice,
+                  p.cost as productCost,
+                  ps.id as productSizeId,
+                  ps.price as sizeBasePrice,
+                  ps.cost as sizeCost
+           FROM product_sizes ps
+           INNER JOIN products p ON p.id = ps.product_id
+           WHERE ps.id = $1`,
+          [item.productSizeId]
+        );
+      } else if (item.productId) {
+        productRow = await queryRow(
+          `SELECT TOP 1
+                  id as productId,
+                  name as productName,
+                  category as productCategory,
+                  options as productOptions,
+                  price as productBasePrice,
+                  cost as productCost
+           FROM products
+           WHERE id = $1`,
+          [item.productId]
+        );
+      }
+
+      const productOptions = safeJsonParse(productRow?.productOptions, {}) || {};
+      const isDigital = isDigitalProductRow({
+        productOptions: productRow?.productOptions,
+        productCategory: productRow?.productCategory,
+        productName: productRow?.productName,
+      });
+      const accounting = calculateItemAccountingSnapshot({
+        unitPrice: item.price,
+        quantity: item.quantity,
+        baseUnitPrice: productRow?.sizeBasePrice ?? productRow?.productBasePrice ?? 0,
+        productionUnitCost: productRow?.sizeCost ?? productRow?.productCost ?? 0,
+        isDigital,
+        productOptions,
+      });
+
+      itemsWithAccounting.push({
+        ...item,
+        photoIds,
+        primaryPhotoId,
+        sourceAlbumId: Number(item.albumId || photoRow?.albumId || 0) || null,
+        productOptionsSnapshot: stringifyForDb(productOptions),
+        accounting,
+      });
+    }
+
+    const totalItemRevenue = itemsWithAccounting.reduce(
+      (sum, item) => sum + (Number(item.accounting?.studioRevenueAmount) || 0),
+      0
+    );
+
+    // Insert order items
+    for (const item of itemsWithAccounting) {
+      const stripeFeeAllocatedAmount = totalItemRevenue > 0
+        ? (Number(paymentAccounting.stripeFeeAmount) || 0) * ((Number(item.accounting?.studioRevenueAmount) || 0) / totalItemRevenue)
+        : 0;
+      const studioNetPayoutAmount = (Number(item.accounting?.studioPayoutAmount) || 0) - stripeFeeAllocatedAmount;
+
       await query(`
-        INSERT INTO order_items (order_id, photo_id, photo_ids, product_id, product_size_id, quantity, price, crop_data)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        INSERT INTO order_items (
+          order_id, photo_id, photo_ids, product_id, product_size_id, quantity, price, crop_data,
+          product_options_snapshot, fulfillment_type, digital_download_scope, source_album_id, pricing_snapshot,
+          studio_revenue_amount, base_revenue_amount, production_cost_amount, gross_studio_markup_amount,
+          studio_payout_amount, super_admin_share_amount, stripe_fee_allocated_amount, studio_net_payout_amount
+        )
+        VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8,
+          $9, $10, $11, $12, $13,
+          $14, $15, $16, $17,
+          $18, $19, $20, $21
+        )
       `, [
         orderId,
-        primaryPhotoId,
-        JSON.stringify(photoIds),
+        item.primaryPhotoId,
+        JSON.stringify(item.photoIds),
         item.productId,
         item.productSizeId || null,
         item.quantity,
         item.price,
         item.cropData ? JSON.stringify(item.cropData) : null,
+        item.productOptionsSnapshot,
+        item.accounting?.fulfillmentType || null,
+        item.accounting?.digitalDownloadScope || null,
+        item.sourceAlbumId,
+        stringifyForDb(item.accounting?.pricingSnapshot || null),
+        Number(item.accounting?.studioRevenueAmount) || 0,
+        Number(item.accounting?.baseRevenueAmount) || 0,
+        Number(item.accounting?.productionCostAmount) || 0,
+        Number(item.accounting?.grossStudioMarkupAmount) || 0,
+        Number(item.accounting?.studioPayoutAmount) || 0,
+        Number(item.accounting?.superAdminShareAmount) || 0,
+        stripeFeeAllocatedAmount,
+        studioNetPayoutAmount,
       ]);
     }
 
@@ -1627,7 +2023,7 @@ router.post('/', requireActiveSubscription, async (req, res) => {
       // Collect per-studio invoice items
       const studioItemMap = new Map(); // studio_id -> { subscriptionEnd, items: [] }
 
-      for (const item of items) {
+      for (const item of itemsWithAccounting) {
         if (!item.productSizeId && !item.productId) continue;
         const photoIds = Array.isArray(item.photoIds) ? item.photoIds : item.photoId ? [item.photoId] : [];
         const primaryPhotoId = photoIds[0];
@@ -1841,7 +2237,15 @@ router.get('/', async (req, res) => {
       if (includeItems) {
         const items = await queryRows(
           `SELECT id, photo_id as photoId, photo_ids as photoIds, product_id as productId,
-                  product_size_id as productSizeId, quantity, price, crop_data as cropData
+                  product_size_id as productSizeId, quantity, price, crop_data as cropData,
+                  digital_download_scope as digitalDownloadScope,
+                  studio_revenue_amount as studioRevenueAmount,
+                  base_revenue_amount as baseRevenueAmount,
+                  production_cost_amount as productionCostAmount,
+                  studio_payout_amount as studioPayoutAmount,
+                  super_admin_share_amount as superAdminShareAmount,
+                  stripe_fee_allocated_amount as stripeFeeAllocatedAmount,
+                  studio_net_payout_amount as studioNetPayoutAmount
            FROM order_items WHERE order_id = $1`,
           [order.id]
         );
@@ -1878,6 +2282,14 @@ router.get('/', async (req, res) => {
             ...item,
             price: item.price || 0,
             cost: unitCost,
+            digitalDownloadScope: item.digitalDownloadScope || null,
+            studioRevenueAmount: Number(item.studioRevenueAmount) || 0,
+            baseRevenueAmount: Number(item.baseRevenueAmount) || 0,
+            productionCostAmount: Number(item.productionCostAmount) || 0,
+            studioPayoutAmount: Number(item.studioPayoutAmount) || 0,
+            superAdminShareAmount: Number(item.superAdminShareAmount) || 0,
+            stripeFeeAllocatedAmount: Number(item.stripeFeeAllocatedAmount) || 0,
+            studioNetPayoutAmount: Number(item.studioNetPayoutAmount) || 0,
             productName,
             productSizeName,
             cropData: safeJsonParse(item.cropData),
@@ -1998,7 +2410,15 @@ router.get('/details/:orderId', async (req, res) => {
 
     const items = await queryRows(
       `SELECT id, photo_id as photoId, photo_ids as photoIds, product_id as productId,
-              product_size_id as productSizeId, quantity, price, crop_data as cropData
+              product_size_id as productSizeId, quantity, price, crop_data as cropData,
+              digital_download_scope as digitalDownloadScope,
+              studio_revenue_amount as studioRevenueAmount,
+              base_revenue_amount as baseRevenueAmount,
+              production_cost_amount as productionCostAmount,
+              studio_payout_amount as studioPayoutAmount,
+              super_admin_share_amount as superAdminShareAmount,
+              stripe_fee_allocated_amount as stripeFeeAllocatedAmount,
+              studio_net_payout_amount as studioNetPayoutAmount
        FROM order_items WHERE order_id = $1`,
       [order.id]
     );
@@ -2036,6 +2456,14 @@ router.get('/details/:orderId', async (req, res) => {
         ...item,
         price: item.price || 0,
         cost: unitCost,
+        digitalDownloadScope: item.digitalDownloadScope || null,
+        studioRevenueAmount: Number(item.studioRevenueAmount) || 0,
+        baseRevenueAmount: Number(item.baseRevenueAmount) || 0,
+        productionCostAmount: Number(item.productionCostAmount) || 0,
+        studioPayoutAmount: Number(item.studioPayoutAmount) || 0,
+        superAdminShareAmount: Number(item.superAdminShareAmount) || 0,
+        stripeFeeAllocatedAmount: Number(item.stripeFeeAllocatedAmount) || 0,
+        studioNetPayoutAmount: Number(item.studioNetPayoutAmount) || 0,
         productName,
         productSizeName,
         cropData: safeJsonParse(item.cropData),
@@ -2059,7 +2487,7 @@ router.get('/details/:orderId', async (req, res) => {
     }
 
     // Add digital item flags for admin UI
-    const digitalItems = itemsWithPhotos.filter((item) => isDigitalProductRow(item));
+    const digitalItems = itemsWithPhotos.filter((item) => isDigitalDownloadItem(item));
     return res.json({
       ...order,
       status: order.status || 'Pending',
@@ -2155,10 +2583,18 @@ router.get('/admin/all-orders', adminRequired, async (req, res) => {
                   oi.quantity,
                   oi.price,
                   oi.crop_data as cropData,
+            oi.digital_download_scope as digitalDownloadScope,
+            oi.studio_revenue_amount as studioRevenueAmount,
+            oi.base_revenue_amount as baseRevenueAmount,
+            oi.production_cost_amount as productionCostAmount,
+            oi.studio_payout_amount as studioPayoutAmount,
+            oi.super_admin_share_amount as superAdminShareAmount,
+            oi.stripe_fee_allocated_amount as stripeFeeAllocatedAmount,
+            oi.studio_net_payout_amount as studioNetPayoutAmount,
                   p.name as productName,
             ps.size_name as productSizeName,
             COALESCE(ps.price, p.price, 0) as basePrice,
-            COALESCE(ps.cost, p.cost, 0) as labCost
+          COALESCE(ps.cost, p.cost, 0) as labCost
            FROM order_items oi
            LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id
            LEFT JOIN products p ON p.id = COALESCE(oi.product_id, ps.product_id)
@@ -2182,6 +2618,14 @@ router.get('/admin/all-orders', adminRequired, async (req, res) => {
             price: item.price || 0,
             basePrice: Number(item.basePrice) || 0,
             labCost: Number(item.labCost) || 0,
+            digitalDownloadScope: item.digitalDownloadScope || null,
+            studioRevenueAmount: Number(item.studioRevenueAmount) || 0,
+            baseRevenueAmount: Number(item.baseRevenueAmount) || 0,
+            productionCostAmount: Number(item.productionCostAmount) || 0,
+            studioPayoutAmount: Number(item.studioPayoutAmount) || 0,
+            superAdminShareAmount: Number(item.superAdminShareAmount) || 0,
+            stripeFeeAllocatedAmount: Number(item.stripeFeeAllocatedAmount) || 0,
+            studioNetPayoutAmount: Number(item.studioNetPayoutAmount) || 0,
             productName: item.productName || (item.productId ? `Product #${item.productId}` : 'Unknown Product'),
             productSizeName: item.productSizeName || undefined,
             cropData: safeJsonParse(item.cropData),
@@ -2311,10 +2755,14 @@ router.get('/admin/order-details/:orderId', adminRequired, async (req, res) => {
               oi.photo_ids as photoIds,
               oi.product_id as productId,
               oi.product_size_id as productSizeId,
+              oi.digital_download_scope as digitalDownloadScope,
+              oi.source_album_id as sourceAlbumId,
               oi.quantity,
               oi.price,
               oi.crop_data as cropData,
               p.name as productName,
+              p.category as productCategory,
+              p.options as productOptions,
               ps.size_name as productSizeName,
               COALESCE(ps.price, p.price, 0) as basePrice,
               COALESCE(ps.cost, p.cost, 0) as labCost
@@ -2342,8 +2790,15 @@ router.get('/admin/order-details/:orderId', adminRequired, async (req, res) => {
 
     const itemsWithPhotos = items.map((item) => {
       const photo = photosById.get(Number(item.photoId));
+      const resolvedDigitalScope = hasExplicitDigitalDownloadScope(item)
+        ? resolveDigitalDownloadScope({ item })
+        : null;
+      const isDigital = isDigitalDownloadItem(item);
       return {
         ...item,
+        isDigital,
+        digitalDownloadScope: resolvedDigitalScope,
+        sourceAlbumId: resolveDigitalSourceAlbumId({ item }),
         price: item.price || 0,
         basePrice: Number(item.basePrice) || 0,
         labCost: Number(item.labCost) || 0,
@@ -2371,6 +2826,8 @@ router.get('/admin/order-details/:orderId', adminRequired, async (req, res) => {
       };
     });
 
+    const digitalItems = itemsWithPhotos.filter((item) => item.isDigital || Boolean(item.digitalDownloadScope));
+
     res.json({
       ...order,
       status: order.status || 'Pending',
@@ -2394,6 +2851,8 @@ router.get('/admin/order-details/:orderId', adminRequired, async (req, res) => {
       trackingNumber: canViewWhccFields ? order.trackingNumber : undefined,
       trackingUrl: canViewWhccFields ? order.trackingUrl : undefined,
       shippedAt: canViewWhccFields ? order.shippedAt : undefined,
+      hasDigitalItems: digitalItems.length > 0,
+      digitalItemCount: digitalItems.length,
       items: itemsWithPhotos,
       // excludedItemsNote removed to fix ReferenceError
     });

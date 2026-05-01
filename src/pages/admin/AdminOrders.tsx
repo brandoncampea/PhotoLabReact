@@ -675,6 +675,11 @@ const AdminOrders: React.FC = () => {
             : 'Direct order: customer charged flat fee';
         const taxAmount = Number(order.taxAmount) || 0;
         const stripeFeeAmount = Number(order.stripeFeeAmount) || 0;
+        const digitalItemCountFromItems = (order.items || []).filter((item) =>
+          item?.isDigital === true || String(item?.digitalDownloadScope || '').trim().length > 0
+        ).length;
+        const hasDigitalDownloads = Boolean(order.hasDigitalItems) || digitalItemCountFromItems > 0;
+        const digitalItemCount = Number(order.digitalItemCount || 0) || digitalItemCountFromItems;
         // Only include uncovered shipping cost (not tax or stripe fees)
         const uncoveredShippingCost = Math.max(0, studioShippingCost - shippingCost);
         const otherOrderCosts = uncoveredShippingCost;
@@ -734,7 +739,7 @@ const AdminOrders: React.FC = () => {
             {[order.shippingAddress?.city, order.shippingAddress?.state, order.shippingAddress?.zipCode].filter(Boolean).join(', ')}
           </span>
           <span>{order.shippingAddress?.country || 'US'}</span>
-            {order.hasDigitalItems && (
+            {hasDigitalDownloads && (
               <div style={{ marginTop: 8 }}>
                 <button
                   onClick={() => handleDigitalResend(order.id)}
@@ -891,7 +896,7 @@ const AdminOrders: React.FC = () => {
         ))}
       </div>
 
-      {order.hasDigitalItems && (
+      {hasDigitalDownloads && (
         <div className="whcc-retry-row" style={{ marginTop: 14 }}>
           <div className="whcc-retry-inline">
             <button
@@ -902,7 +907,7 @@ const AdminOrders: React.FC = () => {
             >
               {digitalResendingOrderId === order.id
                 ? '⏳ Sending links…'
-                : `✉ Resend Download Link${(order.digitalItemCount || 0) > 1 ? 's' : ''}`}
+                : `✉ Resend Download Link${digitalItemCount > 1 ? 's' : ''}`}
             </button>
             {digitalResendMessageByOrder[order.id]?.text && (
               <span className={`whcc-retry-message ${digitalResendMessageByOrder[order.id].tone === 'error' ? 'is-error' : 'is-info'}`}>

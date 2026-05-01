@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import api from '../services/api';
 import { Elements } from '@stripe/react-stripe-js';
 import { loadStripe } from '@stripe/stripe-js';
 import Cropper from 'react-cropper';
@@ -68,6 +69,7 @@ const Cart: React.FC = () => {
 
   const [productImages, setProductImages] = useState<Record<number, string>>({});
   const [categoryImages, setCategoryImages] = useState<Record<string, string>>({});
+  const [albumDetailsById, setAlbumDetailsById] = useState<Record<number, { name?: string; coverImageUrl?: string }>>({});
 
   useEffect(() => {
     loadShippingConfig();
@@ -103,6 +105,51 @@ const Cart: React.FC = () => {
       setShippingAddress(prev => ({ ...prev, email: user.email }));
     }
   }, [user]);
+
+  useEffect(() => {
+    const albumIds = Array.from(
+      new Set(
+        items
+          .map((item) => Number(item.albumId || item.photo?.albumId || 0))
+          .filter((id) => Number.isInteger(id) && id > 0)
+      )
+    );
+
+    const missingIds = albumIds.filter((id) => !albumDetailsById[id]);
+    if (!missingIds.length) return;
+
+    let cancelled = false;
+    const loadAlbumDetails = async () => {
+      const results = await Promise.all(
+        missingIds.map(async (albumId) => {
+          try {
+            const res = await api.get(`/albums/${albumId}`);
+            return { albumId, data: res.data };
+          } catch {
+            return null;
+          }
+        })
+      );
+
+      if (cancelled) return;
+      setAlbumDetailsById((prev) => {
+        const next = { ...prev };
+        results.forEach((row) => {
+          if (!row) return;
+          next[row.albumId] = {
+            name: String(row.data?.name || '').trim() || undefined,
+            coverImageUrl: String(row.data?.coverImageUrl || '').trim() || undefined,
+          };
+        });
+        return next;
+      });
+    };
+
+    void loadAlbumDetails();
+    return () => {
+      cancelled = true;
+    };
+  }, [items, albumDetailsById]);
 
   useEffect(() => {
     const shouldQuote = !!shippingConfig && hasPhysicalProducts();
@@ -581,11 +628,18 @@ const Cart: React.FC = () => {
     // Prefer direct image URLs from item, fallback to mapping
     let productImageUrl = item.product_image_url || (item.productId ? productImages[item.productId] : undefined);
     let categoryImageUrl = item.category_image_url || (resolvedProduct?.category ? categoryImages[resolvedProduct.category] : undefined);
+    const effectiveAlbumId = Number(item.albumId || item.photo?.albumId || 0) || undefined;
+    const albumDetails = effectiveAlbumId ? albumDetailsById[effectiveAlbumId] : undefined;
+    const isDigital = !!(resolvedProduct?.isDigital || item.isDigital || item.digitalDownloadScope);
 
     return {
       ...item,
       productName: item.productName || resolvedProduct?.name || (item.productId ? `Product #${item.productId}` : 'Product'),
       productSizeName: item.productSizeName || resolvedSize?.name || (item.productSizeId ? `Size #${item.productSizeId}` : 'Size'),
+      albumId: effectiveAlbumId,
+      albumName: item.albumName || albumDetails?.name,
+      albumCoverImageUrl: item.albumCoverImageUrl || albumDetails?.coverImageUrl,
+      isDigital,
       productImageUrl,
       categoryImageUrl,
     };

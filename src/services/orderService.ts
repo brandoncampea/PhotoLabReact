@@ -66,10 +66,12 @@ export const orderService = {
         return {
           photoId: item.photoId,
           photoIds: item.photoIds,
+          albumId: item.albumId,
           quantity: item.quantity,
           cropData: item.cropData,
           productId: item.productId,
           productSizeId: item.productSizeId,
+          digitalDownloadScope: item.digitalDownloadScope,
           price: price,
         };
       }),

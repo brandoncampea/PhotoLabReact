@@ -85,6 +85,27 @@ router.get('/:id/items', async (req, res) => {
       return res.status(404).json({ error: 'Studio price list not found' });
     }
 
+    // Backfill any active source items that were added to the super price list
+    // after this studio list was initially created.
+    const activeSourceItems = await mssql.query(
+      'SELECT product_size_id, base_cost FROM super_price_list_items WHERE super_price_list_id = @p1 AND is_active = 1',
+      [superPriceListId]
+    );
+    const existingStudioItems = await mssql.query(
+      'SELECT product_size_id FROM studio_price_list_items WHERE studio_price_list_id = @p1',
+      [id]
+    );
+    const existingSizeIds = new Set(existingStudioItems.map((row) => Number(row.product_size_id)).filter(Number.isFinite));
+    for (const sourceItem of activeSourceItems) {
+      const productSizeId = Number(sourceItem?.product_size_id);
+      if (!Number.isFinite(productSizeId) || existingSizeIds.has(productSizeId)) continue;
+      await mssql.query(
+        'INSERT INTO studio_price_list_items (studio_price_list_id, product_size_id, price, is_offered) VALUES (@p1, @p2, @p3, 1)',
+        [id, productSizeId, sourceItem?.base_cost ?? null]
+      );
+      existingSizeIds.add(productSizeId);
+    }
+
     const items = await mssql.query(`
       SELECT spi.id,
              spi.studio_price_list_id,
@@ -97,6 +118,7 @@ router.get('/:id/items', async (req, res) => {
              ps.size_name,
              p.name as product_name,
              p.category as product_category,
+                  p.options as product_options,
              p.image_url as product_image_url,
              spci.image_url as category_image_url,
              sspi.is_active as source_is_active
@@ -113,7 +135,38 @@ router.get('/:id/items', async (req, res) => {
       WHERE spi.studio_price_list_id = @p1
       ORDER BY p.category, p.name, ps.size_name
     `, [id, superPriceListId]);
-    res.json(items);
+
+    const normalized = (items || []).map((item) => {
+      let options = {};
+      try {
+        options = item?.product_options
+          ? (typeof item.product_options === 'string' ? JSON.parse(item.product_options) : item.product_options)
+          : {};
+      } catch (_) {
+        options = {};
+      }
+      const digitalPricingMode = String(options?.digitalPricingMode ?? options?.digital_pricing_mode ?? '').trim().toLowerCase() === 'percentage'
+        ? 'percentage'
+        : 'fixed';
+      const requestedPct = Number(options?.superAdminPercentage ?? options?.super_admin_percentage);
+      const superAdminPercentage = Number.isFinite(requestedPct)
+        ? Math.min(100, Math.max(0, requestedPct))
+        : null;
+      const digitalDownloadScope = String(options?.digitalDownloadScope ?? options?.digital_download_scope ?? options?.downloadScope ?? '').trim().toLowerCase() === 'album'
+        ? 'album'
+        : 'photo';
+      const isDigital = options?.isDigital === true || options?.is_digital === true || String(item?.product_category || '').toLowerCase() === 'digital';
+
+      return {
+        ...item,
+        is_digital: !!isDigital,
+        digital_pricing_mode: digitalPricingMode,
+        super_admin_percentage: superAdminPercentage,
+        digital_download_scope: digitalDownloadScope,
+      };
+    });
+
+    res.json(normalized);
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch studio price list items' });
   }

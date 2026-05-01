@@ -23,6 +23,8 @@ const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop, onOpenWhccEditor,
   };
 
   const subtotal = item.price * item.quantity;
+  const isAlbumScopeItem = String(item.digitalDownloadScope || '').trim().toLowerCase() === 'album';
+  const isDigitalItem = item.isDigital === true || String(item.digitalDownloadScope || '').trim().length > 0;
 
   // Removed unused cropDebugText variable
 
@@ -32,6 +34,18 @@ const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop, onOpenWhccEditor,
 
   // Always use centralized asset URL logic
   let displayImageUrl = getPhotoAssetUrl(item.photo || item, 'thumb');
+  if (isAlbumScopeItem) {
+    const cover = String(item.albumCoverImageUrl || '').trim();
+    if (cover) {
+      displayImageUrl = /^\d+$/.test(cover)
+        ? `/api/photos/${cover}/asset?variant=thumbnail`
+        : cover;
+    }
+  }
+
+  const displayName = isAlbumScopeItem
+    ? (item.albumName || 'Full Album')
+    : (item.photo?.fileName || `Photo ${item.photoId}`);
 
   return (
     <div style={{ border: '1px solid #2a2740', borderRadius: 8, marginBottom: 16, overflow: 'hidden', background: '#0f0f16' }}>
@@ -68,11 +82,11 @@ const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop, onOpenWhccEditor,
               )}
             </div>
             <div style={{ textAlign: 'center', fontSize: 12, color: '#aaa', marginBottom: 12 }}>
-              {item.photo?.fileName || `Photo ${item.photoId}`}
+              {displayName}
             </div>
             {/* Crop debug info removed for customers; only overlay box is shown */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {onEditCrop && (
+              {onEditCrop && !isDigitalItem && (
                 <button 
                   onClick={() => onEditCrop(item)}
                   style={{ 

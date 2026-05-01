@@ -25,6 +25,7 @@ type PublicAlbum = {
   batchShippingActive?: boolean;
   studioBatchShippingActive?: boolean;
   batchDeadline?: string;
+  albumPurchaseEnabled?: boolean;
   category?: string;
 };
 
@@ -175,6 +176,16 @@ const Albums: React.FC = () => {
         setTimeout(() => setShareNotification(''), 3000);
       } catch {}
     }
+  };
+
+  const handleBuyEntireAlbum = (e: React.MouseEvent, album: PublicAlbum) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const studioSlug = selectedStudio?.publicSlug || localStorage.getItem('studioSlug') || '';
+    const targetUrl = studioSlug
+      ? `/albums/${album.id}?studioSlug=${encodeURIComponent(studioSlug)}&buyAlbum=1`
+      : `/albums/${album.id}?buyAlbum=1`;
+    window.location.href = targetUrl;
   };
 
 
@@ -381,13 +392,24 @@ const Albums: React.FC = () => {
                       <span className="album-date">
                         {formatDateInStudioTimezone(album.createdDate)}
                       </span>
-                      <button
-                        onClick={(e) => handleShare(e, album)}
-                        className={styles.shareButton}
-                        title="Share album"
-                      >
-                        <span className={styles.shareIcon}>🔗</span> Share
-                      </button>
+                      <div className={styles.albumInfoActions}>
+                        {album.albumPurchaseEnabled !== false && (
+                          <button
+                            onClick={(e) => handleBuyEntireAlbum(e, album)}
+                            className={styles.buyEntireAlbumButton}
+                            title="Buy entire album"
+                          >
+                            Buy Entire Album
+                          </button>
+                        )}
+                        <button
+                          onClick={(e) => handleShare(e, album)}
+                          className={styles.shareButton}
+                          title="Share album"
+                        >
+                          <span className={styles.shareIcon}>🔗</span> Share
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </Link>
