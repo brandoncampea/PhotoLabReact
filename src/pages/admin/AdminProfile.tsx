@@ -157,18 +157,34 @@ const AdminProfile: React.FC = () => {
   const handleSave = async () => {
     setSaving(true);
     try {
-      // If a new logo was uploaded, use the preview URL
-      const finalLogoUrl = logoFile ? logoPreview : logoUrl;
+      // If a new logo was uploaded, upload it first to get the URL
+      let finalLogoUrl = logoUrl;
+      if (logoFile) {
+        try {
+          const uploadResult = await profileService.uploadLogo(logoFile, user?.studioId);
+          finalLogoUrl = uploadResult.logoUrl;
+          setLogoFile(null); // Clear the file after upload
+        } catch (uploadError) {
+          console.error('Logo upload failed:', uploadError);
+          alert('Failed to upload logo');
+          setSaving(false);
+          return;
+        }
+      }
+
       const updatedConfig = await profileService.updateConfig({
-            ownerName,
-            businessName,
-            email,
-            receiveOrderNotifications,
-            logoUrl: finalLogoUrl,
-            instagramUrl,
-            facebookUrl,
-          });
+        ownerName,
+        businessName,
+        email,
+        receiveOrderNotifications,
+        logoUrl: finalLogoUrl,
+        instagramUrl,
+        facebookUrl,
+      });
       setConfig(updatedConfig);
+      setLogoUrl(finalLogoUrl);
+      setLogoPreview(finalLogoUrl);
+      window.dispatchEvent(new Event('studio-brand-updated'));
       alert('Profile saved successfully!');
     } catch (error) {
       console.error('Failed to save profile:', error);

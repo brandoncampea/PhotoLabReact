@@ -5,6 +5,7 @@ const { queryRow, queryRows, query, transaction, tableExists, columnExists } = m
 import { SUBSCRIPTION_PLANS, SUBSCRIPTION_STATUSES } from '../constants/subscriptions.js';
 import { authRequired } from '../middleware/auth.js';
 import stripeService from '../services/stripeService.js';
+import { getSignedReadUrl } from '../services/azureStorage.js';
 
 const router = express.Router();
 
@@ -400,6 +401,7 @@ router.get('/public/:slug', async (req, res) => {
 
     res.json({
       ...studio,
+      logoUrl: studio.logoUrl ? (getSignedReadUrl(studio.logoUrl) || studio.logoUrl) : null,
       displayName: studio.businessName || studio.name,
       publicUrl: `${getPublicStudioBaseUrl(req)}/s/${studio.publicSlug}`,
     });
