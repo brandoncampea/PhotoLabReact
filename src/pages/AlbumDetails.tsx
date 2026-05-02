@@ -1233,7 +1233,7 @@ const AlbumDetails: React.FC = () => {
             <div style={{ marginBottom: 16, maxHeight: 400 }}>
               <Cropper
                 ref={setCropperRef}
-                src={selectedPhoto ? `/api/photos/${selectedPhoto.id}/asset` : ''}
+                src={selectedPhoto ? `/api/photos/${selectedPhoto.id}/asset?variant=thumbnail` : ''}
                 crossOrigin="anonymous"
                 style={{ maxHeight: 400, width: '100%' }}
                 aspectRatio={getCropAspectRatio(productToCrop)}

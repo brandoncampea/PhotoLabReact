@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { CartItem as CartItemType } from '../types';
 import { useCart } from '../contexts/CartContext';
 import WatermarkedImage from './WatermarkedImage';
@@ -32,8 +32,17 @@ const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop, onOpenWhccEditor,
   // Removed unused getCropStyle function
 
 
-  // Always use centralized asset URL logic
-  let displayImageUrl = getPhotoAssetUrl(item.photo || item, 'thumb');
+  // Cart preview should always use thumbnail assets.
+  let displayImageUrl = '';
+  if (item?.photo?.id) {
+    displayImageUrl = `/api/photos/${item.photo.id}/asset?variant=thumbnail`;
+  } else if (item?.photo?.photoId) {
+    displayImageUrl = `/api/photos/${item.photo.photoId}/asset?variant=thumbnail`;
+  } else if (String(item?.photo?.thumbnailUrl || '').trim()) {
+    displayImageUrl = String(item.photo.thumbnailUrl).trim();
+  } else {
+    displayImageUrl = getPhotoAssetUrl(item.photo || item, 'thumb');
+  }
   if (isAlbumScopeItem) {
     const cover = String(item.albumCoverImageUrl || '').trim();
     if (cover) {
@@ -42,6 +51,64 @@ const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop, onOpenWhccEditor,
         : cover;
     }
   }
+
+  const cropOverlayStyle = useMemo<React.CSSProperties | null>(() => {
+    if (isDigitalItem || !item?.cropData) return null;
+
+    const photoWidth = Number(item?.photo?.width || item?.photo?.metadata?.width || 0);
+    const photoHeight = Number(item?.photo?.height || item?.photo?.metadata?.height || 0);
+    if (!(photoWidth > 0 && photoHeight > 0)) return null;
+
+    const rawX = Number(item.cropData.x || 0);
+    const rawY = Number(item.cropData.y || 0);
+    const rawW = Number(item.cropData.width || 0);
+    const rawH = Number(item.cropData.height || 0);
+    if (!(rawW > 0 && rawH > 0)) return null;
+
+    const x = Math.max(0, Math.min(rawX, photoWidth));
+    const y = Math.max(0, Math.min(rawY, photoHeight));
+    const width = Math.max(1, Math.min(rawW, photoWidth - x));
+    const height = Math.max(1, Math.min(rawH, photoHeight - y));
+
+    // Preview frame in this component is fixed at 240x280.
+    const frameW = 240;
+    const frameH = 280;
+    const frameAspect = frameW / frameH;
+    const photoAspect = photoWidth / photoHeight;
+
+    let drawnW = frameW;
+    let drawnH = frameH;
+    let offsetX = 0;
+    let offsetY = 0;
+
+    if (photoAspect > frameAspect) {
+      drawnW = frameW;
+      drawnH = frameW / photoAspect;
+      offsetY = (frameH - drawnH) / 2;
+    } else {
+      drawnH = frameH;
+      drawnW = frameH * photoAspect;
+      offsetX = (frameW - drawnW) / 2;
+    }
+
+    const leftPx = offsetX + (x / photoWidth) * drawnW;
+    const topPx = offsetY + (y / photoHeight) * drawnH;
+    const widthPx = (width / photoWidth) * drawnW;
+    const heightPx = (height / photoHeight) * drawnH;
+
+    return {
+      position: 'absolute',
+      left: `${(leftPx / frameW) * 100}%`,
+      top: `${(topPx / frameH) * 100}%`,
+      width: `${(widthPx / frameW) * 100}%`,
+      height: `${(heightPx / frameH) * 100}%`,
+      border: '2px solid #7b61ff',
+      boxShadow: '0 0 0 9999px rgba(10, 8, 24, 0.45)',
+      borderRadius: 2,
+      pointerEvents: 'none',
+      zIndex: 3,
+    };
+  }, [isDigitalItem, item?.cropData, item?.photo?.width, item?.photo?.height, item?.photo?.metadata?.width, item?.photo?.metadata?.height]);
 
   const displayName = isAlbumScopeItem
     ? (item.albumName || 'Full Album')
@@ -68,13 +135,16 @@ const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop, onOpenWhccEditor,
           <div>
             <div style={{ marginBottom: 12, borderRadius: 6, overflow: 'hidden', background: '#000', height: 280, position: 'relative' }}>
               {displayImageUrl ? (
-                <WatermarkedImage
-                  src={displayImageUrl}
-                  alt={item.productName || item.photo?.fileName || 'Product'}
-                  style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                  studioId={studioId}
-                  showWatermark={false}
-                />
+                <>
+                  <WatermarkedImage
+                    src={displayImageUrl}
+                    alt={item.productName || item.photo?.fileName || 'Product'}
+                    style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                    studioId={studioId}
+                    showWatermark={false}
+                  />
+                  {cropOverlayStyle ? <div style={cropOverlayStyle} /> : null}
+                </>
               ) : (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#666' }}>
                   No Image
