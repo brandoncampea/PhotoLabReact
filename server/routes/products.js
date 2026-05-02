@@ -177,7 +177,9 @@ router.get('/active', async (req, res) => {
         `SELECT
            p.id as productId, p.name as productName, p.category, p.description, p.options,
            ps.id as sizeId, ps.size_name as sizeName, ps.cost as sizeCost,
-           COALESCE(spi.price, ps.price) as sizePrice
+           COALESCE(spi.price, ps.price) as sizePrice,
+           spi.is_recommended as isRecommended,
+           spi.display_order as displayOrder
          FROM studio_price_list_items spi
          JOIN studio_price_lists spl ON spl.id = spi.studio_price_list_id
          JOIN product_sizes ps ON ps.id = spi.product_size_id
@@ -197,6 +199,7 @@ router.get('/active', async (req, res) => {
         const pid = Number(row.productId);
         if (!productMap.has(pid)) {
           const options = row.options ? JSON.parse(row.options) : null;
+          const displayOrder = Number(row.displayOrder);
           productMap.set(pid, {
             id: pid,
             name: row.productName,
@@ -210,11 +213,21 @@ router.get('/active', async (req, res) => {
             digitalDownloadScope: options?.digitalDownloadScope ?? options?.downloadScope ?? options?.digital_download_scope ?? 'photo',
             digitalPricingMode: options?.digitalPricingMode ?? options?.pricingMode ?? options?.digital_pricing_mode ?? null,
             superAdminPercentage: Number(options?.superAdminPercentage ?? options?.digitalCommissionPercent ?? options?.super_admin_percentage ?? 0) || 0,
+            studioIsRecommended: Boolean(Number(row.isRecommended)),
+            studioDisplayOrder: Number.isFinite(displayOrder) ? displayOrder : null,
           });
         }
         const decoded = decodeSizeName(row.sizeName);
         const sizePrice = Number(row.sizePrice) || 0;
         const entry = productMap.get(pid);
+        const rowDisplayOrder = Number(row.displayOrder);
+        const existingDisplayOrder = Number(entry.studioDisplayOrder);
+        if (Number.isFinite(rowDisplayOrder)) {
+          entry.studioDisplayOrder = Number.isFinite(existingDisplayOrder)
+            ? Math.min(existingDisplayOrder, rowDisplayOrder)
+            : rowDisplayOrder;
+        }
+        entry.studioIsRecommended = !!entry.studioIsRecommended || Boolean(Number(row.isRecommended));
         entry.sizes.push({
           id: Number(row.sizeId),
           name: decoded.name,
@@ -228,7 +241,27 @@ router.get('/active', async (req, res) => {
         }
       }
 
-      return Array.from(productMap.values()).filter((p) => p.isActive !== false);
+      return Array.from(productMap.values())
+        .filter((p) => p.isActive !== false)
+        .sort((a, b) => {
+          const aOrder = Number(a?.studioDisplayOrder);
+          const bOrder = Number(b?.studioDisplayOrder);
+          const aHasOrder = Number.isFinite(aOrder);
+          const bHasOrder = Number.isFinite(bOrder);
+          if (aHasOrder && bHasOrder && aOrder !== bOrder) return aOrder - bOrder;
+          if (aHasOrder !== bHasOrder) return aHasOrder ? -1 : 1;
+
+          const aRecommended = !!a?.studioIsRecommended;
+          const bRecommended = !!b?.studioIsRecommended;
+          if (aRecommended !== bRecommended) return aRecommended ? -1 : 1;
+
+          const aCategory = String(a?.category || '');
+          const bCategory = String(b?.category || '');
+          const catCompare = aCategory.localeCompare(bCategory);
+          if (catCompare !== 0) return catCompare;
+
+          return String(a?.name || '').localeCompare(String(b?.name || ''));
+        });
     };
 
     if (Number.isInteger(albumId) && albumId > 0) {

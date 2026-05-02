@@ -18,6 +18,17 @@ const ensureCategoryImagesTable = async () => {
   } catch (_) {}
 };
 
+const ensureStudioProductPresentationColumns = async () => {
+  try {
+    await mssql.query(`
+      IF COL_LENGTH('studio_price_list_items', 'is_recommended') IS NULL
+        ALTER TABLE studio_price_list_items ADD is_recommended BIT NOT NULL CONSTRAINT df_spli_is_recommended DEFAULT(0);
+      IF COL_LENGTH('studio_price_list_items', 'display_order') IS NULL
+        ALTER TABLE studio_price_list_items ADD display_order INT NULL;
+    `);
+  } catch (_) {}
+};
+
 
 
 // GET all studio price lists for a studio
@@ -43,6 +54,7 @@ router.post('/', async (req, res) => {
   const { studio_id, name, description, super_price_list_id } = req.body;
   if (!studio_id || !name || !super_price_list_id) return res.status(400).json({ error: 'studio_id, name, super_price_list_id required' });
   try {
+    await ensureStudioProductPresentationColumns();
     const superList = await mssql.query('SELECT TOP 1 id, is_active FROM super_price_lists WHERE id = @p1', [super_price_list_id]);
     if (!superList.length) {
       return res.status(400).json({ error: 'Selected super price list does not exist' });
@@ -79,6 +91,7 @@ router.get('/:id/items', async (req, res) => {
   const { id } = req.params;
   try {
     await ensureCategoryImagesTable();
+    await ensureStudioProductPresentationColumns();
     const header = await mssql.query('SELECT TOP 1 super_price_list_id FROM studio_price_lists WHERE id = @p1', [id]);
     const superPriceListId = header[0]?.super_price_list_id;
     if (!superPriceListId) {
@@ -114,6 +127,8 @@ router.get('/:id/items', async (req, res) => {
              spi.price,
              spi.markup_percent,
              spi.is_offered,
+              spi.is_recommended,
+              spi.display_order,
              sspi.base_cost,
              ps.size_name,
              p.name as product_name,
@@ -133,7 +148,7 @@ router.get('/:id/items', async (req, res) => {
         ON spci.super_price_list_id = @p2
        AND spci.category_name = p.category
       WHERE spi.studio_price_list_id = @p1
-      ORDER BY p.category, p.name, ps.size_name
+      ORDER BY COALESCE(spi.display_order, 2147483647), p.category, p.name, ps.size_name
     `, [id, superPriceListId]);
 
     const normalized = (items || []).map((item) => {
@@ -178,6 +193,7 @@ router.post('/:id/items', async (req, res) => {
   const { product_size_id, price, is_offered } = req.body;
   if (!product_size_id) return res.status(400).json({ error: 'product_size_id required' });
   try {
+    await ensureStudioProductPresentationColumns();
     const header = await mssql.query('SELECT TOP 1 super_price_list_id FROM studio_price_lists WHERE id = @p1', [id]);
     const superPriceListId = header[0]?.super_price_list_id;
     if (!superPriceListId) return res.status(404).json({ error: 'Studio price list not found' });
@@ -206,8 +222,9 @@ router.post('/:id/items', async (req, res) => {
 router.put('/:id/items/:itemId', async (req, res) => {
   const { id } = req.params;
   const { itemId } = req.params;
-  const { price, markup_percent, is_offered } = req.body;
+  const { price, markup_percent, is_offered, is_recommended, display_order } = req.body;
   try {
+    await ensureStudioProductPresentationColumns();
     const header = await mssql.query('SELECT TOP 1 super_price_list_id FROM studio_price_lists WHERE id = @p1', [id]);
     const superPriceListId = header[0]?.super_price_list_id;
     if (!superPriceListId) return res.status(404).json({ error: 'Studio price list not found' });
@@ -228,10 +245,112 @@ router.put('/:id/items/:itemId', async (req, res) => {
       }
     }
 
-    await mssql.query('UPDATE studio_price_list_items SET price = COALESCE(@p1, price), markup_percent = COALESCE(@p2, markup_percent), is_offered = COALESCE(@p3, is_offered) WHERE id = @p4', [price, markup_percent, is_offered === undefined ? null : (is_offered ? 1 : 0), itemId]);
+    await mssql.query(
+      'UPDATE studio_price_list_items SET price = COALESCE(@p1, price), markup_percent = COALESCE(@p2, markup_percent), is_offered = COALESCE(@p3, is_offered), is_recommended = COALESCE(@p4, is_recommended), display_order = COALESCE(@p5, display_order) WHERE id = @p6',
+      [
+        price,
+        markup_percent,
+        is_offered === undefined ? null : (is_offered ? 1 : 0),
+        is_recommended === undefined ? null : (is_recommended ? 1 : 0),
+        display_order === undefined || display_order === null || display_order === '' ? null : Number(display_order),
+        itemId,
+      ]
+    );
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Failed to update item' });
+  }
+});
+
+// PUT update product-level recommended/order preferences (applies to all sizes)
+router.put('/:id/products/:productId/preferences', async (req, res) => {
+  const { id, productId } = req.params;
+  const { is_recommended, display_order } = req.body;
+
+  if (is_recommended === undefined && display_order === undefined) {
+    return res.status(400).json({ error: 'Provide is_recommended or display_order' });
+  }
+
+  try {
+    await ensureStudioProductPresentationColumns();
+
+    const rows = await mssql.query(
+      `SELECT spi.id
+       FROM studio_price_list_items spi
+       INNER JOIN product_sizes ps ON ps.id = spi.product_size_id
+       WHERE spi.studio_price_list_id = @p1 AND ps.product_id = @p2`,
+      [id, productId]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ error: 'Product not found in this studio price list' });
+    }
+
+    const normalizedOrder =
+      display_order === undefined
+        ? undefined
+        : (display_order === null || display_order === '' ? null : Number(display_order));
+
+    if (normalizedOrder !== undefined && normalizedOrder !== null && !Number.isFinite(normalizedOrder)) {
+      return res.status(400).json({ error: 'display_order must be a valid number' });
+    }
+
+    await mssql.query(
+      `UPDATE spi
+       SET spi.is_recommended = COALESCE(@p1, spi.is_recommended),
+           spi.display_order = CASE WHEN @p5 = 1 THEN @p2 ELSE spi.display_order END
+       FROM studio_price_list_items spi
+       INNER JOIN product_sizes ps ON ps.id = spi.product_size_id
+       WHERE spi.studio_price_list_id = @p3
+         AND ps.product_id = @p4`,
+      [
+        is_recommended === undefined ? null : (is_recommended ? 1 : 0),
+        normalizedOrder,
+        id,
+        productId,
+        normalizedOrder === undefined ? 0 : 1,
+      ]
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update product preferences' });
+  }
+});
+
+// PUT bulk update product display order (applies to all sizes per product)
+router.put('/:id/products/display-order', async (req, res) => {
+  const { id } = req.params;
+  const items = Array.isArray(req.body?.items) ? req.body.items : [];
+
+  if (!items.length) {
+    return res.status(400).json({ error: 'items array is required' });
+  }
+
+  try {
+    await ensureStudioProductPresentationColumns();
+
+    for (const item of items) {
+      const productId = Number(item?.product_id || item?.productId || 0);
+      const displayOrderRaw = item?.display_order ?? item?.displayOrder;
+      const displayOrder = Number(displayOrderRaw);
+      if (!Number.isInteger(productId) || productId <= 0) continue;
+      if (!Number.isFinite(displayOrder)) continue;
+
+      await mssql.query(
+        `UPDATE spi
+         SET spi.display_order = @p1
+         FROM studio_price_list_items spi
+         INNER JOIN product_sizes ps ON ps.id = spi.product_size_id
+         WHERE spi.studio_price_list_id = @p2
+           AND ps.product_id = @p3`,
+        [Math.trunc(displayOrder), id, productId]
+      );
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update display order' });
   }
 });
 

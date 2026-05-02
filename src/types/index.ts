@@ -269,6 +269,8 @@ export interface Product {
   isActive: boolean;
   popularity: number;
   isDigital: boolean;
+  studioIsRecommended?: boolean;
+  studioDisplayOrder?: number | null;
   digitalDownloadScope?: 'photo' | 'album' | string;
   digitalPricingMode?: 'fixed' | 'percentage' | string | null;
   superAdminPercentage?: number;

@@ -25,6 +25,14 @@ export const studioPriceListService = {
     const res = await api.put(`/studio-price-lists/${listId}/items/${itemId}`, data);
     return res.data;
   },
+  async updateProductPreferences(listId: number, productId: number, data: { is_recommended?: boolean; display_order?: number | null }) {
+    const res = await api.put(`/studio-price-lists/${listId}/products/${productId}/preferences`, data);
+    return res.data;
+  },
+  async bulkUpdateProductDisplayOrder(listId: number, items: Array<{ product_id: number; display_order: number }>) {
+    const res = await api.put(`/studio-price-lists/${listId}/products/display-order`, { items });
+    return res.data;
+  },
   async applyMarkupToOffered(listId: number, markup_percent: number) {
     const res = await api.patch(`/studio-price-lists/${listId}/items/apply-markup`, { markup_percent });
     return res.data;

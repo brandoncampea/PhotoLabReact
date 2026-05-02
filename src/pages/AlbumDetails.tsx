@@ -192,6 +192,11 @@ const AlbumDetails: React.FC = () => {
     return scope === 'album' ? 'album' : 'photo';
   };
 
+  const getStudioDisplayOrder = (product: any): number | null => {
+    const value = Number(product?.studioDisplayOrder);
+    return Number.isFinite(value) ? value : null;
+  };
+
 
   const orderedProducts = useMemo((): ProductWithMatch[] => {
     if (!selectedPhoto) return [];
@@ -252,27 +257,58 @@ const AlbumDetails: React.FC = () => {
       // 1) Digital products always first
       if (!!a.isDigital !== !!b.isDigital) return a.isDigital ? -1 : 1;
 
-      // 2) For non-digital, recommended products first (closest sizes)
+      // 2) Studio-configured display order overrides heuristic ordering
+      const aOrder = getStudioDisplayOrder(a);
+      const bOrder = getStudioDisplayOrder(b);
+      const aHasOrder = aOrder !== null;
+      const bHasOrder = bOrder !== null;
+      if (aHasOrder && bHasOrder && aOrder !== bOrder) return Number(aOrder) - Number(bOrder);
+      if (aHasOrder !== bHasOrder) return aHasOrder ? -1 : 1;
+
+      // 3) For non-digital, recommended products first (closest sizes)
       const aRec = !a.isDigital && a.isRecommended && a.ratioDiff <= recommendedCutoff;
       const bRec = !b.isDigital && b.isRecommended && b.ratioDiff <= recommendedCutoff;
       if (aRec !== bRec) return aRec ? -1 : 1;
 
-      // 3) Within recommended, closest ratio first
+      // 4) Within recommended, closest ratio first
       if (aRec && bRec && a.ratioDiff !== b.ratioDiff) return a.ratioDiff - b.ratioDiff;
 
-      // 4) Then the rest alphabetically
+      // 5) Then the rest alphabetically
       return String(a.name || '').localeCompare(String(b.name || ''));
     });
   }, [products, selectedPhoto, recommendationFilter]);
 
+  const studioRecommendedProductIds = useMemo(() => {
+    return new Set(
+      orderedProducts
+        .filter((p) => !p.isDigital && !!p.studioIsRecommended)
+        .map((p) => Number(p.id))
+        .filter((id) => Number.isInteger(id) && id > 0)
+    );
+  }, [orderedProducts]);
+
+  const hasStudioRecommendedProducts = useMemo(
+    () => studioRecommendedProductIds.size > 0,
+    [studioRecommendedProductIds]
+  );
+
   const recommendedProductIds = useMemo(() => {
     const nonDigital = orderedProducts.filter((p) => !p.isDigital);
     if (nonDigital.length === 0) return new Set<number>();
+
+    // If the studio explicitly configured recommendations, only use those.
+    if (hasStudioRecommendedProducts) {
+      return new Set<number>(studioRecommendedProductIds);
+    }
+
     const recommended = nonDigital.filter((p) => p.isRecommended).sort((a, b) => a.ratioDiff - b.ratioDiff);
     if (recommended.length === 0) return new Set<number>();
     const cutoff = Math.min(0.25, recommended[Math.min(5, recommended.length - 1)].ratioDiff);
-    return new Set(nonDigital.filter((p) => p.isRecommended && p.ratioDiff <= cutoff).map((p) => p.id));
-  }, [orderedProducts]);
+    const ratioBased = nonDigital
+      .filter((p) => p.isRecommended && p.ratioDiff <= cutoff)
+      .map((p) => p.id);
+    return new Set(ratioBased);
+  }, [orderedProducts, hasStudioRecommendedProducts, studioRecommendedProductIds]);
 
   const productsBySection = useMemo(() => {
     const albumPurchaseEnabled = album?.albumPurchaseEnabled !== false;
@@ -283,12 +319,12 @@ const AlbumDetails: React.FC = () => {
   }, [orderedProducts, recommendedProductIds, album]);
 
   const albumPurchaseProducts = useMemo(
-    () => (products || []).filter((p) => !!p.isDigital && getDigitalScopeValue(p) === 'album'),
-    [products]
+    () => (orderedProducts || []).filter((p) => !!p.isDigital && getDigitalScopeValue(p) === 'album'),
+    [orderedProducts]
   );
 
   const recommendedGrouped = useMemo(() => {
-    const grouped: Record<string, Record<string, ProductWithMatch[]>> = {};
+    const grouped = new Map<string, Map<string, ProductWithMatch[]>>();
 
     const getProductGroupName = (rawName: string): string => {
       const name = String(rawName || '').trim();
@@ -336,17 +372,48 @@ const AlbumDetails: React.FC = () => {
       return String(a.name || '').localeCompare(String(b.name || ''));
     };
 
+    const selectBestItems = (items: ProductWithMatch[]): ProductWithMatch[] => {
+      if (items.length <= 1) return items;
+
+      const ranked = [...items].sort((a, b) => {
+        const aFinite = Number.isFinite(a.ratioDiff);
+        const bFinite = Number.isFinite(b.ratioDiff);
+        if (aFinite !== bFinite) return aFinite ? -1 : 1;
+        if (aFinite && bFinite && a.ratioDiff !== b.ratioDiff) return a.ratioDiff - b.ratioDiff;
+
+        const aOrder = getStudioDisplayOrder(a);
+        const bOrder = getStudioDisplayOrder(b);
+        const aHasOrder = aOrder !== null;
+        const bHasOrder = bOrder !== null;
+        if (aHasOrder && bHasOrder && aOrder !== bOrder) return Number(aOrder) - Number(bOrder);
+        if (aHasOrder !== bHasOrder) return aHasOrder ? -1 : 1;
+
+        return compareBySizeAsc(a, b);
+      });
+
+      const best = ranked[0];
+      if (!best || !Number.isFinite(best.ratioDiff)) {
+        return ranked.slice(0, Math.min(3, ranked.length));
+      }
+
+      // Keep the closest matching variants, capped for concise UX.
+      const threshold = Number(best.ratioDiff) + 0.06;
+      const shortlisted = ranked.filter((item) => Number.isFinite(item.ratioDiff) && item.ratioDiff <= threshold);
+      return (shortlisted.length > 0 ? shortlisted : ranked).slice(0, 3);
+    };
+
     productsBySection.recommended.forEach((product) => {
       const category = String(product.category || 'Other');
       const productName = getProductGroupName(String(product.name || 'Product'));
-      if (!grouped[category]) grouped[category] = {};
-      if (!grouped[category][productName]) grouped[category][productName] = [];
-      grouped[category][productName].push(product);
+      if (!grouped.has(category)) grouped.set(category, new Map<string, ProductWithMatch[]>());
+      const productsByName = grouped.get(category)!;
+      if (!productsByName.has(productName)) productsByName.set(productName, []);
+      productsByName.get(productName)!.push(product);
     });
 
-    // Move 'Partner Photo Fulfillment' category to the top
-    const groupedEntries = Object.entries(grouped)
-      .sort(([a], [b]) => a.localeCompare(b));
+    // Preserve explicit product order from `productsBySection.recommended`.
+    // Only bump Partner Photo Fulfillment to top for category ordering.
+    const groupedEntries = Array.from(grouped.entries());
     const partnerIdx = groupedEntries.findIndex(([cat]) => cat.toLowerCase().includes('partner photo fulfillment'));
     if (partnerIdx > 0) {
       const [partner] = groupedEntries.splice(partnerIdx, 1);
@@ -354,9 +421,8 @@ const AlbumDetails: React.FC = () => {
     }
     return groupedEntries.map(([category, productsByName]) => ({
       category,
-      products: Object.entries(productsByName)
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([name, items]) => ({ name, items: [...items].sort(compareBySizeAsc) })),
+      products: Array.from(productsByName.entries())
+        .map(([name, items]) => ({ name, items: selectBestItems(items).sort(compareBySizeAsc) })),
     }));
   }, [productsBySection.recommended]);
 
@@ -372,7 +438,7 @@ const AlbumDetails: React.FC = () => {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([category, items]) => ({
         category,
-        items: [...items].sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''))),
+        items: [...items],
       }));
   }, [orderedProducts]);
 
