@@ -1,0 +1,241 @@
+name: Deploy TEST to Azure
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - develop
+    paths:
+      - 'src/**'
+      - 'server/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'vite.config.ts'
+      - '.github/workflows/deploy-test.yml'
+
+env:
+  NODE_VERSION: '22.x'
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+  AZURE_WEBAPP_NAME: ${{ vars.AZURE_WEBAPP_NAME_TEST || 'CampeaPhotoLab-Test' }}
+  AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP_TEST || 'PhotoLab-Test' }}
+  CANONICAL_APP_URL: ${{ vars.CANONICAL_APP_URL_TEST || '' }}
+
+jobs:
+  build-and-deploy-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Build frontend (test)
+        run: npm run build:appservice
+        env:
+          VITE_API_URL: /api
+          VITE_USE_MOCK_API: false
+
+      - name: Prepare deployment bundle
+        run: |
+          rm -rf deploy
+          mkdir -p deploy
+          cp -R server deploy/server
+          cp -R dist deploy/dist
+          cp package.json package-lock.json deploy/
+          cd deploy
+          npm ci --omit=dev --legacy-peer-deps
+
+      - name: Create deployment zip
+        run: |
+          cd deploy
+          zip -r ../appservice-deploy-test.zip \
+            server \
+            dist \
+            node_modules \
+            package.json \
+            package-lock.json \
+            -x "**/.DS_Store" "**/*.log" "**/test-results/**" "**/playwright-report/**" "server/uploads/**" "server/*.db" "server/*.db.*"
+          cd ..
+          ls -lh appservice-deploy-test.zip
+
+      - name: Azure CLI Login (TEST)
+        env:
+          AZURE_CREDENTIALS_TEST: ${{ secrets.AZURE_CREDENTIALS_TEST }}
+        run: |
+          if [ -z "$AZURE_CREDENTIALS_TEST" ]; then
+            echo "Missing required secret: AZURE_CREDENTIALS_TEST"
+            exit 1
+          fi
+
+          CLIENT_ID=$(node -e "const c=JSON.parse(process.env.AZURE_CREDENTIALS_TEST||'{}'); process.stdout.write(c.clientId||'')")
+          CLIENT_SECRET=$(node -e "const c=JSON.parse(process.env.AZURE_CREDENTIALS_TEST||'{}'); process.stdout.write(c.clientSecret||'')")
+          TENANT_ID=$(node -e "const c=JSON.parse(process.env.AZURE_CREDENTIALS_TEST||'{}'); process.stdout.write(c.tenantId||'')")
+          SUBSCRIPTION_ID=$(node -e "const c=JSON.parse(process.env.AZURE_CREDENTIALS_TEST||'{}'); process.stdout.write(c.subscriptionId||'')")
+
+          if [ -z "$CLIENT_ID" ] || [ -z "$CLIENT_SECRET" ] || [ -z "$TENANT_ID" ]; then
+            echo "AZURE_CREDENTIALS_TEST is missing clientId, clientSecret, or tenantId"
+            exit 1
+          fi
+
+          az login --service-principal \
+            --username "$CLIENT_ID" \
+            --password "$CLIENT_SECRET" \
+            --tenant "$TENANT_ID" \
+            --output none
+
+          if [ -n "$SUBSCRIPTION_ID" ]; then
+            az account set --subscription "$SUBSCRIPTION_ID"
+          fi
+
+      - name: Configure App Service runtime (TEST)
+        env:
+          ALL_SECRETS: ${{ toJson(secrets) }}
+          JWT_SECRET_TEST: ${{ secrets.JWT_SECRET_TEST }}
+          DB_HOST_TEST: ${{ secrets.DB_HOST_TEST }}
+          DB_PORT_TEST: ${{ secrets.DB_PORT_TEST }}
+          DB_NAME_TEST: ${{ secrets.DB_NAME_TEST }}
+          DB_USER_TEST: ${{ secrets.DB_USER_TEST }}
+          DB_PASSWORD_TEST: ${{ secrets.DB_PASSWORD_TEST }}
+          AZURE_STORAGE_CONNECTION_STRING_TEST: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING_TEST }}
+          AZURE_STORAGE_CONTAINER_TEST: ${{ secrets.AZURE_STORAGE_CONTAINER_TEST }}
+        run: |
+          export MSSQL_CONNECTION_STRING_TEST=$(node -e "const s=JSON.parse(process.env.ALL_SECRETS||'{}'); process.stdout.write(s.MSSQL_CONNECTION_STRING_TEST||'')")
+          export MSSQL_ENCRYPT_TEST=$(node -e "const s=JSON.parse(process.env.ALL_SECRETS||'{}'); process.stdout.write(s.MSSQL_ENCRYPT_TEST||'')")
+          export MSSQL_TRUST_CERT_TEST=$(node -e "const s=JSON.parse(process.env.ALL_SECRETS||'{}'); process.stdout.write(s.MSSQL_TRUST_CERT_TEST||'')")
+          export STRIPE_SECRET_KEY_TEST=$(node -e "const s=JSON.parse(process.env.ALL_SECRETS||'{}'); process.stdout.write(s.STRIPE_SECRET_KEY_TEST||'')")
+          export STRIPE_WEBHOOK_SECRET_TEST=$(node -e "const s=JSON.parse(process.env.ALL_SECRETS||'{}'); process.stdout.write(s.STRIPE_WEBHOOK_SECRET_TEST||'')")
+          export MPIX_API_KEY_TEST=$(node -e "const s=JSON.parse(process.env.ALL_SECRETS||'{}'); process.stdout.write(s.MPIX_API_KEY_TEST||'')")
+          export MPIX_API_SECRET_TEST=$(node -e "const s=JSON.parse(process.env.ALL_SECRETS||'{}'); process.stdout.write(s.MPIX_API_SECRET_TEST||'')")
+
+          if [ -z "$JWT_SECRET_TEST" ]; then
+            echo "Missing required secret: JWT_SECRET_TEST"
+            exit 1
+          fi
+
+          APP_HOST=$(az webapp show \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --query defaultHostName -o tsv)
+
+          APP_URL="${{ env.CANONICAL_APP_URL }}"
+          if [ -z "$APP_URL" ]; then
+            APP_URL="https://${APP_HOST}"
+          fi
+
+          SETTINGS=(
+            "SCM_DO_BUILD_DURING_DEPLOYMENT=false"
+            "ENABLE_ORYX_BUILD=false"
+            "NODE_ENV=production"
+            "APP_ENV=test"
+            "WEBSITE_NODE_DEFAULT_VERSION=~22"
+            "NODE_OPTIONS=--no-deprecation"
+            "PORT=8080"
+            "JWT_SECRET=$JWT_SECRET_TEST"
+            "FRONTEND_URL=$APP_URL"
+          )
+
+          HAS_VALID_CONN_STRING=0
+          if [ -n "$MSSQL_CONNECTION_STRING_TEST" ] && echo "$MSSQL_CONNECTION_STRING_TEST" | grep -Eiq '(^|;)[[:space:]]*(server|data source)[[:space:]]*='; then
+            HAS_VALID_CONN_STRING=1
+            SETTINGS+=("MSSQL_CONNECTION_STRING=$MSSQL_CONNECTION_STRING_TEST")
+          fi
+
+          if [ -n "$DB_HOST_TEST" ] && [ -n "$DB_NAME_TEST" ] && [ -n "$DB_USER_TEST" ] && [ -n "$DB_PASSWORD_TEST" ]; then
+            SETTINGS+=("DB_HOST=$DB_HOST_TEST")
+            SETTINGS+=("DB_PORT=${DB_PORT_TEST:-1433}")
+            SETTINGS+=("DB_NAME=$DB_NAME_TEST")
+            SETTINGS+=("DB_USER=$DB_USER_TEST")
+            SETTINGS+=("DB_PASSWORD=$DB_PASSWORD_TEST")
+          elif [ "$HAS_VALID_CONN_STRING" -ne 1 ]; then
+            echo "Missing DB test secrets. Provide MSSQL_CONNECTION_STRING_TEST or DB_HOST_TEST/DB_NAME_TEST/DB_USER_TEST/DB_PASSWORD_TEST"
+            exit 1
+          fi
+
+          SETTINGS+=("MSSQL_ENCRYPT=${MSSQL_ENCRYPT_TEST:-true}")
+          SETTINGS+=("MSSQL_TRUST_CERT=${MSSQL_TRUST_CERT_TEST:-false}")
+
+          if [ -n "$STRIPE_SECRET_KEY_TEST" ]; then
+            SETTINGS+=("STRIPE_SECRET_KEY=$STRIPE_SECRET_KEY_TEST")
+          fi
+
+          if [ -n "$STRIPE_WEBHOOK_SECRET_TEST" ]; then
+            SETTINGS+=("STRIPE_WEBHOOK_SECRET=$STRIPE_WEBHOOK_SECRET_TEST")
+          fi
+
+          if [ -n "$MPIX_API_KEY_TEST" ]; then
+            SETTINGS+=("MPIX_API_KEY=$MPIX_API_KEY_TEST")
+          fi
+
+          if [ -n "$MPIX_API_SECRET_TEST" ]; then
+            SETTINGS+=("MPIX_API_SECRET=$MPIX_API_SECRET_TEST")
+          fi
+
+          if [ -n "$AZURE_STORAGE_CONNECTION_STRING_TEST" ]; then
+            SETTINGS+=("AZURE_STORAGE_CONNECTION_STRING=$AZURE_STORAGE_CONNECTION_STRING_TEST")
+          fi
+
+          SETTINGS+=("AZURE_STORAGE_CONTAINER=${AZURE_STORAGE_CONTAINER_TEST:-photos}")
+
+          az webapp config appsettings set \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --settings "${SETTINGS[@]}"
+
+          az webapp config set \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --linux-fx-version "NODE|22-lts" \
+            --startup-file "node server/server.mjs"
+
+      - name: Deploy to Azure Web App (TEST)
+        run: |
+          az webapp deploy \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --src-path appservice-deploy-test.zip \
+            --type zip
+
+      - name: Verify test health endpoint
+        run: |
+          APP_HOST=$(az webapp show \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --query defaultHostName -o tsv)
+
+          DEFAULT_HEALTH="https://${APP_HOST}/api/health"
+          CANONICAL_HEALTH="${{ env.CANONICAL_APP_URL }}/api/health"
+
+          check_health() {
+            local url="$1"
+            local max_attempts=36
+            for attempt in $(seq 1 $max_attempts); do
+              echo "Health check ${attempt}/${max_attempts}: ${url}"
+              if curl -fsS --max-time 15 "$url" > /dev/null; then
+                echo "Health check passed: ${url}"
+                return 0
+              fi
+              sleep 15
+            done
+            return 1
+          }
+
+          if check_health "$DEFAULT_HEALTH"; then
+            echo "Test API health check succeeded."
+            exit 0
+          fi
+
+          if [ -n "${{ env.CANONICAL_APP_URL }}" ] && check_health "$CANONICAL_HEALTH"; then
+            echo "Canonical test API health check succeeded."
+            exit 0
+          fi
+
+          echo "Error: test API health endpoint did not become ready in time."
+          exit 1

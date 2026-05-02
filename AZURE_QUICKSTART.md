@@ -117,6 +117,25 @@ chmod +x scripts/deploy-azure-appservice.sh
    - Triggers: Manual and `main` pushes affecting backend/frontend files
    - Deploys: React frontend + Express API to one Azure App Service
 
+2. **deploy-test.yml**
+   - Triggers: Manual and `develop` pushes affecting backend/frontend files
+   - Deploys: React frontend + Express API to a dedicated TEST Azure App Service
+   - Uses test-scoped secrets (example: `AZURE_CREDENTIALS_TEST`, `JWT_SECRET_TEST`, `MSSQL_CONNECTION_STRING_TEST`)
+
+### Test workflow setup
+
+Set GitHub repository variables (Settings → Secrets and variables → Actions → Variables):
+
+- `AZURE_WEBAPP_NAME_TEST` (example: `CampeaPhotoLab-Test`)
+- `AZURE_RESOURCE_GROUP_TEST` (example: `PhotoLab-Test`)
+- `CANONICAL_APP_URL_TEST` (optional; example: `https://test.labs.campeaphotography.com`)
+
+Set GitHub Actions secrets for test:
+
+- Required: `AZURE_CREDENTIALS_TEST`, `JWT_SECRET_TEST`
+- Database: `MSSQL_CONNECTION_STRING_TEST` **or** `DB_HOST_TEST` + `DB_NAME_TEST` + `DB_USER_TEST` + `DB_PASSWORD_TEST`
+- Optional: `DB_PORT_TEST`, `MSSQL_ENCRYPT_TEST`, `MSSQL_TRUST_CERT_TEST`, `AZURE_STORAGE_CONNECTION_STRING_TEST`, `AZURE_STORAGE_CONTAINER_TEST`, `STRIPE_SECRET_KEY_TEST`, `STRIPE_WEBHOOK_SECRET_TEST`, `MPIX_API_KEY_TEST`, `MPIX_API_SECRET_TEST`
+
 ---
 
 ## ⚡ Quick Commands
