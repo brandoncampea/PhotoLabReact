@@ -9,6 +9,7 @@ import { photoService } from '../services/photoService';
 import { productService } from '../services/productService';
 import { useCart } from '../contexts/CartContext';
 import { Album, Photo, Product, ProductSize } from '../types';
+import './AlbumDetails.css';
 
 
 type ProductWithMatch = Product & {
@@ -970,6 +971,7 @@ const AlbumDetails: React.FC = () => {
                                 return (
                                   <div
                                     key={product.id}
+                                    className="order-product-row"
                                     style={{
                                       display: 'flex',
                                       flexDirection: 'row',
@@ -982,7 +984,7 @@ const AlbumDetails: React.FC = () => {
                                       flexWrap: 'wrap',
                                     }}
                                   >
-                                    <div>
+                                    <div className="order-size-cell">
                                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                                         <strong>{product.name}</strong>
                                         <span className="badge">Digital</span>
@@ -995,6 +997,7 @@ const AlbumDetails: React.FC = () => {
                                       </div>
                                     </div>
                                     <div
+                                      className="order-price-cell"
                                       style={{
                                         minWidth: 90,
                                         textAlign: 'right',
@@ -1006,7 +1009,7 @@ const AlbumDetails: React.FC = () => {
                                       ${Number(product.price || defaultSize?.price || 0).toFixed(2)}
                                     </div>
                                     <button
-                                      className="btn btn-primary btn-sm"
+                                      className="btn btn-primary btn-sm order-add-cart-btn"
                                       disabled={!defaultSize || addingKey === rowKey}
                                       onClick={() => handleAddToCart(product)}
                                       style={{
@@ -1057,6 +1060,7 @@ const AlbumDetails: React.FC = () => {
                                             return (
                                               <div
                                                 key={product.id}
+                                                className="order-product-row"
                                                 style={{
                                                   display: 'flex',
                                                   flexDirection: 'row',
@@ -1069,12 +1073,13 @@ const AlbumDetails: React.FC = () => {
                                                   flexWrap: 'wrap',
                                                 }}
                                               >
-                                                <div style={{ fontSize: 12, color: '#aaa', flex: '1 1 100%' }}>
+                                                <div className="order-size-cell" style={{ fontSize: 12, color: '#aaa', flex: '1 1 100%' }}>
                                                   {defaultSize
                                                     ? `${defaultSize.name}${defaultSize.width && defaultSize.height ? ` (${defaultSize.width}x${defaultSize.height})` : ''}`
                                                     : 'No size available'}
                                                 </div>
                                                 <div
+                                                  className="order-price-cell"
                                                   style={{
                                                     minWidth: 90,
                                                     textAlign: 'right',
@@ -1086,7 +1091,7 @@ const AlbumDetails: React.FC = () => {
                                                   ${Number(defaultSize?.price || 0).toFixed(2)}
                                                 </div>
                                                 <button
-                                                  className="btn btn-primary btn-sm"
+                                                  className="btn btn-primary btn-sm order-add-cart-btn"
                                                   disabled={!defaultSize || addingKey === rowKey}
                                                   onClick={() => handleAddToCart(product)}
                                                   style={{
@@ -1144,6 +1149,7 @@ const AlbumDetails: React.FC = () => {
                                                 return (
                                                   <div
                                                     key={rowKey}
+                                                    className="order-product-row"
                                                     style={{
                                                       display: 'flex',
                                                       flexDirection: 'row',
@@ -1156,10 +1162,11 @@ const AlbumDetails: React.FC = () => {
                                                       flexWrap: 'wrap',
                                                     }}
                                                   >
-                                                    <div style={{ fontSize: 12, color: '#bbb', flex: '1 1 100%' }}>
+                                                    <div className="order-size-cell" style={{ fontSize: 12, color: '#bbb', flex: '1 1 100%' }}>
                                                       {size?.name || 'Default'}{size?.width && size?.height ? ` (${size.width}x${size.height})` : ''}
                                                     </div>
                                                     <div
+                                                      className="order-price-cell"
                                                       style={{
                                                         minWidth: 90,
                                                         textAlign: 'right',
@@ -1171,7 +1178,7 @@ const AlbumDetails: React.FC = () => {
                                                       ${Number(size?.price || 0).toFixed(2)}
                                                     </div>
                                                     <button
-                                                      className="btn btn-primary btn-sm"
+                                                      className="btn btn-primary btn-sm order-add-cart-btn"
                                                       disabled={!size || addingKey === rowKey}
                                                       onClick={() => handleAddToCart(product, size)}
                                                       style={{

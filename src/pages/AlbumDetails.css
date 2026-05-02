@@ -24,3 +24,45 @@
 .album-details-batch-notice strong {
 	color: #f5f3ff;
 }
+
+.order-size-cell {
+	flex: 1 1 auto !important;
+	min-width: 0;
+}
+
+.order-price-cell {
+	flex: 0 0 auto !important;
+	min-width: 90px;
+	margin-left: auto;
+	text-align: right;
+}
+
+@media (min-width: 768px) and (hover: hover) and (pointer: fine) {
+	.order-product-row {
+		flex-wrap: nowrap !important;
+		align-items: center !important;
+	}
+
+	.order-size-cell {
+		flex: 1 1 auto !important;
+		min-width: 0;
+	}
+
+	.order-price-cell {
+		flex: 0 0 auto !important;
+		min-width: 90px;
+		text-align: right;
+	}
+
+	.order-add-cart-btn {
+		flex: 0 0 auto !important;
+		max-width: none !important;
+		margin-top: 0 !important;
+		margin-left: 10px !important;
+		width: auto !important;
+		min-width: 92px !important;
+		font-size: 12px !important;
+		padding: 6px 14px !important;
+		border-radius: 14px !important;
+	}
+}
