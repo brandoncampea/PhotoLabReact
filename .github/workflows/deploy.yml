@@ -289,6 +289,15 @@ jobs:
               if wait_for_deployment_completion; then
                 break
               fi
+            else
+              echo "az webapp deploy failed. Trying config-zip fallback..."
+              if az webapp deployment source config-zip \
+                --name ${{ env.AZURE_WEBAPP_NAME }} \
+                --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+                --src appservice-deploy.zip; then
+                echo "config-zip fallback succeeded."
+                break
+              fi
             fi
 
             if [ "$attempt" -eq 3 ]; then

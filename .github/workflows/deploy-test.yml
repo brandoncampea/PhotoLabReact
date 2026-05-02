@@ -189,19 +189,148 @@ jobs:
             --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
             --settings "${SETTINGS[@]}"
 
-          az webapp config set \
+          CURRENT_FX=$(az webapp config show \
             --name ${{ env.AZURE_WEBAPP_NAME }} \
             --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-            --linux-fx-version "NODE|22-lts" \
-            --startup-file "node server/server.mjs"
+            --query linuxFxVersion -o tsv 2>/dev/null || echo '')
 
-      - name: Deploy to Azure Web App (TEST)
+          TARGET_FX="NODE|22-lts"
+
+          if [ "$CURRENT_FX" != "$TARGET_FX" ]; then
+            echo "Updating linuxFxVersion: '$CURRENT_FX' → '$TARGET_FX'"
+            az webapp config set \
+              --name ${{ env.AZURE_WEBAPP_NAME }} \
+              --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+              --linux-fx-version "$TARGET_FX" \
+              --startup-file "node server/server.mjs"
+            echo "Runtime changed — waiting 90s for container restart..."
+            sleep 90
+          else
+            echo "linuxFxVersion already '$TARGET_FX', skipping runtime change."
+            az webapp config set \
+              --name ${{ env.AZURE_WEBAPP_NAME }} \
+              --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+              --startup-file "node server/server.mjs"
+          fi
+
+      - name: Deploy to Azure Web App (TEST with retry/fallback)
         run: |
-          az webapp deploy \
+          APP_HOST=$(az webapp show \
             --name ${{ env.AZURE_WEBAPP_NAME }} \
             --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-            --src-path appservice-deploy-test.zip \
-            --type zip
+            --query defaultHostName -o tsv)
+          KUDU_HOST="${APP_HOST/./.scm.}"
+
+          CREDS=$(az webapp deployment list-publishing-credentials \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            -o json)
+
+          USERNAME=$(echo "$CREDS" | python3 -c "import json,sys; print(json.load(sys.stdin).get('publishingUserName',''))")
+          PASSWORD=$(echo "$CREDS" | python3 -c "import json,sys; print(json.load(sys.stdin).get('publishingPassword',''))")
+
+          wait_for_idle_deployment() {
+            for check in $(seq 1 60); do
+              LATEST=$(curl -sS -u "$USERNAME:$PASSWORD" "https://${KUDU_HOST}/api/deployments/latest" || true)
+              STATUS=$(echo "$LATEST" | python3 -c "import json,sys; raw=sys.stdin.read().strip(); print((json.loads(raw).get('status',-1) if raw else -1))" 2>/dev/null || echo -1)
+
+              if [ "$STATUS" = "0" ] || [ "$STATUS" = "1" ] || [ "$STATUS" = "2" ]; then
+                echo "Another deployment is still running (status=${STATUS}). Waiting 20s..."
+                sleep 20
+                continue
+              fi
+
+              return 0
+            done
+
+            echo "Timed out waiting for previous deployment to finish"
+            return 1
+          }
+
+          wait_for_deployment_completion() {
+            for check in $(seq 1 90); do
+              LATEST=$(curl -sS -u "$USERNAME:$PASSWORD" "https://${KUDU_HOST}/api/deployments/latest" || true)
+              STATUS=$(echo "$LATEST" | python3 -c "import json,sys; raw=sys.stdin.read().strip(); print((json.loads(raw).get('status',-1) if raw else -1))" 2>/dev/null || echo -1)
+
+              if [ "$STATUS" = "4" ]; then
+                echo "Deployment completed successfully (status=4)."
+                return 0
+              fi
+
+              if [ "$STATUS" = "3" ]; then
+                echo "Deployment failed (status=3)."
+                echo "$LATEST" | cat
+                return 1
+              fi
+
+              echo "Deployment in progress (status=${STATUS}). Waiting 20s..."
+              sleep 20
+            done
+
+            echo "Timed out waiting for deployment completion. Continuing to health checks."
+            return 0
+          }
+
+          for attempt in 1 2 3; do
+            echo "Deploy attempt ${attempt}/3"
+            wait_for_idle_deployment
+
+            if az webapp deploy \
+              --name ${{ env.AZURE_WEBAPP_NAME }} \
+              --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+              --src-path appservice-deploy-test.zip \
+              --type zip \
+              --async true; then
+              echo "Deployment started asynchronously. Monitoring Kudu status..."
+              if wait_for_deployment_completion; then
+                break
+              fi
+            else
+              echo "az webapp deploy failed. Trying config-zip fallback..."
+              if az webapp deployment source config-zip \
+                --name ${{ env.AZURE_WEBAPP_NAME }} \
+                --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+                --src appservice-deploy-test.zip; then
+                echo "config-zip fallback succeeded."
+                break
+              fi
+            fi
+
+            if [ "$attempt" -eq 3 ]; then
+              echo "Deployment failed after 3 attempts"
+              exit 1
+            fi
+
+            echo "Deployment failed. Waiting before retry..."
+            sleep 60
+          done
+
+      - name: Fetch latest Kudu deployment diagnostics on failure
+        if: failure()
+        run: |
+          APP_HOST=$(az webapp show \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --query defaultHostName -o tsv)
+          KUDU_HOST="${APP_HOST/./.scm.}"
+
+          CREDS=$(az webapp deployment list-publishing-credentials \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            -o json)
+
+          USERNAME=$(echo "$CREDS" | python3 -c "import json,sys; print(json.load(sys.stdin).get('publishingUserName',''))")
+          PASSWORD=$(echo "$CREDS" | python3 -c "import json,sys; print(json.load(sys.stdin).get('publishingPassword',''))")
+
+          echo "Latest deployment summary:"
+          curl -sS -u "$USERNAME:$PASSWORD" "https://${KUDU_HOST}/api/deployments/latest" | cat
+
+      - name: Upload deployment artifact on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-deployment-bundle
+          path: appservice-deploy-test.zip
 
       - name: Verify test health endpoint
         run: |
