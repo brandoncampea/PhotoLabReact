@@ -1,13 +1,15 @@
 import express from 'express';
-import { authRequired } from '../middleware/auth.js';
+import { authRequired, adminRequired } from '../middleware/auth.js';
 import * as crypto from 'crypto';
+import { uploadImageBufferToAzure } from '../services/azureStorage.js';
 const router = express.Router();
 
 // MSSQL dynamic import helper
 let query, queryRow, queryRows;
 const loadMssql = async () => {
   if (!query || !queryRow || !queryRows) {
-    const mssql = await import('../mssql.cjs');
+    const mssqlModule = await import('../mssql.cjs');
+    const mssql = mssqlModule?.default || mssqlModule;
     query = mssql.query;
     queryRow = mssql.queryRow;
     queryRows = mssql.queryRows;
@@ -121,11 +123,6 @@ router.get('/oauth/callback', async (req, res) => {
       return res.status(500).json({ error: 'Failed to get access token', details: text });
     }
     const result = Object.fromEntries(new URLSearchParams(text));
-    await ensureSmugMugTokenMapTable();
-    await query(
-      'INSERT INTO studio_smugmug_token_map (oauth_token, request_token_secret, studio_id) VALUES ($1, $2, $3)',
-      [result.oauth_token, result.oauth_token_secret, studioId]
-    );
     console.log('[SmugMug OAuth] Parsed token result:', result);
     if (!result.oauth_token || !result.oauth_token_secret) {
       console.error('[SmugMug OAuth] No access token in response:', result);
@@ -141,6 +138,11 @@ router.get('/oauth/callback', async (req, res) => {
       [result.oauth_token, result.oauth_token_secret, studioId]
     );
     console.log('[SmugMug OAuth] Update result:', updateResult);
+    await query(
+      `DELETE FROM studio_smugmug_token_map
+       WHERE oauth_token = $1`,
+      [oauth_token]
+    );
     // Optionally, redirect to admin UI with success message
     res.redirect('/admin/smugmug?connected=1');
   } catch (error) {
@@ -175,6 +177,57 @@ const pushPhotoProgress = (job, payload) => {
 const finishImportJob = (job, updates = {}) => {
   if (!job) return;
   Object.assign(job, updates, { updatedAt: new Date().toISOString() });
+};
+
+const smugMugImportJobs = new Map();
+
+const createImportJob = ({ jobId, studioId, albums }) => {
+  const normalizedJobId = String(jobId || crypto.randomUUID());
+  const selectedAlbums = Array.isArray(albums) ? albums : [];
+  const now = new Date().toISOString();
+  const hasAzureStorage = (
+    !!String(process.env.AZURE_STORAGE_CONNECTION_STRING || '').trim()
+    || (
+      !!String(process.env.AZURE_STORAGE_ACCOUNT || '').trim()
+      && !!String(process.env.AZURE_STORAGE_KEY || '').trim()
+    )
+  ) && !!String(process.env.AZURE_STORAGE_CONTAINER || process.env.AZURE_CONTAINER_NAME || '').trim();
+
+  const job = {
+    jobId: normalizedJobId,
+    studioId,
+    status: 'running',
+    createdAt: now,
+    updatedAt: now,
+    currentAlbumKey: null,
+    currentAlbumName: '',
+    storageMode: hasAzureStorage ? 'azure' : 'smugmug-source',
+    totals: {
+      albumsTotal: selectedAlbums.length,
+      albumsCompleted: 0,
+      photosTotal: 0,
+      photosProcessed: 0,
+      photosImported: 0,
+      photosSkipped: 0,
+      photosFailed: 0,
+    },
+    albums: selectedAlbums.map((album) => ({
+      albumKey: String(album?.albumKey || '').trim(),
+      name: String(album?.name || '').trim() || 'SmugMug Album',
+      status: 'pending',
+      photosTotal: 0,
+      photosProcessed: 0,
+      photosImported: 0,
+      photosSkipped: 0,
+      photosFailed: 0,
+    })),
+    recentPhotos: [],
+    imported: [],
+    error: null,
+  };
+
+  smugMugImportJobs.set(job.jobId, job);
+  return job;
 };
 
 const getStudioIdFromRequest = (req) => {
@@ -224,7 +277,7 @@ const SMUGMUG_API_KEY = process.env.SMUGMUG_API_KEY;
 const SMUGMUG_API_SECRET = process.env.SMUGMUG_API_SECRET;
 
 // --- SmugMug OAuth 1.0a Initiation Endpoint ---
-router.post('/oauth/request-token', authRequired, async (req, res) => {
+router.post('/oauth/request-token', adminRequired, async (req, res) => {
   try {
     // Only allow studio_admin or super_admin
     if (req.user.role !== 'studio_admin' && req.user.role !== 'super_admin') {
@@ -243,7 +296,9 @@ router.post('/oauth/request-token', authRequired, async (req, res) => {
     if (!apiKey || !apiSecret) {
       return res.status(400).json({ error: 'SmugMug API key/secret not configured for this studio.' });
     }
-    const callbackUrl = req.body.callbackUrl || process.env.SMUGMUG_OAUTH_CALLBACK || 'http://localhost:3000/admin/smugmug';
+    const callbackUrl = req.body.callbackUrl
+      || process.env.SMUGMUG_OAUTH_CALLBACK
+      || `${req.protocol}://${req.get('host')}/api/smugmug/oauth/callback`;
     const oauth = OAuth({
       consumer: { key: apiKey, secret: apiSecret },
       signature_method: 'HMAC-SHA1',
@@ -285,6 +340,25 @@ router.post('/oauth/request-token', authRequired, async (req, res) => {
       console.error('[SmugMug OAuth] No oauth_token in response:', { result, text });
       return res.status(500).json({ error: 'No oauth_token in response', details: result });
     }
+
+    await ensureSmugMugTokenMapTable();
+    await query(
+      `IF EXISTS (SELECT 1 FROM studio_smugmug_token_map WHERE oauth_token = $1)
+       BEGIN
+         UPDATE studio_smugmug_token_map
+         SET request_token_secret = $2,
+             studio_id = $3,
+             created_at = CURRENT_TIMESTAMP
+         WHERE oauth_token = $1
+       END
+       ELSE
+       BEGIN
+         INSERT INTO studio_smugmug_token_map (oauth_token, request_token_secret, studio_id)
+         VALUES ($1, $2, $3)
+       END`,
+      [result.oauth_token, result.oauth_token_secret, studioId]
+    );
+
     const authorizeUrl = `https://secure.smugmug.com/services/oauth/1.0a/authorize?oauth_token=${encodeURIComponent(result.oauth_token)}`;
     res.json({
       requestToken: result.oauth_token,
@@ -315,7 +389,7 @@ const ensureSmugMugImportTable = async () => {
   `);
 };
 
-const requestSmugMugJson = async (path, apiKey) => {
+const requestSmugMugJson = async (path, apiKey, authContext = null) => {
   const url = new URL(`https://api.smugmug.com${path}`);
   if (apiKey) {
     url.searchParams.set('APIKey', apiKey);
@@ -326,6 +400,19 @@ const requestSmugMugJson = async (path, apiKey) => {
     'Accept-Version': 'v2',
   };
 
+  if (authContext?.oauth && authContext?.token?.key && authContext?.token?.secret) {
+    const signed = authContext.oauth.toHeader(
+      authContext.oauth.authorize(
+        {
+          url: url.toString(),
+          method: 'GET',
+        },
+        authContext.token
+      )
+    );
+    Object.assign(headers, signed);
+  }
+
   const response = await fetch(url.toString(), { headers });
   if (!response.ok) {
     const text = await response.text();
@@ -334,14 +421,14 @@ const requestSmugMugJson = async (path, apiKey) => {
   return response.json();
 };
 
-const fetchAllSmugMugObjects = async (initialPath, apiKey, locatorNames = []) => {
+const fetchAllSmugMugObjects = async (initialPath, apiKey, locatorNames = [], authContext = null) => {
   const collected = [];
   let nextPath = initialPath;
   let page = 0;
 
   while (nextPath && page < 100) {
     page += 1;
-    const payload = await requestSmugMugJson(nextPath, apiKey);
+    const payload = await requestSmugMugJson(nextPath, apiKey, authContext);
     const response = payload?.Response || {};
 
     for (const locatorName of locatorNames) {
@@ -370,42 +457,118 @@ const normalizeAlbums = (rows) => {
     .filter((a) => a.albumKey);
 };
 
+const isThumbnailLikeUrl = (url) => {
+  const value = String(url || '');
+  return /\/Th\//i.test(value)
+    || /\/Ti\//i.test(value)
+    || /-Th\./i.test(value)
+    || /-Ti\./i.test(value);
+};
+
+const isHttpUrl = (value) => (
+  typeof value === 'string' && /^https?:\/\//i.test(value)
+);
+
+const scoreImageUrl = (url) => {
+  const value = String(url || '');
+  let score = 0;
+  if (/\/O\//i.test(value) || /original/i.test(value)) score += 80;
+  if (/\/X6\//i.test(value) || /\/X5\//i.test(value)) score += 60;
+  if (/\/5K\//i.test(value) || /\/4K\//i.test(value) || /\/3K\//i.test(value)) score += 50;
+  if (/\/X4\//i.test(value) || /\/X3\//i.test(value) || /\/X2\//i.test(value)) score += 40;
+  if (/\/XL\//i.test(value) || /\/L\//i.test(value) || /large/i.test(value)) score += 30;
+  if (/archive/i.test(value)) score += 20;
+  if (isThumbnailLikeUrl(value)) score -= 200;
+  return score;
+};
+
+const collectHttpUrls = (value, seen = new WeakSet(), depth = 0) => {
+  if (depth > 5 || value == null) return [];
+  if (typeof value === 'string') {
+    return isHttpUrl(value) ? [value] : [];
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => collectHttpUrls(item, seen, depth + 1));
+  }
+  if (typeof value !== 'object') {
+    return [];
+  }
+  if (seen.has(value)) {
+    return [];
+  }
+  seen.add(value);
+
+  const out = [];
+  for (const key of Object.keys(value)) {
+    const nested = value[key];
+    if (isHttpUrl(nested)) {
+      out.push(nested);
+      continue;
+    }
+    out.push(...collectHttpUrls(nested, seen, depth + 1));
+  }
+  return out;
+};
+
+const pickBestCandidateUrl = (urls) => {
+  const unique = Array.from(new Set((Array.isArray(urls) ? urls : []).filter(isHttpUrl)));
+  if (!unique.length) return null;
+
+  const sorted = unique.sort((a, b) => scoreImageUrl(b) - scoreImageUrl(a));
+  return sorted.find((url) => !isThumbnailLikeUrl(url)) || null;
+};
+
 const pickBestImageUrl = (image) => {
   const direct = [
     image?.OriginalUrl,
+    image?.ArchiveUrl,
+    image?.X6LargeUrl,
     image?.LargestVideoUrl,
+    image?.X5LargeVideoUrl,
     image?.X5LargeUrl,
     image?.X4LargeUrl,
+    image?.FiveKUrl,
+    image?.FourKUrl,
+    image?.ThreeKUrl,
     image?.X3LargeUrl,
     image?.X2LargeUrl,
     image?.XLargeUrl,
     image?.LargeUrl,
-    image?.MediumUrl,
-    image?.SmallUrl,
-    image?.ThumbnailUrl,
+    image?.LargestImageUrl,
+    image?.DownloadUrl,
     image?.Url,
-  ].find((value) => typeof value === 'string' && /^https?:\/\//i.test(value));
+  ].find((value) => isHttpUrl(value));
 
   if (direct) return direct;
   return null;
 };
 
 const pickLargestFromImageSizes = (sizes) => {
-  if (!Array.isArray(sizes) || !sizes.length) return null;
+  const normalized = Array.isArray(sizes)
+    ? sizes
+    : (sizes && typeof sizes === 'object' ? Object.values(sizes) : []);
+  if (!normalized.length) return null;
 
-  const withUrl = sizes
+  const withUrl = normalized
     .map((size) => {
       const url = [
         size?.OriginalUrl,
         size?.Url,
-        size?.UrlTemplate,
-        size?.Uri,
+        size?.MediaUri,
+        size?.Cdn,
       ].find((value) => typeof value === 'string' && /^https?:\/\//i.test(value));
       const width = Number(size?.Width || 0);
       const height = Number(size?.Height || 0);
       const area = width > 0 && height > 0 ? width * height : 0;
-      const label = String(size?.Label || size?.Key || '').toLowerCase();
-      return { url, area, label };
+      const label = String(size?.Label || size?.Key || size?.Name || '').toLowerCase();
+      const labelScore =
+        label === 'original' ? 100
+          : /x6|x5|5k|4k|3k/.test(label) ? 80
+            : /x4|x3|x2/.test(label) ? 60
+              : /xl|large/.test(label) ? 40
+                : /thumbnail|thumb|ti|th/.test(label) ? -100
+                  : 0;
+      return { url, area, label, labelScore };
     })
     .filter((row) => row.url);
 
@@ -416,30 +579,168 @@ const pickLargestFromImageSizes = (sizes) => {
     return explicitOriginal.url;
   }
 
-  withUrl.sort((a, b) => b.area - a.area);
+  withUrl.sort((a, b) => {
+    if (b.labelScore !== a.labelScore) return b.labelScore - a.labelScore;
+    if (b.area !== a.area) return b.area - a.area;
+    return scoreImageUrl(b.url) - scoreImageUrl(a.url);
+  });
   return withUrl[0]?.url || null;
 };
 
-const resolveSmugMugSourceUrl = async (image, apiKey) => {
-  const directOriginal = typeof image?.OriginalUrl === 'string' && /^https?:\/\//i.test(image.OriginalUrl)
+const pickOriginalFromImageSizes = (sizes) => {
+  const normalized = Array.isArray(sizes)
+    ? sizes
+    : (sizes && typeof sizes === 'object' ? Object.values(sizes) : []);
+  if (!normalized.length) return null;
+
+  const withUrl = normalized
+    .map((size) => {
+      const url = [
+        size?.OriginalUrl,
+        size?.Url,
+        size?.MediaUri,
+        size?.Cdn,
+      ].find((value) => typeof value === 'string' && /^https?:\/\//i.test(value));
+      const label = String(size?.Label || size?.Key || size?.Name || '').toLowerCase();
+      return { url, label };
+    })
+    .filter((row) => row.url);
+
+  if (!withUrl.length) return null;
+
+  const explicitOriginal = withUrl.find((row) => /original/.test(row.label));
+  if (explicitOriginal?.url) {
+    return explicitOriginal.url;
+  }
+
+  return null;
+};
+
+const extractSizeRows = (response) => {
+  // SmugMug !sizedetails returns: { ImageSizeDetails: { ImageSizeOriginal: { Url, Width, Height, ... }, ImageSizeLarge: {...}, ... } }
+  // Each key's value IS a size row. We collect all values.
+  const candidate = response?.ImageSizeDetails
+    || response?.ImageSizes
+    || response?.ImageSize
+    || [];
+  if (Array.isArray(candidate)) return candidate;
+  if (candidate && typeof candidate === 'object') {
+    return Object.entries(candidate).map(([key, val]) => {
+      // Attach the key as a Label/Name so scoring can identify 'original'
+      if (val && typeof val === 'object' && !val.Label && !val.Name) {
+        return { ...val, Name: key };
+      }
+      return val;
+    }).filter(Boolean);
+  }
+  return [];
+};
+
+const resolveSmugMugSourceUrl = async (image, apiKey, authContext = null) => {
+  const directOriginal = isHttpUrl(image?.OriginalUrl)
     ? image.OriginalUrl
     : null;
   if (directOriginal) {
     return { sourceUrl: directOriginal, urlType: 'OriginalUrl' };
   }
 
+  const directArchive = isHttpUrl(image?.ArchiveUrl)
+    ? image.ArchiveUrl
+    : null;
+  if (directArchive) {
+    return { sourceUrl: directArchive, urlType: 'ArchiveUrl' };
+  }
+
+  // SmugMug watermarks are usually applied to display/derived sizes. Prefer strict original-only
+  // resolution when the image indicates Watermark is enabled.
+  const strictOriginalOnly = !!image?.Watermark;
+
+  const largestImageUris = [
+    image?.Uris?.LargestImage?.Uri,
+    image?.Uri ? `${String(image.Uri).replace(/\/+$/, '')}!largestimage` : null,
+    image?.ImageUri ? `${String(image.ImageUri).replace(/\/+$/, '')}!largestimage` : null,
+    image?.ImageKey ? `/api/v2/image/${encodeURIComponent(image.ImageKey)}!largestimage` : null,
+    image?.Key ? `/api/v2/image/${encodeURIComponent(image.Key)}!largestimage` : null,
+  ].filter((uri, index, arr) => typeof uri === 'string' && uri.startsWith('/api/v2/') && arr.indexOf(uri) === index);
+
+  for (const largestUri of largestImageUris) {
+    if (strictOriginalOnly) {
+      continue;
+    }
+    try {
+      const largestPayload = await requestSmugMugJson(largestUri, apiKey, authContext);
+      const largestResponse = largestPayload?.Response || {};
+      const largestCandidates = [
+        largestResponse?.LargestImage?.Url,
+        largestResponse?.LargestImage?.OriginalUrl,
+        largestResponse?.Image?.Url,
+        largestResponse?.Image?.OriginalUrl,
+      ];
+      const largestUrl = pickBestCandidateUrl([
+        ...largestCandidates,
+        ...collectHttpUrls(largestResponse),
+      ]);
+      if (largestUrl) {
+        return { sourceUrl: largestUrl, urlType: `largest:${largestUri}` };
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error || '');
+      if (/SmugMug request failed \(401\)/i.test(message)) {
+        throw error;
+      }
+      // ignore non-auth errors and continue with other strategies
+    }
+  }
+
   const detailUris = [
     image?.Uri,
+    image?.ImageUri,
     image?.ArchivedUri,
+    image?.Uris?.Image?.Uri,
+    image?.Uris?.LargestImage?.Uri,
+    image?.Uris?.ImageDownload?.Uri,
+    image?.ImageKey ? `/api/v2/image/${encodeURIComponent(image.ImageKey)}` : null,
+    image?.ImageKey ? `/api/v2/image/${encodeURIComponent(image.ImageKey)}!sizes` : null,
+    image?.Key ? `/api/v2/image/${encodeURIComponent(image.Key)}` : null,
+    image?.Key ? `/api/v2/image/${encodeURIComponent(image.Key)}!sizes` : null,
   ].filter((uri, index, arr) => typeof uri === 'string' && uri.startsWith('/api/v2/') && arr.indexOf(uri) === index);
 
   for (const uri of detailUris) {
     try {
-      const imagePayload = await requestSmugMugJson(uri, apiKey);
-      const nested = imagePayload?.Response?.Image || imagePayload?.Response || {};
+      const imagePayload = await requestSmugMugJson(uri, apiKey, authContext);
+      const nested = imagePayload?.Response?.Image || imagePayload?.Response?.AlbumImage || imagePayload?.Response || {};
 
-      if (typeof nested?.OriginalUrl === 'string' && /^https?:\/\//i.test(nested.OriginalUrl)) {
+      if (isHttpUrl(nested?.OriginalUrl)) {
         return { sourceUrl: nested.OriginalUrl, urlType: `detail:${uri}:OriginalUrl` };
+      }
+
+      if (isHttpUrl(nested?.ArchiveUrl)) {
+        return { sourceUrl: nested.ArchiveUrl, urlType: `detail:${uri}:ArchiveUrl` };
+      }
+
+      const nestedStrictOriginalOnly = strictOriginalOnly || !!nested?.Watermark;
+
+      const sizeUris = [
+        nested?.Uris?.ImageSizeDetails?.Uri,
+        nested?.Uris?.ImageSizes?.Uri,
+      ].filter((value, index, arr) => typeof value === 'string' && value.startsWith('/api/v2/') && arr.indexOf(value) === index);
+
+      for (const sizesUri of sizeUris) {
+        const sizesPayload = await requestSmugMugJson(sizesUri, apiKey, authContext);
+        const sizeRows = extractSizeRows(sizesPayload?.Response || {});
+        const selectedUrl = nestedStrictOriginalOnly
+          ? pickOriginalFromImageSizes(sizeRows)
+          : pickLargestFromImageSizes(sizeRows);
+        if (selectedUrl) {
+          return {
+            sourceUrl: selectedUrl,
+            urlType: nestedStrictOriginalOnly ? `sizes-original:${sizesUri}` : `sizes:${sizesUri}`,
+          };
+        }
+      }
+
+      if (nestedStrictOriginalOnly) {
+        continue;
       }
 
       const nestedBest = pickBestImageUrl(nested);
@@ -447,63 +748,146 @@ const resolveSmugMugSourceUrl = async (image, apiKey) => {
         return { sourceUrl: nestedBest, urlType: `detail:${uri}:best` };
       }
 
-      const sizesUri = nested?.Uris?.ImageSizes?.Uri;
-      if (typeof sizesUri === 'string' && sizesUri.startsWith('/api/v2/')) {
-        const sizesPayload = await requestSmugMugJson(sizesUri, apiKey);
-        const sizeRows = sizesPayload?.Response?.ImageSizes || sizesPayload?.Response?.ImageSize || [];
-        const largestUrl = pickLargestFromImageSizes(sizeRows);
-        if (largestUrl) {
-          return { sourceUrl: largestUrl, urlType: `sizes:${sizesUri}` };
-        }
+      const discoveredNestedUrl = pickBestCandidateUrl(collectHttpUrls(nested));
+      if (discoveredNestedUrl) {
+        return { sourceUrl: discoveredNestedUrl, urlType: `detail:${uri}:discovered` };
       }
-    } catch {
-      // ignore per-image failures and continue to next strategy
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error || '');
+      if (/SmugMug request failed \(401\)/i.test(message)) {
+        throw error;
+      }
+      // ignore non-auth per-image failures and continue to next strategy
     }
   }
 
-  const topLevelSizesUri = image?.Uris?.ImageSizes?.Uri;
-  if (typeof topLevelSizesUri === 'string' && topLevelSizesUri.startsWith('/api/v2/')) {
+  const topLevelSizeUris = [
+    image?.Uris?.ImageSizeDetails?.Uri,
+    image?.Uris?.ImageSizes?.Uri,
+    image?.ImageKey ? `/api/v2/image/${encodeURIComponent(image.ImageKey)}!sizedetails` : null,
+    image?.ImageKey ? `/api/v2/image/${encodeURIComponent(image.ImageKey)}!sizes` : null,
+    image?.Key ? `/api/v2/image/${encodeURIComponent(image.Key)}!sizedetails` : null,
+    image?.Key ? `/api/v2/image/${encodeURIComponent(image.Key)}!sizes` : null,
+  ].filter((value, index, arr) => typeof value === 'string' && value.startsWith('/api/v2/') && arr.indexOf(value) === index);
+
+  for (const topLevelSizesUri of topLevelSizeUris) {
     try {
-      const sizesPayload = await requestSmugMugJson(topLevelSizesUri, apiKey);
-      const sizeRows = sizesPayload?.Response?.ImageSizes || sizesPayload?.Response?.ImageSize || [];
-      const largestUrl = pickLargestFromImageSizes(sizeRows);
-      if (largestUrl) {
-        return { sourceUrl: largestUrl, urlType: `sizes:${topLevelSizesUri}` };
+      const sizesPayload = await requestSmugMugJson(topLevelSizesUri, apiKey, authContext);
+      const sizeRows = extractSizeRows(sizesPayload?.Response || {});
+      const selectedUrl = strictOriginalOnly
+        ? pickOriginalFromImageSizes(sizeRows)
+        : pickLargestFromImageSizes(sizeRows);
+      if (selectedUrl) {
+        return {
+          sourceUrl: selectedUrl,
+          urlType: strictOriginalOnly ? `sizes-original:${topLevelSizesUri}` : `sizes:${topLevelSizesUri}`,
+        };
       }
-    } catch {
-      // ignore and fall back
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error || '');
+      if (/SmugMug request failed \(401\)/i.test(message)) {
+        throw error;
+      }
+      // ignore non-auth and fall back
     }
+  }
+
+  if (strictOriginalOnly) {
+    return { sourceUrl: null, urlType: 'watermark-no-original' };
   }
 
   const fallback = pickBestImageUrl(image);
-  if (fallback) {
+  if (fallback && !isThumbnailLikeUrl(fallback)) {
     return { sourceUrl: fallback, urlType: 'fallback-best' };
+  }
+
+  const discoveredTopLevelUrl = pickBestCandidateUrl(collectHttpUrls(image));
+  if (discoveredTopLevelUrl) {
+    return { sourceUrl: discoveredTopLevelUrl, urlType: 'fallback-discovered' };
   }
 
   return { sourceUrl: null, urlType: 'none' };
 };
 
-const listAlbumImages = async (albumKey, apiKey) => {
-  const rows = await fetchAllSmugMugObjects(
-    `/api/v2/album/${encodeURIComponent(albumKey)}!images?count=100&_verbosity=1`,
+const listAlbumImages = async (albumKey, apiKey, authContext = null) => {
+  let rows = [];
+
+  const albumPayload = await requestSmugMugJson(`/api/v2/album/${encodeURIComponent(albumKey)}`, apiKey, authContext);
+  const albumImagesUri = albumPayload?.Response?.Album?.Uris?.AlbumImages?.Uri;
+
+  const albumImagesPath = typeof albumImagesUri === 'string' && albumImagesUri.startsWith('/api/v2/')
+    ? `${albumImagesUri}${albumImagesUri.includes('?') ? '&' : '?'}count=100&_verbosity=2`
+    : `/api/v2/album/${encodeURIComponent(albumKey)}!images?count=100&_verbosity=2`;
+
+  rows = await fetchAllSmugMugObjects(
+    albumImagesPath,
     apiKey,
-    ['AlbumImage', 'Image']
+    ['AlbumImage', 'Image'],
+    authContext
   );
 
   const out = [];
-  for (const image of rows) {
-    const { sourceUrl, urlType } = await resolveSmugMugSourceUrl(image, apiKey);
-    if (!sourceUrl) continue;
-    // Log which URL is used for import
-    console.log(`[SmugMug Import] Album ${albumKey} - Image ${image?.FileName || image?.Name}: Using ${urlType} (${sourceUrl})`);
+  for (const imageRow of rows) {
+    const image = imageRow?.Image || imageRow;
+    const fileName = image?.FileName || image?.Name || '(unknown)';
+    let sourceUrl = null;
+    let urlType = 'none';
+    try {
+      const result = await resolveSmugMugSourceUrl(image, apiKey, authContext);
+      sourceUrl = result.sourceUrl;
+      urlType = result.urlType;
+    } catch (err) {
+      continue;
+    }
+
+    if (!sourceUrl) {
+      continue;
+    }
+
+    if (isThumbnailLikeUrl(sourceUrl)) {
+      continue;
+    }
     out.push({
       id: image?.ImageKey || image?.Key || crypto.randomUUID(),
-      fileName: image?.FileName || image?.Name || `smugmug-${Date.now()}.jpg`,
+      fileName,
       description: image?.Caption || image?.Title || '',
       sourceUrl,
+      sourceUrlType: urlType,
     });
   }
   return out;
+};
+
+const getAlbumCoverImageKey = async (albumKey, apiKey, authContext = null) => {
+  try {
+    const albumPayload = await requestSmugMugJson(`/api/v2/album/${encodeURIComponent(albumKey)}`, apiKey, authContext);
+    const album = albumPayload?.Response?.Album || {};
+
+    const directCandidates = [
+      album?.HighlightImage?.ImageKey,
+      album?.HighlightImage?.Key,
+      album?.HighlightImageKey,
+      album?.CoverImage?.ImageKey,
+      album?.CoverImage?.Key,
+    ].map((v) => String(v || '').trim()).filter(Boolean);
+
+    if (directCandidates.length) {
+      return directCandidates[0];
+    }
+
+    const highlightUri = album?.Uris?.HighlightImage?.Uri;
+    if (typeof highlightUri === 'string' && highlightUri.startsWith('/api/v2/')) {
+      const highlightPayload = await requestSmugMugJson(highlightUri, apiKey, authContext);
+      const root = highlightPayload?.Response || {};
+      const image = root?.Image || root?.HighlightImage || root;
+      const key = String(image?.ImageKey || image?.Key || '').trim();
+      if (key) return key;
+    }
+  } catch (error) {
+    // ignore cover lookup issues and fall back to first imported photo
+  }
+
+  return null;
 };
 
 const makeBlobName = (albumId, originalName) => {
@@ -513,11 +897,23 @@ const makeBlobName = (albumId, originalName) => {
   return `albums/${albumId}/${stamp}-${random}-${safe}`;
 };
 
+const isAzureStorageConfigured = () => {
+  const hasConnectionString = !!String(process.env.AZURE_STORAGE_CONNECTION_STRING || '').trim();
+  const hasAccountAndKey = !!String(process.env.AZURE_STORAGE_ACCOUNT || '').trim()
+    && !!String(process.env.AZURE_STORAGE_KEY || '').trim();
+  const hasContainer = !!String(process.env.AZURE_STORAGE_CONTAINER || process.env.AZURE_CONTAINER_NAME || '').trim();
+  return hasContainer && (hasConnectionString || hasAccountAndKey);
+};
+
+const getSmugMugStorageMode = () => (
+  isAzureStorageConfigured() ? 'azure' : 'smugmug-source'
+);
+
 const uploadImportedImage = async (albumId, image, imageBuffer) => {
   const contentType = 'image/jpeg';
   const blobName = makeBlobName(albumId, image.fileName);
 
-  if (!process.env.AZURE_STORAGE_CONNECTION_STRING) {
+  if (!isAzureStorageConfigured()) {
     return {
       url: image.sourceUrl,
       storage: 'smugmug-source',
@@ -531,7 +927,51 @@ const uploadImportedImage = async (albumId, image, imageBuffer) => {
   };
 };
 
-router.get('/config', authRequired, async (req, res) => {
+router.get('/admin/vendor-integrations', adminRequired, async (req, res) => {
+  try {
+    if (req.user.role !== 'studio_admin' && req.user.role !== 'super_admin') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    const studioId = getStudioIdFromRequest(req);
+    if (!studioId) {
+      return res.json({
+        oauthRequired: true,
+        connected: false,
+        studioRequired: true,
+        message: 'Select a studio to configure SmugMug.',
+      });
+    }
+
+    await ensureSmugMugConfigTable();
+    const config = await queryRow(
+      `SELECT access_token as accessToken, access_token_secret as accessTokenSecret
+       FROM studio_smugmug_config
+       WHERE studio_id = $1`,
+      [studioId]
+    );
+
+    const connected = !!(String(config?.accessToken || '').trim() && String(config?.accessTokenSecret || '').trim());
+
+    res.json({
+      connected,
+      oauthRequired: !connected,
+      message: connected ? 'SmugMug connected.' : 'SmugMug connection required.',
+      integrations: [
+        {
+          id: 'smugmug',
+          name: 'SmugMug',
+          connected,
+        },
+      ],
+    });
+  } catch (error) {
+    console.error('SmugMug vendor integrations error:', error);
+    res.status(500).json({ error: 'Failed to fetch vendor integrations' });
+  }
+});
+
+router.get('/config', adminRequired, async (req, res) => {
   try {
     if (req.user.role !== 'studio_admin' && req.user.role !== 'super_admin') {
       return res.status(403).json({ error: 'Unauthorized' });
@@ -539,6 +979,12 @@ router.get('/config', authRequired, async (req, res) => {
 
     const studioId = getStudioIdFromRequest(req);
     if (!studioId) return res.status(400).json({ error: 'Studio context is required' });
+
+    await loadMssql();
+    const studio = await queryRow('SELECT id FROM studios WHERE id = $1', [studioId]);
+    if (!studio) {
+      return res.status(400).json({ error: 'Selected studio is invalid. Choose a valid studio and try again.' });
+    }
 
     await ensureSmugMugConfigTable();
     await ensureSmugMugImportTable();
@@ -564,7 +1010,7 @@ router.get('/config', authRequired, async (req, res) => {
   }
 });
 
-router.put('/config', authRequired, async (req, res) => {
+router.put('/config', adminRequired, async (req, res) => {
   try {
     if (req.user.role !== 'studio_admin' && req.user.role !== 'super_admin') {
       return res.status(403).json({ error: 'Unauthorized' });
@@ -604,7 +1050,7 @@ router.put('/config', authRequired, async (req, res) => {
   }
 });
 
-router.get('/albums', authRequired, async (req, res) => {
+router.get('/albums', adminRequired, async (req, res) => {
   try {
     if (req.user.role !== 'studio_admin' && req.user.role !== 'super_admin') {
       return res.status(403).json({ error: 'Unauthorized' });
@@ -613,27 +1059,55 @@ router.get('/albums', authRequired, async (req, res) => {
     const studioId = getStudioIdFromRequest(req);
     if (!studioId) return res.status(400).json({ error: 'Studio context is required' });
 
+    await loadMssql();
+    const studio = await queryRow('SELECT id FROM studios WHERE id = $1', [studioId]);
+    if (!studio) {
+      return res.status(400).json({ error: 'Selected studio is invalid. Choose a valid studio and try again.' });
+    }
+
     await ensureSmugMugConfigTable();
     await ensureSmugMugImportTable();
 
     const config = await queryRow(
-      `SELECT nickname, api_key as apiKey
+      `SELECT nickname, api_key as apiKey, api_secret as apiSecret, access_token as accessToken, access_token_secret as accessTokenSecret
        FROM studio_smugmug_config
        WHERE studio_id = $1`,
       [studioId]
     );
 
     const nickname = String(req.query.nickname || config?.nickname || '').trim();
-    const apiKey = String(req.query.apiKey || config?.apiKey || process.env.SMUGMUG_API_KEY || '').trim();
+    const apiKey = String(config?.apiKey || req.query.apiKey || process.env.SMUGMUG_API_KEY || '').trim();
+    const apiSecret = String(config?.apiSecret || process.env.SMUGMUG_API_SECRET || '').trim();
+    const accessToken = String(config?.accessToken || '').trim();
+    const accessTokenSecret = String(config?.accessTokenSecret || '').trim();
 
     if (!nickname) {
       return res.status(400).json({ error: 'SmugMug nickname is required' });
     }
 
+    let authContext = null;
+    if (apiKey && apiSecret && accessToken && accessTokenSecret) {
+      const oauth = OAuth({
+        consumer: { key: apiKey, secret: apiSecret },
+        signature_method: 'HMAC-SHA1',
+        hash_function(base_string, key) {
+          return crypto.createHmac('sha1', key).update(base_string).digest('base64');
+        },
+      });
+      authContext = {
+        oauth,
+        token: {
+          key: accessToken,
+          secret: accessTokenSecret,
+        },
+      };
+    }
+
     const albumRows = await fetchAllSmugMugObjects(
       `/api/v2/user/${encodeURIComponent(nickname)}!albums?count=100`,
       apiKey,
-      ['Album', 'Albums']
+      ['Album', 'Albums'],
+      authContext
     );
     const albums = normalizeAlbums(albumRows);
 
@@ -672,7 +1146,7 @@ router.get('/albums', authRequired, async (req, res) => {
   }
 });
 
-router.get('/import-progress/:jobId', authRequired, async (req, res) => {
+router.get('/import-progress/:jobId', adminRequired, async (req, res) => {
   try {
     if (req.user.role !== 'studio_admin' && req.user.role !== 'super_admin') {
       return res.status(403).json({ error: 'Unauthorized' });
@@ -698,7 +1172,8 @@ router.get('/import-progress/:jobId', authRequired, async (req, res) => {
   }
 });
 
-router.post('/import', authRequired, async (req, res) => {
+router.post('/import', adminRequired, async (req, res) => {
+  let importJob = null;
   try {
     if (req.user.role !== 'studio_admin' && req.user.role !== 'super_admin') {
       return res.status(403).json({ error: 'Unauthorized' });
@@ -707,20 +1182,47 @@ router.post('/import', authRequired, async (req, res) => {
     const studioId = getStudioIdFromRequest(req);
     if (!studioId) return res.status(400).json({ error: 'Studio context is required' });
 
+    await loadMssql();
+    const studio = await queryRow('SELECT id FROM studios WHERE id = $1', [studioId]);
+    if (!studio) {
+      return res.status(400).json({ error: 'Selected studio is invalid. Choose a valid studio and try again.' });
+    }
+
     await ensureSmugMugConfigTable();
     await ensureSmugMugImportTable();
 
     const config = await queryRow(
-      `SELECT nickname, api_key as apiKey
+      `SELECT nickname, api_key as apiKey, api_secret as apiSecret, access_token as accessToken, access_token_secret as accessTokenSecret
        FROM studio_smugmug_config
        WHERE studio_id = $1`,
       [studioId]
     );
 
     const nickname = String(req.body?.nickname || config?.nickname || '').trim();
-    const apiKey = String(config?.apiKey || process.env.SMUGMUG_API_KEY || '').trim();
+    const apiKey = String(config?.apiKey || req.body?.apiKey || process.env.SMUGMUG_API_KEY || '').trim();
+    const apiSecret = String(config?.apiSecret || process.env.SMUGMUG_API_SECRET || '').trim();
+    const accessToken = String(config?.accessToken || '').trim();
+    const accessTokenSecret = String(config?.accessTokenSecret || '').trim();
     const selectedAlbums = Array.isArray(req.body?.albums) ? req.body.albums : [];
     const requestedJobId = String(req.body?.jobId || '').trim();
+
+    let authContext = null;
+    if (apiKey && apiSecret && accessToken && accessTokenSecret) {
+      const oauth = OAuth({
+        consumer: { key: apiKey, secret: apiSecret },
+        signature_method: 'HMAC-SHA1',
+        hash_function(base_string, key) {
+          return crypto.createHmac('sha1', key).update(base_string).digest('base64');
+        },
+      });
+      authContext = {
+        oauth,
+        token: {
+          key: accessToken,
+          secret: accessTokenSecret,
+        },
+      };
+    }
 
     if (!nickname) {
       return res.status(400).json({ error: 'SmugMug nickname is required' });
@@ -730,7 +1232,19 @@ router.post('/import', authRequired, async (req, res) => {
       return res.status(400).json({ error: 'Select at least one album to import' });
     }
 
-    const importJob = createImportJob({
+    // Warn clearly if OAuth is missing — SmugMug will only return public/thumbnail URLs without it
+    if (!authContext) {
+      const msg = `[SmugMug Import] WARNING: No OAuth credentials found for studioId=${studioId}. ` +
+        `accessToken=${accessToken ? 'SET' : 'MISSING'}, accessTokenSecret=${accessTokenSecret ? 'SET' : 'MISSING'}. ` +
+        `Full-size images CANNOT be downloaded from private albums without OAuth. Please re-connect SmugMug.`;
+      console.warn(msg);
+      return res.status(401).json({
+        error: 'SmugMug OAuth credentials are missing or expired. Please reconnect SmugMug to continue.',
+        needsOAuth: true,
+      });
+    }
+
+    importJob = createImportJob({
       jobId: requestedJobId,
       studioId,
       albums: selectedAlbums,
@@ -742,7 +1256,87 @@ router.post('/import', authRequired, async (req, res) => {
       const albumKey = String(selected?.albumKey || '').trim();
       const albumName = String(selected?.name || '').trim() || 'SmugMug Album';
       const albumDescription = String(selected?.description || '').trim() || null;
-            // ...existing code...
+      if (!albumKey) {
+        continue;
+      }
+
+      const smugMugCoverImageKey = await getAlbumCoverImageKey(albumKey, apiKey, authContext);
+
+      const albumProgress = getAlbumProgress(importJob, albumKey);
+      if (albumProgress) {
+        albumProgress.status = 'preparing';
+      }
+
+      importJob.currentAlbumKey = albumKey;
+      importJob.currentAlbumName = albumName;
+      touchImportJob(importJob);
+
+      const existingImport = await queryRow(
+        `SELECT local_album_id as localAlbumId
+         FROM studio_smugmug_imports
+         WHERE studio_id = $1 AND smugmug_album_key = $2`,
+        [studioId, albumKey]
+      );
+
+      let images = [];
+      try {
+        images = await listAlbumImages(albumKey, apiKey, authContext);
+      } catch (imageError) {
+        const errMsg = imageError instanceof Error ? imageError.message : String(imageError);
+        // Continue with the next album if one album cannot be listed
+        if (albumProgress) {
+          albumProgress.status = 'failed';
+          albumProgress.photosTotal = 0;
+          albumProgress.photosProcessed = 0;
+          albumProgress.photosFailed = 0;
+          albumProgress.error = errMsg;
+        }
+        touchImportJob(importJob);
+        continue;
+      }
+
+      if (!images.length) {
+        if (existingImport?.localAlbumId) {
+          const emptyAlbum = await queryRow(
+            `SELECT id
+             FROM albums
+             WHERE id = $1 AND studio_id = $2 AND COALESCE(photo_count, 0) = 0`,
+            [existingImport.localAlbumId, studioId]
+          );
+
+          if (emptyAlbum) {
+            await query(
+              `DELETE FROM studio_smugmug_imports
+               WHERE studio_id = $1 AND smugmug_album_key = $2`,
+              [studioId, albumKey]
+            );
+            await query(
+              `DELETE FROM albums
+               WHERE id = $1 AND studio_id = $2 AND COALESCE(photo_count, 0) = 0`,
+              [existingImport.localAlbumId, studioId]
+            );
+          }
+        }
+
+        if (albumProgress) {
+          albumProgress.status = 'failed';
+          albumProgress.photosTotal = 0;
+          albumProgress.photosProcessed = 0;
+          albumProgress.photosFailed = 0;
+        }
+
+        pushPhotoProgress(importJob, {
+          albumKey,
+          albumName,
+          fileName: '(album)',
+          status: 'failed',
+          detail: authContext
+            ? 'No full-size image URLs were available for this album.'
+            : 'No OriginalUrl/full-size image URLs were available. Connect SmugMug OAuth and retry import.',
+        });
+
+        continue;
+      }
 
       let album = null;
       if (existingImport?.localAlbumId) {
@@ -774,7 +1368,6 @@ router.post('/import', authRequired, async (req, res) => {
       }
 
       const albumId = Number(album.id);
-      const images = await listAlbumImages(albumKey, apiKey);
 
       if (albumProgress) {
         albumProgress.status = 'importing';
@@ -784,17 +1377,38 @@ router.post('/import', authRequired, async (req, res) => {
       touchImportJob(importJob);
 
       let importedPhotoCount = 0;
+      let firstImportedPhotoId = null;
+      let matchedCoverPhotoId = null;
       for (const image of images) {
         const exists = await queryRow(
-          'SELECT TOP 1 id FROM photos WHERE album_id = $1 AND file_name = $2',
+          'SELECT TOP 1 id, width, height FROM photos WHERE album_id = $1 AND file_name = $2',
           [albumId, image.fileName]
         );
-        if (exists) {
+        const existingWidth = Number(exists?.width || 0);
+        const existingHeight = Number(exists?.height || 0);
+        const existingIsThumbnail = !!exists
+          && existingWidth > 0
+          && existingHeight > 0
+          && existingWidth <= 200
+          && existingHeight <= 200;
+
+        if (exists && !existingIsThumbnail) {
           importJob.totals.photosProcessed += 1;
           importJob.totals.photosSkipped += 1;
           if (albumProgress) {
             albumProgress.photosProcessed += 1;
             albumProgress.photosSkipped += 1;
+          }
+          if (!firstImportedPhotoId) {
+            firstImportedPhotoId = Number(exists.id || 0) || null;
+          }
+          if (
+            !matchedCoverPhotoId
+            && smugMugCoverImageKey
+            && String(image.id || '').trim()
+            && String(image.id).trim() === String(smugMugCoverImageKey).trim()
+          ) {
+            matchedCoverPhotoId = Number(exists.id || 0) || null;
           }
           pushPhotoProgress(importJob, {
             albumKey,
@@ -810,7 +1424,25 @@ router.post('/import', authRequired, async (req, res) => {
         let width = null;
         let height = null;
         try {
-          const response = await fetch(image.sourceUrl);
+          const downloadHeaders = {};
+          if (authContext?.oauth && authContext?.token?.key && authContext?.token?.secret && /^https:\/\/api\.smugmug\.com/i.test(String(image.sourceUrl || ''))) {
+            Object.assign(
+              downloadHeaders,
+              authContext.oauth.toHeader(
+                authContext.oauth.authorize(
+                  {
+                    url: image.sourceUrl,
+                    method: 'GET',
+                  },
+                  authContext.token
+                )
+              )
+            );
+          }
+
+          const response = await fetch(image.sourceUrl, {
+            headers: downloadHeaders,
+          });
           if (!response.ok) {
             importJob.totals.photosProcessed += 1;
             importJob.totals.photosFailed += 1;
@@ -839,7 +1471,6 @@ router.post('/import', authRequired, async (req, res) => {
           } catch (metaErr) {
             console.warn('Failed to get image dimensions:', metaErr);
           }
-          console.log(`SmugMug import: fileName=${image.fileName}, bufferSize=${imageBuffer.length}, width=${width}, height=${height}`);
         } catch (error) {
           importJob.totals.photosProcessed += 1;
           importJob.totals.photosFailed += 1;
@@ -859,27 +1490,79 @@ router.post('/import', authRequired, async (req, res) => {
 
         const uploadedImage = await uploadImportedImage(albumId, image, imageBuffer);
 
-        await query(
-          `INSERT INTO photos (album_id, file_name, thumbnail_url, full_image_url, description, metadata, file_size_bytes, width, height)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-          [
-            albumId,
-            image.fileName,
-            uploadedImage.url,
-            uploadedImage.url,
-            image.description || '',
-            JSON.stringify({
-              source: 'smugmug',
-              smugmugImageId: image.id,
-              importedAt: new Date().toISOString(),
-              storage: uploadedImage.storage,
-              originalSourceUrl: image.sourceUrl,
-            }),
-            imageBuffer.length,
-            width,
-            height,
-          ]
-        );
+        const metadataJson = JSON.stringify({
+          source: 'smugmug',
+          smugmugImageId: image.id,
+          importedAt: new Date().toISOString(),
+          storage: uploadedImage.storage,
+          originalSourceUrl: image.sourceUrl,
+          sourceUrlType: image.sourceUrlType || 'unknown',
+        });
+
+        if (exists?.id && existingIsThumbnail) {
+          await query(
+            `UPDATE photos
+             SET thumbnail_url = $1,
+                 full_image_url = $2,
+                 description = $3,
+                 metadata = $4,
+                 file_size_bytes = $5,
+                 width = $6,
+                 height = $7
+             WHERE id = $8`,
+            [
+              uploadedImage.url,
+              uploadedImage.url,
+              image.description || '',
+              metadataJson,
+              imageBuffer.length,
+              width,
+              height,
+              exists.id,
+            ]
+          );
+          if (!firstImportedPhotoId) {
+            firstImportedPhotoId = Number(exists.id || 0) || null;
+          }
+          if (
+            !matchedCoverPhotoId
+            && smugMugCoverImageKey
+            && String(image.id || '').trim()
+            && String(image.id).trim() === String(smugMugCoverImageKey).trim()
+          ) {
+            matchedCoverPhotoId = Number(exists.id || 0) || null;
+          }
+        } else {
+          const insertedPhoto = await queryRow(
+            `INSERT INTO photos (album_id, file_name, thumbnail_url, full_image_url, description, metadata, file_size_bytes, width, height)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+             RETURNING id`,
+            [
+              albumId,
+              image.fileName,
+              uploadedImage.url,
+              uploadedImage.url,
+              image.description || '',
+              metadataJson,
+              imageBuffer.length,
+              width,
+              height,
+            ]
+          );
+          const insertedPhotoId = Number(insertedPhoto?.id || 0) || null;
+          if (!firstImportedPhotoId) {
+            firstImportedPhotoId = insertedPhotoId;
+          }
+          if (
+            !matchedCoverPhotoId
+            && insertedPhotoId
+            && smugMugCoverImageKey
+            && String(image.id || '').trim()
+            && String(image.id).trim() === String(smugMugCoverImageKey).trim()
+          ) {
+            matchedCoverPhotoId = insertedPhotoId;
+          }
+        }
 
         importJob.totals.photosProcessed += 1;
         importJob.totals.photosImported += 1;
@@ -892,7 +1575,9 @@ router.post('/import', authRequired, async (req, res) => {
           albumName,
           fileName: image.fileName,
           status: 'imported',
-          detail: uploadedImage.storage === 'azure' ? 'Imported successfully' : 'Imported using SmugMug source URL',
+          detail: existingIsThumbnail
+            ? 'Upgraded existing thumbnail to full-size import'
+            : (uploadedImage.storage === 'azure' ? 'Imported successfully' : 'Imported using SmugMug source URL'),
         });
         importedPhotoCount += 1;
       }
@@ -903,6 +1588,39 @@ router.post('/import', authRequired, async (req, res) => {
          WHERE id = $1`,
         [albumId]
       );
+
+      const coverPhotoIdToSet = matchedCoverPhotoId || firstImportedPhotoId;
+      if (coverPhotoIdToSet) {
+        await query(
+          `UPDATE albums
+           SET cover_photo_id = COALESCE(cover_photo_id, $2)
+           WHERE id = $1`,
+          [albumId, coverPhotoIdToSet]
+        );
+      }
+
+      if (importedPhotoCount === 0) {
+        if (!existingImport?.localAlbumId) {
+          await query(
+            `DELETE FROM albums
+             WHERE id = $1 AND studio_id = $2 AND COALESCE(photo_count, 0) = 0`,
+            [albumId, studioId]
+          );
+        }
+
+        if (albumProgress) {
+          albumProgress.status = 'failed';
+        }
+        pushPhotoProgress(importJob, {
+          albumKey,
+          albumName,
+          fileName: '(album)',
+          status: 'failed',
+          detail: 'No full-size photos were imported for this album.',
+        });
+        touchImportJob(importJob);
+        continue;
+      }
 
       await query(
         `IF EXISTS (SELECT 1 FROM studio_smugmug_imports WHERE studio_id = $1 AND smugmug_album_key = $2)
@@ -950,16 +1668,26 @@ router.post('/import', authRequired, async (req, res) => {
       imported,
     });
   } catch (error) {
-    console.error('SmugMug import error:', error);
-    const requestedJobId = String(req.body?.jobId || '').trim();
-    if (requestedJobId) {
-      finishImportJob(smugMugImportJobs.get(requestedJobId), {
+    const errorMsg = error instanceof Error ? error.message : String(error || 'Unknown error');
+    const errorStack = error instanceof Error ? error.stack : '';
+    console.error('SmugMug import error:', errorMsg, '\nStack:', errorStack);
+    if (importJob) {
+      finishImportJob(importJob, {
         status: 'failed',
-        error: error instanceof Error ? error.message : 'Failed to import SmugMug albums',
+        error: errorMsg,
       });
     }
-    res.status(500).json({ error: 'Failed to import SmugMug albums' });
+    const details = errorMsg;
+    if (/SmugMug request failed \(401\)/i.test(details)) {
+      return res.status(401).json({
+        error: 'SmugMug API unauthorized. Save a valid SmugMug API key (and reconnect OAuth for private images).',
+        details,
+      });
+    }
+    res.status(500).json({ error: 'Failed to import SmugMug albums', details });
 
   }
 });
+
+export default router;
 

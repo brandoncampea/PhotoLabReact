@@ -64,35 +64,40 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
   const effectiveStudioId = Number(localStorage.getItem('viewAsStudioId')) || user?.studioId;
   // OAuth state and handler must be defined here
   const [oauthRequired, setOauthRequired] = useState(false);
+  const [smugmugConnected, setSmugmugConnected] = useState(false);
   const [showOAuthPrompt, setShowOAuthPrompt] = useState(false);
   const [oauthWindow, setOAuthWindow] = useState<Window | null>(null);
   const [pendingImport, setPendingImport] = useState<any>(null);
 
+  const fetchOAuthStatus = async () => {
+    try {
+      const response = await fetch('/api/smugmug/admin/vendor-integrations', { headers: getAuthHeaders() });
+      if (!response.ok) return;
+      const data = await response.json();
+      setSmugmugConnected(!!data.connected);
+      setOauthRequired(!!data.oauthRequired);
+      if (data.oauthRequired) {
+        setSmugmugNotice(data.message || 'SmugMug connection required.');
+      }
+    } catch {
+      // ignore
+    }
+  };
+
 
     useEffect(() => {
-      const checkOAuthStatus = async () => {
-        try {
-          const response = await fetch('/api/smugmug/admin/vendor-integrations', { headers: getAuthHeaders() });
-          if (!response.ok) return;
-          const data = await response.json();
-          setOauthRequired(!!data.oauthRequired);
-          if (data.oauthRequired) setSmugmugNotice(data.message || 'SmugMug connection required.');
-        } catch (err) {
-          // ignore
-        }
-      };
-      checkOAuthStatus();
+      fetchOAuthStatus();
       // eslint-disable-next-line
     }, [effectiveStudioId]);
 
     // Open SmugMug OAuth popup
-    const handleConnectSmugMug = async () => {
+    const handleConnectSmugMug = async (retryImport?: { albumsToImport: SmugMugAlbumOption[] }) => {
       setSmugmugNotice('Connecting to SmugMug...');
       try {
         const response = await fetch('/api/smugmug/oauth/request-token', {
           method: 'POST',
           headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
-          body: JSON.stringify({ callbackUrl: window.location.origin + '/admin/smugmug' }),
+          body: JSON.stringify({ callbackUrl: window.location.origin + '/api/smugmug/oauth/callback' }),
         });
         if (!response.ok) throw new Error('Failed to start SmugMug OAuth');
         const data = await response.json();
@@ -100,13 +105,18 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
         setOAuthWindow(popup);
         setSmugmugNotice('Complete SmugMug authorization in the popup window.');
         // Listen for OAuth completion
-        const timer = setInterval(() => {
+        const timer = setInterval(async () => {
           if (popup && popup.closed) {
             clearInterval(timer);
             setOAuthWindow(null);
-            setSmugmugNotice('SmugMug authorization complete. Retrying import...');
-            if (pendingImport) {
-              importSelectedSmugmugAlbums(pendingImport);
+            await fetchOAuthStatus();
+            await fetchSmugmugConfig();
+            setShowOAuthPrompt(false);
+            setSmugmugNotice('SmugMug authorization complete.');
+            const importToRetry = retryImport || pendingImport;
+            if (importToRetry) {
+              setSmugmugNotice('SmugMug authorization complete. Retrying import...');
+              importSelectedSmugmugAlbums(importToRetry);
               setPendingImport(null);
             }
           }
@@ -138,9 +148,10 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
 
   const getAuthHeaders = () => {
     const token = localStorage.getItem('authToken');
-    const headers: Record<string, string> = {
-      Authorization: `Bearer ${token}`,
-    };
+    const headers: Record<string, string> = {};
+    if (token && token !== 'null' && token !== 'undefined') {
+      headers.Authorization = `Bearer ${token}`;
+    }
     const actingStudioId = localStorage.getItem('viewAsStudioId');
     if (actingStudioId) {
       headers['x-acting-studio-id'] = actingStudioId;
@@ -299,6 +310,8 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
         body: JSON.stringify({
           jobId,
           nickname: smugmugNickname,
+          apiKey: smugmugApiKey,
+          apiSecret: smugmugApiSecret,
           albums: albumsToImport.map((album: SmugMugAlbumOption) => ({
             albumKey: album.albumKey,
             name: album.name,
@@ -309,11 +322,17 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
 
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
-        // If error is about missing OriginalUrl, prompt for OAuth
-        if (data.error && data.error.toLowerCase().includes('originalurl')) {
+        const status = response.status;
+        const errorText = String(data.error || data.details || '').toLowerCase();
+        const oauthExpiredOrMissing = status === 401
+          || /oauth|unauthorized|expired|invalid.*token|reconnect/i.test(errorText)
+          || errorText.includes('originalurl');
+
+        if (oauthExpiredOrMissing) {
           setShowOAuthPrompt(true);
           setPendingImport({ albumsToImport });
-          setSmugmugNotice('Some images are missing OriginalUrl. Please connect SmugMug to continue.');
+          setSmugmugNotice('SmugMug auth is missing/expired. Reconnecting and retrying import...');
+          await handleConnectSmugMug({ albumsToImport });
           setSmugmugImporting(false);
           return;
         }
@@ -324,6 +343,7 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
       setStorageMode(data.storageMode === 'smugmug-source' ? 'smugmug-source' : 'azure');
       await pollProgress();
       const importedCount = Array.isArray(data.imported) ? data.imported.length : 0;
+
       setSmugmugNotice(`Import completed. ${importedCount} album(s) processed.`);
       await loadSmugmugAlbums();
     } catch (err: any) {
@@ -382,6 +402,24 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
       <p style={{ color: 'var(--text-secondary)', marginBottom: '16px' }}>
         Connect your SmugMug account, load albums, then choose exactly which albums to import.
       </p>
+
+      <div
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '8px',
+          marginBottom: '16px',
+          padding: '8px 12px',
+          borderRadius: '999px',
+          border: `1px solid ${smugmugConnected ? 'rgba(134, 239, 172, 0.45)' : 'rgba(250, 204, 21, 0.4)'}`,
+          backgroundColor: smugmugConnected ? 'rgba(134, 239, 172, 0.08)' : 'rgba(250, 204, 21, 0.08)',
+          color: smugmugConnected ? '#86efac' : '#fde68a',
+          fontSize: '13px',
+          fontWeight: 600,
+        }}
+      >
+        {smugmugConnected ? 'SmugMug connected' : 'SmugMug not connected'}
+      </div>
 
       {oauthRequired && (
         <div style={{
