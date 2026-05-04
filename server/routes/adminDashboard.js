@@ -74,6 +74,55 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
         );
         const totalRevenue = Number(totalRevenueRow?.sum || 0);
 
+        const revenueCompositionRow = await queryRow(
+            `SELECT
+                COALESCE(SUM(COALESCE(o.subtotal, 0)), 0) as totalSubtotal,
+                COALESCE(SUM(COALESCE(o.tax_amount, 0)), 0) as totalTax,
+                COALESCE(SUM(COALESCE(o.shipping_cost, 0)), 0) as totalShipping,
+                COALESCE(SUM(CASE
+                    WHEN (COALESCE(o.subtotal, 0) + COALESCE(o.tax_amount, 0) + COALESCE(o.shipping_cost, 0) - COALESCE(o.total, 0)) > 0
+                    THEN (COALESCE(o.subtotal, 0) + COALESCE(o.tax_amount, 0) + COALESCE(o.shipping_cost, 0) - COALESCE(o.total, 0))
+                    ELSE 0
+                END), 0) as totalDiscounts
+             FROM orders o
+             WHERE LOWER(o.status) NOT IN ('cancelled', 'refunded')${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}`
+        );
+
+                const hasProductSizeIdRow = await queryRow(
+                        `SELECT CASE WHEN COL_LENGTH('order_items', 'product_size_id') IS NOT NULL THEN 1 ELSE 0 END as hasProductSizeId`
+                );
+                const hasProductSizeId = Number(hasProductSizeIdRow?.hasProductSizeId || 0) === 1;
+
+                const revenueBreakdownRow = await queryRow(
+                        `SELECT
+                                COALESCE(SUM(oi.price * oi.quantity), 0) as totalStudioRevenue,
+                                COALESCE(SUM(COALESCE(${hasProductSizeId ? 'ps.price' : 'NULL'}, p.price, 0) * oi.quantity), 0) as totalBaseRevenue,
+                                COALESCE(SUM(COALESCE(o.shipping_margin, 0)), 0) as totalShippingMargin,
+                                COALESCE(SUM(
+                                        COALESCE(o.stripe_fee_amount, 0) *
+                                        CASE
+                                            WHEN COALESCE(orderTotals.totalItemRevenue, 0) <= 0 THEN 0
+                                            ELSE ((oi.price * oi.quantity) / orderTotals.totalItemRevenue)
+                                        END
+                                ), 0) as totalStripeFees
+                         FROM orders o
+                         INNER JOIN order_items oi ON oi.order_id = o.id
+                         LEFT JOIN (
+                             SELECT order_id, COALESCE(SUM(price * quantity), 0) as totalItemRevenue
+                             FROM order_items
+                             GROUP BY order_id
+                         ) orderTotals ON orderTotals.order_id = o.id
+                         LEFT JOIN products p ON p.id = oi.product_id
+                         ${hasProductSizeId ? 'LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id' : ''}
+                         WHERE LOWER(o.status) NOT IN ('cancelled', 'refunded')${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}`
+                );
+
+                const breakdownStudioRevenue = Number(revenueBreakdownRow?.totalStudioRevenue || 0);
+                const breakdownBaseRevenue = Number(revenueBreakdownRow?.totalBaseRevenue || 0);
+                const breakdownShippingMargin = Number(revenueBreakdownRow?.totalShippingMargin || 0);
+                const breakdownStripeFees = Number(revenueBreakdownRow?.totalStripeFees || 0);
+                const totalGrossMargin = breakdownStudioRevenue - breakdownBaseRevenue + breakdownShippingMargin - breakdownStripeFees;
+
         // Always count unique user_id from orders for total customers (active customers)
         const totalCustomersRow = await queryRow(`SELECT COUNT(DISTINCT user_id) as count FROM orders${customerStudioFilter ? ' WHERE ' + customerStudioFilter : ''}`);
         const totalCustomers = totalCustomersRow?.count || 0;
@@ -88,19 +137,37 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
         );
         const batchOrders = batchOrdersRow?.count || 0;
 
-        const recentOrders = await queryRows(
+        const recentOrderRows = await queryRows(
             `SELECT TOP 10
                 o.id,
                 o.user_id,
                 o.total,
                 o.status,
                 o.created_at,
-                u.email as customer_email
+                u.email as customer_email,
+                COALESCE(SUM(oi.price * oi.quantity), 0) as studioRevenue,
+                COALESCE(SUM(COALESCE(${hasProductSizeId ? 'ps.price' : 'NULL'}, p.price, 0) * oi.quantity), 0) as baseRevenue,
+                COALESCE(MAX(COALESCE(o.stripe_fee_amount, 0)), 0) as stripeFeeAmount
              FROM orders o
              LEFT JOIN users u ON u.id = o.user_id
+             LEFT JOIN order_items oi ON oi.order_id = o.id
+             LEFT JOIN products p ON p.id = oi.product_id
+             ${hasProductSizeId ? 'LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id' : ''}
              WHERE 1=1${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}
+             GROUP BY o.id, o.user_id, o.total, o.status, o.created_at, u.email
              ORDER BY o.created_at DESC`
         );
+
+        const recentOrders = (recentOrderRows || []).map((order) => {
+            const studioRevenue = Number(order.studioRevenue || 0);
+            const baseRevenue = Number(order.baseRevenue || 0);
+            const stripeFeeAmount = Number(order.stripeFeeAmount || 0);
+            const studioProfit = studioRevenue - baseRevenue - stripeFeeAmount;
+            return {
+                ...order,
+                studioProfit,
+            };
+        });
 
         const revenueDayRows = await queryRows(
             `SELECT FORMAT(o.created_at, 'yyyy-MM-dd') as label, SUM(o.total) as value
@@ -413,6 +480,24 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
         res.json({
             totalOrders,
             totalRevenue,
+            revenueComposition: {
+                totalSubtotal: Number(revenueCompositionRow?.totalSubtotal || 0),
+                totalTax: Number(revenueCompositionRow?.totalTax || 0),
+                totalShipping: Number(revenueCompositionRow?.totalShipping || 0),
+                totalDiscounts: Number(revenueCompositionRow?.totalDiscounts || 0),
+                recomputedTotal:
+                    Number(revenueCompositionRow?.totalSubtotal || 0)
+                    + Number(revenueCompositionRow?.totalTax || 0)
+                    + Number(revenueCompositionRow?.totalShipping || 0)
+                    - Number(revenueCompositionRow?.totalDiscounts || 0),
+            },
+            grossMarginBreakdown: {
+                totalStudioRevenue: breakdownStudioRevenue,
+                totalBaseRevenue: breakdownBaseRevenue,
+                totalShippingMargin: breakdownShippingMargin,
+                totalStripeFees: breakdownStripeFees,
+                totalGrossMargin,
+            },
             totalCustomers,
             pendingOrders,
             batchOrders,

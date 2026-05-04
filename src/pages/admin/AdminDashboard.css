@@ -47,6 +47,68 @@
   font-size: 0.88rem !important;
 }
 
+.admin-dashboard-revenue-value {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.4rem;
+  line-height: 1.12;
+}
+
+.admin-dashboard-revenue-total,
+.admin-dashboard-revenue-margin {
+  white-space: nowrap;
+}
+
+.admin-dashboard-revenue-separator {
+  color: #9ba4c3;
+  opacity: 0.8;
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
+.admin-dashboard-revenue-margin {
+  font-size: 1.45rem;
+  font-weight: 750;
+}
+
+.admin-dashboard-revenue-sub {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.1rem 0.35rem;
+}
+
+.admin-dashboard-revenue-sub-separator {
+  color: #9ba4c3;
+  opacity: 0.8;
+}
+
+.admin-dashboard-revenue-margin.positive,
+.admin-dashboard-revenue-sub .positive {
+  color: #86efac;
+}
+
+.admin-dashboard-revenue-margin.negative,
+.admin-dashboard-revenue-sub .negative {
+  color: #fca5a5;
+}
+
+@media (max-width: 640px) {
+  .admin-dashboard-revenue-margin {
+    font-size: 1.2rem;
+  }
+}
+
+.admin-dashboard-card--revenue .admin-dashboard-revenue-breakdown {
+  display: none;
+}
+
+.admin-dashboard-card--revenue:hover .admin-dashboard-revenue-breakdown,
+.admin-dashboard-card--revenue:focus-within .admin-dashboard-revenue-breakdown {
+  display: block;
+}
+
 .admin-dashboard-widget {
   margin-top: 1rem;
   padding-bottom: 1rem !important;

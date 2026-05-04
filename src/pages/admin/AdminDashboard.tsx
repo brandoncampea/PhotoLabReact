@@ -7,6 +7,20 @@ import api from '../../services/api';
 
 type DashboardStats = {
   totalRevenue: number;
+  revenueComposition?: {
+    totalSubtotal: number;
+    totalTax: number;
+    totalShipping: number;
+    totalDiscounts: number;
+    recomputedTotal: number;
+  };
+  grossMarginBreakdown?: {
+    totalStudioRevenue: number;
+    totalBaseRevenue: number;
+    totalShippingMargin: number;
+    totalStripeFees: number;
+    totalGrossMargin: number;
+  };
   totalOrders: number;
   totalCustomers: number;
   pendingOrders: number;
@@ -32,6 +46,7 @@ type DashboardStats = {
   recentOrders?: Array<{
     id: number;
     total: number;
+    studioProfit?: number;
     status: string;
     created_at: string;
     customer_email?: string;
@@ -97,6 +112,9 @@ const AdminDashboard: React.FC = () => {
   const totalAlbumClicks = stats.analytics?.albumViews?.reduce((sum, album) => sum + (album.clicks || 0), 0) || 0;
   const totalPhotoOpens = stats.analytics?.photoViews?.reduce((sum, photo) => sum + (photo.opens || 0), 0) || 0;
   const totalPhotoClicks = stats.analytics?.photoViews?.reduce((sum, photo) => sum + (photo.clicks || 0), 0) || 0;
+  const totalMargin = Number(stats.grossMarginBreakdown?.totalGrossMargin || 0);
+  const avgRevenuePerOrder = stats.totalOrders ? (stats.totalRevenue / stats.totalOrders) : 0;
+  const avgMarginPerOrder = stats.totalOrders ? (totalMargin / stats.totalOrders) : 0;
 
   return (
     <AdminLayout>
@@ -108,10 +126,43 @@ const AdminDashboard: React.FC = () => {
       </div>
 
       <div className="dashboard-metrics tallydark-metrics admin-dashboard-metrics">
-        <div className="dashboard-card tallydark-card admin-dashboard-card" role="region" tabIndex={0}>
+        <div className="dashboard-card tallydark-card admin-dashboard-card admin-dashboard-card--revenue" role="region" tabIndex={0}>
           <div className="dashboard-card-label">Total Revenue</div>
-          <div className="dashboard-card-value revenue">${stats.totalRevenue.toFixed(2)}</div>
-          <div className="dashboard-card-sub">Avg: ${stats.totalOrders ? (stats.totalRevenue / stats.totalOrders).toFixed(2) : '0.00'} per order</div>
+          <div className="dashboard-card-value revenue admin-dashboard-revenue-value">
+            <span className="admin-dashboard-revenue-total">${stats.totalRevenue.toFixed(2)}</span>
+            <span className="admin-dashboard-revenue-separator">|</span>
+            <span className={`admin-dashboard-revenue-margin ${totalMargin >= 0 ? 'positive' : 'negative'}`}>
+              Margin: ${totalMargin.toFixed(2)}
+            </span>
+          </div>
+          <div className="dashboard-card-sub admin-dashboard-revenue-sub">
+            <span>Avg: ${avgRevenuePerOrder.toFixed(2)} per order</span>
+            <span className="admin-dashboard-revenue-sub-separator">|</span>
+            <span className={avgMarginPerOrder >= 0 ? 'positive' : 'negative'}>Avg Margin: ${avgMarginPerOrder.toFixed(2)} per order</span>
+          </div>
+          {(!!stats.revenueComposition || !!stats.grossMarginBreakdown) && (
+            <div className="admin-dashboard-revenue-breakdown">
+              {!!stats.revenueComposition && (
+                <div className="dashboard-card-sub" style={{ marginTop: 6, lineHeight: 1.35 }}>
+                  <div>+ Subtotal: ${Number(stats.revenueComposition.totalSubtotal || 0).toFixed(2)}</div>
+                  <div>+ Tax: ${Number(stats.revenueComposition.totalTax || 0).toFixed(2)}</div>
+                  <div>+ Shipping: ${Number(stats.revenueComposition.totalShipping || 0).toFixed(2)}</div>
+                  <div>- Discounts: ${Number(stats.revenueComposition.totalDiscounts || 0).toFixed(2)}</div>
+                  <div style={{ marginTop: 2 }}>= Revenue: ${Number(stats.revenueComposition.recomputedTotal || 0).toFixed(2)}</div>
+                </div>
+              )}
+              {!!stats.grossMarginBreakdown && (
+                <div className="dashboard-card-sub" style={{ marginTop: 6, lineHeight: 1.35 }}>
+                  <div style={{ opacity: 0.9 }}>Gross Margin:</div>
+                  <div>+ Studio Price: ${Number(stats.grossMarginBreakdown.totalStudioRevenue || 0).toFixed(2)}</div>
+                  <div>- Base Cost: ${Number(stats.grossMarginBreakdown.totalBaseRevenue || 0).toFixed(2)}</div>
+                  <div>+ Shipping Margin: ${Number(stats.grossMarginBreakdown.totalShippingMargin || 0).toFixed(2)}</div>
+                  <div>- Stripe Fees: ${Number(stats.grossMarginBreakdown.totalStripeFees || 0).toFixed(2)}</div>
+                  <div style={{ marginTop: 2 }}>= Margin: ${Number(stats.grossMarginBreakdown.totalGrossMargin || 0).toFixed(2)}</div>
+                </div>
+              )}
+            </div>
+          )}
           <div className="dashboard-range-controls">
             <button className="dashboard-pill" onClick={() => setRevenueRange('day')} disabled={revenueRange === 'day'}>Day</button>
             <button className="dashboard-pill" onClick={() => setRevenueRange('week')} disabled={revenueRange === 'week'}>Week</button>
@@ -409,6 +460,7 @@ const AdminDashboard: React.FC = () => {
                   <th>Customer</th>
                   <th>Status</th>
                   <th>Total</th>
+                  <th>Studio Profit</th>
                   <th>Date</th>
                 </tr>
               </thead>
@@ -423,6 +475,14 @@ const AdminDashboard: React.FC = () => {
                       </span>
                     </td>
                     <td>${Number(order.total || 0).toFixed(2)}</td>
+                    <td
+                      style={{
+                        color: Number(order.studioProfit || 0) >= 0 ? '#86efac' : '#fca5a5',
+                        fontWeight: 600,
+                      }}
+                    >
+                      ${Number(order.studioProfit || 0).toFixed(2)}
+                    </td>
                     <td>{new Date(order.created_at).toLocaleDateString()}</td>
                   </tr>
                 ))}
