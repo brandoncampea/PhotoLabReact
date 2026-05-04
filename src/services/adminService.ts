@@ -176,6 +176,10 @@ export const superAdminService = {
     const response = await api.get('/admin/studio-revenue-details');
     return response.data;
   },
+  async markStudioAsPaid(studioId: number, notes?: string) {
+    const response = await api.post(`/admin/studio-payout/${studioId}`, { notes });
+    return response.data;
+  },
 };
 
 export const adminService = {
