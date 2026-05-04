@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { Elements } from '@stripe/react-stripe-js';
@@ -47,6 +47,7 @@ const Cart: React.FC = () => {
   const [cropperRef, setCropperRef] = useState<any>(null);
   const [activePaymentIntent, setActivePaymentIntent] = useState<PaymentIntent | null>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const autoLaunchEditorRef = useRef(false);
 
   const [studioFees, setStudioFees] = useState<{ feeType: string; feeValue: number } | null>(null);
   const [shippingAddress, setShippingAddress] = useState<ShippingAddress>({
@@ -631,6 +632,10 @@ const Cart: React.FC = () => {
     const effectiveAlbumId = Number(item.albumId || item.photo?.albumId || 0) || undefined;
     const albumDetails = effectiveAlbumId ? albumDetailsById[effectiveAlbumId] : undefined;
     const isDigital = !!(resolvedProduct?.isDigital || item.isDigital || item.digitalDownloadScope);
+    const editorProvider = String((resolvedProduct as any)?.editorProvider || (item as any)?.editorProvider || '').trim().toLowerCase() || null;
+    const requiresWhccEditor = Boolean((resolvedProduct as any)?.requiresWhccEditor || (item as any)?.requiresWhccEditor || editorProvider === 'whcc');
+    const whccEditorProductId = String((item as any)?.whccEditorProductId || (resolvedProduct as any)?.whccEditorProductId || '').trim() || null;
+    const whccEditorDesignId = String((item as any)?.whccEditorDesignId || (resolvedProduct as any)?.whccEditorDesignId || '').trim() || null;
 
     return {
       ...item,
@@ -640,6 +645,10 @@ const Cart: React.FC = () => {
       albumName: item.albumName || albumDetails?.name,
       albumCoverImageUrl: item.albumCoverImageUrl || albumDetails?.coverImageUrl,
       isDigital,
+      editorProvider,
+      requiresWhccEditor,
+      whccEditorProductId,
+      whccEditorDesignId,
       productImageUrl,
       categoryImageUrl,
     };
@@ -656,51 +665,6 @@ const Cart: React.FC = () => {
         ? [item.photoId]
         : [];
 
-
-      // Add orientation/aspect ratio logic for WHCC editor
-      const getOrientationAndAspect = (photo: any, productId: number, productSizeId: number) => {
-        let aspectRatio = 1;
-        let orientation = 'portrait';
-        if (photo && Array.isArray(photo.products)) {
-          const product = photo.products.find((p: any) => p.id === productId);
-          const size = product?.sizes?.find((s: any) => s.id === productSizeId);
-          if (size && size.width && size.height) {
-            aspectRatio = Number(size.width) / Number(size.height);
-            orientation = aspectRatio >= 1 ? 'landscape' : 'portrait';
-          }
-        } else if (photo?.width && photo?.height) {
-          aspectRatio = Number(photo.width) / Number(photo.height);
-          orientation = aspectRatio >= 1 ? 'landscape' : 'portrait';
-        }
-        return { aspectRatio, orientation };
-      };
-
-      const photos = Array.isArray(item.photos)
-        ? item.photos.map((entry) => {
-            const { aspectRatio, orientation } = getOrientationAndAspect(entry?.photo, item.productId, item.productSizeId);
-            return {
-              id: entry?.photo?.id,
-              name: entry?.photo?.fileName,
-              thumbnailUrl: entry?.photo?.thumbnailUrl,
-              fullImageUrl: entry?.photo?.fullImageUrl,
-              width: entry?.photo?.width || entry?.photo?.metadata?.width,
-              height: entry?.photo?.height || entry?.photo?.metadata?.height,
-              aspectRatio,
-              orientation,
-            };
-          })
-        : item.photo
-        ? [{
-            id: item.photo.id,
-            name: item.photo.fileName,
-            thumbnailUrl: item.photo.thumbnailUrl,
-            fullImageUrl: item.photo.fullImageUrl,
-            width: item.photo.width || item.photo.metadata?.width,
-            height: item.photo.height || item.photo.metadata?.height,
-            ...getOrientationAndAspect(item.photo, item.productId, item.productSizeId),
-          }]
-        : [];
-
       if (!item.productId) {
         setError('This cart item is missing a product ID and cannot open the WHCC editor.');
         return;
@@ -710,7 +674,8 @@ const Cart: React.FC = () => {
         productId: Number(item.productId),
         quantity: Number(item.quantity) || 1,
         photoIds,
-        photos,
+        overrideEditorProductId: String((item as any)?.whccEditorProductId || '').trim() || undefined,
+        overrideEditorDesignId: String((item as any)?.whccEditorDesignId || '').trim() || undefined,
       });
 
       if (!session?.url) {
@@ -724,6 +689,38 @@ const Cart: React.FC = () => {
     } finally {
     }
   };
+
+  useEffect(() => {
+    if (autoLaunchEditorRef.current) return;
+
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('launchWhccEditor') !== '1') return;
+
+    const requestedProductId = Number(params.get('productId') || 0);
+    const requestedSizeId = Number(params.get('productSizeId') || 0);
+    const requestedPhotoId = Number(params.get('photoId') || 0);
+
+    const resolvedItems = items.map((item) => getResolvedCartItem(item));
+    const target = resolvedItems.find((item: any) => {
+      if (!item?.requiresWhccEditor) return false;
+      if (requestedProductId > 0 && Number(item.productId || 0) !== requestedProductId) return false;
+      if (requestedSizeId > 0 && Number(item.productSizeId || 0) !== requestedSizeId) return false;
+      if (requestedPhotoId > 0 && Number(item.photoId || 0) !== requestedPhotoId) return false;
+      return true;
+    });
+
+    if (!target) return;
+
+    autoLaunchEditorRef.current = true;
+    void handleOpenWhccEditor(target as CartItemType);
+
+    params.delete('launchWhccEditor');
+    params.delete('productId');
+    params.delete('productSizeId');
+    params.delete('photoId');
+    const nextQuery = params.toString();
+    window.history.replaceState({}, '', `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}`);
+  }, [items, products]);
 
   const handleSaveCrop = () => {
     if (!editingItem) return;
@@ -909,15 +906,19 @@ const Cart: React.FC = () => {
 
       <div className="cart-content cart-layout">
         <div className="cart-items">
-          {items.map((item) => (
-            <CartItem
-              key={item.photoId + '-' + (item.productId || '') + '-' + (item.productSizeId || '')}
-              item={getResolvedCartItem(item)}
-              onEditCrop={setEditingItem}
-              onOpenWhccEditor={handleOpenWhccEditor}
-              studioId={user?.studioId}
-            />
-          ))}
+          {items.map((item) => {
+            const resolvedItem = getResolvedCartItem(item);
+            return (
+              <CartItem
+                key={item.photoId + '-' + (item.productId || '') + '-' + (item.productSizeId || '')}
+                item={resolvedItem}
+                onEditCrop={setEditingItem}
+                onOpenWhccEditor={handleOpenWhccEditor}
+                showWhccEditorButton={!!resolvedItem?.requiresWhccEditor}
+                studioId={user?.studioId}
+              />
+            );
+          })}
         </div>
 
           {/* Package Cost/Profit Display - moved here as requested */}

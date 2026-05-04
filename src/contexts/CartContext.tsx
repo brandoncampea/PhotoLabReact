@@ -192,6 +192,10 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 albumName: options?.albumName ?? item.albumName,
                 albumCoverImageUrl: options?.albumCoverImageUrl ?? item.albumCoverImageUrl,
                 digitalDownloadScope: options?.digitalDownloadScope ?? item.digitalDownloadScope,
+                editorProvider: product.editorProvider ?? item.editorProvider,
+                requiresWhccEditor: product.requiresWhccEditor ?? item.requiresWhccEditor,
+                whccEditorProductId: product.whccEditorProductId ?? item.whccEditorProductId,
+                whccEditorDesignId: product.whccEditorDesignId ?? item.whccEditorDesignId,
               }
             : item
         );
@@ -210,6 +214,10 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         productSizeId: size.id, 
         productName: product.name,
         productSizeName: size.name,
+        editorProvider: product.editorProvider,
+        requiresWhccEditor: product.requiresWhccEditor,
+        whccEditorProductId: product.whccEditorProductId,
+        whccEditorDesignId: product.whccEditorDesignId,
         digitalDownloadScope: options?.digitalDownloadScope,
         price 
       }];

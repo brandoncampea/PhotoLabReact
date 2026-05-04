@@ -50,6 +50,10 @@ const AlbumDetails: React.FC = () => {
   const [cropperRef, setCropperRef] = useState<any>(null);
   const [productToCrop, setProductToCrop] = useState<ProductWithMatch | null>(null);
   const [sizeToCrop, setSizeToCrop] = useState<ProductSize | null>(null);
+  const [showWhccPhotoModal, setShowWhccPhotoModal] = useState(false);
+  const [whccProductToConfigure, setWhccProductToConfigure] = useState<ProductWithMatch | null>(null);
+  const [whccSizeToConfigure, setWhccSizeToConfigure] = useState<ProductSize | null>(null);
+  const [whccSelectedPhotoIds, setWhccSelectedPhotoIds] = useState<number[]>([]);
   const [photoQuery, setPhotoQuery] = useState('');
   const [metadataFilter, setMetadataFilter] = useState<'all' | 'camera' | 'iso' | 'aperture' | 'shutterSpeed' | 'focalLength' | 'dateTaken' | 'any'>('all');
   const { addToCart } = useCart();
@@ -485,9 +489,148 @@ const AlbumDetails: React.FC = () => {
     return getDigitalScopeValue(product);
   };
 
+  const getWhccPhotoSelectionRequirements = (product: ProductWithMatch): { minPhotos: number; maxPhotos: number } => {
+    const rawMin = Number(product.minPhotos || 1);
+    const minPhotos = Number.isFinite(rawMin) && rawMin > 0 ? Math.max(1, Math.floor(rawMin)) : 1;
+
+    const rawMax = Number(product.maxPhotos || minPhotos);
+    const normalizedMax = Number.isFinite(rawMax) && rawMax > 0 ? Math.floor(rawMax) : minPhotos;
+    const maxPhotos = Math.max(minPhotos, normalizedMax);
+
+    return {
+      minPhotos,
+      maxPhotos,
+    };
+  };
+
+  const getWhccSelectionHint = (product: ProductWithMatch): string => {
+    const { minPhotos, maxPhotos } = getWhccPhotoSelectionRequirements(product);
+    if (minPhotos === maxPhotos) {
+      return `Editor requires ${minPhotos} album photo${minPhotos === 1 ? '' : 's'}.`;
+    }
+    return `Editor requires ${minPhotos}-${maxPhotos} album photos.`;
+  };
+
+  const openWhccPhotoSelection = (
+    product: ProductWithMatch,
+    selectedSize: ProductSize,
+    preferredPhotoId?: number
+  ) => {
+    const { minPhotos, maxPhotos } = getWhccPhotoSelectionRequirements(product);
+    const validAlbumPhotoIds = photos
+      .map((p) => Number(p.id))
+      .filter((id) => Number.isInteger(id) && id > 0);
+
+    const fallbackId = validAlbumPhotoIds[0] || 0;
+    const initialId = Number(preferredPhotoId || selectedPhoto?.id || fallbackId || 0);
+
+    const seedIds = initialId > 0 ? [initialId] : [];
+    const padded = [...seedIds];
+    for (const id of validAlbumPhotoIds) {
+      if (padded.length >= minPhotos) break;
+      if (!padded.includes(id)) padded.push(id);
+    }
+
+    const initialSelection = padded.slice(0, maxPhotos);
+
+    setWhccProductToConfigure(product);
+    setWhccSizeToConfigure(selectedSize);
+    setWhccSelectedPhotoIds(initialSelection);
+    setShowWhccPhotoModal(true);
+  };
+
+  const handleWhccPhotoToggle = (photoId: number) => {
+    const id = Number(photoId || 0);
+    if (!Number.isInteger(id) || id <= 0 || !whccProductToConfigure) return;
+
+    const { maxPhotos } = getWhccPhotoSelectionRequirements(whccProductToConfigure);
+    setWhccSelectedPhotoIds((prev) => {
+      if (prev.includes(id)) return prev.filter((value) => value !== id);
+      if (prev.length >= maxPhotos) return prev;
+      return [...prev, id];
+    });
+  };
+
+  const closeWhccPhotoModal = () => {
+    setShowWhccPhotoModal(false);
+    setWhccProductToConfigure(null);
+    setWhccSizeToConfigure(null);
+    setWhccSelectedPhotoIds([]);
+  };
+
+  const handleConfirmWhccPhotoSelection = async () => {
+    const product = whccProductToConfigure;
+    const selectedSize = whccSizeToConfigure;
+    if (!product || !selectedSize) return;
+
+    const key = `${product.id}-${selectedSize.id}`;
+    const { minPhotos, maxPhotos } = getWhccPhotoSelectionRequirements(product);
+    const selectedIds = [...new Set(whccSelectedPhotoIds.map(Number).filter((id) => Number.isInteger(id) && id > 0))];
+
+    if (selectedIds.length < minPhotos) {
+      setAddMessage(`Select at least ${minPhotos} photo${minPhotos === 1 ? '' : 's'} to continue.`);
+      return;
+    }
+
+    if (selectedIds.length > maxPhotos) {
+      setAddMessage(`Select no more than ${maxPhotos} photo${maxPhotos === 1 ? '' : 's'} for this product.`);
+      return;
+    }
+
+    const selectedPhotos = selectedIds
+      .map((id) => photos.find((p) => Number(p.id) === id) || null)
+      .filter((p): p is Photo => !!p);
+
+    if (!selectedPhotos.length) {
+      setAddMessage('Selected photos could not be loaded from this album.');
+      return;
+    }
+
+    setAddingKey(key);
+    setAddMessage('');
+
+    try {
+      const primaryPhoto = selectedPhotos[0];
+      await addToCart(
+        primaryPhoto,
+        { x: 0, y: 0, width: 100, height: 100, rotate: 0, scaleX: 1, scaleY: 1 },
+        product,
+        selectedSize,
+        1,
+        selectedIds,
+        selectedPhotos.map((photo, idx) => ({
+          photo,
+          cropData: { x: 0, y: 0, width: 100, height: 100, rotate: 0, scaleX: 1, scaleY: 1 },
+          position: idx + 1,
+        })),
+        {
+          albumId: Number(album?.id || 0) || undefined,
+          albumName: String(album?.name || '').trim() || undefined,
+          albumCoverImageUrl: String((album as any)?.coverImageUrl || '').trim() || undefined,
+        }
+      );
+
+      const params = new URLSearchParams({
+        launchWhccEditor: '1',
+        productId: String(product.id),
+        productSizeId: String(selectedSize.id),
+        photoId: String(primaryPhoto.id),
+      });
+
+      closeWhccPhotoModal();
+      setAddMessage(`Redirecting to editor for ${product.name}...`);
+      navigate(`/cart?${params.toString()}`);
+    } catch {
+      setAddMessage('Failed to start editor workflow.');
+    } finally {
+      setAddingKey('');
+    }
+  };
+
   const handleAddToCart = async (product: ProductWithMatch, sizeOverride?: ProductSize | null) => {
     const digitalScope = product.isDigital ? getDigitalScope(product) : 'photo';
     const isAlbumDigitalPurchase = product.isDigital && digitalScope === 'album';
+    const requiresWhccEditor = !!product.requiresWhccEditor && !product.isDigital;
     const albumPurchaseEnabled = album?.albumPurchaseEnabled !== false;
     const fallbackPhoto = photos[0] || null;
     const effectiveSelectedPhoto = selectedPhoto || (isAlbumDigitalPurchase ? fallbackPhoto : null);
@@ -505,6 +648,12 @@ const AlbumDetails: React.FC = () => {
     const selectedSize = getSelectedSizeForCart(product, sizeOverride);
     if (!selectedSize) {
       setAddMessage('This product has no available size.');
+      return;
+    }
+
+    if (requiresWhccEditor) {
+      setAddMessage('');
+      openWhccPhotoSelection(product, selectedSize, effectiveSelectedPhoto?.id);
       return;
     }
 
@@ -995,6 +1144,11 @@ const AlbumDetails: React.FC = () => {
                                           ? `${defaultSize.name}${defaultSize.width && defaultSize.height ? ` (${defaultSize.width}x${defaultSize.height})` : ''}`
                                           : 'No size available'}
                                       </div>
+                                      {!!product.requiresWhccEditor && (
+                                        <div style={{ fontSize: 11, color: '#9fb2ea', marginTop: 4 }}>
+                                          {getWhccSelectionHint(product)}
+                                        </div>
+                                      )}
                                     </div>
                                     <div
                                       className="order-price-cell"
@@ -1028,7 +1182,7 @@ const AlbumDetails: React.FC = () => {
                                         marginTop: 8,
                                       }}
                                     >
-                                      {addingKey === rowKey ? 'Adding...' : 'Add to Cart'}
+                                      {addingKey === rowKey ? 'Adding...' : (product.requiresWhccEditor ? 'Select Photos' : 'Add to Cart')}
                                     </button>
                                   </div>
                                 );
@@ -1077,6 +1231,11 @@ const AlbumDetails: React.FC = () => {
                                                   {defaultSize
                                                     ? `${defaultSize.name}${defaultSize.width && defaultSize.height ? ` (${defaultSize.width}x${defaultSize.height})` : ''}`
                                                     : 'No size available'}
+                                                  {!!product.requiresWhccEditor && (
+                                                    <div style={{ fontSize: 11, color: '#9fb2ea', marginTop: 4 }}>
+                                                      {getWhccSelectionHint(product)}
+                                                    </div>
+                                                  )}
                                                 </div>
                                                 <div
                                                   className="order-price-cell"
@@ -1110,7 +1269,7 @@ const AlbumDetails: React.FC = () => {
                                                     marginTop: 8,
                                                   }}
                                                 >
-                                                  {addingKey === rowKey ? 'Adding...' : 'Add to Cart'}
+                                                  {addingKey === rowKey ? 'Adding...' : (product.requiresWhccEditor ? 'Select Photos' : 'Add to Cart')}
                                                 </button>
                                               </div>
                                             );
@@ -1164,6 +1323,11 @@ const AlbumDetails: React.FC = () => {
                                                   >
                                                     <div className="order-size-cell" style={{ fontSize: 12, color: '#bbb', flex: '1 1 100%' }}>
                                                       {size?.name || 'Default'}{size?.width && size?.height ? ` (${size.width}x${size.height})` : ''}
+                                                      {!!product.requiresWhccEditor && (
+                                                        <div style={{ fontSize: 11, color: '#9fb2ea', marginTop: 4 }}>
+                                                          {getWhccSelectionHint(product)}
+                                                        </div>
+                                                      )}
                                                     </div>
                                                     <div
                                                       className="order-price-cell"
@@ -1197,7 +1361,7 @@ const AlbumDetails: React.FC = () => {
                                                         marginTop: 8,
                                                       }}
                                                     >
-                                                      {addingKey === rowKey ? 'Adding...' : 'Add to Cart'}
+                                                      {addingKey === rowKey ? 'Adding...' : (product.requiresWhccEditor ? 'Select Photos' : 'Add to Cart')}
                                                     </button>
                                                   </div>
                                                 );
@@ -1222,6 +1386,87 @@ const AlbumDetails: React.FC = () => {
               </React.Fragment>
             );
           })}
+        </div>
+      )}
+
+      {showWhccPhotoModal && whccProductToConfigure && whccSizeToConfigure && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ background: '#1a1a24', borderRadius: 12, border: '1px solid #2a2740', maxWidth: 900, width: '100%', maxHeight: '90vh', overflow: 'auto', padding: 20 }}>
+            {(() => {
+              const { minPhotos, maxPhotos } = getWhccPhotoSelectionRequirements(whccProductToConfigure);
+              const selectedCount = whccSelectedPhotoIds.length;
+              const minLabel = minPhotos === maxPhotos ? `${minPhotos}` : `${minPhotos}-${maxPhotos}`;
+              const canContinue = selectedCount >= minPhotos && selectedCount <= maxPhotos;
+              const modalKey = `${whccProductToConfigure.id}-${whccSizeToConfigure.id}`;
+
+              return (
+                <>
+                  <h3 style={{ marginTop: 0, marginBottom: 8 }}>
+                    Select photos for {whccProductToConfigure.name}
+                  </h3>
+                  <div style={{ fontSize: 13, color: '#a9a6c7', marginBottom: 12 }}>
+                    Choose {minLabel} photo{minPhotos === 1 && maxPhotos === 1 ? '' : 's'} from this album before launching the editor.
+                  </div>
+
+                  <div style={{ marginBottom: 14, display: 'inline-flex', alignItems: 'center', gap: 8, border: '1px solid #3a3656', borderRadius: 999, padding: '6px 10px', background: '#141320', color: '#ddd' }}>
+                    <span>Selected:</span>
+                    <strong>{selectedCount}</strong>
+                    <span>of</span>
+                    <strong>{minLabel}</strong>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 10, marginBottom: 14 }}>
+                    {photos.map((photo) => {
+                      const photoId = Number(photo.id);
+                      const isSelected = whccSelectedPhotoIds.includes(photoId);
+                      const disableUnchecked = !isSelected && whccSelectedPhotoIds.length >= maxPhotos;
+
+                      return (
+                        <button
+                          key={photo.id}
+                          type="button"
+                          onClick={() => handleWhccPhotoToggle(photoId)}
+                          disabled={disableUnchecked}
+                          style={{
+                            border: isSelected ? '2px solid #7b61ff' : '1px solid #2e2b46',
+                            borderRadius: 8,
+                            padding: 6,
+                            background: isSelected ? 'rgba(123, 97, 255, 0.12)' : '#161526',
+                            cursor: disableUnchecked ? 'not-allowed' : 'pointer',
+                            opacity: disableUnchecked ? 0.6 : 1,
+                            textAlign: 'left',
+                            color: '#fff',
+                          }}
+                        >
+                          <img
+                            src={`/api/photos/${photo.id}/asset?variant=thumbnail`}
+                            alt={photo.fileName}
+                            style={{ width: '100%', height: 88, objectFit: 'cover', borderRadius: 6, marginBottom: 6 }}
+                          />
+                          <div style={{ fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {photo.fileName || `Photo ${photo.id}`}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                    <button className="btn btn-secondary" onClick={closeWhccPhotoModal}>
+                      Cancel
+                    </button>
+                    <button
+                      className="btn btn-primary"
+                      disabled={!canContinue || addingKey === modalKey}
+                      onClick={handleConfirmWhccPhotoSelection}
+                    >
+                      {addingKey === modalKey ? 'Preparing...' : 'Continue to Editor'}
+                    </button>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
         </div>
       )}
 

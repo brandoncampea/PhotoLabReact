@@ -116,6 +116,10 @@ export interface CartItem {
   productSizeName?: string;
   product_image_url?: string;
   category_image_url?: string;
+  editorProvider?: 'whcc' | string | null;
+  requiresWhccEditor?: boolean;
+  whccEditorProductId?: string | null;
+  whccEditorDesignId?: string | null;
   isDigital?: boolean;
   digitalDownloadScope?: 'photo' | 'album';
 }
@@ -274,6 +278,10 @@ export interface Product {
   digitalDownloadScope?: 'photo' | 'album' | string;
   digitalPricingMode?: 'fixed' | 'percentage' | string | null;
   superAdminPercentage?: number;
+  editorProvider?: 'whcc' | string | null;
+  requiresWhccEditor?: boolean;
+  whccEditorProductId?: string | null;
+  whccEditorDesignId?: string | null;
   minPhotos?: number; // Minimum photos required for multi-photo products
   maxPhotos?: number; // Maximum photos allowed for multi-photo products
 }

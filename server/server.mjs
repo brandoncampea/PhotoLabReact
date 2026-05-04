@@ -66,6 +66,7 @@ import smugmugRoutes from './routes/smugmug.js';
 import whccEditorRoutes from './routes/whccEditor.js';
 import ticketRoutes from './tickets/routes.js';
 import notifyWatchersRoutes from './routes/notifyWatchers.js';
+import runWhccEditorBackfillOnce from './startup/runWhccEditorBackfillOnce.js';
 
 
 
@@ -227,6 +228,7 @@ const initializeDatabaseWithRetry = async () => {
     attempt += 1;
     try {
       await initializeDatabase();
+      await runWhccEditorBackfillOnce({ appVersion });
       console.log(`✓ Database initialized successfully (attempt ${attempt})`);
       return;
     } catch (error) {

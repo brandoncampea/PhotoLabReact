@@ -1,0 +1,16 @@
+{
+  "mappings": [
+    {
+      "productId": 101,
+      "whccEditorProductId": "cards-flat-5x7",
+      "whccEditorDesignId": "design-abc123",
+      "editorProvider": "whcc",
+      "requiresWhccEditor": true
+    },
+    {
+      "productId": 102,
+      "whccEditorProductId": "album-hardcover-10x10",
+      "whccEditorDesignId": "design-def456"
+    }
+  ]
+}

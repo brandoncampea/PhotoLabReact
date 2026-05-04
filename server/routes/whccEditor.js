@@ -15,6 +15,32 @@ const safeJsonParse = (value, fallback = null) => {
   }
 };
 
+const getRequestBaseUrl = (req) => {
+  const configured = String(process.env.APP_BASE_URL || '').trim().replace(/\/$/, '');
+  if (configured) return configured;
+
+  const forwardedProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
+  const proto = forwardedProto || req.protocol || 'http';
+  const host = String(req.headers['x-forwarded-host'] || req.get('host') || '').split(',')[0].trim();
+  if (!host) return '';
+  return `${proto}://${host}`.replace(/\/$/, '');
+};
+
+const getFrontendBaseUrl = (req) => {
+  const configured = String(
+    process.env.FRONTEND_BASE_URL ||
+    process.env.CLIENT_BASE_URL ||
+    ''
+  ).trim().replace(/\/$/, '');
+  if (configured) return configured;
+
+  const origin = String(req.headers.origin || '').trim().replace(/\/$/, '');
+  if (/^https?:\/\//i.test(origin)) return origin;
+
+  const appBase = String(process.env.APP_BASE_URL || '').trim().replace(/\/$/, '');
+  return appBase;
+};
+
 const toAbsoluteUrl = (value) => {
   const raw = String(value || '').trim();
   if (!raw) return null;
@@ -58,7 +84,8 @@ router.post('/session/create', authRequired, async (req, res) => {
     const key = String(process.env.WHCC_EDITOR_KEY || '').trim();
     const secret = String(process.env.WHCC_EDITOR_SECRET || '').trim();
     const apiBase = String(process.env.WHCC_EDITOR_API_BASE || 'https://prospector.dragdrop.design/api/v1').trim().replace(/\/$/, '');
-    const appBase = String(process.env.APP_BASE_URL || '').trim().replace(/\/$/, '');
+    const apiPublicBase = getRequestBaseUrl(req);
+    const frontendBase = getFrontendBaseUrl(req);
 
     if (!key || !secret) {
       return res.status(400).json({
@@ -70,7 +97,6 @@ router.post('/session/create', authRequired, async (req, res) => {
     const {
       productId,
       photoIds,
-      photos,
       quantity,
       completeUrl,
       cancelUrl,
@@ -84,79 +110,77 @@ router.post('/session/create', authRequired, async (req, res) => {
     }
 
     const normalizedPhotoIds = Array.isArray(photoIds)
-      ? photoIds.map(Number).filter((id) => Number.isInteger(id) && id > 0)
+      ? [...new Set(photoIds.map(Number).filter((id) => Number.isInteger(id) && id > 0))]
       : [];
 
-    const photoRows = normalizedPhotoIds.length
-      ? await queryRows(
-          `SELECT id,
-                  file_name as fileName,
-                  full_image_url as fullImageUrl,
-                  thumbnail_url as thumbnailUrl,
-                  width,
-                  height
-           FROM photos
-           WHERE id IN (${normalizedPhotoIds.map((_, idx) => `$${idx + 1}`).join(', ')})`,
-          normalizedPhotoIds
-        )
-      : [];
+    if (!normalizedPhotoIds.length) {
+      return res.status(400).json({
+        error: 'At least one existing album photo is required.',
+        details: 'WHCC editor sessions only support photos already stored in this account albums.',
+      });
+    }
+
+    const photoRows = await queryRows(
+      `SELECT p.id,
+              p.album_id as albumId,
+              p.file_name as fileName,
+              p.full_image_url as fullImageUrl,
+              p.thumbnail_url as thumbnailUrl,
+              p.width,
+              p.height
+       FROM photos p
+       INNER JOIN albums a ON a.id = p.album_id
+       WHERE p.id IN (${normalizedPhotoIds.map((_, idx) => `$${idx + 1}`).join(', ')})`,
+      normalizedPhotoIds
+    );
 
     const photoMap = new Map(photoRows.map((row) => [Number(row.id), row]));
+    const missingPhotoIds = normalizedPhotoIds.filter((id) => !photoMap.has(id));
 
-    const payloadPhotos = (Array.isArray(photos) ? photos : [])
-      .map((entry, index) => {
-        const id = Number(entry?.id || entry?.photoId || normalizedPhotoIds[index] || 0);
-        const dbPhoto = id ? photoMap.get(id) : null;
-        const fullUrl = toAbsoluteUrl(entry?.fullImageUrl || entry?.printUrl || dbPhoto?.fullImageUrl || dbPhoto?.thumbnailUrl);
-        const previewUrl = toAbsoluteUrl(entry?.url || entry?.thumbnailUrl || dbPhoto?.thumbnailUrl || dbPhoto?.fullImageUrl);
+    if (missingPhotoIds.length) {
+      return res.status(400).json({
+        error: 'Some selected photos are unavailable.',
+        details: 'WHCC editor sessions only support photos from existing albums stored in the database.',
+        missingPhotoIds,
+      });
+    }
 
+    const payloadPhotos = normalizedPhotoIds
+      .map((id) => {
+        const row = photoMap.get(id);
+        if (!row) return null;
+
+        const previewUrl = apiPublicBase ? `${apiPublicBase}/api/photos/${row.id}/asset?variant=thumb` : null;
+        const fullUrl = apiPublicBase ? `${apiPublicBase}/api/photos/${row.id}/asset?variant=full` : null;
         if (!fullUrl && !previewUrl) return null;
 
-        const width = Number(entry?.width || dbPhoto?.width || entry?.size?.original?.width || 0);
-        const height = Number(entry?.height || dbPhoto?.height || entry?.size?.original?.height || 0);
+        const fileName = String(row.fileName || '');
+        const isPng = /\.png$/i.test(fileName);
 
         return {
-          id: String(id || index + 1),
-          name: String(entry?.name || dbPhoto?.fileName || `Photo ${id || index + 1}`),
-          url: previewUrl || fullUrl,
-          printUrl: fullUrl || previewUrl,
-          filetype: String(entry?.filetype || 'jpg').toLowerCase() === 'png' ? 'png' : 'jpg',
-          size: {
-            original: {
-              width: width > 0 ? width : 3000,
-              height: height > 0 ? height : 2000,
-            },
-          },
-        };
-      })
-      .filter(Boolean);
-
-    if (!payloadPhotos.length && photoRows.length) {
-      for (const row of photoRows) {
-        const fullUrl = toAbsoluteUrl(row.fullImageUrl || row.thumbnailUrl);
-        const previewUrl = toAbsoluteUrl(row.thumbnailUrl || row.fullImageUrl);
-        if (!fullUrl && !previewUrl) continue;
-        payloadPhotos.push({
           id: String(row.id),
-          name: String(row.fileName || `Photo ${row.id}`),
+          name: String(fileName || `Photo ${row.id}`),
           url: previewUrl || fullUrl,
           printUrl: fullUrl || previewUrl,
-          filetype: 'jpg',
+          filetype: isPng ? 'png' : 'jpg',
           size: {
             original: {
               width: Number(row.width) > 0 ? Number(row.width) : 3000,
               height: Number(row.height) > 0 ? Number(row.height) : 2000,
             },
           },
-        });
-      }
-    }
+        };
+      })
+      .filter(Boolean);
 
     if (!payloadPhotos.length) {
-      return res.status(400).json({ error: 'At least one photo with a public URL is required.' });
+      return res.status(400).json({
+        error: 'Selected album photos are missing public image URLs.',
+        details: 'WHCC editor sessions require existing album photos with accessible preview or print URLs.',
+      });
     }
 
-    const product = await queryRow('SELECT id, name, options FROM products WHERE id = $1', [numericProductId]);
+    const product = await queryRow('SELECT id, name, category, options FROM products WHERE id = $1', [numericProductId]);
     if (!product) return res.status(404).json({ error: 'Product not found' });
 
     const options = safeJsonParse(product.options, {}) || {};
@@ -164,10 +188,10 @@ router.post('/session/create', authRequired, async (req, res) => {
     const editorProductId = String(overrideEditorProductId || mapped.productId || '').trim();
     const editorDesignId = String(overrideEditorDesignId || mapped.designId || '').trim();
 
-    if (!editorProductId || !editorDesignId) {
+    if (!editorProductId) {
       return res.status(400).json({
         error: 'Missing WHCC Editor mapping for product',
-        details: 'Store whccEditorProductId and whccEditorDesignId in products.options or pass overrides.',
+        details: 'Store whccEditorProductId in products.options or pass overrideEditorProductId.',
       });
     }
 
@@ -192,40 +216,42 @@ router.post('/session/create', authRequired, async (req, res) => {
       return res.status(502).json({ error: 'WHCC Editor access token was not returned' });
     }
 
-    const fallbackComplete = appBase
-      ? `${appBase}/cart?whccEditorComplete=1&editorId=%EDITOR_ID%`
+    const fallbackComplete = frontendBase
+      ? `${frontendBase}/cart?whccEditorComplete=1&editorId=%EDITOR_ID%`
       : 'http://localhost:3000/cart?whccEditorComplete=1&editorId=%EDITOR_ID%';
-    const fallbackCancel = appBase
-      ? `${appBase}/cart?whccEditorCancel=1`
+    const fallbackCancel = frontendBase
+      ? `${frontendBase}/cart?whccEditorCancel=1`
       : 'http://localhost:3000/cart?whccEditorCancel=1';
+
+    const editorPayload = {
+      userId: accountId,
+      productId: editorProductId,
+      ...(editorDesignId ? { designId: editorDesignId } : {}),
+      redirects: {
+        complete: {
+          text: 'Back to Cart',
+          url: String(completeUrl || fallbackComplete),
+        },
+        cancel: {
+          text: 'Cancel',
+          url: String(cancelUrl || fallbackCancel),
+        },
+      },
+      settings: {
+        quantity: {
+          default: Math.max(1, Number(quantity) || 1),
+        },
+        client: {
+          vendor: 'default',
+          hidePricing: true,
+        },
+      },
+      photos: payloadPhotos,
+    };
 
     const editorResponse = await axios.post(
       `${apiBase}/editors`,
-      {
-        userId: accountId,
-        productId: editorProductId,
-        designId: editorDesignId,
-        redirects: {
-          complete: {
-            text: 'Back to Cart',
-            url: String(completeUrl || fallbackComplete),
-          },
-          cancel: {
-            text: 'Cancel',
-            url: String(cancelUrl || fallbackCancel),
-          },
-        },
-        settings: {
-          quantity: {
-            default: Math.max(1, Number(quantity) || 1),
-          },
-          client: {
-            vendor: 'default',
-            hidePricing: true,
-          },
-        },
-        photos: payloadPhotos,
-      },
+      editorPayload,
       {
         headers: {
           Authorization: `Bearer ${accessToken}`,

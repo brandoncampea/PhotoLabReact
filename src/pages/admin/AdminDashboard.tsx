@@ -52,6 +52,7 @@ type DashboardStats = {
     customer_email?: string;
   }>;
   revenueSeries?: Record<'day' | 'week' | 'month', { data: number[]; labels: string[] }>;
+  taxSeries?: Record<'day' | 'week' | 'month', { data: number[]; labels: string[] }>;
   ordersSeries?: Record<'day' | 'week' | 'month', { data: number[]; labels: string[] }>;
   customersSeries?: Record<'day' | 'week' | 'month', { data: number[]; labels: string[] }>;
   pendingOrdersSeries?: Record<'day' | 'week' | 'month', { data: number[]; labels: string[] }>;
@@ -66,6 +67,7 @@ const AdminDashboard: React.FC = () => {
   const [ordersRange, setOrdersRange] = useState<'day' | 'week' | 'month'>('day');
   const [customersRange, setCustomersRange] = useState<'day' | 'week' | 'month'>('day');
   const [pendingRange, setPendingRange] = useState<'day' | 'week' | 'month'>('day');
+  const [taxRange, setTaxRange] = useState<'day' | 'week' | 'month'>('day');
   const [batchRange, setBatchRange] = useState<'day' | 'week' | 'month'>('day');
   const [analyticsRange, setAnalyticsRange] = useState<'today' | 'week' | 'month' | 'all'>('today');
 
@@ -112,9 +114,21 @@ const AdminDashboard: React.FC = () => {
   const totalAlbumClicks = stats.analytics?.albumViews?.reduce((sum, album) => sum + (album.clicks || 0), 0) || 0;
   const totalPhotoOpens = stats.analytics?.photoViews?.reduce((sum, photo) => sum + (photo.opens || 0), 0) || 0;
   const totalPhotoClicks = stats.analytics?.photoViews?.reduce((sum, photo) => sum + (photo.clicks || 0), 0) || 0;
+  const totalTax = Number(stats.revenueComposition?.totalTax || 0);
+  const totalRevenueExTax = Math.max(0, Number(stats.totalRevenue || 0) - totalTax);
   const totalMargin = Number(stats.grossMarginBreakdown?.totalGrossMargin || 0);
-  const avgRevenuePerOrder = stats.totalOrders ? (stats.totalRevenue / stats.totalOrders) : 0;
+  const avgRevenuePerOrder = stats.totalOrders ? (totalRevenueExTax / stats.totalOrders) : 0;
   const avgMarginPerOrder = stats.totalOrders ? (totalMargin / stats.totalOrders) : 0;
+  const revenueSeries = stats.revenueSeries?.[revenueRange] || { labels: [], data: [] };
+  const taxSeriesForRevenue = stats.taxSeries?.[revenueRange] || { labels: [], data: [] };
+  const taxByLabelForRevenue = new Map<string, number>();
+  taxSeriesForRevenue.labels.forEach((label, idx) => {
+    taxByLabelForRevenue.set(label, Number(taxSeriesForRevenue.data[idx] || 0));
+  });
+  const revenueExTaxSeries = {
+    labels: revenueSeries.labels,
+    data: revenueSeries.labels.map((label, idx) => Math.max(0, Number(revenueSeries.data[idx] || 0) - Number(taxByLabelForRevenue.get(label) || 0))),
+  };
 
   return (
     <AdminLayout>
@@ -129,7 +143,7 @@ const AdminDashboard: React.FC = () => {
         <div className="dashboard-card tallydark-card admin-dashboard-card admin-dashboard-card--revenue" role="region" tabIndex={0}>
           <div className="dashboard-card-label">Total Revenue</div>
           <div className="dashboard-card-value revenue admin-dashboard-revenue-value">
-            <span className="admin-dashboard-revenue-total">${stats.totalRevenue.toFixed(2)}</span>
+            <span className="admin-dashboard-revenue-total">${totalRevenueExTax.toFixed(2)}</span>
             <span className="admin-dashboard-revenue-separator">|</span>
             <span className={`admin-dashboard-revenue-margin ${totalMargin >= 0 ? 'positive' : 'negative'}`}>
               Margin: ${totalMargin.toFixed(2)}
@@ -148,7 +162,8 @@ const AdminDashboard: React.FC = () => {
                   <div>+ Tax: ${Number(stats.revenueComposition.totalTax || 0).toFixed(2)}</div>
                   <div>+ Shipping: ${Number(stats.revenueComposition.totalShipping || 0).toFixed(2)}</div>
                   <div>- Discounts: ${Number(stats.revenueComposition.totalDiscounts || 0).toFixed(2)}</div>
-                  <div style={{ marginTop: 2 }}>= Revenue: ${Number(stats.revenueComposition.recomputedTotal || 0).toFixed(2)}</div>
+                  <div style={{ marginTop: 2 }}>= Gross: ${Number(stats.revenueComposition.recomputedTotal || 0).toFixed(2)}</div>
+                  <div style={{ marginTop: 2 }}>= Revenue (ex Tax): ${totalRevenueExTax.toFixed(2)}</div>
                 </div>
               )}
               {!!stats.grossMarginBreakdown && (
@@ -169,9 +184,25 @@ const AdminDashboard: React.FC = () => {
             <button className="dashboard-pill" onClick={() => setRevenueRange('month')} disabled={revenueRange === 'month'}>Month</button>
           </div>
           <DashboardChart
-            data={stats.revenueSeries?.[revenueRange]?.data || []}
-            labels={stats.revenueSeries?.[revenueRange]?.labels || []}
-            label="Revenue"
+            data={revenueExTaxSeries.data}
+            labels={revenueExTaxSeries.labels}
+            label="Revenue (ex tax)"
+          />
+        </div>
+
+        <div className="dashboard-card tallydark-card admin-dashboard-card">
+          <div className="dashboard-card-label">Tax Collected</div>
+          <div className="dashboard-card-value revenue">${totalTax.toFixed(2)}</div>
+          <div className="dashboard-card-sub">Collected from completed orders</div>
+          <div className="dashboard-range-controls">
+            <button className="dashboard-pill" onClick={() => setTaxRange('day')} disabled={taxRange === 'day'}>Day</button>
+            <button className="dashboard-pill" onClick={() => setTaxRange('week')} disabled={taxRange === 'week'}>Week</button>
+            <button className="dashboard-pill" onClick={() => setTaxRange('month')} disabled={taxRange === 'month'}>Month</button>
+          </div>
+          <DashboardChart
+            data={stats.taxSeries?.[taxRange]?.data || []}
+            labels={stats.taxSeries?.[taxRange]?.labels || []}
+            label="Tax Collected"
           />
         </div>
         <div className="dashboard-card tallydark-card admin-dashboard-card">

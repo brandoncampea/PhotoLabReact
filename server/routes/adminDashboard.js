@@ -12,6 +12,11 @@ router.get('/studio-revenue-details', adminRequired, async (req, res) => {
         if (req.user?.role !== 'super_admin') {
             return res.status(403).json({ error: 'Forbidden' });
         }
+        const hasProductSizeIdRow = await queryRow(
+            `SELECT CASE WHEN COL_LENGTH('order_items', 'product_size_id') IS NOT NULL THEN 1 ELSE 0 END as hasProductSizeId`
+        );
+        const hasProductSizeId = Number(hasProductSizeIdRow?.hasProductSizeId || 0) === 1;
+
         // Get all studios
         const studios = await queryRows('SELECT id, name FROM studios ORDER BY name');
         // For each studio, get revenue/costs summary and all orders
@@ -32,19 +37,53 @@ router.get('/studio-revenue-details', adminRequired, async (req, res) => {
             `, [studio.id]);
             // All orders for this studio
             const orders = await queryRows(`
-                SELECT id, user_id, total, subtotal, tax_amount, shipping_cost, studio_shipping_cost, shipping_margin, stripe_fee_amount, discount_code, created_at, status
-                FROM orders WHERE studio_id = $1 ORDER BY created_at DESC
+                SELECT
+                  o.id,
+                  o.user_id,
+                  o.total,
+                  o.subtotal,
+                  o.tax_amount,
+                  o.shipping_cost,
+                  o.studio_shipping_cost,
+                  o.shipping_margin,
+                  o.stripe_fee_amount,
+                  o.discount_code,
+                  o.created_at,
+                  o.status,
+                  COALESCE(SUM(oi.price * oi.quantity), 0) as studio_revenue,
+                  COALESCE(SUM(COALESCE(${hasProductSizeId ? 'ps.price' : 'NULL'}, p.price, 0) * oi.quantity), 0) as base_revenue
+                FROM orders o
+                LEFT JOIN order_items oi ON oi.order_id = o.id
+                LEFT JOIN products p ON p.id = oi.product_id
+                ${hasProductSizeId ? 'LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id' : ''}
+                WHERE o.studio_id = $1
+                GROUP BY o.id, o.user_id, o.total, o.subtotal, o.tax_amount, o.shipping_cost, o.studio_shipping_cost, o.shipping_margin, o.stripe_fee_amount, o.discount_code, o.created_at, o.status
+                ORDER BY o.created_at DESC
             `, [studio.id]);
             // For each order, get line items
             for (const order of orders) {
+                const studioRevenue = Number(order.studio_revenue || 0);
+                const baseRevenue = Number(order.base_revenue || 0);
+                const stripeFeeAmount = Number(order.stripe_fee_amount || 0);
+                order.studio_profit = studioRevenue - baseRevenue - stripeFeeAmount;
+
                 order.items = await queryRows(`
                     SELECT id, product_id, product_size_id, quantity, price, photo_id
                     FROM order_items WHERE order_id = $1
                 `, [order.id]);
             }
+
+            const totalStudioProfit = orders.reduce(
+                (sum, order) => sum + Number(order.studio_profit || 0),
+                0
+            );
+
             studioDetails.push({
                 studio,
-                summary,
+                summary: {
+                    ...summary,
+                    totalStudioProfit,
+                },
                 orders
             });
         }
@@ -97,6 +136,7 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
                         `SELECT
                                 COALESCE(SUM(oi.price * oi.quantity), 0) as totalStudioRevenue,
                                 COALESCE(SUM(COALESCE(${hasProductSizeId ? 'ps.price' : 'NULL'}, p.price, 0) * oi.quantity), 0) as totalBaseRevenue,
+                        COALESCE(SUM((COALESCE(${hasProductSizeId ? 'ps.price' : 'NULL'}, p.price, 0) - COALESCE(${hasProductSizeId ? 'ps.cost' : 'NULL'}, p.cost, 0)) * oi.quantity), 0) as totalSuperAdminRevenue,
                                 COALESCE(SUM(COALESCE(o.shipping_margin, 0)), 0) as totalShippingMargin,
                                 COALESCE(SUM(
                                         COALESCE(o.stripe_fee_amount, 0) *
@@ -119,6 +159,7 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
 
                 const breakdownStudioRevenue = Number(revenueBreakdownRow?.totalStudioRevenue || 0);
                 const breakdownBaseRevenue = Number(revenueBreakdownRow?.totalBaseRevenue || 0);
+                const breakdownSuperAdminRevenue = Number(revenueBreakdownRow?.totalSuperAdminRevenue || 0);
                 const breakdownShippingMargin = Number(revenueBreakdownRow?.totalShippingMargin || 0);
                 const breakdownStripeFees = Number(revenueBreakdownRow?.totalStripeFees || 0);
                 const totalGrossMargin = breakdownStudioRevenue - breakdownBaseRevenue + breakdownShippingMargin - breakdownStripeFees;
@@ -190,6 +231,73 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
 
         const revenueMonthRows = await queryRows(
             `SELECT FORMAT(o.created_at, 'yyyy-MM') as label, SUM(o.total) as value
+             FROM orders o
+             WHERE LOWER(o.status) NOT IN ('cancelled', 'refunded')
+                 AND o.created_at >= DATEADD(month, -11, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}
+             GROUP BY FORMAT(o.created_at, 'yyyy-MM')
+             ORDER BY label ASC`
+        );
+
+        const superAdminRevenueDayRows = await queryRows(
+            `SELECT FORMAT(o.created_at, 'yyyy-MM-dd') as label,
+                            SUM((COALESCE(${hasProductSizeId ? 'ps.price' : 'NULL'}, p.price, 0) - COALESCE(${hasProductSizeId ? 'ps.cost' : 'NULL'}, p.cost, 0)) * oi.quantity) as value
+             FROM orders o
+             INNER JOIN order_items oi ON oi.order_id = o.id
+             LEFT JOIN products p ON p.id = oi.product_id
+             ${hasProductSizeId ? 'LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id' : ''}
+             WHERE LOWER(o.status) NOT IN ('cancelled', 'refunded')
+                 AND o.created_at >= DATEADD(day, -29, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}
+             GROUP BY FORMAT(o.created_at, 'yyyy-MM-dd')
+             ORDER BY label ASC`
+        );
+
+        const superAdminRevenueWeekRows = await queryRows(
+            `SELECT FORMAT(DATEADD(day, -1 * (DATEPART(weekday, o.created_at) - 1), CAST(o.created_at AS date)), 'yyyy-MM-dd') as label,
+                            SUM((COALESCE(${hasProductSizeId ? 'ps.price' : 'NULL'}, p.price, 0) - COALESCE(${hasProductSizeId ? 'ps.cost' : 'NULL'}, p.cost, 0)) * oi.quantity) as value
+             FROM orders o
+             INNER JOIN order_items oi ON oi.order_id = o.id
+             LEFT JOIN products p ON p.id = oi.product_id
+             ${hasProductSizeId ? 'LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id' : ''}
+             WHERE LOWER(o.status) NOT IN ('cancelled', 'refunded')
+                 AND o.created_at >= DATEADD(week, -11, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}
+             GROUP BY FORMAT(DATEADD(day, -1 * (DATEPART(weekday, o.created_at) - 1), CAST(o.created_at AS date)), 'yyyy-MM-dd')
+             ORDER BY label ASC`
+        );
+
+        const superAdminRevenueMonthRows = await queryRows(
+            `SELECT FORMAT(o.created_at, 'yyyy-MM') as label,
+                            SUM((COALESCE(${hasProductSizeId ? 'ps.price' : 'NULL'}, p.price, 0) - COALESCE(${hasProductSizeId ? 'ps.cost' : 'NULL'}, p.cost, 0)) * oi.quantity) as value
+             FROM orders o
+             INNER JOIN order_items oi ON oi.order_id = o.id
+             LEFT JOIN products p ON p.id = oi.product_id
+             ${hasProductSizeId ? 'LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id' : ''}
+             WHERE LOWER(o.status) NOT IN ('cancelled', 'refunded')
+                 AND o.created_at >= DATEADD(month, -11, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}
+             GROUP BY FORMAT(o.created_at, 'yyyy-MM')
+             ORDER BY label ASC`
+        );
+
+        const taxDayRows = await queryRows(
+            `SELECT FORMAT(o.created_at, 'yyyy-MM-dd') as label, SUM(COALESCE(o.tax_amount, 0)) as value
+             FROM orders o
+             WHERE LOWER(o.status) NOT IN ('cancelled', 'refunded')
+                 AND o.created_at >= DATEADD(day, -29, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}
+             GROUP BY FORMAT(o.created_at, 'yyyy-MM-dd')
+             ORDER BY label ASC`
+        );
+
+        const taxWeekRows = await queryRows(
+            `SELECT FORMAT(DATEADD(day, -1 * (DATEPART(weekday, o.created_at) - 1), CAST(o.created_at AS date)), 'yyyy-MM-dd') as label,
+                            SUM(COALESCE(o.tax_amount, 0)) as value
+             FROM orders o
+             WHERE LOWER(o.status) NOT IN ('cancelled', 'refunded')
+                 AND o.created_at >= DATEADD(week, -11, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}
+             GROUP BY FORMAT(DATEADD(day, -1 * (DATEPART(weekday, o.created_at) - 1), CAST(o.created_at AS date)), 'yyyy-MM-dd')
+             ORDER BY label ASC`
+        );
+
+        const taxMonthRows = await queryRows(
+            `SELECT FORMAT(o.created_at, 'yyyy-MM') as label, SUM(COALESCE(o.tax_amount, 0)) as value
              FROM orders o
              WHERE LOWER(o.status) NOT IN ('cancelled', 'refunded')
                  AND o.created_at >= DATEADD(month, -11, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}
@@ -494,10 +602,12 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
             grossMarginBreakdown: {
                 totalStudioRevenue: breakdownStudioRevenue,
                 totalBaseRevenue: breakdownBaseRevenue,
+                totalSuperAdminRevenue: breakdownSuperAdminRevenue,
                 totalShippingMargin: breakdownShippingMargin,
                 totalStripeFees: breakdownStripeFees,
                 totalGrossMargin,
             },
+            totalSuperAdminRevenue: breakdownSuperAdminRevenue,
             totalCustomers,
             pendingOrders,
             batchOrders,
@@ -519,6 +629,16 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
                 day: formatSeries(revenueDayRows),
                 week: formatSeries(revenueWeekRows),
                 month: formatSeries(revenueMonthRows),
+            },
+            superAdminRevenueSeries: {
+                day: formatSeries(superAdminRevenueDayRows),
+                week: formatSeries(superAdminRevenueWeekRows),
+                month: formatSeries(superAdminRevenueMonthRows),
+            },
+            taxSeries: {
+                day: formatSeries(taxDayRows),
+                week: formatSeries(taxWeekRows),
+                month: formatSeries(taxMonthRows),
             },
             ordersSeries: {
                 day: formatSeries(ordersDayRows),

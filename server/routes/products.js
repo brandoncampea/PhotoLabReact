@@ -28,9 +28,52 @@ const decodeSizeName = (storedName) => {
   };
 };
 
+const extractEditorConfig = (options) => {
+  const direct = options || {};
+  const nested = direct.whccEditor || direct.editor || {};
+
+  const editorProviderRaw = String(
+    direct.editorProvider ??
+    direct.fulfillmentEditor ??
+    nested.provider ??
+    ''
+  ).trim().toLowerCase();
+
+  const whccEditorProductId = String(
+    direct.whccEditorProductId ??
+    direct.editorProductId ??
+    direct.whcc_design_product_id ??
+    nested.productId ??
+    ''
+  ).trim();
+
+  const whccEditorDesignId = String(
+    direct.whccEditorDesignId ??
+    direct.editorDesignId ??
+    direct.whcc_design_id ??
+    nested.designId ??
+    ''
+  ).trim();
+
+  const editorProvider = editorProviderRaw || (whccEditorProductId || whccEditorDesignId ? 'whcc' : null);
+  const requiresWhccEditor =
+    direct.useWhccEditor === true ||
+    direct.requiresWhccEditor === true ||
+    editorProvider === 'whcc' ||
+    (!!whccEditorProductId && !!whccEditorDesignId);
+
+  return {
+    editorProvider,
+    requiresWhccEditor,
+    whccEditorProductId: whccEditorProductId || null,
+    whccEditorDesignId: whccEditorDesignId || null,
+  };
+};
+
 const mapLegacyProducts = (products) => {
   return products.map((p) => {
     const opts = p.options ? JSON.parse(p.options) : null;
+    const editor = extractEditorConfig(opts);
     const sizes = Array.isArray(opts?.sizes)
       ? opts.sizes.map((s, idx) => ({
           id: Number.isFinite(Number(s.id)) ? Number(s.id) : (p.id * 1000 + idx + 1),
@@ -53,6 +96,7 @@ const mapLegacyProducts = (products) => {
       digitalDownloadScope: opts?.digitalDownloadScope ?? opts?.downloadScope ?? opts?.digital_download_scope ?? 'photo',
       digitalPricingMode: opts?.digitalPricingMode ?? opts?.pricingMode ?? opts?.digital_pricing_mode ?? null,
       superAdminPercentage: Number(opts?.superAdminPercentage ?? opts?.digitalCommissionPercent ?? opts?.super_admin_percentage ?? 0) || 0,
+      ...editor,
     };
   });
 };
@@ -199,6 +243,7 @@ router.get('/active', async (req, res) => {
         const pid = Number(row.productId);
         if (!productMap.has(pid)) {
           const options = row.options ? JSON.parse(row.options) : null;
+          const editor = extractEditorConfig(options);
           const displayOrder = Number(row.displayOrder);
           productMap.set(pid, {
             id: pid,
@@ -213,6 +258,7 @@ router.get('/active', async (req, res) => {
             digitalDownloadScope: options?.digitalDownloadScope ?? options?.downloadScope ?? options?.digital_download_scope ?? 'photo',
             digitalPricingMode: options?.digitalPricingMode ?? options?.pricingMode ?? options?.digital_pricing_mode ?? null,
             superAdminPercentage: Number(options?.superAdminPercentage ?? options?.digitalCommissionPercent ?? options?.super_admin_percentage ?? 0) || 0,
+            ...editor,
             studioIsRecommended: Boolean(Number(row.isRecommended)),
             studioDisplayOrder: Number.isFinite(displayOrder) ? displayOrder : null,
           });
@@ -330,6 +376,7 @@ router.get('/active', async (req, res) => {
         );
         const parsedProducts = products.map((product) => {
           const options = product.options ? JSON.parse(product.options) : null;
+          const editor = extractEditorConfig(options);
           const sizes = productSizes
             .filter((size) => Number(size.productId) === Number(product.id))
             .map((size) => {
@@ -356,6 +403,7 @@ router.get('/active', async (req, res) => {
             digitalDownloadScope: options?.digitalDownloadScope ?? options?.downloadScope ?? options?.digital_download_scope ?? 'photo',
             digitalPricingMode: options?.digitalPricingMode ?? options?.pricingMode ?? options?.digital_pricing_mode ?? null,
             superAdminPercentage: Number(options?.superAdminPercentage ?? options?.digitalCommissionPercent ?? options?.super_admin_percentage ?? 0) || 0,
+            ...editor,
           };
         });
         return res.json(parsedProducts.filter((product) => product.isActive !== false));
