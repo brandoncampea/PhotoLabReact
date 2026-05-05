@@ -604,7 +604,9 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
               p.image_url as productImageUrl,
               ph.file_name as fileName,
               ph.full_image_url as fullImageUrl,
-              ph.thumbnail_url as thumbnailUrl
+              ph.thumbnail_url as thumbnailUrl,
+              ph.width as photoWidth,
+              ph.height as photoHeight
        FROM order_items oi
        LEFT JOIN products p ON p.id = oi.product_id
        LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id
@@ -1072,6 +1074,17 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
           getCatalogProductUID(catalogMatch) ||
           getStaticWhccFallbackProductUID(item);
 
+        // When the product UID is pre-configured, look it up exactly in the catalog so
+        // that attributes and ProductNodes come from the correct product, not a name-based
+        // match that may resolve to a different (wrong) product.
+        const effectiveCatalogMatch = (() => {
+          if (!optionsConfig.productUID) return catalogMatch;
+          const byUid = catalogProducts.find(
+            (p) => getCatalogProductUID(p) === optionsConfig.productUID
+          );
+          return byUid || catalogMatch;
+        })();
+
         if (!productUID) {
           throw new Error(`No WHCC product mapping found for ${item.productName || 'Unknown Product'}${item.sizeName ? ` (${item.sizeName})` : ''}. Add WHCC mapping data before retrying.`);
         }
@@ -1079,12 +1092,14 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
         // Determine all product nodes — multi-node products need one ItemAsset per node
         const productNodeIDs = optionsConfig.productNodeID
           ? [Number(optionsConfig.productNodeID)]
-          : getCatalogProductNodeIDs(catalogMatch);
+          : getCatalogProductNodeIDs(effectiveCatalogMatch);
 
-        // Press product deduplication: WHCC allows only one press design per order
-        if (isPressProduct(catalogMatch)) {
-          if (pressProductUIDsUsed.has(productUID)) {
-            console.warn(`[WHCC] Skipping duplicate press product ${item.productName || productUID} — only one press design allowed per WHCC order.`);
+        // Press product deduplication: WHCC allows only one press design per order.
+        // Deduplicate by press-category (not just UID) so that two items of different
+        // press UIDs don't both slip through.
+        if (isPressProduct(effectiveCatalogMatch)) {
+          if (pressProductUIDsUsed.size > 0) {
+            console.warn(`[WHCC] Skipping press product ${item.productName || productUID} — only one press design allowed per WHCC order. Already have: ${[...pressProductUIDsUsed].join(', ')}`);
             return null;
           }
           pressProductUIDsUsed.add(productUID);
@@ -1093,19 +1108,34 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
         const optionAttributeUIDs = (optionsConfig.itemAttributeUIDs || [])
           .map((value) => Number(value))
           .filter((value) => Number.isInteger(value) && value > 0);
-        const catalogAttributeUIDs = getCatalogItemAttributeUIDs(catalogMatch);
+        const catalogAttributeUIDs = getCatalogItemAttributeUIDs(effectiveCatalogMatch);
 
         // Prefer WHCC catalog defaults (source of truth). Fall back to stored options if catalog has none.
         const finalAttributeUIDs = catalogAttributeUIDs.length
           ? catalogAttributeUIDs
           : optionAttributeUIDs;
 
+        // WHCC expects X/Y as 0-100 percentage offset within the image.
+        // react-cropper stores x/y as pixel coordinates, so normalize using photo dimensions.
+        const photoWidth = Number(item.photoWidth || 0);
+        const photoHeight = Number(item.photoHeight || 0);
+        const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
         const cropOverrides = cropData && typeof cropData === 'object'
           ? {
-              X: Number(cropData.x) || 0,
-              Y: Number(cropData.y) || 0,
-              ZoomX: Number(cropData.scaleX) ? Number(cropData.scaleX) * 100 : 100,
-              ZoomY: Number(cropData.scaleY) ? Number(cropData.scaleY) * 100 : 100,
+              X: clamp(
+                photoWidth > 0
+                  ? (Number(cropData.x) / photoWidth) * 100
+                  : Number(cropData.x) || 0,
+                0, 100
+              ),
+              Y: clamp(
+                photoHeight > 0
+                  ? (Number(cropData.y) / photoHeight) * 100
+                  : Number(cropData.y) || 0,
+                0, 100
+              ),
+              ZoomX: Math.max(1, Number(cropData.scaleX) ? Number(cropData.scaleX) * 100 : 100),
+              ZoomY: Math.max(1, Number(cropData.scaleY) ? Number(cropData.scaleY) * 100 : 100),
             }
           : {};
 
@@ -1124,6 +1154,7 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
             ? 'static-fallback'
             : 'unresolved',
           catalogProductName: catalogMatch?.Name || catalogMatch?.name || null,
+            effectiveCatalogProductName: effectiveCatalogMatch?.Name || effectiveCatalogMatch?.name || null,
           nodeCount: productNodeIDs.length,
           payload: {
             ProductUID: productUID,
