@@ -162,6 +162,7 @@ const AdminOrders: React.FC = () => {
     email: '',
     phone: '',
   });
+  const [batchSpecialInstructions, setBatchSpecialInstructions] = useState('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
@@ -318,7 +319,7 @@ const AdminOrders: React.FC = () => {
     setMessage(`Submitting ${trackedOrderIds.length} eligible batch order(s) to WHCC...`);
 
     try {
-      const result = await orderService.submitBatch(trackedOrderIds, batchAddress);
+      const result = await orderService.submitBatch(trackedOrderIds, batchAddress, undefined, batchSpecialInstructions);
       if ((result as any).failedCount) {
         setMessage(`Released ${result.updatedCount} batch order(s) to ${String(result.selectedLab || 'configured lab').toUpperCase()}. ${(result as any).failedCount} failed. See WHCC logs in order details.`);
       } else {
@@ -456,7 +457,7 @@ const AdminOrders: React.FC = () => {
   const shippingReport = filteredRecentOrders.reduce(
     (acc, order) => {
       const customerShipping = Number(order.shippingCost || 0);
-      const studioShipping = Number(order.studioShippingCost ?? order.shippingCost ?? 0);
+      const studioShipping = Number(order.studioShippingCost ?? 0);
       const shippingMargin = Number(order.shippingMargin ?? (customerShipping - studioShipping));
       acc.customerShippingTotal += customerShipping;
       acc.studioShippingTotal += studioShipping;
@@ -666,7 +667,7 @@ const AdminOrders: React.FC = () => {
           0
         );
         const shippingCost = Number(order.shippingCost) || 0;
-        const studioShippingCost = Number(order.studioShippingCost ?? order.shippingCost ?? 0);
+        const studioShippingCost = Number(order.studioShippingCost ?? 0);
         const shippingMargin = Number(order.shippingMargin ?? (shippingCost - studioShippingCost));
         const shippingRuleLabel = order.isBatch
           ? 'Batch order: customer $0, studio pays rubric cost'
@@ -1043,6 +1044,22 @@ const AdminOrders: React.FC = () => {
                     <label htmlFor="batchCountry">Country</label>
                     <input id="batchCountry" className="input" value={batchAddress.country} onChange={(e) => updateBatchAddressField('country', e.target.value)} />
                   </div>
+                </div>
+                <div className="form-group" style={{ marginTop: '12px' }}>
+                  <label htmlFor="batchSpecialInstructions">Special Instructions for WHCC</label>
+                  <textarea
+                    id="batchSpecialInstructions"
+                    className="input"
+                    value={batchSpecialInstructions}
+                    onChange={(e) => setBatchSpecialInstructions(e.target.value)}
+                    rows={3}
+                    maxLength={500}
+                    placeholder="Optional notes to include in WHCC Special Instructions"
+                    style={{ minHeight: '84px', resize: 'vertical' }}
+                  />
+                  <small style={{ color: 'var(--text-secondary)' }}>
+                    Sent with the batch release in WHCC's special instructions field.
+                  </small>
                 </div>
               </div>
 

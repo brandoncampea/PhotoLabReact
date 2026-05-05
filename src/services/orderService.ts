@@ -139,11 +139,12 @@ export const orderService = {
     return response.data;
   },
 
-  async submitBatch(orderIds: number[], batchAddress: ShippingAddress, selectedLab?: string): Promise<{ success: boolean; updatedCount: number; notReadyCount: number; failedCount?: number; selectedLab: string; }> {
+  async submitBatch(orderIds: number[], batchAddress: ShippingAddress, selectedLab?: string, specialInstructions?: string): Promise<{ success: boolean; updatedCount: number; notReadyCount: number; failedCount?: number; selectedLab: string; }> {
     const response = await api.post('/orders/admin/submit-batch', {
       orderIds,
       batchAddress,
       ...(selectedLab ? { selectedLab } : {}),
+      ...(specialInstructions !== undefined ? { specialInstructions } : {}),
     });
     return response.data;
   },

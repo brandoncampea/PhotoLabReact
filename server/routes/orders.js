@@ -5,6 +5,7 @@ const { queryRow, queryRows, query } = mssql;
 import { authRequired, adminRequired, superAdminRequired } from '../middleware/auth.js';
 import { requireActiveSubscription } from '../middleware/subscription.js';
 import orderReceiptService from '../services/orderReceiptService.js';
+import { fetchToken as fetchWhccToken } from './whccProxy.js';
 const router = express.Router();
 
 // Admin: Resend digital download links for an order
@@ -507,6 +508,7 @@ const calculateItemAccountingSnapshot = ({
 const submitOrderToWhcc = async (orderId, options = {}) => {
   const allowBatch = Boolean(options?.allowBatch);
   const shippingAddressOverride = options?.shippingAddressOverride || null;
+  const specialInstructions = String(options?.specialInstructions || '').trim() || null;
   const aggregateOrderIds = Array.isArray(options?.aggregateOrderIds)
     ? options.aggregateOrderIds.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)
     : [];
@@ -616,14 +618,14 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
       return;
     }
 
-    // Get WHCC credentials from environment
-    const consumerKey = process.env.WHCC_CONSUMER_KEY;
-    const consumerSecret = process.env.WHCC_CONSUMER_SECRET;
+    // Get WHCC credentials from environment (support both naming conventions)
+    const consumerKey = process.env.WHCC_CONSUMER_KEY || process.env.WHCC_API_KEY;
+    const consumerSecret = process.env.WHCC_CONSUMER_SECRET || process.env.WHCC_API_SECRET;
     const isSandbox = process.env.WHCC_SANDBOX === 'true';
     sandboxMode = isSandbox;
 
     if (!consumerKey || !consumerSecret) {
-      console.warn('[WHCC] WHCC_CONSUMER_KEY or WHCC_CONSUMER_SECRET not configured; skipping WHCC submission');
+      console.warn('[WHCC] WHCC credentials not configured (set WHCC_API_KEY/WHCC_API_SECRET or WHCC_CONSUMER_KEY/WHCC_CONSUMER_SECRET); skipping WHCC submission');
       return;
     }
 
@@ -1018,24 +1020,10 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
     const axios = (await import('axios')).default;
     const baseUrl = isSandbox ? 'https://sandbox.apps.whcc.com' : 'https://apps.whcc.com';
 
-    // Get WHCC token using the Order Submit API access-token endpoint
+    // Get WHCC token using the shared fetchWhccToken (cached, handles all response shapes)
     currentStage = 'token';
     currentRequestUrl = `${baseUrl}/api/AccessToken`;
-    const tokenResponse = await axios.get(currentRequestUrl, {
-      params: {
-        grant_type: 'consumer_credentials',
-        consumer_key: consumerKey,
-        consumer_secret: consumerSecret,
-      },
-      headers: {
-        'Accept': 'application/json',
-      },
-    });
-
-    const token = tokenResponse.data?.Token || tokenResponse.data?.token || null;
-    if (!token) {
-      throw new Error('WHCC token response did not include a token');
-    }
+    const token = await fetchWhccToken(consumerKey, consumerSecret, isSandbox);
 
     // Fetch WHCC catalog to resolve per-product ProductUID/Node/Attributes
     let catalogProducts = [];
@@ -1178,7 +1166,7 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
         {
           SequenceNumber: 1,
           Reference: whccReference,
-          Instructions: null,
+          Instructions: specialInstructions,
           SendNotificationEmailAddress: String(shippingAddress.email || '').trim() || null,
           SendNotificationEmailToAccount: true,
           ShipToAddress: {
@@ -1207,12 +1195,13 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
         runAt: nowIso(),
         params: {
           grant_type: 'consumer_credentials',
-          consumerKeyPreview: previewSecret(consumerKey),
+          consumerKeyPreview: consumerKey ? `${consumerKey.slice(0, 4)}...` : null,
         },
       },
       importRequest: {
         url: `${baseUrl}/api/OrderImport`,
         runAt: nowIso(),
+        specialInstructions,
         body: whccOrderRequest,
       },
       resolvedItems: resolvedWhccItems,
@@ -1795,29 +1784,10 @@ router.post('/', requireActiveSubscription, async (req, res) => {
       }
     }
 
-    // Calculate studio_shipping_cost and shipping_margin
-    let studioShippingCost = 0;
-    let shippingMargin = 0;
-    // Studio shipping cost: sum of base cost for each item (from product_sizes or products)
-    for (const item of items) {
-      let baseCost = 0;
-      if (item.productSizeId) {
-        const sizeRow = await queryRow(
-          'SELECT cost FROM product_sizes WHERE id = $1',
-          [item.productSizeId]
-        );
-        baseCost = Number(sizeRow?.cost) || 0;
-      } else if (item.productId) {
-        const prodRow = await queryRow(
-          'SELECT cost FROM products WHERE id = $1',
-          [item.productId]
-        );
-        baseCost = Number(prodRow?.cost) || 0;
-      }
-      studioShippingCost += baseCost * (Number(item.quantity) || 1);
-    }
-    // Margin = what customer paid for shipping minus studio base cost
-    shippingMargin = (Number(shippingCost) || 0) - studioShippingCost;
+    // studio_shipping_cost and shipping_margin are not known at order creation time
+    // (WHCC shipping is charged after lab submission). Store as 0.
+    const studioShippingCost = 0;
+    const shippingMargin = 0;
 
     const nextStatus = directOrder ? 'processing' : 'pending';
     const shouldMarkLabSubmitted = directOrder ? false : !!labSubmitted;
@@ -3014,7 +2984,8 @@ router.patch('/admin/:orderId/status', adminRequired, async (req, res) => {
 // Submit batch orders to lab (admin)
 router.post('/admin/submit-batch', adminRequired, async (req, res) => {
   try {
-    const { orderIds, batchAddress, selectedLab } = req.body;
+    const { orderIds, batchAddress, selectedLab, specialInstructions } = req.body;
+    const trimmedSpecialInstructions = String(specialInstructions || '').trim();
 
     if (!Array.isArray(orderIds) || orderIds.length === 0) {
       return res.status(400).json({ error: 'orderIds must be a non-empty array' });
@@ -3039,6 +3010,10 @@ router.post('/admin/submit-batch', adminRequired, async (req, res) => {
     const ids = orderIds.map((id) => Number(id)).filter(Boolean);
     if (ids.length === 0) {
       return res.status(400).json({ error: 'No valid order IDs provided' });
+    }
+
+    if (trimmedSpecialInstructions.length > 500) {
+      return res.status(400).json({ error: 'Special instructions must be 500 characters or fewer' });
     }
 
     let updatedCount = 0;
@@ -3099,6 +3074,7 @@ router.post('/admin/submit-batch', adminRequired, async (req, res) => {
             allowBatch: true,
             shippingAddressOverride: batchAddress,
             aggregateOrderIds: eligibleIds,
+            specialInstructions: trimmedSpecialInstructions,
           });
         } catch (error) {
           // Ignore here; failed statuses are persisted by submitOrderToWhcc and counted below.

@@ -389,7 +389,7 @@ const SuperAdminDashboard: React.FC = () => {
           <div className="dashboard-card-label">Total Profit</div>
           <div className="dashboard-card-value">${stats.totalGrossMargin.toFixed(2)}</div>
           <div className="dashboard-card-sub">
-            {stats.totalSuperAdminRevenue > 0 ? `${((stats.totalGrossMargin / stats.totalSuperAdminRevenue) * 100).toFixed(1)}% margin` : '0% margin'}
+            {stats.totalSuperAdminRevenue > 0 ? `${((stats.totalGrossMargin / stats.totalSuperAdminRevenue) * 100).toFixed(1)}% margin · after Stripe fees` : '0% margin'}
           </div>
           <DashboardChart
             data={revenueSeries[revenueRange]?.map((v) => v * (stats.totalSuperAdminRevenue > 0 ? (stats.totalGrossMargin / stats.totalSuperAdminRevenue) : 0)) || []}

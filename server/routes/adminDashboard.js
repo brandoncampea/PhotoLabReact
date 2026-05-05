@@ -318,7 +318,8 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
                 const totalProductsSold = Number(revenueBreakdownRow?.totalProductsSold || 0);
                 const breakdownShippingMargin = Number(revenueBreakdownRow?.totalShippingMargin || 0);
                 const breakdownStripeFees = Number(revenueBreakdownRow?.totalStripeFees || 0);
-                const totalGrossMargin = breakdownStudioRevenue - breakdownBaseRevenue + breakdownShippingMargin - breakdownStripeFees;
+                // Total profit = gross markup over cost minus Stripe processing fees
+                const totalGrossMargin = breakdownSuperAdminRevenue - breakdownStripeFees;
                 const avgProfitPerProduct = totalProductsSold > 0 ? (breakdownSuperAdminRevenue / totalProductsSold) : 0;
 
         // Always count unique user_id from orders for total customers (active customers)

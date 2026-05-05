@@ -138,6 +138,8 @@ async function fetchToken(consumerKey, consumerSecret, isSandbox) {
   return token;
 }
 
+export { fetchToken };
+
 // ---------------------------------------------------------------------------
 // GET /api/whcc/token
 // Returns a WHCC access token (cached server-side)
