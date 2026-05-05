@@ -283,14 +283,7 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
                         `SELECT
                                 COALESCE(SUM(oi.price * oi.quantity), 0) as totalStudioRevenue,
                                 COALESCE(SUM(COALESCE(${hasProductSizeId ? 'ps.price' : 'NULL'}, p.price, 0) * oi.quantity), 0) as totalBaseRevenue,
-                        COALESCE(SUM((
-                            COALESCE(oi.price, 0)
-                            - COALESCE(
-                                ${hasProductSizeId ? 'ps.cost' : 'NULL'},
-                                p.cost,
-                                0
-                            )
-                        ) * oi.quantity), 0) as totalSuperAdminRevenue,
+                        COALESCE(SUM(COALESCE(${hasProductSizeId ? 'ps.cost' : 'NULL'}, p.cost, 0) * oi.quantity), 0) as totalWhccCost,
                         COALESCE(SUM(COALESCE(oi.quantity, 0)), 0) as totalProductsSold,
                                 COALESCE(SUM(COALESCE(o.shipping_margin, 0)), 0) as totalShippingMargin,
                                 COALESCE(SUM(
@@ -314,13 +307,16 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
 
                 const breakdownStudioRevenue = Number(revenueBreakdownRow?.totalStudioRevenue || 0);
                 const breakdownBaseRevenue = Number(revenueBreakdownRow?.totalBaseRevenue || 0);
-                const breakdownSuperAdminRevenue = Number(revenueBreakdownRow?.totalSuperAdminRevenue || 0);
+                // Super Admin Revenue = base price × qty (what studios pay the platform)
+                const breakdownSuperAdminRevenue = breakdownBaseRevenue;
+                const breakdownWhccCost = Number(revenueBreakdownRow?.totalWhccCost || 0);
                 const totalProductsSold = Number(revenueBreakdownRow?.totalProductsSold || 0);
                 const breakdownShippingMargin = Number(revenueBreakdownRow?.totalShippingMargin || 0);
                 const breakdownStripeFees = Number(revenueBreakdownRow?.totalStripeFees || 0);
-                // Total profit = gross markup over cost minus Stripe processing fees
-                const totalGrossMargin = breakdownSuperAdminRevenue - breakdownStripeFees;
-                const avgProfitPerProduct = totalProductsSold > 0 ? (breakdownSuperAdminRevenue / totalProductsSold) : 0;
+                // Total profit = (base price - WHCC cost) × qty - Stripe fees
+                // Total profit = (base price - WHCC cost) × qty — Stripe fees paid by studio
+                const totalGrossMargin = breakdownBaseRevenue - breakdownWhccCost;
+                const avgProfitPerProduct = totalProductsSold > 0 ? (totalGrossMargin / totalProductsSold) : 0;
 
         // Always count unique user_id from orders for total customers (active customers)
         const totalCustomersRow = await queryRow(`SELECT COUNT(DISTINCT user_id) as count FROM orders${customerStudioFilter ? ' WHERE ' + customerStudioFilter : ''}`);
@@ -398,14 +394,7 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
 
         const superAdminRevenueDayRows = await queryRows(
             `SELECT FORMAT(o.created_at, 'yyyy-MM-dd') as label,
-                            SUM((
-                                COALESCE(oi.price, 0)
-                                - COALESCE(
-                                    ${hasProductSizeId ? 'ps.cost' : 'NULL'},
-                                    p.cost,
-                                    0
-                                )
-                            ) * oi.quantity) as value
+                            SUM(COALESCE(${hasProductSizeId ? 'ps.price' : 'NULL'}, p.price, 0) * oi.quantity) as value
              FROM orders o
              INNER JOIN order_items oi ON oi.order_id = o.id
              LEFT JOIN products p ON p.id = oi.product_id
@@ -418,14 +407,7 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
 
         const superAdminRevenueWeekRows = await queryRows(
             `SELECT FORMAT(DATEADD(day, -1 * (DATEPART(weekday, o.created_at) - 1), CAST(o.created_at AS date)), 'yyyy-MM-dd') as label,
-                            SUM((
-                                COALESCE(oi.price, 0)
-                                - COALESCE(
-                                    ${hasProductSizeId ? 'ps.cost' : 'NULL'},
-                                    p.cost,
-                                    0
-                                )
-                            ) * oi.quantity) as value
+                            SUM(COALESCE(${hasProductSizeId ? 'ps.price' : 'NULL'}, p.price, 0) * oi.quantity) as value
              FROM orders o
              INNER JOIN order_items oi ON oi.order_id = o.id
              LEFT JOIN products p ON p.id = oi.product_id
@@ -438,14 +420,7 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
 
         const superAdminRevenueMonthRows = await queryRows(
             `SELECT FORMAT(o.created_at, 'yyyy-MM') as label,
-                            SUM((
-                                COALESCE(oi.price, 0)
-                                - COALESCE(
-                                    ${hasProductSizeId ? 'ps.cost' : 'NULL'},
-                                    p.cost,
-                                    0
-                                )
-                            ) * oi.quantity) as value
+                            SUM(COALESCE(${hasProductSizeId ? 'ps.price' : 'NULL'}, p.price, 0) * oi.quantity) as value
              FROM orders o
              INNER JOIN order_items oi ON oi.order_id = o.id
              LEFT JOIN products p ON p.id = oi.product_id
@@ -815,6 +790,7 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
                 totalStudioRevenue: breakdownStudioRevenue,
                 totalBaseRevenue: breakdownBaseRevenue,
                 totalSuperAdminRevenue: breakdownSuperAdminRevenue,
+                totalWhccCost: breakdownWhccCost,
                 totalProductsSold,
                 avgProfitPerProduct,
                 totalShippingMargin: breakdownShippingMargin,

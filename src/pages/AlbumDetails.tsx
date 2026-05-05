@@ -317,7 +317,7 @@ const AlbumDetails: React.FC = () => {
 
   const productsBySection = useMemo(() => {
     const albumPurchaseEnabled = album?.albumPurchaseEnabled !== false;
-    const digital = orderedProducts.filter((p) => p.isDigital && (albumPurchaseEnabled || getDigitalScope(p) !== 'album'));
+    const digital = orderedProducts.filter((p) => p.isDigital && (albumPurchaseEnabled || getDigitalScopeValue(p) !== 'album'));
     const recommended = orderedProducts.filter((p) => !p.isDigital && recommendedProductIds.has(p.id));
     const remaining = orderedProducts.filter((p) => !p.isDigital && !recommendedProductIds.has(p.id));
     return { digital, recommended, remaining };
