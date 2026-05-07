@@ -235,6 +235,32 @@ async function handleWhccWebhookPayload(payload) {
       matchedOrder.id,
     ]
   );
+
+  // If shipped, not batch, send shipment email to customer
+  if (isShippedEvent) {
+    // Fetch order details to check if batch and get customer info
+    const order = await queryRow('SELECT id, is_batch, shipping_address, user_id FROM orders WHERE id = $1', [matchedOrder.id]);
+    if (order && !order.is_batch) {
+      // Get customer email and name
+      const user = await queryRow('SELECT email, name FROM users WHERE id = $1', [order.user_id]);
+      const shippingAddress = order.shipping_address ? JSON.parse(order.shipping_address) : {};
+      const to = shippingAddress.email || user?.email;
+      const customerName = shippingAddress.fullName || user?.name;
+      if (to) {
+        // Get order items
+        const items = await queryRows('SELECT * FROM order_items WHERE order_id = $1', [order.id]);
+        // Send shipment notification (reuse receipt template for now)
+        const orderReceiptService = (await import('../services/orderReceiptService.js')).default;
+        await orderReceiptService.sendCustomerReceipt({
+          to,
+          customerName,
+          order: { ...order, status: 'shipped' },
+          items,
+          digitalDownloads: [],
+        });
+      }
+    }
+  }
 }
 
 router.post('/whcc', express.raw({ type: '*/*', limit: '2mb' }), async (req, res) => {

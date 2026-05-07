@@ -741,6 +741,10 @@ const Cart: React.FC = () => {
   };
 
   const finalizeSuccessfulCheckout = async (paymentIntentId: string) => {
+    if (shippingOption === 'batch' && !isBatchAvailable()) {
+      throw new Error('Batch shipping deadline has passed. Please contact support to update shipping for this paid checkout.');
+    }
+
     const digitalItems = items.filter(item => {
       const product = products.find(p => p.id === item.productId);
       return product?.isDigital === true;
@@ -828,6 +832,12 @@ const Cart: React.FC = () => {
     if (!shippingAddress.fullName || !shippingAddress.addressLine1 || 
         !shippingAddress.city || !shippingAddress.state || !shippingAddress.zipCode || !shippingAddress.email) {
       setError('Please complete all required shipping address fields.');
+      return;
+    }
+
+    if (shippingOption === 'batch' && !isBatchAvailable()) {
+      setShippingOption('direct');
+      setError('Batch shipping is no longer available because the deadline has passed. Shipping was switched to direct. Please review totals and continue checkout.');
       return;
     }
 

@@ -70,6 +70,39 @@ const extractEditorConfig = (options) => {
   };
 };
 
+const parseJsonArray = (value) => {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (_) {
+    return [];
+  }
+};
+
+const normalizePositiveIntArray = (values) => {
+  const arr = Array.isArray(values) ? values : [];
+  return arr
+    .map((v) => Number(v))
+    .filter((v) => Number.isInteger(v) && v > 0);
+};
+
+const normalizeNullableMoney = (value) => {
+  if (value === undefined || value === null || value === '') return null;
+  const num = Number(value);
+  return Number.isFinite(num) ? Number(num.toFixed(2)) : null;
+};
+
+const buildVariantKey = (variant = {}) => {
+  const id = Number(variant?.id || 0);
+  if (Number.isInteger(id) && id > 0) return `id:${id}`;
+  const uid = Number(variant?.whccProductUID || 0);
+  const attrs = normalizePositiveIntArray(variant?.whccItemAttributeUIDs || []);
+  const name = String(variant?.displayName || '').trim().toLowerCase();
+  return `uid:${uid}|attrs:${attrs.join('-')}|name:${name}`;
+};
+
 const mapLegacyProducts = (products) => {
   return products.map((p) => {
     const opts = p.options ? JSON.parse(p.options) : null;
@@ -222,8 +255,10 @@ router.get('/active', async (req, res) => {
            p.id as productId, p.name as productName, p.category, p.description, p.options,
            ps.id as sizeId, ps.size_name as sizeName, ps.cost as sizeCost,
            COALESCE(spi.price, ps.price) as sizePrice,
+           spi.whcc_variants_json as whccVariantsJson,
            spi.is_recommended as isRecommended,
-           spi.display_order as displayOrder
+           spi.display_order as displayOrder,
+           sspi.id as superItemId
          FROM studio_price_list_items spi
          JOIN studio_price_lists spl ON spl.id = spi.studio_price_list_id
          JOIN product_sizes ps ON ps.id = spi.product_size_id
@@ -237,6 +272,49 @@ router.get('/active', async (req, res) => {
          ORDER BY p.category, p.name, ps.size_name`,
         [studioPriceList.id]
       );
+
+      const superItemIds = Array.from(new Set(
+        (rows || [])
+          .map((row) => Number(row?.superItemId || 0))
+          .filter((value) => Number.isInteger(value) && value > 0)
+      ));
+      const variantsBySuperItemId = new Map();
+      if (superItemIds.length > 0) {
+        const placeholders = superItemIds.map((_, index) => `$${index + 1}`).join(', ');
+        const variantRows = await queryRows(
+          `SELECT v.super_price_list_item_id as superItemId,
+                  v.id,
+                  v.display_name as displayName,
+                  v.whcc_product_uid as whccProductUID,
+                  v.whcc_product_node_ids as whccProductNodeIDs,
+                  v.whcc_item_attribute_uids as whccItemAttributeUIDs,
+                  v.base_cost as baseCost,
+                  v.price,
+                  v.is_default as isDefault,
+                  v.is_active as isActive
+           FROM super_price_list_item_whcc_variants v
+           WHERE v.super_price_list_item_id IN (${placeholders})
+           ORDER BY v.super_price_list_item_id ASC, v.is_default DESC, v.id ASC`,
+          superItemIds
+        );
+
+        for (const variant of (variantRows || [])) {
+          const superItemId = Number(variant?.superItemId || 0);
+          if (!superItemId) continue;
+          if (!variantsBySuperItemId.has(superItemId)) variantsBySuperItemId.set(superItemId, []);
+          variantsBySuperItemId.get(superItemId).push({
+            id: Number(variant?.id || 0) || null,
+            displayName: String(variant?.displayName || ''),
+            whccProductUID: Number(variant?.whccProductUID || 0) || null,
+            whccProductNodeIDs: normalizePositiveIntArray(parseJsonArray(variant?.whccProductNodeIDs)),
+            whccItemAttributeUIDs: normalizePositiveIntArray(parseJsonArray(variant?.whccItemAttributeUIDs)),
+            baseCost: normalizeNullableMoney(variant?.baseCost),
+            price: normalizeNullableMoney(variant?.price),
+            isDefault: Boolean(variant?.isDefault),
+            isActive: Boolean(variant?.isActive),
+          });
+        }
+      }
 
       const productMap = new Map();
       for (const row of rows) {
@@ -264,7 +342,43 @@ router.get('/active', async (req, res) => {
           });
         }
         const decoded = decodeSizeName(row.sizeName);
-        const sizePrice = Number(row.sizePrice) || 0;
+        const persistedVariants = variantsBySuperItemId.get(Number(row?.superItemId || 0)) || [];
+        const studioOverrideVariants = parseJsonArray(row?.whccVariantsJson)
+          .map((variant) => ({
+            ...variant,
+            studioPrice: variant?.studioPrice === null || variant?.studioPrice === undefined || variant?.studioPrice === ''
+              ? null
+              : Number(variant.studioPrice),
+            studioMarkupPercent: variant?.studioMarkupPercent === null || variant?.studioMarkupPercent === undefined || variant?.studioMarkupPercent === ''
+              ? null
+              : Number(variant.studioMarkupPercent),
+          }))
+          .filter((variant) => Number.isFinite(Number(variant?.studioPrice)) || Number.isFinite(Number(variant?.studioMarkupPercent)));
+        const overrideByKey = new Map(studioOverrideVariants.map((variant) => [buildVariantKey(variant), variant]));
+
+        const mergedVariants = persistedVariants.map((variant) => {
+          const matched = overrideByKey.get(buildVariantKey(variant));
+          return {
+            ...variant,
+            studioPrice: Number.isFinite(Number(matched?.studioPrice))
+              ? Number(Number(matched.studioPrice).toFixed(2))
+              : null,
+            studioMarkupPercent: Number.isFinite(Number(matched?.studioMarkupPercent))
+              ? Number(Number(matched.studioMarkupPercent).toFixed(2))
+              : null,
+          };
+        });
+
+        const activeVariants = mergedVariants.filter((variant) => variant?.isActive !== false);
+        const selectedVariant = activeVariants.find((variant) => variant?.isDefault && variant?.isActive)
+          || activeVariants.find((variant) => variant?.isActive)
+          || activeVariants[0]
+          || null;
+        const sizePrice = Number(
+          selectedVariant?.studioPrice ??
+          selectedVariant?.price ??
+          row.sizePrice
+        ) || 0;
         const entry = productMap.get(pid);
         const rowDisplayOrder = Number(row.displayOrder);
         const existingDisplayOrder = Number(entry.studioDisplayOrder);
@@ -281,6 +395,7 @@ router.get('/active', async (req, res) => {
           height: decoded.height,
           price: sizePrice,
           cost: Number(row.sizeCost) || 0,
+          whccVariants: activeVariants,
         });
         if (entry.price === 0 || sizePrice < entry.price) {
           entry.price = sizePrice;

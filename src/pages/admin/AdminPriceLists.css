@@ -75,3 +75,110 @@
 .admin-price-lists-page h3 {
   color: #fff;
 }
+
+.admin-price-lists-page .spl-body {
+  max-height: none;
+}
+
+.admin-price-lists-page .spl-category-body {
+  padding: 4px 6px;
+}
+
+.admin-price-lists-page .spl-product-header {
+  font-weight: 600;
+}
+
+.admin-price-lists-page .spl-product-header > span {
+  flex: 0 0 auto;
+}
+
+.admin-price-lists-page .studio-product-title {
+  flex: 1 1 auto !important;
+  min-width: 120px;
+}
+
+.admin-price-lists-page .studio-product-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.admin-price-lists-page .studio-recommended-star {
+  border: 1px solid #413a69;
+  background: #1a1530;
+  color: #8f88bf;
+  border-radius: 999px;
+  width: 24px;
+  height: 24px;
+  line-height: 1;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+
+.admin-price-lists-page .studio-recommended-star:hover {
+  border-color: #6d63b4;
+  color: #ded8ff;
+}
+
+.admin-price-lists-page .studio-recommended-star.is-active {
+  border-color: #8f7dff;
+  color: #f3ec9f;
+  background: rgba(143, 125, 255, 0.18);
+}
+
+.admin-price-lists-page .studio-size-grid {
+  display: grid;
+  grid-template-columns: 74px 1fr 100px 120px 110px 90px;
+  gap: 6px;
+  align-items: center;
+  padding: 4px 8px;
+}
+
+.admin-price-lists-page .studio-size-grid-variant {
+  display: grid;
+  grid-template-columns: 74px 1fr 110px;
+  gap: 6px;
+  align-items: center;
+  padding: 4px 8px;
+}
+
+.admin-price-lists-page .studio-meta-line {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: #9fb4d9;
+  font-family: monospace;
+}
+
+.admin-price-lists-page .studio-variant-editor {
+  margin: 6px 10px 10px clamp(10px, 2.2vw, 40px);
+  max-width: calc(100% - 20px);
+}
+
+.admin-price-lists-page .studio-variant-editor .spl-variant-grid {
+  grid-template-columns: minmax(140px, 1.2fr) minmax(96px, 0.6fr) minmax(140px, 0.9fr) !important;
+}
+
+.admin-price-lists-page .studio-variant-editor .spl-variant-input {
+  width: 100%;
+}
+
+.admin-price-lists-page .studio-attrs-toggle-btn,
+.admin-price-lists-page .studio-variant-save-btn {
+  min-width: 104px;
+  justify-content: center;
+}
+
+.admin-price-lists-page .studio-attrs-toggle-btn {
+  justify-self: end;
+}
+
+.admin-price-lists-page .studio-size-price-input.is-locked {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

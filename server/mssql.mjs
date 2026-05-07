@@ -1,3 +1,9 @@
+    await query(`
+      IF COL_LENGTH('orders', 'whcc_order_id') IS NULL
+      BEGIN
+        ALTER TABLE orders ADD whcc_order_id NVARCHAR(128) NULL
+      END
+    `);
 
 const dotenv = require('dotenv');
 const path = require('path');

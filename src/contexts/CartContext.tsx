@@ -13,7 +13,7 @@ interface CartContextType {
     quantity?: number,
     photoIds?: number[],
     photos?: { photo: Photo; cropData: CropData; position: number }[],
-    options?: { albumId?: number; albumName?: string; albumCoverImageUrl?: string; digitalDownloadScope?: 'photo' | 'album' }
+    options?: { albumId?: number; albumName?: string; albumCoverImageUrl?: string; digitalDownloadScope?: 'photo' | 'album'; productOptions?: Record<string, any> }
   ) => Promise<void>;
   addPackageToCart: (pkg: Package, photo: Photo, cropData: CropData) => Promise<void>;
   removeFromCart: (photoId: number, productId?: number, productSizeId?: number) => void;
@@ -167,18 +167,36 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     quantity = 1,
     photoIds?: number[],
     photos?: { photo: Photo; cropData: CropData; position: number }[],
-    options?: { albumId?: number; albumName?: string; albumCoverImageUrl?: string; digitalDownloadScope?: 'photo' | 'album' }
+    options?: { albumId?: number; albumName?: string; albumCoverImageUrl?: string; digitalDownloadScope?: 'photo' | 'album'; productOptions?: Record<string, any> }
   ) => {
     const price = size.price;
     const allPhotoIds = photoIds || [photo.id];
     const allPhotos = photos || [{ photo, cropData, position: 1 }];
+    const selectedVariantId = Number(options?.productOptions?.whccSelectedVariantId || 0) || 0;
+    const selectedVariantLocalId = String(options?.productOptions?.whccSelectedVariantLocalId || '').trim();
+
+    const getItemVariantKey = (item: CartItem): string => {
+      const id = Number(item?.productOptions?.whccSelectedVariantId || 0) || 0;
+      const localId = String(item?.productOptions?.whccSelectedVariantLocalId || '').trim();
+      return `${id}|${localId}`;
+    };
+
+    const newItemVariantKey = `${selectedVariantId}|${selectedVariantLocalId}`;
 
     setItems((prevItems) => {
-      const existingItem = prevItems.find((item) => item.photoId === photo.id && item.productId === product.id && item.productSizeId === size.id);
+      const existingItem = prevItems.find((item) => (
+        item.photoId === photo.id
+        && item.productId === product.id
+        && item.productSizeId === size.id
+        && getItemVariantKey(item) === newItemVariantKey
+      ));
       
       if (existingItem) {
         return prevItems.map((item) =>
-          item.photoId === photo.id && item.productId === product.id && item.productSizeId === size.id
+          item.photoId === photo.id
+          && item.productId === product.id
+          && item.productSizeId === size.id
+          && getItemVariantKey(item) === newItemVariantKey
             ? {
                 ...item,
                 quantity: item.quantity + quantity,
@@ -196,6 +214,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 requiresWhccEditor: product.requiresWhccEditor ?? item.requiresWhccEditor,
                 whccEditorProductId: product.whccEditorProductId ?? item.whccEditorProductId,
                 whccEditorDesignId: product.whccEditorDesignId ?? item.whccEditorDesignId,
+                productOptions: options?.productOptions ?? item.productOptions,
               }
             : item
         );
@@ -219,6 +238,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         whccEditorProductId: product.whccEditorProductId,
         whccEditorDesignId: product.whccEditorDesignId,
         digitalDownloadScope: options?.digitalDownloadScope,
+        productOptions: options?.productOptions,
         price 
       }];
     });

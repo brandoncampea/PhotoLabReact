@@ -1102,7 +1102,7 @@ const AdminOrders: React.FC = () => {
                         <th>Order #</th>
                         <th>Customer</th>
                         <th>Created</th>
-                        <th>Ready Date</th>
+                        {/* Removed Ready Date column */}
                         <th>Total</th>
                         <th>Status</th>
                       </tr>
@@ -1132,7 +1132,7 @@ const AdminOrders: React.FC = () => {
                             <td><span className="order-id">#{order.id}</span></td>
                             <td>{customerName}</td>
                             <td>{createdAt ? new Date(createdAt).toLocaleDateString() : ''}</td>
-                            <td>{order.batchReadyDate ? new Date(order.batchReadyDate).toLocaleString() : 'Ready now'}</td>
+                            {/* Removed Ready Date cell */}
                             <td>${order.totalAmount?.toFixed(2) ?? '0.00'}</td>
                             <td>
                               <span className={`order-status ${statusDisplay.className}`}>

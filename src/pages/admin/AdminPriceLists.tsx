@@ -47,11 +47,65 @@ const computedDisplayCost = (item: any, draftPrice: unknown) => {
 			return Number((studioPrice * (pct / 100)).toFixed(2));
 		}
 	}
+
+	const superMarkupPercent = Number(item?.super_markup_percent);
+	const whccCost = Number(item?.base_cost || 0);
+	if (Number.isFinite(superMarkupPercent) && Number.isFinite(whccCost)) {
+		return Number((whccCost + (whccCost * (superMarkupPercent / 100))).toFixed(2));
+	}
+
 	return Number(item?.base_cost || 0);
+};
+
+type StudioVariantDraft = {
+	key: string;
+	id: number | null;
+	label: string;
+	whccProductUID: number;
+	whccItemAttributeUIDs: number[];
+	superCost: number | null;
+	studioPrice: string;
+	isDefault: boolean;
+	isActive: boolean;
+};
+
+const toMoneyInput = (value: unknown) => {
+	if (value === null || value === undefined || value === '') return '';
+	const num = Number(value);
+	return Number.isFinite(num) ? num.toFixed(2) : '';
+};
+
+const variantKey = (variant: any) => {
+	const id = Number(variant?.id || 0);
+	if (Number.isInteger(id) && id > 0) return `id:${id}`;
+	const uid = Number(variant?.whccProductUID || 0);
+	const attrs = Array.isArray(variant?.whccItemAttributeUIDs)
+		? variant.whccItemAttributeUIDs.map(Number).filter((v: number) => Number.isInteger(v) && v > 0)
+		: [];
+	const label = String(variant?.displayName || '').trim().toLowerCase();
+	return `uid:${uid}|attrs:${attrs.join('-')}|label:${label}`;
+};
+
+const getVariantLabelsForItem = (item: any): string[] => {
+	const sourceVariants = Array.isArray(item?.studioWhccVariants) && item.studioWhccVariants.length
+		? item.studioWhccVariants
+		: (Array.isArray(item?.whccVariants) ? item.whccVariants : []);
+	if (!Array.isArray(sourceVariants)) return [];
+	return sourceVariants
+		.filter((variant: any) => variant?.isActive !== false)
+		.map((variant: any) => String(variant?.displayName || '').trim())
+		.filter((name: string) => name.length > 0);
 };
 
 const buildProductGroupKey = (item: any) => baseProductName(item?.product_name || 'Unknown Product');
 const makeGroupUiKey = (category: string, groupKey: string) => `${category}||${groupKey}`;
+const itemHasVariantPricing = (item: any): boolean => {
+	if (Array.isArray(item?.studioWhccVariants) && item.studioWhccVariants.length > 0) return true;
+	if (Array.isArray(item?.whccVariants) && item.whccVariants.length > 0) return true;
+	if (Array.isArray(item?.whccAttributeCategories) && item.whccAttributeCategories.length > 0) return true;
+	if (getVariantLabelsForItem(item).length > 0) return true;
+	return false;
+};
 
 
 const AdminPriceLists: React.FC = () => {
@@ -74,11 +128,266 @@ const [draggingProductKey, setDraggingProductKey] = useState<string | null>(null
 const [draggingRecommendedProductId, setDraggingRecommendedProductId] = useState<number | null>(null);
 const [markupPercent, setMarkupPercent] = useState('');
 const [applyingMarkup, setApplyingMarkup] = useState(false);
+const [openVariantItemIds, setOpenVariantItemIds] = useState<Record<number, boolean>>({});
+const [variantDraftsByItem, setVariantDraftsByItem] = useState<Record<number, StudioVariantDraft[]>>({});
+const [savingVariantItemId, setSavingVariantItemId] = useState<number | null>(null);
+const [savingProductKey, setSavingProductKey] = useState<string | null>(null);
 
 
 	const [catCollapsed, setCatCollapsed] = useState<Record<string, boolean>>({});
 	const [prodCollapsed, setProdCollapsed] = useState<Record<string, boolean>>({});
 	const [itemFilterText, setItemFilterText] = useState('');
+
+	const buildVariantDrafts = (item: any): StudioVariantDraft[] => {
+		const sourceVariants = Array.isArray(item?.studioWhccVariants) && item.studioWhccVariants.length
+			? item.studioWhccVariants
+			: (Array.isArray(item?.whccVariants) ? item.whccVariants : []);
+
+		return sourceVariants
+			.map((variant: any, index: number) => {
+				const uid = Number(variant?.whccProductUID || 0);
+				if (!Number.isInteger(uid) || uid <= 0) return null;
+				const attrs = Array.isArray(variant?.whccItemAttributeUIDs)
+					? variant.whccItemAttributeUIDs.map(Number).filter((v: number) => Number.isInteger(v) && v > 0)
+					: [];
+				const superBase = Number(variant?.baseCost);
+				const superPrice = Number(variant?.price);
+				const superCost = Number.isFinite(superPrice)
+					? Number(superPrice.toFixed(2))
+					: Number.isFinite(Number(item?.base_cost)) && Number.isFinite(Number(item?.super_markup_percent))
+						? Number((Number(item.base_cost) + (Number(item.base_cost) * (Number(item.super_markup_percent) / 100))).toFixed(2))
+						: null;
+				const studioPrice = Number.isFinite(Number(variant?.studioPrice))
+					? toMoneyInput(variant?.studioPrice)
+					: toMoneyInput(item?.price);
+				return {
+					key: variantKey({ ...variant, displayName: String(variant?.displayName || ''), whccItemAttributeUIDs: attrs }) || `row-${index}`,
+					id: Number(variant?.id || 0) || null,
+					label: String(variant?.displayName || '').trim() || (attrs.length ? `Attribute UID${attrs.length === 1 ? '' : 's'} ${attrs.join(', ')}` : `Variant ${index + 1}`),
+					whccProductUID: uid,
+					whccItemAttributeUIDs: attrs,
+					superCost,
+					studioPrice,
+					isDefault: Boolean(variant?.isDefault),
+					isActive: variant?.isActive !== false,
+				} as StudioVariantDraft;
+			})
+			.filter(Boolean) as StudioVariantDraft[];
+	};
+
+	const openVariantEditor = (item: any) => {
+		const itemId = Number(item?.id || 0);
+		if (!Number.isInteger(itemId) || itemId <= 0) return;
+		setVariantDraftsByItem((prev) => ({ ...prev, [itemId]: buildVariantDrafts(item) }));
+		setOpenVariantItemIds((prev) => ({ ...prev, [itemId]: true }));
+	};
+
+	const closeVariantEditor = (itemId: number, clearDraft = true) => {
+		setOpenVariantItemIds((prev) => {
+			if (!prev[itemId]) return prev;
+			const next = { ...prev };
+			delete next[itemId];
+			return next;
+		});
+		if (clearDraft) {
+			setVariantDraftsByItem((prev) => {
+				if (!prev[itemId]) return prev;
+				const next = { ...prev };
+				delete next[itemId];
+				return next;
+			});
+		}
+	};
+
+	const setProductVariantEditors = (productItems: any[], expand: boolean) => {
+		const validItems = (productItems || []).filter((row: any) => {
+			const itemId = Number(row?.id || 0);
+			return Number.isInteger(itemId) && itemId > 0;
+		});
+		if (!validItems.length) return;
+
+		if (expand) {
+			setVariantDraftsByItem((prev) => {
+				const next = { ...prev };
+				validItems.forEach((row: any) => {
+					const itemId = Number(row.id);
+					next[itemId] = buildVariantDrafts(row);
+				});
+				return next;
+			});
+			setOpenVariantItemIds((prev) => {
+				const next = { ...prev };
+				validItems.forEach((row: any) => {
+					next[Number(row.id)] = true;
+				});
+				return next;
+			});
+			return;
+		}
+
+		setOpenVariantItemIds((prev) => {
+			const next = { ...prev };
+			validItems.forEach((row: any) => {
+				delete next[Number(row.id)];
+			});
+			return next;
+		});
+		setVariantDraftsByItem((prev) => {
+			const next = { ...prev };
+			validItems.forEach((row: any) => {
+				delete next[Number(row.id)];
+			});
+			return next;
+		});
+	};
+
+	const updateVariantStudioPrice = (itemId: number, key: string, value: string) => {
+		setVariantDraftsByItem((prev) => ({
+			...prev,
+			[itemId]: (prev[itemId] || []).map((row) => row.key === key ? { ...row, studioPrice: value } : row),
+		}));
+	};
+
+	const buildVariantUpdatePayload = (rows: StudioVariantDraft[]) => {
+		const payloadVariants = rows.map((row) => {
+			const priceNum = Number(row.studioPrice);
+			const superCost = Number(row.superCost);
+			const markupPercent = Number.isFinite(priceNum) && Number.isFinite(superCost) && superCost > 0
+				? Number((((priceNum - superCost) / superCost) * 100).toFixed(2))
+				: null;
+			return {
+				id: row.id,
+				displayName: row.label,
+				whccProductUID: row.whccProductUID,
+				whccItemAttributeUIDs: row.whccItemAttributeUIDs,
+				studioPrice: Number.isFinite(priceNum) ? Number(priceNum.toFixed(2)) : null,
+				studioMarkupPercent: markupPercent,
+			};
+		});
+
+		const defaultRow = rows.find((row) => row.isDefault && row.isActive)
+			|| rows.find((row) => row.isActive)
+			|| rows[0];
+		const defaultPrice = Number(defaultRow?.studioPrice);
+		return {
+			payloadVariants,
+			defaultPrice: Number.isFinite(defaultPrice) ? Number(defaultPrice.toFixed(2)) : null,
+		};
+	};
+
+	const hasPendingProductPriceChanges = (productItems: any[]): boolean => {
+		return (productItems || []).some((item: any) => {
+			const itemId = Number(item?.id || 0);
+			if (!Number.isInteger(itemId) || itemId <= 0) return false;
+
+			if (itemHasVariantPricing(item)) {
+				const draftRows = variantDraftsByItem[itemId];
+				if (!Array.isArray(draftRows) || !draftRows.length) return false;
+				const sourceRows = buildVariantDrafts(item);
+				const draftSig = JSON.stringify(draftRows.map((row) => ({ key: row.key, studioPrice: String(row.studioPrice || ''), isActive: !!row.isActive, isDefault: !!row.isDefault })));
+				const sourceSig = JSON.stringify(sourceRows.map((row) => ({ key: row.key, studioPrice: String(row.studioPrice || ''), isActive: !!row.isActive, isDefault: !!row.isDefault })));
+				return draftSig !== sourceSig;
+			}
+
+			const draftValue = draftPrices[itemId];
+			if (draftValue === undefined) return false;
+			const normalizedDraft = draftValue === '' ? '' : toCurrencyInput(draftValue);
+			const normalizedCurrent = toCurrencyInput(item?.price);
+			return normalizedDraft !== normalizedCurrent;
+		});
+	};
+
+	const saveProductPricing = async (category: string, product: string, productItems: any[]) => {
+		if (!selectedPriceList) return;
+		const productKey = `${category}||${product}`;
+		setSavingProductKey(productKey);
+		try {
+			const updates: Array<Promise<any>> = [];
+
+			(productItems || []).forEach((item: any) => {
+				const itemId = Number(item?.id || 0);
+				if (!Number.isInteger(itemId) || itemId <= 0) return;
+
+				if (itemHasVariantPricing(item)) {
+					const rows = variantDraftsByItem[itemId];
+					if (!Array.isArray(rows) || !rows.length) return;
+					const sourceRows = buildVariantDrafts(item);
+					const draftSig = JSON.stringify(rows.map((row) => ({ key: row.key, studioPrice: String(row.studioPrice || ''), isActive: !!row.isActive, isDefault: !!row.isDefault })));
+					const sourceSig = JSON.stringify(sourceRows.map((row) => ({ key: row.key, studioPrice: String(row.studioPrice || ''), isActive: !!row.isActive, isDefault: !!row.isDefault })));
+					if (draftSig === sourceSig) return;
+					const { payloadVariants, defaultPrice } = buildVariantUpdatePayload(rows);
+					updates.push(studioPriceListService.updateItem(selectedPriceList.id, itemId, {
+						whccVariants: payloadVariants,
+						price: defaultPrice,
+					}));
+					return;
+				}
+
+				const value = draftPrices[itemId];
+				if (value === undefined) return;
+				const normalizedValue = value === '' ? '' : toCurrencyInput(value);
+				const currentValue = toCurrencyInput(item?.price);
+				if (normalizedValue === currentValue) return;
+				updates.push(studioPriceListService.updateItem(selectedPriceList.id, itemId, {
+					price: value === '' ? null : Number(value),
+				}));
+			});
+
+			if (!updates.length) return;
+			await Promise.all(updates);
+			await refreshSelectedItems();
+		} catch {
+			setError('Failed to save product pricing updates');
+		} finally {
+			setSavingProductKey(null);
+		}
+	};
+
+	const saveVariantStudioPricing = async (item: any) => {
+		if (!selectedPriceList) return;
+		const itemId = Number(item?.id || 0);
+		if (!Number.isInteger(itemId) || itemId <= 0) return;
+		const rows = variantDraftsByItem[itemId] || [];
+		if (!rows.length) {
+			setError('No variant rows available to save.');
+			return;
+		}
+
+		const payloadVariants = rows.map((row) => {
+			const priceNum = Number(row.studioPrice);
+			const superCost = Number(row.superCost);
+			const markupPercent = Number.isFinite(priceNum) && Number.isFinite(superCost) && superCost > 0
+				? Number((((priceNum - superCost) / superCost) * 100).toFixed(2))
+				: null;
+			return {
+				id: row.id,
+				displayName: row.label,
+				whccProductUID: row.whccProductUID,
+				whccItemAttributeUIDs: row.whccItemAttributeUIDs,
+				studioPrice: Number.isFinite(priceNum) ? Number(priceNum.toFixed(2)) : null,
+				studioMarkupPercent: markupPercent,
+			};
+		});
+
+		const defaultRow = rows.find((row) => row.isDefault && row.isActive)
+			|| rows.find((row) => row.isActive)
+			|| rows[0];
+		const defaultPrice = Number(defaultRow?.studioPrice);
+
+		setSavingVariantItemId(itemId);
+		try {
+			await studioPriceListService.updateItem(selectedPriceList.id, itemId, {
+				whccVariants: payloadVariants,
+				price: Number.isFinite(defaultPrice) ? Number(defaultPrice.toFixed(2)) : null,
+			});
+			await refreshSelectedItems();
+			closeVariantEditor(itemId, false);
+		} catch {
+			setError('Failed to save attribute/variant pricing');
+		} finally {
+			setSavingVariantItemId(null);
+		}
+	};
 
 	const groupedItems = useMemo(() => {
 		const grouped: Record<string, Record<string, any[]>> = {};
@@ -187,9 +496,6 @@ const [applyingMarkup, setApplyingMarkup] = useState(false);
 			superPriceListService.getLists(),
 		])
 			.then(([studioLists, supers]) => {
-				// Debug log the raw responses
-				// eslint-disable-next-line no-console
-				console.log('studioLists:', studioLists, 'superLists:', supers);
 				// Defensive fallback to arrays
 				setPriceLists(Array.isArray(studioLists) ? studioLists : []);
 				setSuperLists(Array.isArray(supers) ? supers.filter((s: any) => !!s.isActive) : []);
@@ -206,6 +512,8 @@ const [applyingMarkup, setApplyingMarkup] = useState(false);
 	const handleSelectList = async (list: any) => {
 		setSelectedPriceList(list);
 		setItemFilterText('');
+		setOpenVariantItemIds({});
+		setVariantDraftsByItem({});
 		setLoading(true);
 		try {
 			const items = await studioPriceListService.getItems(list.id);
@@ -245,6 +553,8 @@ const [applyingMarkup, setApplyingMarkup] = useState(false);
 		if (!selectedPriceList) return;
 		const refreshed = await studioPriceListService.getItems(selectedPriceList.id);
 		setItems(refreshed || []);
+		setOpenVariantItemIds({});
+		setVariantDraftsByItem({});
 		const nextDrafts: Record<number, string> = {};
 		const nextProductOrders: Record<string, string> = {};
 		(refreshed || []).forEach((it: any) => {
@@ -413,22 +723,6 @@ const [applyingMarkup, setApplyingMarkup] = useState(false);
 		}
 	};
 
-	const handleSavePrice = async (item: any) => {
-		if (!selectedPriceList) return;
-		const value = draftPrices[item.id];
-		if (value === undefined) return;
-		try {
-			const normalizedValue = value === '' ? '' : toCurrencyInput(value);
-			await studioPriceListService.updateItem(selectedPriceList.id, item.id, {
-				price: value === '' ? null : Number(value),
-			});
-			setItems(prev => prev.map((i: any) => i.id === item.id ? { ...i, price: value === '' ? null : Number(value) } : i));
-			setDraftPrices(prev => ({ ...prev, [item.id]: normalizedValue }));
-		} catch {
-			setError('Failed to save price');
-		}
-	};
-
 	const handleApplyMarkup = async () => {
 		if (!selectedPriceList || markupPercent === '') return;
 		setApplyingMarkup(true);
@@ -453,6 +747,8 @@ const [applyingMarkup, setApplyingMarkup] = useState(false);
 		});
 		setCatCollapsed(nextCats);
 		setProdCollapsed(nextProds);
+		setOpenVariantItemIds({});
+		setVariantDraftsByItem({});
 	};
 
 	const handleContractAll = () => {
@@ -466,6 +762,25 @@ const [applyingMarkup, setApplyingMarkup] = useState(false);
 		});
 		setCatCollapsed(nextCats);
 		setProdCollapsed(nextProds);
+		setOpenVariantItemIds({});
+		setVariantDraftsByItem({});
+	};
+
+	const isTreeExpanded = useMemo(() => {
+		const categories = Object.keys(filteredGroupedItems);
+		if (!categories.length) return false;
+		return categories.every((cat) => {
+			if (catCollapsed[cat]) return false;
+			return Object.keys(filteredGroupedItems[cat] || {}).every((product) => !prodCollapsed[`${cat}||${product}`]);
+		});
+	}, [filteredGroupedItems, catCollapsed, prodCollapsed]);
+
+	const handleToggleExpandAll = () => {
+		if (isTreeExpanded) {
+			handleContractAll();
+			return;
+		}
+		handleExpandAll();
 	};
 
 
@@ -619,8 +934,7 @@ const [applyingMarkup, setApplyingMarkup] = useState(false);
 						>
 							Offer Full Album Products
 						</button>
-						<button className="btn btn-secondary btn-sm" onClick={handleExpandAll}>Expand All</button>
-						<button className="btn btn-secondary btn-sm" onClick={handleContractAll}>Contract All</button>
+						<button className="btn btn-secondary btn-sm" onClick={handleToggleExpandAll}>{isTreeExpanded ? 'Contract All' : 'Expand All'}</button>
 						<label style={{ color: '#aaa' }}>Markup % for all offered:</label>
 						<input
 							type="number"
@@ -634,19 +948,19 @@ const [applyingMarkup, setApplyingMarkup] = useState(false);
 							{applyingMarkup ? 'Applying...' : 'Apply'}
 						</button>
 					</div>
-					<div>
+					<div className="spl-body spl-compact-body">
 						{Object.keys(filteredGroupedItems).length === 0 && (
 							<div style={{ color: '#999' }}>No items match the current filters.</div>
 						)}
 						{Object.keys(filteredGroupedItems).map((cat) => (
-							<div key={cat} style={{ border: '1px solid #2c2c3a', borderRadius: 8, marginBottom: 6, overflow: 'hidden' }}>
+							<div key={cat} className="spl-category-block">
 								{(() => {
 									const firstProduct = Object.keys(filteredGroupedItems[cat] || {})[0];
 									const firstItem = firstProduct ? filteredGroupedItems[cat][firstProduct]?.[0] : null;
 									const categoryImageUrl = firstItem?.category_image_url;
 									return (
 								<div
-									style={{ background: '#1f1b35', padding: '6px 10px', cursor: 'pointer', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}
+									className="spl-category-header"
 									onClick={() => setCatCollapsed(prev => ({ ...prev, [cat]: !prev[cat] }))}
 								>
 									<span>{catCollapsed[cat] ? '▶' : '▼'}</span>
@@ -672,7 +986,7 @@ const [applyingMarkup, setApplyingMarkup] = useState(false);
 									);
 								})()}
 								{!catCollapsed[cat] && (
-									<div style={{ padding: '4px 6px' }}>
+									<div className="spl-category-body">
 										{Object.keys(filteredGroupedItems[cat])
 											.sort((a, b) => {
 												const aPrefs = getProductPrefsFromGroup(cat, a);
@@ -690,13 +1004,21 @@ const [applyingMarkup, setApplyingMarkup] = useState(false);
 											const prefs = getProductPrefsFromGroup(cat, product);
 											// Find the first item for this product group to get image info
 											const firstItem = filteredGroupedItems[cat][product][0];
+															const productItems = filteredGroupedItems[cat][product] || [];
+															const productVariantItemIds = productItems
+																.map((row: any) => Number(row?.id || 0))
+																.filter((id: number) => Number.isInteger(id) && id > 0);
+															const areAllAttrsExpanded = productVariantItemIds.length > 0
+																&& productVariantItemIds.every((id: number) => !!openVariantItemIds[id]);
+															const hasPendingProductChanges = hasPendingProductPriceChanges(productItems);
+															const isSavingProduct = savingProductKey === productKey;
 											// Prefer product image, fallback to category image, else nothing
 											const productImageUrl = firstItem?.product_image_url;
 											const categoryImageUrl = firstItem?.category_image_url;
 											return (
-												<div key={productKey} style={{ border: '1px solid #2a2740', borderRadius: 6, marginBottom: 6, overflow: 'hidden' }}>
+												<div key={productKey} className="spl-product-block">
 													<div
-														style={{ background: '#171428', padding: '5px 8px', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}
+														className="spl-product-header"
 														draggable
 														onDragStart={() => setDraggingProductKey(product)}
 														onDragOver={(e) => e.preventDefault()}
@@ -736,28 +1058,39 @@ const [applyingMarkup, setApplyingMarkup] = useState(false);
 																style={{ width: 32, height: 32, borderRadius: 4, objectFit: 'cover', border: '1px solid #444', opacity: 0.5 }}
 															/>
 														) : null}
-														<span>{product}</span>
-														<label style={{ display: 'flex', alignItems: 'center', gap: 6 }} onClick={e => e.stopPropagation()}>
-															<input
-																type="checkbox"
-																checked={!!prefs.isRecommended}
-																onChange={e => handleUpdateProductPreferences(cat, product, { is_recommended: e.target.checked })}
-															/>
-															<span style={{ fontSize: 12 }}>Recommended</span>
-														</label>
-														<label style={{ display: 'flex', alignItems: 'center', gap: 6 }} onClick={e => e.stopPropagation()}>
-															<span style={{ fontSize: 12 }}>Order</span>
-															<input
-																type="number"
-																style={{ width: 74 }}
-																value={productOrderDrafts[makeGroupUiKey(cat, product)] ?? ''}
-																onChange={(e) => setProductOrderDrafts(prev => ({ ...prev, [makeGroupUiKey(cat, product)]: e.target.value }))}
-																onBlur={() => {
-																const raw = String(productOrderDrafts[makeGroupUiKey(cat, product)] ?? '').trim();
-																handleUpdateProductPreferences(cat, product, { display_order: raw === '' ? null : Number(raw) });
+														<span className="studio-product-title">{product}</span>
+														<div className="studio-product-actions" onClick={e => e.stopPropagation()}>
+															<button
+																className="btn btn-secondary btn-sm spl-inline-action-btn"
+																	onClick={() => setProductVariantEditors(productItems, !areAllAttrsExpanded)}
+															>
+																	{areAllAttrsExpanded ? 'Contract attrs' : 'Expand attrs'}
+															</button>
+															</div>
+															<button
+																type="button"
+																className="btn btn-primary btn-sm spl-inline-action-btn"
+																onClick={(e) => {
+																	e.stopPropagation();
+																	void saveProductPricing(cat, product, productItems);
 																}}
-															/>
-														</label>
+																disabled={isSavingProduct || !hasPendingProductChanges}
+																title={!hasPendingProductChanges ? 'No unsaved price changes for this product' : 'Save all edited prices for this product'}
+															>
+																{isSavingProduct ? 'Saving…' : 'Save product'}
+															</button>
+														<button
+															type="button"
+															className={`studio-recommended-star${prefs.isRecommended ? ' is-active' : ''}`}
+															onClick={(e) => {
+																e.stopPropagation();
+																handleUpdateProductPreferences(cat, product, { is_recommended: !prefs.isRecommended });
+															}}
+															title={prefs.isRecommended ? 'Recommended' : 'Mark as recommended'}
+															aria-label={prefs.isRecommended ? 'Recommended product' : 'Mark product as recommended'}
+														>
+															{prefs.isRecommended ? '★' : '☆'}
+														</button>
 														<label style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }} onClick={e => e.stopPropagation()}>
 															<input
 																type="checkbox"
@@ -768,9 +1101,13 @@ const [applyingMarkup, setApplyingMarkup] = useState(false);
 														</label>
 													</div>
 													{!prodCollapsed[productKey] && (
-														<div>
+														<div className="spl-size-list">
 															{filteredGroupedItems[cat][product].map((item: any) => (
-																<div key={item.id} style={{ display: 'grid', gridTemplateColumns: '74px 1fr 100px 120px 90px', gap: 6, alignItems: 'center', padding: '4px 8px', borderTop: '1px solid #232036' }}>
+																<React.Fragment key={item.id}>
+																{(() => {
+																	const hasVariantPricing = itemHasVariantPricing(item);
+																	return (
+																<div className={`spl-size-row ${hasVariantPricing ? 'studio-size-grid-variant' : 'studio-size-grid'}`}>
 																	<label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
 																		<input
 																			type="checkbox"
@@ -786,27 +1123,108 @@ const [applyingMarkup, setApplyingMarkup] = useState(false);
 																				Full Album Purchase
 																			</span>
 																		)}
-																	</div>
-																	<div>{toCurrency(computedDisplayCost(item, draftPrices[item.id]))}</div>
-																	<input
-																		type="number"
-																		min={0}
-																		step="0.01"
-																		value={draftPrices[item.id] ?? ''}
-																		onChange={e => setDraftPrices(prev => ({ ...prev, [item.id]: e.target.value }))}
-																		onBlur={() => handleSavePrice(item)}
-																		disabled={!item.is_offered}
-																		style={{ width: 120 }}
-																	/>
-																	<div style={{ fontSize: 12, color: '#aaa', textAlign: 'right' }}>
 																		{(() => {
-																			const cost = computedDisplayCost(item, draftPrices[item.id]);
-																			const profit = estimateProfit(cost, draftPrices[item.id]);
-																			const color = profit >= 0 ? '#79d279' : '#ff9a9a';
-																			return <span style={{ color }}>Est. Profit {toCurrency(profit)}</span>;
+																			const variantLabels = getVariantLabelsForItem(item);
+																			return (
+																				<div className="studio-meta-line">
+																					{itemHasVariantPricing(item) && <span>Variant pricing enabled</span>}
+																					{variantLabels.length > 0 && (
+																						<span style={{ color: '#b9c8e7' }}>variants: {variantLabels.slice(0, 3).join(', ')}{variantLabels.length > 3 ? ` +${variantLabels.length - 3}` : ''}</span>
+																					)}
+																				</div>
+																			);
 																		})()}
 																	</div>
+																		{!hasVariantPricing && (
+																			<>
+																				<div title="Super admin markup amount">{toCurrency(computedDisplayCost(item, draftPrices[item.id]))}</div>
+																				<input
+																					className="studio-size-price-input"
+																					type="number"
+																					min={0}
+																					step="0.01"
+																					value={draftPrices[item.id] ?? ''}
+																					onChange={e => setDraftPrices(prev => ({ ...prev, [item.id]: e.target.value }))}
+																					disabled={!item.is_offered}
+																					style={{ width: 120 }}
+																				/>
+																			</>
+																		)}
+																	{(() => {
+																		const itemId = Number(item.id);
+																		const isVariantEditorOpen = !!openVariantItemIds[itemId];
+																		return (
+																	<button
+																		className="btn btn-secondary btn-sm spl-inline-action-btn studio-attrs-toggle-btn"
+																		onClick={() => {
+																				if (isVariantEditorOpen) {
+																					closeVariantEditor(itemId);
+																			} else {
+																				openVariantEditor(item);
+																			}
+																		}}
+																	>
+																			{isVariantEditorOpen ? 'Close attrs' : 'Edit attrs'}
+																	</button>
+																		);
+																	})()}
+																		{!hasVariantPricing && (
+																			<div style={{ fontSize: 12, color: '#aaa', textAlign: 'right' }}>
+																				{(() => {
+																					const cost = computedDisplayCost(item, draftPrices[item.id]);
+																					const profit = estimateProfit(cost, draftPrices[item.id]);
+																					const color = profit >= 0 ? '#79d279' : '#ff9a9a';
+																					return <span style={{ color }}>Est. Profit {toCurrency(profit)}</span>;
+																				})()}
+																			</div>
+																		)}
 																</div>
+																		);
+																	})()}
+																{!!openVariantItemIds[Number(item.id)] && (
+																	<div className="spl-variant-editor studio-variant-editor">
+																		<div className="spl-variant-editor-toolbar">
+																			<div>
+																				<strong>Size attribute pricing</strong>
+																				<span className="spl-variant-editor-subtitle">Studio cost below comes from the active Super Admin variant pricing.</span>
+																			</div>
+																			<button
+																				className="btn btn-primary btn-sm studio-variant-save-btn"
+																				onClick={() => saveVariantStudioPricing(item)}
+																				disabled={savingVariantItemId === Number(item.id)}
+																			>
+																				{savingVariantItemId === Number(item.id) ? 'Saving...' : 'Save'}
+																			</button>
+																		</div>
+																		<div className="spl-variant-grid spl-variant-grid-header" style={{ gridTemplateColumns: '1.2fr 0.6fr 0.7fr' }}>
+																			<span>Attribute</span>
+																			<span>Studio Cost</span>
+																			<span>Studio Price</span>
+																		</div>
+																		{(variantDraftsByItem[Number(item.id)] || []).filter((row) => row.isActive).length === 0 ? (
+																			<div className="spl-variant-empty">No active variants available for this size.</div>
+																		) : (
+																			(variantDraftsByItem[Number(item.id)] || [])
+																				.filter((row) => row.isActive)
+																				.map((row) => (
+																					<div key={row.key} className="spl-variant-grid spl-variant-grid-row" style={{ gridTemplateColumns: '1.2fr 0.6fr 0.7fr', marginBottom: 6 }}>
+																						<div style={{ color: '#c7c1ed', fontSize: 13 }}>{row.label}</div>
+																						<div style={{ color: '#b5b0d6', fontSize: 12 }}>Cost {toCurrency(row.superCost || 0)}</div>
+																						<input
+																							className="spl-variant-input"
+																							type="number"
+																							min={0}
+																							step="0.01"
+																							value={row.studioPrice}
+																							onChange={(e) => updateVariantStudioPrice(Number(item.id), row.key, e.target.value)}
+																							placeholder="Studio price"
+																						/>
+																					</div>
+																				))
+																		)}
+																	</div>
+																)}
+																</React.Fragment>
 															))}
 														</div>
 													)}

@@ -21,10 +21,37 @@ const getProductNodeID = (prod: any): number | null => {
     prod?.ProductNodeID ??
     prod?.productNodeID ??
     prod?.DefaultProductNodeID ??
-    (Array.isArray(prod?.ProductNodes) ? prod.ProductNodes[0]?.ProductNodeID : null) ??
-    (Array.isArray(prod?.productNodes) ? prod.productNodes[0]?.productNodeID : null);
+    (Array.isArray(prod?.ProductNodes) ? (prod.ProductNodes[0]?.DP2NodeID ?? prod.ProductNodes[0]?.ProductNodeID) : null) ??
+    (Array.isArray(prod?.productNodes) ? (prod.productNodes[0]?.dp2NodeID ?? prod.productNodes[0]?.productNodeID) : null);
   const n = Number(raw);
   return Number.isFinite(n) && n > 0 ? n : null;
+};
+
+const getAttributeCategories = (prod: any) => {
+  const categories = prod?.AttributeCategories ?? prod?.attributeCategories ?? [];
+  if (!Array.isArray(categories)) return [];
+
+  return categories
+    .map((category: any) => ({
+      id: Number(category?.Id ?? category?.id ?? 0) || null,
+      name: String(category?.AttributeCategoryName ?? category?.attributeCategoryName ?? category?.name ?? '').trim(),
+      requiredLevel: Number(category?.RequiredLevel ?? category?.requiredLevel ?? -1),
+      multValueAllowed: Boolean(category?.MultValueAllowedFlag ?? category?.multValueAllowedFlag),
+      sortOrder: Number(category?.SortOrder ?? category?.sortOrder ?? 0),
+      attributes: (Array.isArray(category?.Attributes) ? category.Attributes : Array.isArray(category?.attributes) ? category.attributes : [])
+        .map((attribute: any) => {
+          const uid = Number(attribute?.Id ?? attribute?.AttributeUID ?? attribute?.attributeUID ?? attribute?.id ?? 0);
+          if (!Number.isInteger(uid) || uid <= 0) return null;
+          return {
+            uid,
+            parentUid: Number(attribute?.ParentAttributeUID ?? attribute?.parentAttributeUID ?? 0) || 0,
+            name: String(attribute?.AttributeName ?? attribute?.name ?? attribute?.DisplayName ?? '').trim(),
+            sortOrder: Number(attribute?.SortOrder ?? attribute?.sortOrder ?? 0),
+          };
+        })
+        .filter(Boolean),
+    }))
+    .filter((category: any) => Array.isArray(category.attributes) && category.attributes.length > 0);
 };
 
 /** Extract ordered list of ItemAttribute UIDs from a raw catalog product object. */
@@ -39,6 +66,58 @@ const getItemAttributeUIDs = (prod: any): number[] => {
   return attrs
     .map((a: any) => Number(a?.AttributeUID ?? a?.attributeUID ?? a?.uid ?? a))
     .filter((v: number) => Number.isInteger(v) && v > 0);
+};
+
+const getItemAttributes = (prod: any): Array<{ uid: number; label: string }> => {
+  const attrs =
+    prod?.DefaultItemAttributes ??
+    prod?.defaultItemAttributes ??
+    prod?.ItemAttributes ??
+    prod?.itemAttributes ??
+    [];
+
+  if (!Array.isArray(attrs)) return [];
+
+  return attrs
+    .map((a: any) => {
+      const uid = Number(a?.AttributeUID ?? a?.attributeUID ?? a?.uid ?? a);
+      const label = String(
+        a?.Name ??
+        a?.name ??
+        a?.DisplayName ??
+        a?.displayName ??
+        a?.Description ??
+        a?.description ??
+        ''
+      ).trim();
+      if (!Number.isInteger(uid) || uid <= 0) return null;
+      return { uid, label };
+    })
+    .filter(Boolean) as Array<{ uid: number; label: string }>;
+};
+
+const getAttributeCostMultiplierPercent = (
+  attributes: Array<{ uid: number; label: string }>,
+  multipliers?: { pearlPercent?: number; deepMattePercent?: number }
+): number => {
+  if (!Array.isArray(attributes) || attributes.length === 0) return 0;
+  const pearlPercent = Number.isFinite(Number(multipliers?.pearlPercent)) ? Number(multipliers?.pearlPercent) : 11;
+  const deepMattePercent = Number.isFinite(Number(multipliers?.deepMattePercent)) ? Number(multipliers?.deepMattePercent) : 35;
+  let multiplier = 0;
+
+  for (const attr of attributes) {
+    const label = String(attr?.label || '').toLowerCase();
+    if (!label) continue;
+    if (label.includes('deep matte')) {
+      multiplier = Math.max(multiplier, Math.max(0, deepMattePercent));
+      continue;
+    }
+    if (label.includes('fuji pearl') || label.includes('pearl')) {
+      multiplier = Math.max(multiplier, Math.max(0, pearlPercent));
+    }
+  }
+
+  return multiplier;
 };
 import Papa from 'papaparse';
 // CSV will be fetched at runtime from public/
@@ -81,22 +160,65 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
           const hit = rowBySelectionKey.get(key);
           if (!hit) return null;
           const product = hit.row;
-          const cost = Number(product.price || 0);
+          const baseCost = Number(product.price || 0);
           const whccUID = Number(product.productUID || product.ProductUID || 0) || undefined;
           const whccNodeID = getProductNodeID(product) ?? undefined;
           const whccAttrUIDs = getItemAttributeUIDs(product);
+          const whccAttrs = getItemAttributes(product);
+          const whccAttributeCategories = getAttributeCategories(product);
+          const attrMultiplierPercent = getAttributeCostMultiplierPercent(whccAttrs, {
+            pearlPercent: pearlUpchargePercent,
+            deepMattePercent: deepMatteUpchargePercent,
+          });
+          const adjustedCost = Number.isFinite(baseCost)
+            ? Number((baseCost * (1 + attrMultiplierPercent / 100)).toFixed(4))
+            : 0;
+
+          // Extract all finish/surface AttributeUIDs for this product
+          const finishAttrs: Array<{ name: string; uid: number }> = [];
+          for (const cat of whccAttributeCategories) {
+            const catName = cat.name.toLowerCase();
+            if (catName.includes('surface') || catName.includes('finish')) {
+              for (const attr of cat.attributes) {
+                const attrName = attr.name.toLowerCase();
+                if (
+                  attrName.includes('lustre') ||
+                  attrName.includes('pearl') ||
+                  attrName.includes('matte') ||
+                  attrName.includes('deep matte') ||
+                  attrName.includes('glossy') ||
+                  attrName.includes('metallic') ||
+                  attrName.includes('silk') ||
+                  attrName.includes('linen') ||
+                  attrName.includes('canvas') ||
+                  attrName.includes('fine art') ||
+                  attrName.includes('smooth matte') ||
+                  attrName.includes('deep matte velvet') ||
+                  attrName.includes('satin') ||
+                  attrName.includes('semi-gloss') ||
+                  attrName.includes('high gloss')
+                ) {
+                  finishAttrs.push({ name: attr.name, uid: attr.uid });
+                }
+              }
+            }
+          }
+
           return {
             product_size_id: Number(mapping.importId || product.importId || product.productUID || 0),
-            base_cost: cost,
+            base_cost: adjustedCost,
             markup_percent: null,
             custom_price: mapping.useCustomPrice ? mapping.customPrice : undefined,
             product_name: String(product.name || product.Name || ''),
             size_name: String(hit.size || ''),
             category: String(hit.category || 'whcc'),
             description: 'Imported from WHCC',
+            ...(attrMultiplierPercent > 0 ? { whccAttributeCostMultiplierPercent: attrMultiplierPercent } : {}),
             ...(whccUID ? { whccProductUID: whccUID } : {}),
             ...(whccNodeID ? { whccProductNodeID: whccNodeID } : {}),
             ...(whccAttrUIDs.length ? { whccItemAttributeUIDs: whccAttrUIDs } : {}),
+            ...(whccAttributeCategories.length ? { whccAttributeCategories } : {}),
+            ...(finishAttrs.length ? { whccFinishAttributeUIDs: finishAttrs } : {}),
           };
         })
         .filter(Boolean);
@@ -165,6 +287,26 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
   type PreviewRow = { name: string; size: string; cat: string; status: 'new' | 'enrich' | 'unchanged' };
   const [previewRows, setPreviewRows] = useState<PreviewRow[]>([]);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [pearlUpchargePercent, setPearlUpchargePercent] = useState<number>(() => {
+    if (typeof window === 'undefined') return 11;
+    const raw = Number(window.localStorage.getItem('whcc.pearlUpchargePercent') || '11');
+    return Number.isFinite(raw) ? Math.max(0, raw) : 11;
+  });
+  const [deepMatteUpchargePercent, setDeepMatteUpchargePercent] = useState<number>(() => {
+    if (typeof window === 'undefined') return 35;
+    const raw = Number(window.localStorage.getItem('whcc.deepMatteUpchargePercent') || '35');
+    return Number.isFinite(raw) ? Math.max(0, raw) : 35;
+  });
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('whcc.pearlUpchargePercent', String(pearlUpchargePercent));
+  }, [pearlUpchargePercent]);
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('whcc.deepMatteUpchargePercent', String(deepMatteUpchargePercent));
+  }, [deepMatteUpchargePercent]);
 
   // Load price lists on mount
   React.useEffect(() => {
@@ -690,6 +832,39 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
           {step === 'confirm' && (
             <>
               <p className="admin-whcc-desc">Review what will happen when you import, then click <strong>Import to Price List</strong>.</p>
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <label style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Fuji Pearl %</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.1"
+                    value={pearlUpchargePercent}
+                    onChange={(e) => {
+                      const next = Number(e.target.value);
+                      setPearlUpchargePercent(Number.isFinite(next) ? Math.max(0, next) : 0);
+                    }}
+                    style={{ width: 90 }}
+                  />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <label style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Deep Matte %</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.1"
+                    value={deepMatteUpchargePercent}
+                    onChange={(e) => {
+                      const next = Number(e.target.value);
+                      setDeepMatteUpchargePercent(Number.isFinite(next) ? Math.max(0, next) : 0);
+                    }}
+                    style={{ width: 90 }}
+                  />
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)', alignSelf: 'center' }}>
+                  Upcharge percentages applied to imported base cost when matching attributes are present.
+                </div>
+              </div>
               {previewLoading ? (
                 <div style={{ padding: '1rem', color: 'var(--text-secondary)' }}>Analysing existing list…</div>
               ) : (

@@ -117,19 +117,34 @@ async function fetchToken(consumerKey, consumerSecret, isSandbox) {
     return cached.token;
   }
 
-  const response = await axios.get(`${getBaseUrl(isSandbox)}/api/AccessToken`, {
-    params: {
-      grant_type: 'consumer_credentials',
-      consumer_key: consumerKey,
-      consumer_secret: consumerSecret,
-    },
-    headers: {
-      Accept: 'application/json',
-    },
-  });
+  let response;
+  try {
+    response = await axios.post(
+      `${getBaseUrl(isSandbox)}/api/AccessToken`,
+      {
+        grant_type: 'consumer_credentials',
+        consumer_key: consumerKey,
+        consumer_secret: consumerSecret,
+      },
+      {
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+  } catch (err) {
+    console.error('[WHCC] Error fetching access token:', err?.response?.data || err.message, err?.stack);
+    throw new Error('Failed to fetch WHCC access token');
+  }
 
+  if (!response || !response.data) {
+    console.error('[WHCC] Token response is null or missing data:', response);
+    throw new Error('WHCC token response is null or missing data');
+  }
   const token = response.data?.Token || response.data?.token || null;
   if (!token) {
+    console.error('[WHCC] Token response missing token property:', response.data);
     throw new Error('WHCC token response did not include a token');
   }
 

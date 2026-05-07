@@ -19,6 +19,13 @@ const STORAGE_CONNECTION_STRING =
 // STORAGE_CONTAINER is already declared above. Duplicate declaration removed.
 
 if (!STORAGE_CONTAINER) {
+  // Print all environment variables for debugging
+  console.error('[azureStorage.js] FULL ENV:', Object.keys(process.env).sort().reduce((acc, k) => { acc[k] = process.env[k]; return acc; }, {}));
+  console.error('[azureStorage.js] ENV DEBUG:', {
+    AZURE_STORAGE_CONTAINER: process.env.AZURE_STORAGE_CONTAINER,
+    AZURE_CONTAINER_NAME: process.env.AZURE_CONTAINER_NAME,
+    envKeys: Object.keys(process.env).filter(k => k.toLowerCase().includes('azure'))
+  });
   throw new Error('Azure Storage container name is not set. Please set AZURE_STORAGE_CONTAINER or AZURE_CONTAINER_NAME in your environment.');
 }
 

@@ -333,6 +333,65 @@ const getOrderStudioIdFromItems = async (items) => {
   return studioId;
 };
 
+const validateBatchEligibilityForOrder = async ({ studioId, items }) => {
+  if (!studioId) {
+    return { ok: false, error: 'Unable to determine studio for batch shipping' };
+  }
+
+  const shippingConfig = await queryRow(
+    `SELECT is_active as isActive,
+            batch_deadline as batchDeadline
+     FROM shipping_config
+     WHERE id = $1`,
+    [studioId]
+  );
+
+  if (!shippingConfig || !shippingConfig.isActive) {
+    return { ok: false, error: 'Batch shipping is not active for this studio' };
+  }
+
+  // PATCH: Remove deadline check to allow batch release at any time
+  // const deadlineRaw = shippingConfig.batchDeadline;
+  // const deadline = deadlineRaw ? new Date(deadlineRaw) : null;
+  // if (!deadline || Number.isNaN(deadline.getTime())) {
+  //   return { ok: false, error: 'Batch shipping deadline is not configured' };
+  // }
+  // if (deadline <= new Date()) {
+  //   return { ok: false, error: 'Batch shipping deadline has passed' };
+  // }
+
+  for (const item of items || []) {
+    const photoIds = Array.isArray(item.photoIds)
+      ? item.photoIds
+      : item.photoId
+      ? [item.photoId]
+      : [];
+    const primaryPhotoId = photoIds[0];
+    if (!primaryPhotoId) continue;
+
+    const album = await queryRow(
+      `SELECT a.id as albumId,
+              COALESCE(a.batch_shipping_active, 0) as batchShippingActive
+       FROM photos p
+       INNER JOIN albums a ON a.id = p.album_id
+       WHERE p.id = $1`,
+      [primaryPhotoId]
+    );
+
+    if (!album?.albumId) {
+      return { ok: false, error: 'Unable to validate batch shipping album eligibility' };
+    }
+
+    if (!album.batchShippingActive) {
+      return { ok: false, error: 'One or more items are not eligible for batch shipping' };
+    }
+  }
+
+  return {
+    ok: true
+  };
+};
+
 const resolveOrderAccessStudioId = (req) => {
   const headerStudioIdRaw = req.headers['x-acting-studio-id'];
   const headerStudioId = Number(Array.isArray(headerStudioIdRaw) ? headerStudioIdRaw[0] : headerStudioIdRaw);
@@ -506,6 +565,98 @@ const calculateItemAccountingSnapshot = ({
 };
 
 const submitOrderToWhcc = async (orderId, options = {}) => {
+    // Ensure axios is loaded before first use
+    const axios = (await import('axios')).default;
+    // Ensure isSandbox is defined before first use
+    const isSandbox = process.env.WHCC_SANDBOX === 'true';
+    // Get WHCC credentials from environment (support both naming conventions)
+    const consumerKey = process.env.WHCC_CONSUMER_KEY || process.env.WHCC_API_KEY;
+    const consumerSecret = process.env.WHCC_CONSUMER_SECRET || process.env.WHCC_API_SECRET;
+    if (!consumerKey || !consumerSecret) {
+      console.warn('[WHCC] WHCC credentials not configured (set WHCC_API_KEY/WHCC_API_SECRET or WHCC_CONSUMER_KEY/WHCC_CONSUMER_SECRET); skipping WHCC webhook registration');
+      return;
+    }
+    // Fetch WHCC OAuth token for webhook registration
+    const { fetchToken: fetchWhccToken } = await import('./whccProxy.js');
+    let token;
+    try {
+      token = await fetchWhccToken(consumerKey, consumerSecret, isSandbox);
+    } catch (tokenErr) {
+      console.error('[WHCC][ERROR] Failed to fetch WHCC OAuth token for webhook registration:', tokenErr?.message || tokenErr);
+      return;
+    }
+    // Register webhook with WHCC and get webhookId
+    let webhookId = null;
+    // Prepare webhook registration URL
+    const webhookUrl = process.env.WHCC_WEBHOOK_URL || `${process.env.APP_BASE_URL || 'http://localhost:3000'}/api/whcc-webhook`;
+    // Register webhook with WHCC
+    try {
+      const webhookRegisterResponse = await axios.post(
+        `${isSandbox ? 'https://sandbox.apps.whcc.com' : 'https://apps.whcc.com'}/api/callback/create`,
+        {
+          callbackUri: webhookUrl
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+      webhookId = webhookRegisterResponse?.data?.WebhookId || webhookRegisterResponse?.data?.webhookId || null;
+      if (!webhookId) {
+        console.error('[WHCC][ERROR] Webhook registration did not return a webhookId. Response:', webhookRegisterResponse?.data);
+      } else {
+        console.log('[WHCC] Registered webhook with ID:', webhookId);
+        // Store webhookId in all orders in the batch (or single order)
+        for (const oid of targetOrderIds) {
+          try {
+            await query(
+              `UPDATE orders SET whcc_webhook_id = $1 WHERE id = $2`,
+              [webhookId, oid]
+            );
+            // Insert or update whcc_webhook_status
+            await query(
+              `MERGE whcc_webhook_status AS target
+               USING (SELECT $1 AS order_id, $2 AS webhook_id) AS src
+               ON (target.order_id = src.order_id)
+               WHEN MATCHED THEN
+                 UPDATE SET webhook_id = src.webhook_id, updated_at = CURRENT_TIMESTAMP
+               WHEN NOT MATCHED THEN
+                 INSERT (order_id, webhook_id, created_at, updated_at) VALUES (src.order_id, src.webhook_id, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);`,
+              [oid, webhookId]
+            );
+            // Insert or update whcc_webhook_event
+            await query(
+              `MERGE whcc_webhook_event AS target
+               USING (SELECT $1 AS order_id, $2 AS webhook_id) AS src
+               ON (target.order_id = src.order_id)
+               WHEN MATCHED THEN
+                 UPDATE SET webhook_id = src.webhook_id, updated_at = CURRENT_TIMESTAMP
+               WHEN NOT MATCHED THEN
+                 INSERT (order_id, webhook_id, created_at, updated_at) VALUES (src.order_id, src.webhook_id, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);`,
+              [oid, webhookId]
+            );
+            // Insert or update whcc_webhook_payload
+            await query(
+              `MERGE whcc_webhook_payload AS target
+               USING (SELECT $1 AS order_id, $2 AS webhook_id) AS src
+               ON (target.order_id = src.order_id)
+               WHEN MATCHED THEN
+                 UPDATE SET webhook_id = src.webhook_id, updated_at = CURRENT_TIMESTAMP
+               WHEN NOT MATCHED THEN
+                 INSERT (order_id, webhook_id, created_at, updated_at) VALUES (src.order_id, src.webhook_id, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);`,
+              [oid, webhookId]
+            );
+            console.log(`[WHCC] Webhook fields persisted for order ${oid}`);
+          } catch (persistErr) {
+            console.error(`[WHCC][ERROR] Failed to persist webhook fields for order ${oid}:`, persistErr?.message || persistErr);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[WHCC][ERROR] Failed to register webhook:', err?.message || err);
+    }
   const allowBatch = Boolean(options?.allowBatch);
   const shippingAddressOverride = options?.shippingAddressOverride || null;
   const specialInstructions = String(options?.specialInstructions || '').trim() || null;
@@ -577,17 +728,6 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
       return raw.startsWith('/') ? `${appBase}${raw}` : `${appBase}/${raw}`;
     };
 
-    const defaultShipFromAddress = {
-      Name: process.env.WHCC_SHIP_FROM_NAME || 'Returns Department',
-      Addr1: process.env.WHCC_SHIP_FROM_ADDR1 || '3432 Denmark Ave',
-      Addr2: process.env.WHCC_SHIP_FROM_ADDR2 || 'Suite 390',
-      City: process.env.WHCC_SHIP_FROM_CITY || 'Eagan',
-      State: process.env.WHCC_SHIP_FROM_STATE || 'MN',
-      Zip: process.env.WHCC_SHIP_FROM_ZIP || '55123',
-      Country: process.env.WHCC_SHIP_FROM_COUNTRY || 'US',
-      Phone: normalizePhone(process.env.WHCC_SHIP_FROM_PHONE || '8002525234'),
-    };
-
     const itemPlaceholders = targetOrderIds.map((_, index) => `$${index + 1}`).join(',');
     const items = await queryRows(
       `SELECT oi.id,
@@ -637,20 +777,71 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
     const extractWhccItemConfig = (productOptions) => {
       const direct = productOptions || {};
       const nested = direct.whcc || direct.whccConfig || {};
+
+      const variants = Array.isArray(direct.whccVariants)
+        ? direct.whccVariants
+            .map((variant) => {
+              const uid = Number(variant?.whccProductUID || 0);
+              if (!Number.isInteger(uid) || uid <= 0) return null;
+              const nodeIds = Array.isArray(variant?.whccProductNodeIDs)
+                ? variant.whccProductNodeIDs.map(Number).filter((v) => Number.isInteger(v) && v > 0)
+                : [];
+              const attrIds = Array.isArray(variant?.whccItemAttributeUIDs)
+                ? variant.whccItemAttributeUIDs.map(Number).filter((v) => Number.isInteger(v) && v > 0)
+                : [];
+              return {
+                id: Number.isInteger(Number(variant?.id)) ? Number(variant.id) : null,
+                localId: String(variant?.localId || ''),
+                displayName: String(variant?.displayName || ''),
+                whccProductUID: uid,
+                whccProductNodeIDs: nodeIds,
+                whccItemAttributeUIDs: attrIds,
+                isDefault: Boolean(variant?.isDefault),
+                isActive: variant?.isActive === undefined ? true : Boolean(variant?.isActive),
+              };
+            })
+            .filter(Boolean)
+        : [];
+
+      const selectedVariantId = Number(
+        direct.whccSelectedVariantId ??
+        direct.selectedWhccVariantId ??
+        direct.selectedVariantId
+      ) || null;
+      const selectedVariantLocalId = String(
+        direct.whccSelectedVariantLocalId ??
+        direct.selectedWhccVariantLocalId ??
+        ''
+      ).trim();
+
+      const selectedVariant = variants.find((variant) => variant?.id && selectedVariantId && Number(variant.id) === selectedVariantId)
+        || variants.find((variant) => selectedVariantLocalId && variant?.localId === selectedVariantLocalId)
+        || variants.find((variant) => variant?.isDefault && variant?.isActive)
+        || variants.find((variant) => variant?.isActive)
+        || variants.find((variant) => variant?.isDefault)
+        || variants[0]
+        || null;
+
       return {
         productUID: Number(
+          selectedVariant?.whccProductUID ??
           direct.whccProductUID ??
           direct.productUID ??
           nested.productUID ??
           nested.ProductUID
         ) || null,
         productNodeID: Number(
+          (Array.isArray(selectedVariant?.whccProductNodeIDs) && selectedVariant.whccProductNodeIDs.length
+            ? selectedVariant.whccProductNodeIDs[0]
+            : null) ??
           direct.whccProductNodeID ??
           direct.productNodeID ??
           nested.productNodeID ??
           nested.ProductNodeID
         ) || null,
-        itemAttributeUIDs: Array.isArray(direct.whccItemAttributeUIDs)
+        itemAttributeUIDs: Array.isArray(selectedVariant?.whccItemAttributeUIDs) && selectedVariant.whccItemAttributeUIDs.length
+          ? selectedVariant.whccItemAttributeUIDs
+          : Array.isArray(direct.whccItemAttributeUIDs)
           ? direct.whccItemAttributeUIDs
           : Array.isArray(direct.itemAttributeUIDs)
           ? direct.itemAttributeUIDs
@@ -760,6 +951,12 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
         return [];
       })();
 
+      // Determine if this local item is a press/card product by category or name
+      const pressCardKeywords = ['card', 'stationery', 'invitation', 'announcement', 'postcard', 'notecard', 'flat card', 'greeting', 'rep card'];
+      const isLocalPressCard = pressCardKeywords.some((kw) =>
+        category.includes(kw) || name.includes(kw)
+      );
+
       const scored = [];
       for (const product of catalogProducts) {
         const uid = getCatalogProductUID(product);
@@ -818,6 +1015,21 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
         // Avoid mapping drinkware items to acrylic products (known WHCC rule mismatch source)
         if (category.includes('drink') && haystack.includes('acrylic')) {
           score -= 20;
+        }
+
+        // Press/card products (rep cards, flat cards, stationery, etc.) have strict WHCC
+        // business rules (paper type, multi-node, one-per-order). Apply a heavy penalty
+        // when the local item is NOT a press/card product so a dimension coincidence
+        // (e.g. 2x3.5 wallet print) doesn't accidentally map to "2x3.5 Rep Cards".
+        const catalogIsPressCard = ['rep card', 'flat card', 'business card', 'stationery',
+          'invitation', 'announcement', 'greeting card', 'postcard', 'notecard']
+          .some((kw) => haystack.includes(kw));
+        if (catalogIsPressCard && !isLocalPressCard) {
+          score -= 40;
+        }
+        // Conversely, if the local item IS a press/card, boost press catalog matches
+        if (isLocalPressCard && catalogIsPressCard) {
+          score += 20;
         }
 
         if (score > 0) scored.push({ score, product });
@@ -1051,23 +1263,111 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
     };
 
     // Prepare WHCC OrderImport payload according to docs
-    const resolvedWhccItems = items
-      .map((item, index) => {
+    // Patch: fetch image buffer and compute SHA-256 hash for WHCC ImageHash
+    const { computeImageSignature } = await import('../utils/imageSignature.js');
+
+    const resolvedWhccItems = await Promise.all(
+      items.map(async (item, index) => {
         const productOptions = parseProductOptions(item.productOptions);
         if (isDigitalOrderItem(item, productOptions)) {
           return null;
         }
 
-        const assetPath = toAbsoluteAssetUrl(item.fullImageUrl) || toAbsoluteAssetUrl(item.thumbnailUrl);
+
+        // Always use Azure Blob Storage URL if available and public
+
+        let assetPath = null;
+        const isLocal = process.env.NODE_ENV !== 'production' && process.env.AZURE_BASE_URL;
+        if (isLocal) {
+          // In local/dev, always use Azure URL for WHCC if available
+          const base = process.env.AZURE_BASE_URL.replace(/\/$/, '');
+          if (item.fullImageUrl && !/^https?:\/\//i.test(item.fullImageUrl)) {
+            assetPath = `${base}/${item.fullImageUrl.replace(/^\//, '')}`;
+          } else if (item.fullImageUrl && /^https?:\/\//i.test(item.fullImageUrl)) {
+            assetPath = item.fullImageUrl;
+          } else if (item.thumbnailUrl && !/^https?:\/\//i.test(item.thumbnailUrl)) {
+            assetPath = `${base}/${item.thumbnailUrl.replace(/^\//, '')}`;
+          } else if (item.thumbnailUrl && /^https?:\/\//i.test(item.thumbnailUrl)) {
+            assetPath = item.thumbnailUrl;
+          } else {
+            assetPath = toAbsoluteAssetUrl(item.fullImageUrl) || toAbsoluteAssetUrl(item.thumbnailUrl);
+          }
+        } else {
+          // Production: use current logic
+          if (item.fullImageUrl && /^https?:\/\//i.test(item.fullImageUrl)) {
+            assetPath = item.fullImageUrl;
+          } else if (item.thumbnailUrl && /^https?:\/\//i.test(item.thumbnailUrl)) {
+            assetPath = item.thumbnailUrl;
+          } else {
+            assetPath = toAbsoluteAssetUrl(item.fullImageUrl) || toAbsoluteAssetUrl(item.thumbnailUrl);
+          }
+        }
+
+        // Debug: log asset URLs for each item
+        console.log('[WHCC][DEBUG] Order item asset URLs:', {
+          orderItemId: item.id,
+          productName: item.productName,
+          fullImageUrl: item.fullImageUrl,
+          thumbnailUrl: item.thumbnailUrl,
+          assetPath,
+        });
+
         if (!assetPath) {
+          console.warn('[WHCC][DEBUG] No assetPath resolved for order item', item.id);
           return null;
         }
 
-        const imageHash = createHash('md5').update(assetPath).digest('hex');
+        // Fetch image as buffer and compute SHA-256 hash
+        let imageHash = null;
+        try {
+          const response = await axios.get(assetPath, { responseType: 'arraybuffer' });
+          const buffer = Buffer.from(response.data);
+          imageHash = await computeImageSignature(buffer);
+        } catch (err) {
+          console.warn(`[WHCC] Failed to fetch image or compute hash for asset: ${assetPath}`, err?.message || err);
+          return null;
+        }
+
         const cropData = safeJsonParse(item.crop_data, null);
 
         const optionsConfig = extractWhccItemConfig(productOptions);
-        const catalogMatch = matchCatalogProduct(catalogProducts, item);
+
+        // --- PATCH: Match catalog product by selected finish (attribute) if present ---
+        // 1. Find all catalog products that match the base product (by name/size/UID)
+        // 2. If a finish attribute is selected, pick the catalog product that supports it
+        // 3. Fallback to normal catalog match if no finish is selected
+
+        // Step 1: Get all catalog products that match the base product
+        let candidateCatalogProducts = catalogProducts.filter(p => {
+          // Match by ProductUID if available, else by name/size
+          if (optionsConfig.productUID) {
+            return getCatalogProductUID(p) === optionsConfig.productUID;
+          }
+          // Fallback: match by name/size (same as matchCatalogProduct)
+          return matchCatalogProduct([p], item) === p;
+        });
+        if (!candidateCatalogProducts.length) {
+          // Fallback to all products if no match
+          candidateCatalogProducts = catalogProducts;
+        }
+
+        // Step 2: If a finish attribute is selected, filter for catalog products that support it
+        let selectedFinishUid = null;
+        if (Array.isArray(optionsConfig.itemAttributeUIDs) && optionsConfig.itemAttributeUIDs.length > 0) {
+          // Try to find a finish attribute (not just parent Paper)
+          selectedFinishUid = optionsConfig.itemAttributeUIDs.find(uid => Number(uid) !== 1); // 1 = Paper (parent)
+        }
+        let catalogMatch = null;
+        if (selectedFinishUid) {
+          catalogMatch = candidateCatalogProducts.find(p => {
+            const attrs = getCatalogItemAttributeUIDs(p);
+            return attrs.includes(Number(selectedFinishUid));
+          }) || null;
+        }
+        // Step 3: Fallback to normal match if no finish or no match found
+        if (!catalogMatch) {
+          catalogMatch = matchCatalogProduct(candidateCatalogProducts, item) || candidateCatalogProducts[0] || null;
+        }
 
         const productUID =
           optionsConfig.productUID ||
@@ -1089,10 +1389,15 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
           throw new Error(`No WHCC product mapping found for ${item.productName || 'Unknown Product'}${item.sizeName ? ` (${item.sizeName})` : ''}. Add WHCC mapping data before retrying.`);
         }
 
-        // Determine all product nodes — multi-node products need one ItemAsset per node
-        const productNodeIDs = optionsConfig.productNodeID
+        // Determine all product nodes — multi-node products need one ItemAsset per node.
+        // IMPORTANT: if catalog indicates multiple nodes, ignore any single-node override
+        // persisted in product options (legacy imports stored only the first node).
+        const catalogNodeIDs = getCatalogProductNodeIDs(effectiveCatalogMatch);
+        const productNodeIDs = catalogNodeIDs.length > 1
+          ? catalogNodeIDs
+          : optionsConfig.productNodeID
           ? [Number(optionsConfig.productNodeID)]
-          : getCatalogProductNodeIDs(effectiveCatalogMatch);
+          : catalogNodeIDs;
 
         // Press product deduplication: WHCC allows only one press design per order.
         // Deduplicate by press-category (not just UID) so that two items of different
@@ -1110,10 +1415,51 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
           .filter((value) => Number.isInteger(value) && value > 0);
         const catalogAttributeUIDs = getCatalogItemAttributeUIDs(effectiveCatalogMatch);
 
-        // Prefer WHCC catalog defaults (source of truth). Fall back to stored options if catalog has none.
-        const finalAttributeUIDs = catalogAttributeUIDs.length
-          ? catalogAttributeUIDs
-          : optionAttributeUIDs;
+        // PATCH: Always prefer attribute UIDs from order item options if present (e.g., finish selection),
+        // otherwise fall back to WHCC catalog defaults.
+        let finalAttributeUIDs = optionAttributeUIDs.length
+          ? optionAttributeUIDs
+          : catalogAttributeUIDs;
+
+        // PATCH: Ensure all required parent attributes are included for each selected attribute (WHCC business rule).
+        // Use the same parent resolution logic as getCatalogItemAttributeUIDs, but apply to the selected set.
+        if (Array.isArray(effectiveCatalogMatch?.AttributeCategories) || Array.isArray(effectiveCatalogMatch?.attributeCategories)) {
+          const attributeCategories = effectiveCatalogMatch.AttributeCategories || effectiveCatalogMatch.attributeCategories || [];
+          const getOptions = (category) =>
+            Array.isArray(category?.Attributes)
+              ? category.Attributes
+              : Array.isArray(category?.attributes)
+              ? category.attributes
+              : [];
+          const getAttrUid = (attr) => Number(attr?.Id ?? attr?.AttributeUID ?? attr?.attributeUID ?? attr?.id ?? 0) || null;
+          const getParentUid = (attr) => Number(attr?.ParentAttributeUID ?? attr?.parentAttributeUID ?? 0) || null;
+          // Build lookup maps for parent-dependency resolution
+          const uidToAttr = new Map();
+          for (const category of attributeCategories) {
+            for (const attr of getOptions(category)) {
+              const uid = getAttrUid(attr);
+              if (uid > 0) {
+                uidToAttr.set(uid, attr);
+              }
+            }
+          }
+          // Walk up parent chains for all selected attributes
+          const selected = Array.from(new Set(finalAttributeUIDs));
+          let changed = true;
+          while (changed) {
+            changed = false;
+            for (const uid of [...selected]) {
+              const attr = uidToAttr.get(uid);
+              if (!attr) continue;
+              const parentUid = getParentUid(attr);
+              if (parentUid && !selected.includes(parentUid)) {
+                selected.push(parentUid);
+                changed = true;
+              }
+            }
+          }
+          finalAttributeUIDs = selected;
+        }
 
         // WHCC expects X/Y as 0-100 percentage offset within the image.
         // react-cropper stores x/y as pixel coordinates, so normalize using photo dimensions.
@@ -1175,21 +1521,45 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
           },
         };
       })
-      .filter(Boolean);
+    );
+    const filteredWhccItems = resolvedWhccItems.filter(Boolean);
 
-    const whccOrderItems = resolvedWhccItems.map((item) => item.payload);
+    const whccOrderItems = filteredWhccItems.map((item) => item.payload);
 
-    if (!whccOrderItems.length) {
-      console.log(`[WHCC] Order(s) ${targetOrderIds.join(', ')} have no physical items to submit (digital-only or non-submittable items). Skipping WHCC submission.`);
-      return;
-    }
 
+    // whccEntryId and whccReference must be declared before logging
     const whccEntryId = isAggregateSubmission
       ? `batch-${Date.now()}`
       : String(orderId);
     const whccReference = isAggregateSubmission
       ? `Batch Orders #${targetOrderIds.join(',')}`
       : `Order #${orderId}`;
+
+    // Debug: log the full WHCC order payload before submission
+    console.log('[WHCC][DEBUG] Order payload to be submitted:', JSON.stringify({
+      whccEntryId,
+      whccReference,
+      whccOrderItems,
+      orderId,
+      targetOrderIds,
+    }, null, 2));
+
+    if (!whccOrderItems.length) {
+      console.log(`[WHCC] Order(s) ${targetOrderIds.join(', ')} have no physical items to submit (digital-only or non-submittable items). Skipping WHCC submission.`);
+      return;
+    }
+
+    const whccShipAddress = {
+      Name: String(shippingAddress.fullName || '').trim() || `Order ${orderId}`,
+      Attn: null,
+      Addr1: String(shippingAddress.addressLine1 || '').trim() || 'Address unavailable',
+      Addr2: String(shippingAddress.addressLine2 || '').trim() || null,
+      City: String(shippingAddress.city || '').trim() || 'Unknown',
+      State: String(shippingAddress.state || '').trim() || 'NA',
+      Zip: String(shippingAddress.zipCode || '').trim() || '00000',
+      Country: String(shippingAddress.country || '').trim() || 'US',
+      Phone: normalizePhone(shippingAddress.phone),
+    };
 
     const whccOrderRequest = {
       EntryId: whccEntryId,
@@ -1200,22 +1570,13 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
           Instructions: specialInstructions,
           SendNotificationEmailAddress: String(shippingAddress.email || '').trim() || null,
           SendNotificationEmailToAccount: true,
-          ShipToAddress: {
-            Name: String(shippingAddress.fullName || '').trim() || `Order ${orderId}`,
-            Attn: null,
-            Addr1: String(shippingAddress.addressLine1 || '').trim() || 'Address unavailable',
-            Addr2: String(shippingAddress.addressLine2 || '').trim() || null,
-            City: String(shippingAddress.city || '').trim() || 'Unknown',
-            State: String(shippingAddress.state || '').trim() || 'NA',
-            Zip: String(shippingAddress.zipCode || '').trim() || '00000',
-            Country: String(shippingAddress.country || '').trim() || 'US',
-            Phone: normalizePhone(shippingAddress.phone),
-          },
-          ShipFromAddress: defaultShipFromAddress,
+          ShipToAddress: whccShipAddress,
+          ShipFromAddress: whccShipAddress,
           OrderAttributes: orderAttributeUIDs.map((uid) => ({ AttributeUID: uid })),
           OrderItems: whccOrderItems,
         },
       ],
+      ...(webhookId ? { WebhookId: webhookId } : {}),
     };
 
     requestLog = {
@@ -1270,6 +1631,7 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
     await query(
       `UPDATE orders
        SET whcc_confirmation_id = $1,
+           whcc_order_id = $1,
            whcc_import_response = $2,
            whcc_request_log = $3,
            whcc_last_error = NULL
@@ -1379,6 +1741,18 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
     );
 
     console.error(`[WHCC] Failed to submit order(s) ${targetOrderIds.join(', ')} to WHCC:`, errorPayload);
+    // Enhanced error logging for debugging
+    if (error) {
+      console.error('[WHCC] Full error object:', error);
+      if (error?.response) {
+        console.error('[WHCC] Error response data:', error.response.data);
+        console.error('[WHCC] Error response status:', error.response.status);
+        console.error('[WHCC] Error response headers:', error.response.headers);
+      }
+      if (error?.config) {
+        console.error('[WHCC] Error config:', error.config);
+      }
+    }
     // Non-blocking error — don't fail the order creation
   }
 };
@@ -1431,6 +1805,31 @@ const sendOrderReceipts = async (orderId) => {
       ).catch((err) => {
         console.error('Failed to persist refreshed Stripe accounting before receipts:', err?.message || err);
       });
+
+      // --- PATCH: Update per-item allocated Stripe fee ---
+      // Fetch all order items for this order
+      const orderItems = await queryRows(
+        `SELECT id, quantity FROM order_items WHERE order_id = $1`,
+        [order.id]
+      );
+      if (orderItems && orderItems.length > 0) {
+        // Allocate the refreshedStripeFee proportionally by item total
+        const itemTotals = orderItems.map(item => Number(item.quantity || 1));
+        const totalQty = itemTotals.reduce((a, b) => a + b, 0) || 1;
+        let allocated = 0;
+        for (let i = 0; i < orderItems.length; i++) {
+          // Last item gets the remainder to avoid rounding issues
+          let allocFee = (i === orderItems.length - 1)
+            ? (refreshedStripeFee - allocated)
+            : Math.round((itemTotals[i] / totalQty) * refreshedStripeFee * 100) / 100;
+          allocated += allocFee;
+          await query(
+            `UPDATE order_items SET stripe_fee_allocated_amount = $1 WHERE id = $2`,
+            [allocFee, orderItems[i].id]
+          );
+        }
+      }
+      // --- END PATCH ---
     }
   }
 
@@ -1795,24 +2194,27 @@ router.post('/', requireActiveSubscription, async (req, res) => {
 
     const paymentAccounting = await fetchPaymentIntentAccounting(paymentIntentId);
 
-    const batchOrder = !!isBatch;
-    const directOrder = !batchOrder && shippingOption === 'direct';
+    const requestedShippingOption = String(shippingOption || '').toLowerCase();
+    const batchOrder = !!isBatch || requestedShippingOption === 'batch';
+    const directOrder = !batchOrder;
+    const normalizedShippingOption = batchOrder ? 'batch' : 'direct';
     const orderStudioId = await getOrderStudioIdFromItems(items);
     if (!orderStudioId) {
       return res.status(400).json({ error: 'Unable to determine studio for this order' });
     }
+
     let batchReadyDate = null;
-    if (batchOrder && orderStudioId) {
-      const shippingConfig = await queryRow(
-        'SELECT batch_deadline as batchDeadline FROM shipping_config WHERE id = $1',
-        [orderStudioId]
-      );
-      if (shippingConfig?.batchDeadline) {
-        const parsedDate = new Date(shippingConfig.batchDeadline);
-        if (!Number.isNaN(parsedDate.getTime())) {
-          batchReadyDate = parsedDate.toISOString();
-        }
+    if (batchOrder) {
+      const batchEligibility = await validateBatchEligibilityForOrder({
+        studioId: orderStudioId,
+        items,
+      });
+
+      if (!batchEligibility.ok) {
+        return res.status(400).json({ error: batchEligibility.error || 'Batch shipping is unavailable for this order' });
       }
+
+      batchReadyDate = batchEligibility.batchReadyDate || null;
     }
 
     // studio_shipping_cost and shipping_margin are not known at order creation time
@@ -1864,7 +2266,7 @@ router.post('/', requireActiveSubscription, async (req, res) => {
       taxAmount || 0,
       taxRate || 0,
       JSON.stringify(shippingAddress),
-      shippingOption || 'direct',
+      normalizedShippingOption,
       shippingCost || 0,
       studioShippingCost,
       shippingMargin,
@@ -1891,6 +2293,140 @@ router.post('/', requireActiveSubscription, async (req, res) => {
         [discountCode, orderStudioId]
       ).catch(() => {});
     }
+
+    const whccVariantSnapshotCache = new Map();
+    const hydrateProductOptionsWithWhccVariants = async (productSizeId, productOptions) => {
+      const normalizedSizeId = Number(productSizeId || 0);
+      if (!Number.isInteger(normalizedSizeId) || normalizedSizeId <= 0) {
+        return productOptions;
+      }
+
+      const existingVariants = Array.isArray(productOptions?.whccVariants)
+        ? productOptions.whccVariants
+            .map((variant) => {
+              const uid = Number(variant?.whccProductUID || 0);
+              if (!Number.isInteger(uid) || uid <= 0) return null;
+              return {
+                ...variant,
+                id: Number.isInteger(Number(variant?.id)) ? Number(variant.id) : null,
+                localId: String(variant?.localId || ''),
+                displayName: String(variant?.displayName || ''),
+                whccProductUID: uid,
+                whccProductNodeIDs: Array.isArray(variant?.whccProductNodeIDs)
+                  ? variant.whccProductNodeIDs.map(Number).filter((v) => Number.isInteger(v) && v > 0)
+                  : [],
+                whccItemAttributeUIDs: Array.isArray(variant?.whccItemAttributeUIDs)
+                  ? variant.whccItemAttributeUIDs.map(Number).filter((v) => Number.isInteger(v) && v > 0)
+                  : [],
+                isDefault: Boolean(variant?.isDefault),
+                isActive: variant?.isActive === undefined ? true : Boolean(variant?.isActive),
+              };
+            })
+            .filter(Boolean)
+        : [];
+
+      if (existingVariants.length > 0) {
+        const selectedVariantId = Number(
+          productOptions?.whccSelectedVariantId ??
+          productOptions?.selectedWhccVariantId ??
+          productOptions?.selectedVariantId
+        );
+        const selectedVariantLocalId = String(
+          productOptions?.whccSelectedVariantLocalId ??
+          productOptions?.selectedWhccVariantLocalId ??
+          ''
+        ).trim();
+
+        const selectedVariant = existingVariants.find((variant) => variant?.id && selectedVariantId && Number(variant.id) === selectedVariantId)
+          || existingVariants.find((variant) => selectedVariantLocalId && variant?.localId === selectedVariantLocalId)
+          || existingVariants.find((variant) => variant?.isDefault && variant?.isActive)
+          || existingVariants.find((variant) => variant?.isActive)
+          || existingVariants[0]
+          || null;
+
+        if (selectedVariant?.whccProductUID) {
+          return {
+            ...(productOptions || {}),
+            whccVariants: existingVariants,
+            whccSelectedVariantId: selectedVariant.id,
+            whccSelectedVariantLocalId: selectedVariant.localId || null,
+            whccProductUID: selectedVariant.whccProductUID,
+            whccProductNodeID: Array.isArray(selectedVariant.whccProductNodeIDs) && selectedVariant.whccProductNodeIDs.length
+              ? selectedVariant.whccProductNodeIDs[0]
+              : null,
+            whccItemAttributeUIDs: Array.isArray(selectedVariant.whccItemAttributeUIDs)
+              ? selectedVariant.whccItemAttributeUIDs
+              : [],
+          };
+        }
+      }
+
+      if (!whccVariantSnapshotCache.has(normalizedSizeId)) {
+        const rows = await queryRows(
+          `SELECT v.id,
+                  v.display_name,
+                  v.whcc_product_uid,
+                  v.whcc_product_node_ids,
+                  v.whcc_item_attribute_uids,
+                  v.base_cost,
+                  v.price,
+                  v.is_default,
+                  v.is_active
+           FROM super_price_list_item_whcc_variants v
+           INNER JOIN super_price_list_items spi ON spi.id = v.super_price_list_item_id
+           WHERE spi.product_size_id = $1
+             AND spi.is_active = 1
+           ORDER BY v.is_default DESC, v.id ASC`,
+          [normalizedSizeId]
+        );
+
+        const variants = (rows || [])
+          .map((row) => {
+            const uid = Number(row?.whcc_product_uid || 0);
+            if (!Number.isInteger(uid) || uid <= 0) return null;
+            return {
+              id: Number(row?.id || 0) || null,
+              displayName: String(row?.display_name || ''),
+              whccProductUID: uid,
+              whccProductNodeIDs: safeJsonParse(row?.whcc_product_node_ids, [])
+                .map(Number)
+                .filter((v) => Number.isInteger(v) && v > 0),
+              whccItemAttributeUIDs: safeJsonParse(row?.whcc_item_attribute_uids, [])
+                .map(Number)
+                .filter((v) => Number.isInteger(v) && v > 0),
+              baseCost: row?.base_cost === null || row?.base_cost === undefined ? null : Number(row.base_cost),
+              price: row?.price === null || row?.price === undefined ? null : Number(row.price),
+              isDefault: Boolean(row?.is_default),
+              isActive: Boolean(row?.is_active),
+            };
+          })
+          .filter(Boolean);
+
+        whccVariantSnapshotCache.set(normalizedSizeId, variants);
+      }
+
+      const variants = whccVariantSnapshotCache.get(normalizedSizeId) || [];
+      if (!variants.length) return productOptions;
+
+      const selectedVariant = variants.find((variant) => variant.isDefault && variant.isActive)
+        || variants.find((variant) => variant.isActive)
+        || variants[0]
+        || null;
+      if (!selectedVariant?.whccProductUID) return productOptions;
+
+      return {
+        ...(productOptions || {}),
+        whccVariants: variants,
+        whccSelectedVariantId: selectedVariant.id,
+        whccProductUID: selectedVariant.whccProductUID,
+        whccProductNodeID: Array.isArray(selectedVariant.whccProductNodeIDs) && selectedVariant.whccProductNodeIDs.length
+          ? selectedVariant.whccProductNodeIDs[0]
+          : null,
+        whccItemAttributeUIDs: Array.isArray(selectedVariant.whccItemAttributeUIDs)
+          ? selectedVariant.whccItemAttributeUIDs
+          : [],
+      };
+    };
 
     const itemsWithAccounting = [];
     for (const item of items) {
@@ -1944,9 +2480,15 @@ router.post('/', requireActiveSubscription, async (req, res) => {
         );
       }
 
-      const productOptions = safeJsonParse(productRow?.productOptions, {}) || {};
+      const baseProductOptions = safeJsonParse(productRow?.productOptions, {}) || {};
+      const incomingProductOptions = safeJsonParse(item.productOptions, {}) || {};
+      const mergedProductOptions = {
+        ...baseProductOptions,
+        ...incomingProductOptions,
+      };
+      const productOptions = await hydrateProductOptionsWithWhccVariants(item.productSizeId, mergedProductOptions);
       const isDigital = isDigitalProductRow({
-        productOptions: productRow?.productOptions,
+        productOptions,
         productCategory: productRow?.productCategory,
         productName: productRow?.productName,
       });
@@ -3055,8 +3597,7 @@ router.post('/admin/submit-batch', adminRequired, async (req, res) => {
 
     for (const orderId of ids) {
       const order = await queryRow(
-        `SELECT o.id, o.user_id as userId, o.is_batch as isBatch, o.lab_submitted as labSubmitted,
-                o.batch_ready_date as batchReadyDate
+        `SELECT o.id, o.user_id as userId, o.is_batch as isBatch, o.lab_submitted as labSubmitted
          FROM orders o
          WHERE o.id = $1`,
         [orderId]
@@ -3064,13 +3605,7 @@ router.post('/admin/submit-batch', adminRequired, async (req, res) => {
 
       if (!order || !order.isBatch || order.labSubmitted) continue;
 
-      if (order.batchReadyDate) {
-        const readyDate = new Date(order.batchReadyDate);
-        if (!Number.isNaN(readyDate.getTime()) && readyDate > now) {
-          notReadyCount += 1;
-          continue;
-        }
-      }
+      // PATCH: Ignore batchReadyDate for eligibility
 
       if (req.user.role === 'studio_admin') {
         const user = await queryRow(
@@ -3248,32 +3783,21 @@ router.get('/admin/batch-queue', adminRequired, async (req, res) => {
       safeJsonParse(shippingConfig?.batchShippingAddress) ||
       safeJsonParse(fallbackBatchAddressRow?.batchShippingAddress) ||
       null;
-    const now = new Date();
-    const eligibleOrderIds = [];
-    let nextBatchDate = null;
-    const mappedOrders = [];
 
-    for (const order of filteredOrders) {
-      const readyDate = order.batchReadyDate ? new Date(order.batchReadyDate) : null;
-      const isEligible = !readyDate || Number.isNaN(readyDate.getTime()) || readyDate <= now;
-      if (!readyDate || Number.isNaN(readyDate.getTime()) || readyDate <= now) {
-        eligibleOrderIds.push(order.id);
-      } else if (!nextBatchDate || readyDate < new Date(nextBatchDate)) {
-        nextBatchDate = readyDate.toISOString();
-      }
-
-      mappedOrders.push({
-        id: order.id,
-        userId: order.userId,
-        totalAmount: Number(order.totalAmount) || 0,
-        customerName: order.customerName || order.customerEmail || `Customer #${order.userId}`,
-        customerEmail: order.customerEmail || '',
-        createdAt: order.createdAt,
-        batchReadyDate: order.batchReadyDate,
-        isEligible,
-        shippingAddress: safeJsonParse(order.shippingAddress),
-      });
-    }
+    // PATCH: All non-cancelled, non-digital batch orders are eligible (ignore batchReadyDate)
+    const eligibleOrderIds = filteredOrders.map(order => order.id);
+    const mappedOrders = filteredOrders.map(order => ({
+      id: order.id,
+      userId: order.userId,
+      totalAmount: Number(order.totalAmount) || 0,
+      customerName: order.customerName || order.customerEmail || `Customer #${order.userId}`,
+      customerEmail: order.customerEmail || '',
+      createdAt: order.createdAt,
+      batchReadyDate: order.batchReadyDate,
+      isEligible: true,
+      shippingAddress: safeJsonParse(order.shippingAddress),
+    }));
+    const nextBatchDate = null;
 
     res.json({
       totalQueued: filteredOrders.length,

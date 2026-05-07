@@ -3,6 +3,30 @@ import express from 'express';
 import mssql from '../mssql.js';
 const router = express.Router();
 
+const parseJsonArray = (value) => {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (_) {
+    return [];
+  }
+};
+
+const normalizePositiveIntArray = (values) => {
+  const arr = Array.isArray(values) ? values : [];
+  return arr
+    .map((v) => Number(v))
+    .filter((v) => Number.isInteger(v) && v > 0);
+};
+
+const normalizeNullableMoney = (value) => {
+  if (value === undefined || value === null || value === '') return null;
+  const num = Number(value);
+  return Number.isFinite(num) ? Number(num.toFixed(2)) : null;
+};
+
 const ensureCategoryImagesTable = async () => {
   try {
     await mssql.query(`
@@ -25,8 +49,19 @@ const ensureStudioProductPresentationColumns = async () => {
         ALTER TABLE studio_price_list_items ADD is_recommended BIT NOT NULL CONSTRAINT df_spli_is_recommended DEFAULT(0);
       IF COL_LENGTH('studio_price_list_items', 'display_order') IS NULL
         ALTER TABLE studio_price_list_items ADD display_order INT NULL;
+      IF COL_LENGTH('studio_price_list_items', 'whcc_variants_json') IS NULL
+        ALTER TABLE studio_price_list_items ADD whcc_variants_json NVARCHAR(MAX) NULL;
     `);
   } catch (_) {}
+};
+
+const buildVariantKey = (variant = {}) => {
+  const id = Number(variant?.id || 0);
+  if (Number.isInteger(id) && id > 0) return `id:${id}`;
+  const uid = Number(variant?.whccProductUID || 0);
+  const attrs = normalizePositiveIntArray(variant?.whccItemAttributeUIDs || []);
+  const name = String(variant?.displayName || '').trim().toLowerCase();
+  return `uid:${uid}|attrs:${attrs.join('-')}|name:${name}`;
 };
 
 
@@ -129,7 +164,14 @@ router.get('/:id/items', async (req, res) => {
              spi.is_offered,
               spi.is_recommended,
               spi.display_order,
+             spi.whcc_variants_json,
+               sspi.id as super_item_id,
              sspi.base_cost,
+              sspi.markup_percent AS super_markup_percent,
+               sspi.whcc_product_uid,
+               sspi.whcc_product_node_id,
+               sspi.whcc_item_attribute_uids,
+               sspi.whcc_attribute_categories,
              ps.size_name,
              p.name as product_name,
              p.category as product_category,
@@ -150,6 +192,47 @@ router.get('/:id/items', async (req, res) => {
       WHERE spi.studio_price_list_id = @p1
       ORDER BY COALESCE(spi.display_order, 2147483647), p.category, p.name, ps.size_name
     `, [id, superPriceListId]);
+
+    const superItemIds = (items || [])
+      .map((row) => Number(row?.super_item_id || 0))
+      .filter((value) => Number.isInteger(value) && value > 0);
+
+    const variantsBySuperItemId = new Map();
+    if (superItemIds.length) {
+      const placeholders = superItemIds.map((_, index) => `@p${index + 1}`).join(',');
+      const variantRows = await mssql.query(`
+        SELECT v.id,
+               v.super_price_list_item_id,
+               v.display_name,
+               v.whcc_product_uid,
+               v.whcc_product_node_ids,
+               v.whcc_item_attribute_uids,
+               v.base_cost,
+               v.price,
+               v.is_default,
+               v.is_active
+        FROM super_price_list_item_whcc_variants v
+        WHERE v.super_price_list_item_id IN (${placeholders})
+        ORDER BY v.super_price_list_item_id ASC, v.is_default DESC, v.id ASC
+      `, superItemIds);
+
+      for (const row of (variantRows || [])) {
+        const superItemId = Number(row?.super_price_list_item_id || 0);
+        if (!superItemId) continue;
+        if (!variantsBySuperItemId.has(superItemId)) variantsBySuperItemId.set(superItemId, []);
+        variantsBySuperItemId.get(superItemId).push({
+          id: Number(row?.id || 0) || null,
+          displayName: String(row?.display_name || ''),
+          whccProductUID: Number(row?.whcc_product_uid || 0) || null,
+          whccProductNodeIDs: normalizePositiveIntArray(parseJsonArray(row?.whcc_product_node_ids)),
+          whccItemAttributeUIDs: normalizePositiveIntArray(parseJsonArray(row?.whcc_item_attribute_uids)),
+          baseCost: normalizeNullableMoney(row?.base_cost),
+          price: normalizeNullableMoney(row?.price),
+          isDefault: Boolean(row?.is_default),
+          isActive: Boolean(row?.is_active),
+        });
+      }
+    }
 
     const normalized = (items || []).map((item) => {
       let options = {};
@@ -172,12 +255,72 @@ router.get('/:id/items', async (req, res) => {
         : 'photo';
       const isDigital = options?.isDigital === true || options?.is_digital === true || String(item?.product_category || '').toLowerCase() === 'digital';
 
+      const superItemId = Number(item?.super_item_id || 0);
+      const persistedVariants = variantsBySuperItemId.get(superItemId) || [];
+      const studioOverrideVariants = parseJsonArray(item?.whcc_variants_json)
+        .map((variant) => ({
+          ...variant,
+          studioPrice: variant?.studioPrice === null || variant?.studioPrice === undefined || variant?.studioPrice === ''
+            ? null
+            : Number(variant.studioPrice),
+          studioMarkupPercent: variant?.studioMarkupPercent === null || variant?.studioMarkupPercent === undefined || variant?.studioMarkupPercent === ''
+            ? null
+            : Number(variant.studioMarkupPercent),
+        }))
+        .filter((variant) => Number.isFinite(Number(variant?.studioPrice)) || Number.isFinite(Number(variant?.studioMarkupPercent)));
+      const overridesByKey = new Map(studioOverrideVariants.map((variant) => [buildVariantKey(variant), variant]));
+      const itemLevelAttrUids = normalizePositiveIntArray(parseJsonArray(item?.whcc_item_attribute_uids));
+      const itemLevelCategories = parseJsonArray(item?.whcc_attribute_categories);
+      const legacyUid = Number(item?.whcc_product_uid || options?.whccProductUID || 0) || null;
+      const legacyNodeId = Number(item?.whcc_product_node_id || options?.whccProductNodeID || 0) || null;
+      const fallbackVariants = legacyUid
+        ? [{
+            id: null,
+            displayName: '',
+            whccProductUID: legacyUid,
+            whccProductNodeIDs: legacyNodeId ? [legacyNodeId] : [],
+            whccItemAttributeUIDs: itemLevelAttrUids,
+            baseCost: normalizeNullableMoney(item?.base_cost),
+            price: null,
+            isDefault: true,
+            isActive: true,
+          }]
+        : [];
+      const whccVariants = persistedVariants.length ? persistedVariants : fallbackVariants;
+      const preferredVariant = whccVariants.find((variant) => variant?.isDefault && variant?.isActive)
+        || whccVariants.find((variant) => variant?.isActive)
+        || whccVariants.find((variant) => variant?.isDefault)
+        || whccVariants[0]
+        || null;
+      const studioWhccVariants = whccVariants.map((variant) => {
+        const matchedOverride = overridesByKey.get(buildVariantKey(variant));
+        return {
+          ...variant,
+          studioPrice: Number.isFinite(Number(matchedOverride?.studioPrice))
+            ? Number(Number(matchedOverride.studioPrice).toFixed(2))
+            : null,
+          studioMarkupPercent: Number.isFinite(Number(matchedOverride?.studioMarkupPercent))
+            ? Number(Number(matchedOverride.studioMarkupPercent).toFixed(2))
+            : null,
+        };
+      });
+
       return {
         ...item,
         is_digital: !!isDigital,
         digital_pricing_mode: digitalPricingMode,
         super_admin_percentage: superAdminPercentage,
         digital_download_scope: digitalDownloadScope,
+        whccProductUID: preferredVariant?.whccProductUID || legacyUid || '',
+        whccProductNodeID: (Array.isArray(preferredVariant?.whccProductNodeIDs) && preferredVariant.whccProductNodeIDs.length
+          ? preferredVariant.whccProductNodeIDs[0]
+          : (legacyNodeId || '')),
+        whccItemAttributeUIDs: Array.isArray(preferredVariant?.whccItemAttributeUIDs) && preferredVariant.whccItemAttributeUIDs.length
+          ? preferredVariant.whccItemAttributeUIDs
+          : itemLevelAttrUids,
+        whccAttributeCategories: itemLevelCategories.length ? itemLevelCategories : (Array.isArray(options?.whccAttributeCategories) ? options.whccAttributeCategories : []),
+        whccVariants,
+        studioWhccVariants,
       };
     });
 
@@ -222,7 +365,7 @@ router.post('/:id/items', async (req, res) => {
 router.put('/:id/items/:itemId', async (req, res) => {
   const { id } = req.params;
   const { itemId } = req.params;
-  const { price, markup_percent, is_offered, is_recommended, display_order } = req.body;
+  const { price, markup_percent, is_offered, is_recommended, display_order, whccVariants } = req.body;
   try {
     await ensureStudioProductPresentationColumns();
     const header = await mssql.query('SELECT TOP 1 super_price_list_id FROM studio_price_lists WHERE id = @p1', [id]);
@@ -245,14 +388,45 @@ router.put('/:id/items/:itemId', async (req, res) => {
       }
     }
 
+    const normalizedVariants = Array.isArray(whccVariants)
+      ? whccVariants
+          .map((variant) => {
+            const uid = Number(variant?.whccProductUID || 0);
+            if (!Number.isInteger(uid) || uid <= 0) return null;
+            const studioPrice = variant?.studioPrice === null || variant?.studioPrice === undefined || variant?.studioPrice === ''
+              ? null
+              : Number(variant.studioPrice);
+            const studioMarkupPercent = variant?.studioMarkupPercent === null || variant?.studioMarkupPercent === undefined || variant?.studioMarkupPercent === ''
+              ? null
+              : Number(variant.studioMarkupPercent);
+            return {
+              id: Number(variant?.id || 0) || null,
+              displayName: String(variant?.displayName || ''),
+              whccProductUID: uid,
+              whccItemAttributeUIDs: normalizePositiveIntArray(variant?.whccItemAttributeUIDs || []),
+              studioPrice: Number.isFinite(studioPrice) ? Number(studioPrice.toFixed(2)) : null,
+              studioMarkupPercent: Number.isFinite(studioMarkupPercent) ? Number(studioMarkupPercent.toFixed(2)) : null,
+            };
+          })
+          .filter(Boolean)
+      : null;
+
     await mssql.query(
-      'UPDATE studio_price_list_items SET price = COALESCE(@p1, price), markup_percent = COALESCE(@p2, markup_percent), is_offered = COALESCE(@p3, is_offered), is_recommended = COALESCE(@p4, is_recommended), display_order = COALESCE(@p5, display_order) WHERE id = @p6',
+      `UPDATE studio_price_list_items
+       SET price = COALESCE(@p1, price),
+           markup_percent = COALESCE(@p2, markup_percent),
+           is_offered = COALESCE(@p3, is_offered),
+           is_recommended = COALESCE(@p4, is_recommended),
+           display_order = COALESCE(@p5, display_order),
+           whcc_variants_json = COALESCE(@p6, whcc_variants_json)
+       WHERE id = @p7`,
       [
         price,
         markup_percent,
         is_offered === undefined ? null : (is_offered ? 1 : 0),
         is_recommended === undefined ? null : (is_recommended ? 1 : 0),
         display_order === undefined || display_order === null || display_order === '' ? null : Number(display_order),
+        normalizedVariants === null ? null : JSON.stringify(normalizedVariants),
         itemId,
       ]
     );
@@ -367,7 +541,10 @@ router.patch('/:id/items/apply-markup', async (req, res) => {
     if (!superPriceListId) return res.status(404).json({ error: 'Studio price list not found' });
 
     const rows = await mssql.query(`
-      SELECT spi.id, sspi.base_cost
+      SELECT spi.id,
+             sspi.id AS super_item_id,
+             sspi.base_cost,
+             sspi.markup_percent
       FROM studio_price_list_items spi
       JOIN super_price_list_items sspi
         ON sspi.product_size_id = spi.product_size_id
@@ -378,7 +555,94 @@ router.patch('/:id/items/apply-markup', async (req, res) => {
     `, [superPriceListId, id]);
 
     const pct = Number(markup_percent) || 0;
+    const superItemIds = Array.from(new Set(
+      (rows || [])
+        .map((row) => Number(row?.super_item_id || 0))
+        .filter((value) => Number.isInteger(value) && value > 0)
+    ));
+
+    const variantsBySuperItemId = new Map();
+    if (superItemIds.length > 0) {
+      const placeholders = superItemIds.map((_, index) => `@p${index + 1}`).join(', ');
+      const variantRows = await mssql.query(`
+        SELECT v.super_price_list_item_id,
+               v.id,
+               v.display_name,
+               v.whcc_product_uid,
+               v.whcc_item_attribute_uids,
+               v.base_cost,
+               v.price,
+               v.is_default,
+               v.is_active
+        FROM super_price_list_item_whcc_variants v
+        WHERE v.super_price_list_item_id IN (${placeholders})
+        ORDER BY v.super_price_list_item_id ASC, v.is_default DESC, v.id ASC
+      `, superItemIds);
+
+      for (const variant of (variantRows || [])) {
+        const superItemId = Number(variant?.super_price_list_item_id || 0);
+        if (!superItemId) continue;
+        if (!variantsBySuperItemId.has(superItemId)) variantsBySuperItemId.set(superItemId, []);
+        variantsBySuperItemId.get(superItemId).push({
+          id: Number(variant?.id || 0) || null,
+          displayName: String(variant?.display_name || ''),
+          whccProductUID: Number(variant?.whcc_product_uid || 0) || null,
+          whccItemAttributeUIDs: normalizePositiveIntArray(parseJsonArray(variant?.whcc_item_attribute_uids)),
+          baseCost: normalizeNullableMoney(variant?.base_cost),
+          price: normalizeNullableMoney(variant?.price),
+          isDefault: Boolean(variant?.is_default),
+          isActive: Boolean(variant?.is_active),
+        });
+      }
+    }
+
     for (const row of rows) {
+      const superItemId = Number(row?.super_item_id || 0);
+      const persistedVariants = (variantsBySuperItemId.get(superItemId) || []).filter((variant) => variant?.isActive !== false);
+
+      if (persistedVariants.length > 0) {
+        const studioOverrides = persistedVariants
+          .map((variant) => {
+            const superCostSource = Number.isFinite(Number(variant?.price))
+              ? Number(variant.price)
+              : Number(variant?.baseCost);
+            const superCost = Number.isFinite(superCostSource)
+              ? Number(superCostSource.toFixed(2))
+              : Number.isFinite(Number(row?.base_cost))
+              ? Number(Number(row.base_cost).toFixed(2))
+              : null;
+            const studioPrice = Number.isFinite(Number(superCost))
+              ? Number((Number(superCost) * (pct / 100)).toFixed(2))
+              : null;
+
+            return {
+              id: variant?.id || null,
+              displayName: String(variant?.displayName || ''),
+              whccProductUID: Number(variant?.whccProductUID || 0) || null,
+              whccItemAttributeUIDs: normalizePositiveIntArray(variant?.whccItemAttributeUIDs || []),
+              studioPrice,
+              studioMarkupPercent: Number(pct.toFixed(2)),
+            };
+          })
+          .filter((variant) => Number.isFinite(Number(variant?.studioPrice)) || Number.isFinite(Number(variant?.studioMarkupPercent)));
+
+        const defaultVariant = persistedVariants.find((variant) => variant?.isDefault && variant?.isActive)
+          || persistedVariants.find((variant) => variant?.isActive)
+          || persistedVariants[0]
+          || null;
+        const defaultKey = defaultVariant ? buildVariantKey(defaultVariant) : null;
+        const overrideByKey = new Map(studioOverrides.map((variant) => [buildVariantKey(variant), variant]));
+        const defaultStudioPrice = defaultKey && overrideByKey.has(defaultKey)
+          ? Number(overrideByKey.get(defaultKey).studioPrice)
+          : null;
+
+        await mssql.query(
+          'UPDATE studio_price_list_items SET markup_percent = @p1, price = COALESCE(@p2, price), whcc_variants_json = @p3 WHERE id = @p4',
+          [pct, Number.isFinite(defaultStudioPrice) ? defaultStudioPrice : null, JSON.stringify(studioOverrides), row.id]
+        );
+        continue;
+      }
+
       const base = Number(row.base_cost || 0);
       // Markup percent is treated as a direct multiplier percentage.
       // Example: 500% => 5.00x base cost (1.15 -> 5.75).

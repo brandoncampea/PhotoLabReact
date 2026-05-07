@@ -72,6 +72,7 @@ export const orderService = {
           productId: item.productId,
           productSizeId: item.productSizeId,
           digitalDownloadScope: item.digitalDownloadScope,
+          productOptions: item.productOptions,
           price: price,
         };
       }),

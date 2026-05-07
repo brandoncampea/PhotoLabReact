@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "server": "PORT=3000 node server/server.mjs",
+    "server": "PORT=3000 node --env-file=.env.local server/server.mjs",
     "server.mjs": "node server/server.mjs",
     "start": "node server/server.mjs",
     "dev:server": "nodemon --watch server --ext js,mjs,ts,json --exec 'node server/server.mjs'",

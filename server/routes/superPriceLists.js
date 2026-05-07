@@ -80,7 +80,249 @@ const ensureCategoryImagesTable = async () => {
   } catch (_) { /* table may already exist */ }
 };
 
-const mergeMissingWhccOptions = (optionsJson, { whccProductUID, whccProductNodeID, rawAttrUIDs }) => {
+const ensureWhccVariantsTable = async () => {
+  try {
+    await mssql.query(`
+      IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'super_price_list_item_whcc_variants')
+      CREATE TABLE super_price_list_item_whcc_variants (
+        id INT IDENTITY(1,1) PRIMARY KEY,
+        super_price_list_item_id INT NOT NULL,
+        display_name NVARCHAR(255) NULL,
+        whcc_product_uid INT NOT NULL,
+        whcc_product_node_ids NVARCHAR(MAX) NULL,
+        whcc_item_attribute_uids NVARCHAR(MAX) NULL,
+        base_cost DECIMAL(10,2) NULL,
+        price DECIMAL(10,2) NULL,
+        is_default BIT NOT NULL DEFAULT 0,
+        is_active BIT NOT NULL DEFAULT 1,
+        created_at DATETIME2 DEFAULT GETDATE(),
+        updated_at DATETIME2 DEFAULT GETDATE()
+      )
+    `);
+    await mssql.query(`
+      IF NOT EXISTS (
+        SELECT 1
+        FROM sys.indexes
+        WHERE name = 'IX_super_price_list_item_whcc_variants_item_id'
+          AND object_id = OBJECT_ID('super_price_list_item_whcc_variants')
+      )
+      CREATE INDEX IX_super_price_list_item_whcc_variants_item_id
+      ON super_price_list_item_whcc_variants (super_price_list_item_id)
+    `);
+    await mssql.query(`
+      IF COL_LENGTH('super_price_list_item_whcc_variants', 'base_cost') IS NULL
+      BEGIN
+        ALTER TABLE super_price_list_item_whcc_variants ADD base_cost DECIMAL(10,2) NULL
+      END
+    `);
+    await mssql.query(`
+      IF COL_LENGTH('super_price_list_item_whcc_variants', 'price') IS NULL
+      BEGIN
+        ALTER TABLE super_price_list_item_whcc_variants ADD price DECIMAL(10,2) NULL
+      END
+    `);
+  } catch (_) { /* table may already exist */ }
+};
+
+const ensureSuperPriceListItemWhccMetadataColumns = async () => {
+  try {
+    await mssql.query(`
+      IF COL_LENGTH('super_price_list_items', 'whcc_product_uid') IS NULL
+      BEGIN
+        ALTER TABLE super_price_list_items ADD whcc_product_uid INT NULL
+      END
+      IF COL_LENGTH('super_price_list_items', 'whcc_product_node_id') IS NULL
+      BEGIN
+        ALTER TABLE super_price_list_items ADD whcc_product_node_id INT NULL
+      END
+      IF COL_LENGTH('super_price_list_items', 'whcc_item_attribute_uids') IS NULL
+      BEGIN
+        ALTER TABLE super_price_list_items ADD whcc_item_attribute_uids NVARCHAR(MAX) NULL
+      END
+      IF COL_LENGTH('super_price_list_items', 'whcc_attribute_categories') IS NULL
+      BEGIN
+        ALTER TABLE super_price_list_items ADD whcc_attribute_categories NVARCHAR(MAX) NULL
+      END
+    `);
+  } catch (_) { /* columns may already exist */ }
+};
+
+const parseJsonArray = (value) => {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (_) {
+    return [];
+  }
+};
+
+const normalizePositiveIntArray = (values) => {
+  const arr = Array.isArray(values) ? values : [];
+  return arr
+    .map(v => Number(v))
+    .filter(v => Number.isInteger(v) && v > 0);
+};
+
+const normalizeNullableMoney = (value) => {
+  if (value === undefined || value === null || value === '') return null;
+  const num = Number(value);
+  return Number.isFinite(num) ? Number(num.toFixed(2)) : null;
+};
+
+const ATTRIBUTE_PRICE_ROUNDING_SUFFIXES = ['.00', '.05', '.25', '.50', '.95', '.99'];
+
+const normalizeAttributePriceRoundingSuffix = (value) => {
+  const normalized = String(value || '').trim();
+  return ATTRIBUTE_PRICE_ROUNDING_SUFFIXES.includes(normalized) ? normalized : '.95';
+};
+
+const normalizeWhccAttributeCategories = (categories) => {
+  if (!Array.isArray(categories)) return [];
+
+  return categories
+    .map((category) => {
+      const id = Number(category?.id ?? category?.Id ?? 0) || null;
+      const requiredLevel = Number(category?.requiredLevel ?? category?.RequiredLevel ?? -1);
+      const sortOrder = Number(category?.sortOrder ?? category?.SortOrder ?? 0);
+      const attributes = Array.isArray(category?.attributes ?? category?.Attributes)
+        ? (category.attributes ?? category.Attributes)
+            .map((attribute) => {
+              const uid = Number(attribute?.uid ?? attribute?.Id ?? attribute?.AttributeUID ?? attribute?.id ?? 0);
+              if (!Number.isInteger(uid) || uid <= 0) return null;
+              return {
+                uid,
+                parentUid: Number(attribute?.parentUid ?? attribute?.ParentAttributeUID ?? 0) || 0,
+                name: String(attribute?.name ?? attribute?.AttributeName ?? attribute?.DisplayName ?? '').trim(),
+                sortOrder: Number(attribute?.sortOrder ?? attribute?.SortOrder ?? 0),
+              };
+            })
+            .filter(Boolean)
+            .sort((a, b) => (a.sortOrder - b.sortOrder) || String(a.name).localeCompare(String(b.name)))
+        : [];
+
+      return {
+        id,
+        name: String(category?.name ?? category?.AttributeCategoryName ?? '').trim(),
+        requiredLevel: Number.isFinite(requiredLevel) ? requiredLevel : -1,
+        multValueAllowed: Boolean(category?.multValueAllowed ?? category?.MultValueAllowedFlag),
+        sortOrder: Number.isFinite(sortOrder) ? sortOrder : 0,
+        attributes,
+      };
+    })
+    .filter((category) => category.attributes.length > 0)
+    .sort((a, b) => (a.requiredLevel - b.requiredLevel) || (a.sortOrder - b.sortOrder) || a.name.localeCompare(b.name));
+};
+
+const normalizeVariantDisplayName = (categoryName, attributeName) => {
+  const rawName = String(attributeName || '').trim();
+  const category = String(categoryName || '').trim().toLowerCase();
+  if (!rawName) return '';
+  if (category.includes('paper')) return rawName.replace(/\s+paper$/i, '').trim();
+  if (category.includes('coating')) return rawName.replace(/\s+coating$/i, '').trim();
+  if (category.includes('texture')) return rawName.replace(/\s+texture$/i, '').trim();
+  return rawName;
+};
+
+const buildDefaultWhccVariantsFromCategories = ({ whccProductUID, whccProductNodeID, attributeCategories, baseCost, basePrice }) => {
+  const productUID = Number(whccProductUID || 0);
+  if (!Number.isInteger(productUID) || productUID <= 0) return [];
+
+  const categories = normalizeWhccAttributeCategories(attributeCategories);
+  if (!categories.length) return [];
+
+  const attrLookup = new Map();
+  for (const category of categories) {
+    for (const attribute of category.attributes) {
+      attrLookup.set(attribute.uid, { ...attribute, categoryName: category.name, requiredLevel: category.requiredLevel });
+    }
+  }
+
+  const expandWithParents = (uid, acc = []) => {
+    const numericUid = Number(uid || 0);
+    if (!Number.isInteger(numericUid) || numericUid <= 0 || acc.includes(numericUid)) return acc;
+    const attribute = attrLookup.get(numericUid);
+    if (attribute?.parentUid) expandWithParents(attribute.parentUid, acc);
+    if (!acc.includes(numericUid)) acc.push(numericUid);
+    return acc;
+  };
+
+  const baseRequiredAttrUids = [];
+  let variantChoiceCategory = null;
+
+  for (const category of categories) {
+    if (!Array.isArray(category.attributes) || !category.attributes.length) continue;
+    if (category.requiredLevel >= 0) {
+      if (!variantChoiceCategory && category.attributes.length > 1) {
+        variantChoiceCategory = category;
+        continue;
+      }
+      expandWithParents(category.attributes[0].uid, baseRequiredAttrUids);
+    }
+  }
+
+  if (!variantChoiceCategory) {
+    variantChoiceCategory = categories.find((category) => category.attributes.length > 1) || null;
+  }
+
+  const nodeIds = Number(whccProductNodeID || 0) > 0 ? [Number(whccProductNodeID)] : [];
+  const normalizedBaseCost = normalizeNullableMoney(baseCost);
+  const normalizedBasePrice = normalizeNullableMoney(basePrice);
+
+  if (!variantChoiceCategory) {
+    const fallbackAttrs = baseRequiredAttrUids.length
+      ? [...baseRequiredAttrUids]
+      : expandWithParents(categories[0].attributes[0].uid, []);
+    return [{
+      displayName: normalizeVariantDisplayName(categories[0].name, categories[0].attributes[0].name),
+      whccProductUID: productUID,
+      whccProductNodeIDs: nodeIds,
+      whccItemAttributeUIDs: fallbackAttrs,
+      baseCost: normalizedBaseCost,
+      price: normalizedBasePrice,
+      isDefault: true,
+      isActive: true,
+    }];
+  }
+
+  return variantChoiceCategory.attributes.map((attribute, index) => {
+    const attrUids = [...baseRequiredAttrUids];
+    expandWithParents(attribute.uid, attrUids);
+    return {
+      displayName: normalizeVariantDisplayName(variantChoiceCategory.name, attribute.name),
+      whccProductUID: productUID,
+      whccProductNodeIDs: nodeIds,
+      whccItemAttributeUIDs: [...new Set(attrUids)],
+      baseCost: normalizedBaseCost,
+      price: normalizedBasePrice,
+      isDefault: index === 0,
+      isActive: index === 0,
+    };
+  });
+};
+
+const hasMeaningfulWhccVariantRows = (variants) => {
+  if (!Array.isArray(variants) || variants.length === 0) return false;
+  return variants.some((variant) => {
+    const displayName = String(variant?.displayName ?? variant?.display_name ?? '').trim();
+    const attrUids = Array.isArray(variant?.whccItemAttributeUIDs)
+      ? variant.whccItemAttributeUIDs
+      : Array.isArray(variant?.whcc_item_attribute_uids)
+      ? variant.whcc_item_attribute_uids
+      : normalizePositiveIntArray(parseJsonArray(variant?.whcc_item_attribute_uids));
+    return displayName.length > 0 || (Array.isArray(attrUids) && attrUids.length > 0);
+  });
+};
+
+const shouldReplaceExistingWhccVariants = (existingVariants, generatedVariants) => {
+  if (!Array.isArray(generatedVariants) || generatedVariants.length === 0) return false;
+  if (!Array.isArray(existingVariants) || existingVariants.length === 0) return true;
+  if (hasMeaningfulWhccVariantRows(existingVariants)) return false;
+  return true;
+};
+
+const mergeMissingWhccOptions = (optionsJson, { whccProductUID, whccProductNodeID, rawAttrUIDs, whccAttributeCostMultiplierPercent, whccAttributeCategories }) => {
   let existing = {};
   try {
     existing = optionsJson ? JSON.parse(optionsJson) : {};
@@ -91,20 +333,84 @@ const mergeMissingWhccOptions = (optionsJson, { whccProductUID, whccProductNodeI
   const next = { ...existing };
   let changed = false;
 
-  if (whccProductUID && !(Number(existing?.whccProductUID) > 0)) {
-    next.whccProductUID = whccProductUID;
-    changed = true;
+  if (whccProductUID) {
+    const existingUID = Number(existing?.whccProductUID || 0) || null;
+    if (existingUID !== whccProductUID) {
+      next.whccProductUID = whccProductUID;
+      changed = true;
+    }
   }
-  if (whccProductNodeID && !(Number(existing?.whccProductNodeID) > 0)) {
-    next.whccProductNodeID = whccProductNodeID;
-    changed = true;
+  if (whccProductNodeID) {
+    const existingNode = Number(existing?.whccProductNodeID || 0) || null;
+    if (existingNode !== whccProductNodeID) {
+      next.whccProductNodeID = whccProductNodeID;
+      changed = true;
+    }
   }
-  if (rawAttrUIDs && rawAttrUIDs.length && !(Array.isArray(existing?.whccItemAttributeUIDs) && existing.whccItemAttributeUIDs.length)) {
-    next.whccItemAttributeUIDs = rawAttrUIDs;
-    changed = true;
+  if (rawAttrUIDs && rawAttrUIDs.length) {
+    const existingAttrs = Array.isArray(existing?.whccItemAttributeUIDs)
+      ? existing.whccItemAttributeUIDs.map(Number).filter(v => Number.isInteger(v) && v > 0)
+      : [];
+    const normalizedIncoming = rawAttrUIDs.map(Number).filter(v => Number.isInteger(v) && v > 0);
+    const sameLength = existingAttrs.length === normalizedIncoming.length;
+    const sameValues = sameLength && existingAttrs.every((v, i) => v === normalizedIncoming[i]);
+    if (!sameValues) {
+      next.whccItemAttributeUIDs = normalizedIncoming;
+      changed = true;
+    }
+  }
+  if (whccAttributeCostMultiplierPercent !== undefined) {
+    const normalizedMultiplier = Number(whccAttributeCostMultiplierPercent);
+    const safeMultiplier = Number.isFinite(normalizedMultiplier) ? normalizedMultiplier : 0;
+    const existingMultiplier = Number(existing?.whccAttributeCostMultiplierPercent ?? 0);
+    if (existingMultiplier !== safeMultiplier) {
+      next.whccAttributeCostMultiplierPercent = safeMultiplier;
+      changed = true;
+    }
+  }
+  if (Array.isArray(whccAttributeCategories) && whccAttributeCategories.length) {
+    const normalizedIncomingCategories = normalizeWhccAttributeCategories(whccAttributeCategories);
+    const existingCategories = normalizeWhccAttributeCategories(existing?.whccAttributeCategories);
+    if (JSON.stringify(existingCategories) !== JSON.stringify(normalizedIncomingCategories)) {
+      next.whccAttributeCategories = normalizedIncomingCategories;
+      changed = true;
+    }
   }
 
   return { changed, json: JSON.stringify(next) };
+};
+
+const parseJsonObject = (value) => {
+  if (!value) return {};
+  if (typeof value === 'object' && !Array.isArray(value)) return value;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch (_) {
+    return {};
+  }
+};
+
+const buildWhccVariantPayloadFromRow = (row) => ({
+  id: Number(row.id || 0) || null,
+  displayName: String(row.display_name || ''),
+  whccProductUID: Number(row.whcc_product_uid || 0) || null,
+  whccProductNodeIDs: normalizePositiveIntArray(parseJsonArray(row.whcc_product_node_ids)),
+  whccItemAttributeUIDs: normalizePositiveIntArray(parseJsonArray(row.whcc_item_attribute_uids)),
+  baseCost: normalizeNullableMoney(row.base_cost),
+  price: normalizeNullableMoney(row.price),
+  isDefault: Boolean(row.is_default),
+  isActive: Boolean(row.is_active),
+});
+
+const pickPreferredWhccVariant = (variants) => {
+  const normalized = Array.isArray(variants) ? variants : [];
+  if (!normalized.length) return null;
+  return normalized.find((v) => v.isDefault && v.isActive)
+    || normalized.find((v) => v.isActive)
+    || normalized.find((v) => v.isDefault)
+    || normalized[0]
+    || null;
 };
 
 const parseCsvLine = (line) => {
@@ -165,6 +471,8 @@ router.post('/:id/import-items', async (req, res) => {
   // ...existing code...
   if (!Array.isArray(items) || items.length === 0) return res.status(400).json({ error: 'items array required' });
   try {
+    await ensureWhccVariantsTable();
+    await ensureSuperPriceListItemWhccMetadataColumns();
     let importedCount = 0;
     let updatedCount = 0;
     let skippedCount = 0;
@@ -200,15 +508,26 @@ router.post('/:id/import-items', async (req, res) => {
         // Extract WHCC product mapping fields supplied by the frontend import
         const whccProductUID = Number(item.whccProductUID || 0) || null;
         const whccProductNodeID = Number(item.whccProductNodeID || 0) || null;
+        const whccAttributeCostMultiplierPercent = Number(item.whccAttributeCostMultiplierPercent ?? 0) || 0;
+        const whccAttributeCategories = normalizeWhccAttributeCategories(item.whccAttributeCategories);
         const rawAttrUIDs = Array.isArray(item.whccItemAttributeUIDs)
           ? item.whccItemAttributeUIDs.map(Number).filter(v => Number.isInteger(v) && v > 0)
           : null;
+        const generatedWhccVariants = buildDefaultWhccVariantsFromCategories({
+          whccProductUID,
+          whccProductNodeID,
+          attributeCategories: whccAttributeCategories,
+          baseCost: base_cost ?? null,
+          basePrice: base_cost ?? null,
+        });
         // Build the options JSON that submitOrderToWhcc() will use to resolve correct WHCC IDs
-        const whccOptionsJson = (whccProductUID || whccProductNodeID || (rawAttrUIDs && rawAttrUIDs.length))
+        const whccOptionsJson = (whccProductUID || whccProductNodeID || (rawAttrUIDs && rawAttrUIDs.length) || whccAttributeCostMultiplierPercent || whccAttributeCategories.length)
           ? JSON.stringify({
               ...(whccProductUID ? { whccProductUID } : {}),
               ...(whccProductNodeID ? { whccProductNodeID } : {}),
               ...(rawAttrUIDs && rawAttrUIDs.length ? { whccItemAttributeUIDs: rawAttrUIDs } : {}),
+              ...(whccAttributeCostMultiplierPercent ? { whccAttributeCostMultiplierPercent } : {}),
+              ...(whccAttributeCategories.length ? { whccAttributeCategories } : {}),
             })
           : null;
 
@@ -216,6 +535,11 @@ router.post('/:id/import-items', async (req, res) => {
         let sizeExists = [];
         if (resolvedProductSizeId > 0) {
           sizeExists = await mssql.query('SELECT TOP 1 id FROM product_sizes WHERE id = @p1', [resolvedProductSizeId]);
+          // If caller passed an external/non-local ID, treat it as unresolved and continue
+          // through name/category matching or product/size creation.
+          if (!sizeExists.length) {
+            resolvedProductSizeId = 0;
+          }
         }
 
         if (!sizeExists.length && productName && sizeName) {
@@ -234,7 +558,7 @@ router.post('/:id/import-items', async (req, res) => {
           if (matchedExistingRow.length) {
             resolvedProductSizeId = Number(matchedExistingRow[0].product_size_id || 0);
             if (matchedExistingRow[0]?.product_id && whccOptionsJson) {
-              const mergedOptions = mergeMissingWhccOptions(matchedExistingRow[0]?.product_options, { whccProductUID, whccProductNodeID, rawAttrUIDs });
+              const mergedOptions = mergeMissingWhccOptions(matchedExistingRow[0]?.product_options, { whccProductUID, whccProductNodeID, rawAttrUIDs, whccAttributeCostMultiplierPercent, whccAttributeCategories });
               if (mergedOptions.changed) {
                 await mssql.query('UPDATE products SET options = @p1 WHERE id = @p2', [mergedOptions.json, matchedExistingRow[0].product_id]);
               }
@@ -262,7 +586,7 @@ router.post('/:id/import-items', async (req, res) => {
 
           if (productId && whccOptionsJson) {
             try {
-              const mergedOptions = mergeMissingWhccOptions(productRows[0]?.options, { whccProductUID, whccProductNodeID, rawAttrUIDs });
+              const mergedOptions = mergeMissingWhccOptions(productRows[0]?.options, { whccProductUID, whccProductNodeID, rawAttrUIDs, whccAttributeCostMultiplierPercent, whccAttributeCategories });
               if (mergedOptions.changed) {
                 await mssql.query('UPDATE products SET options = @p1 WHERE id = @p2', [mergedOptions.json, productId]);
               }
@@ -317,12 +641,78 @@ router.post('/:id/import-items', async (req, res) => {
             updateParams.push(markup_percent);
             updateParts.push(`markup_percent = @p${updateParams.length}`);
           }
+          if (whccProductUID) {
+            updateParams.push(whccProductUID);
+            updateParts.push(`whcc_product_uid = @p${updateParams.length}`);
+          }
+          if (whccProductNodeID) {
+            updateParams.push(whccProductNodeID);
+            updateParts.push(`whcc_product_node_id = @p${updateParams.length}`);
+          }
+          if (rawAttrUIDs !== null) {
+            updateParams.push(rawAttrUIDs && rawAttrUIDs.length ? JSON.stringify(rawAttrUIDs) : null);
+            updateParts.push(`whcc_item_attribute_uids = @p${updateParams.length}`);
+          }
+          if (whccAttributeCategories.length) {
+            updateParams.push(JSON.stringify(whccAttributeCategories));
+            updateParts.push(`whcc_attribute_categories = @p${updateParams.length}`);
+          }
 
           let optionsChanged = false;
           if (existing[0]?.product_id && whccOptionsJson) {
-            const mergedOptions = mergeMissingWhccOptions(existing[0]?.product_options, { whccProductUID, whccProductNodeID, rawAttrUIDs });
+            const mergedOptions = mergeMissingWhccOptions(existing[0]?.product_options, { whccProductUID, whccProductNodeID, rawAttrUIDs, whccAttributeCostMultiplierPercent, whccAttributeCategories });
             if (mergedOptions.changed) {
               await mssql.query('UPDATE products SET options = @p1 WHERE id = @p2', [mergedOptions.json, existing[0].product_id]);
+              optionsChanged = true;
+            }
+          }
+
+          if (generatedWhccVariants.length) {
+            await ensureWhccVariantsTable();
+            const existingVariantRows = await mssql.query(
+              `SELECT id,
+                      display_name,
+                      whcc_product_uid,
+                      whcc_product_node_ids,
+                      whcc_item_attribute_uids,
+                      base_cost,
+                      price,
+                      is_default,
+                      is_active
+               FROM super_price_list_item_whcc_variants
+               WHERE super_price_list_item_id = @p1
+               ORDER BY is_default DESC, id ASC`,
+              [existing[0].id]
+            );
+            const normalizedExistingVariants = (existingVariantRows || []).map(buildWhccVariantPayloadFromRow);
+            if (shouldReplaceExistingWhccVariants(normalizedExistingVariants, generatedWhccVariants)) {
+              if (normalizedExistingVariants.length) {
+                await mssql.query(
+                  'DELETE FROM super_price_list_item_whcc_variants WHERE super_price_list_item_id = @p1',
+                  [existing[0].id]
+                );
+              }
+              for (const variant of generatedWhccVariants) {
+                await mssql.query(
+                  `INSERT INTO super_price_list_item_whcc_variants (
+                    super_price_list_item_id, display_name, whcc_product_uid, whcc_product_node_ids,
+                    whcc_item_attribute_uids, base_cost, price, is_default, is_active
+                  ) VALUES (
+                    @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9
+                  )`,
+                  [
+                    existing[0].id,
+                    variant.displayName || '',
+                    variant.whccProductUID,
+                    JSON.stringify(Array.isArray(variant.whccProductNodeIDs) ? variant.whccProductNodeIDs : []),
+                    JSON.stringify(Array.isArray(variant.whccItemAttributeUIDs) ? variant.whccItemAttributeUIDs : []),
+                    variant.baseCost ?? null,
+                    variant.price ?? null,
+                    variant.isDefault ? 1 : 0,
+                    variant.isActive === false ? 0 : 1,
+                  ]
+                );
+              }
               optionsChanged = true;
             }
           }
@@ -345,9 +735,53 @@ router.post('/:id/import-items', async (req, res) => {
           else skippedCount++;
         } else {
           await mssql.query(
-            'INSERT INTO super_price_list_items (super_price_list_id, product_size_id, base_cost, markup_percent, is_active) VALUES (@p1, @p2, @p3, @p4, 1)',
-            [id, resolvedProductSizeId, base_cost ?? null, markup_percent ?? null]
+            `INSERT INTO super_price_list_items (
+              super_price_list_id, product_size_id, base_cost, markup_percent, is_active,
+              whcc_product_uid, whcc_product_node_id, whcc_item_attribute_uids, whcc_attribute_categories
+            ) VALUES (
+              @p1, @p2, @p3, @p4, 1,
+              @p5, @p6, @p7, @p8
+            )`,
+            [
+              id,
+              resolvedProductSizeId,
+              base_cost ?? null,
+              markup_percent ?? null,
+              whccProductUID,
+              whccProductNodeID,
+              rawAttrUIDs && rawAttrUIDs.length ? JSON.stringify(rawAttrUIDs) : null,
+              whccAttributeCategories.length ? JSON.stringify(whccAttributeCategories) : null,
+            ]
           );
+          const createdItem = await mssql.query(
+            'SELECT TOP 1 id FROM super_price_list_items WHERE super_price_list_id = @p1 AND product_size_id = @p2 ORDER BY id DESC',
+            [id, resolvedProductSizeId]
+          );
+          const createdItemId = Number(createdItem[0]?.id || 0);
+          if (createdItemId && generatedWhccVariants.length) {
+            await ensureWhccVariantsTable();
+            for (const variant of generatedWhccVariants) {
+              await mssql.query(
+                `INSERT INTO super_price_list_item_whcc_variants (
+                  super_price_list_item_id, display_name, whcc_product_uid, whcc_product_node_ids,
+                  whcc_item_attribute_uids, base_cost, price, is_default, is_active
+                ) VALUES (
+                  @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9
+                )`,
+                [
+                  createdItemId,
+                  variant.displayName || '',
+                  variant.whccProductUID,
+                  JSON.stringify(Array.isArray(variant.whccProductNodeIDs) ? variant.whccProductNodeIDs : []),
+                  JSON.stringify(Array.isArray(variant.whccItemAttributeUIDs) ? variant.whccItemAttributeUIDs : []),
+                  variant.baseCost ?? null,
+                  variant.price ?? null,
+                  variant.isDefault ? 1 : 0,
+                  variant.isActive === false ? 0 : 1,
+                ]
+              );
+            }
+          }
           importedCount++;
           // Propagate new item to each linked studio price list (skip if already present)
           if (linkedStudioIds.length) {
@@ -389,7 +823,7 @@ router.post('/:id/import-items', async (req, res) => {
 router.post('/:id/sync-whcc-costs', superAdminRequired, async (req, res) => {
   const { id } = req.params;
   try {
-    const onlyIfZero = req.body?.onlyIfZero !== false;
+    const onlyIfZero = req.body?.onlyIfZero === true;
     const csvCostMap = await loadWhccCsvCostMap();
     if (!csvCostMap.size) {
       return res.status(400).json({ error: 'No WHCC cost rows found in whcc_all_products_full.csv' });
@@ -693,9 +1127,13 @@ router.delete('/:id', superAdminRequired, async (req, res) => {
 router.get('/:id/items', async (req, res) => {
   const { id } = req.params;
   try {
+    await ensureWhccVariantsTable();
+    await ensureSuperPriceListItemWhccMetadataColumns();
     const rows = await mssql.query(`
       SELECT spi.id, spi.super_price_list_id, spi.product_size_id, spi.base_cost,
              spi.markup_percent, spi.is_active,
+             spi.whcc_product_uid, spi.whcc_product_node_id,
+             spi.whcc_item_attribute_uids, spi.whcc_attribute_categories,
              ps.size_name, p.id as product_id, p.name as product_name, p.category as product_category,
              p.options as product_options
       FROM super_price_list_items spi
@@ -704,6 +1142,42 @@ router.get('/:id/items', async (req, res) => {
       WHERE spi.super_price_list_id = @p1
       ORDER BY p.category, p.name, ps.size_name
     `, [id]);
+
+    const variantRows = await mssql.query(`
+      SELECT v.id,
+             v.super_price_list_item_id,
+             v.display_name,
+             v.whcc_product_uid,
+             v.whcc_product_node_ids,
+             v.whcc_item_attribute_uids,
+              v.base_cost,
+              v.price,
+             v.is_default,
+             v.is_active
+      FROM super_price_list_item_whcc_variants v
+      INNER JOIN super_price_list_items spi ON spi.id = v.super_price_list_item_id
+      WHERE spi.super_price_list_id = @p1
+      ORDER BY v.super_price_list_item_id ASC, v.is_default DESC, v.id ASC
+    `, [id]);
+
+    const variantsByItemId = new Map();
+    for (const row of variantRows) {
+      const itemId = Number(row.super_price_list_item_id || 0);
+      if (!itemId) continue;
+      if (!variantsByItemId.has(itemId)) variantsByItemId.set(itemId, []);
+      variantsByItemId.get(itemId).push({
+        id: Number(row.id),
+        displayName: row.display_name || '',
+        whccProductUID: Number(row.whcc_product_uid || 0) || null,
+        whccProductNodeIDs: normalizePositiveIntArray(parseJsonArray(row.whcc_product_node_ids)),
+        whccItemAttributeUIDs: normalizePositiveIntArray(parseJsonArray(row.whcc_item_attribute_uids)),
+        baseCost: normalizeNullableMoney(row.base_cost),
+        price: normalizeNullableMoney(row.price),
+        isDefault: Boolean(row.is_default),
+        isActive: Boolean(row.is_active),
+      });
+    }
+
     const items = rows.map(item => {
       let options = {};
       try {
@@ -719,6 +1193,32 @@ router.get('/:id/items', async (req, res) => {
         ? 'percentage'
         : 'fixed';
       const superAdminPercentage = Number(options?.superAdminPercentage ?? options?.digitalCommissionPercent ?? options?.commissionPercent ?? 0);
+      const attributePricingPercent = Number(options?.attributePricingPercent ?? options?.attribute_pricing_percent ?? 0);
+      const attributePriceRoundingSuffix = normalizeAttributePriceRoundingSuffix(options?.attributePriceRoundingSuffix ?? options?.attribute_price_rounding_suffix ?? '.95');
+
+      const itemId = Number(item.id || 0);
+      const persistedVariants = variantsByItemId.get(itemId) || [];
+      const itemLevelCategories = parseJsonArray(item.whcc_attribute_categories);
+      const itemLevelAttrUids = normalizePositiveIntArray(parseJsonArray(item.whcc_item_attribute_uids));
+      const legacyNodeId = Number(item.whcc_product_node_id || options?.whccProductNodeID || 0) || null;
+      const legacyAttrUids = itemLevelAttrUids.length
+        ? itemLevelAttrUids
+        : Array.isArray(options?.whccItemAttributeUIDs)
+        ? normalizePositiveIntArray(options.whccItemAttributeUIDs)
+        : [];
+      const legacyUid = Number(item.whcc_product_uid || options?.whccProductUID || 0) || null;
+      const fallbackVariant = legacyUid
+        ? [{
+            id: null,
+            displayName: '',
+            whccProductUID: legacyUid,
+            whccProductNodeIDs: legacyNodeId ? [legacyNodeId] : [],
+            whccItemAttributeUIDs: legacyAttrUids,
+            isDefault: true,
+            isActive: true,
+          }]
+        : [];
+      const whccVariants = persistedVariants.length ? persistedVariants : fallbackVariant;
 
       return {
         ...item,
@@ -728,14 +1228,218 @@ router.get('/:id/items', async (req, res) => {
         superAdminPercentage: Number.isFinite(superAdminPercentage)
           ? Math.max(0, Math.min(100, superAdminPercentage))
           : 0,
-        whccProductUID: options?.whccProductUID ?? '',
-        whccProductNodeID: options?.whccProductNodeID ?? '',
-        whccItemAttributeUIDs: Array.isArray(options?.whccItemAttributeUIDs) ? options.whccItemAttributeUIDs : [],
+        attributePricingPercent: Number.isFinite(attributePricingPercent) ? Math.max(0, attributePricingPercent) : 0,
+        attributePriceRoundingSuffix,
+        whccProductUID: item.whcc_product_uid ?? options?.whccProductUID ?? '',
+        whccProductNodeID: item.whcc_product_node_id ?? options?.whccProductNodeID ?? '',
+        whccItemAttributeUIDs: itemLevelAttrUids.length ? itemLevelAttrUids : (Array.isArray(options?.whccItemAttributeUIDs) ? options.whccItemAttributeUIDs : []),
+        whccAttributeCategories: itemLevelCategories.length ? itemLevelCategories : (Array.isArray(options?.whccAttributeCategories) ? options.whccAttributeCategories : []),
+        whccVariants,
       };
     });
     res.json(items);
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch super price list items' });
+  }
+});
+
+// POST bootstrap missing WHCC variant rows and backfill queued batch order snapshots
+router.post('/:id/bootstrap-whcc-variants', superAdminRequired, async (req, res) => {
+  const { id } = req.params;
+  try {
+    await ensureWhccVariantsTable();
+    await ensureSuperPriceListItemWhccMetadataColumns();
+
+    const superItems = await mssql.query(`
+      SELECT spi.id,
+             spi.product_size_id,
+             spi.base_cost,
+             spi.markup_percent,
+             spi.whcc_product_uid,
+             spi.whcc_product_node_id,
+             spi.whcc_item_attribute_uids,
+             spi.whcc_attribute_categories,
+             p.options as product_options
+      FROM super_price_list_items spi
+      INNER JOIN product_sizes ps ON ps.id = spi.product_size_id
+      INNER JOIN products p ON p.id = ps.product_id
+      WHERE spi.super_price_list_id = @p1
+    `, [id]);
+
+    const existingVariantRows = await mssql.query(`
+      SELECT v.*
+      FROM super_price_list_item_whcc_variants v
+      INNER JOIN super_price_list_items spi ON spi.id = v.super_price_list_item_id
+      WHERE spi.super_price_list_id = @p1
+      ORDER BY v.super_price_list_item_id, v.is_default DESC, v.id ASC
+    `, [id]);
+
+    const variantsByItemId = new Map();
+    for (const row of existingVariantRows) {
+      const itemId = Number(row.super_price_list_item_id || 0);
+      if (!itemId) continue;
+      if (!variantsByItemId.has(itemId)) variantsByItemId.set(itemId, []);
+      variantsByItemId.get(itemId).push(buildWhccVariantPayloadFromRow(row));
+    }
+
+    let createdVariantRows = 0;
+    let hydratedQueuedOrderItems = 0;
+
+    for (const item of superItems) {
+      const itemId = Number(item.id || 0);
+      if (!itemId) continue;
+      const options = parseJsonObject(item.product_options);
+      const fallbackUid = Number(item.whcc_product_uid || options?.whccProductUID || 0);
+      if (!Number.isInteger(fallbackUid) || fallbackUid <= 0) continue;
+
+      const fallbackNode = Number(item.whcc_product_node_id || options?.whccProductNodeID || 0);
+      const fallbackAttrs = parseJsonArray(item.whcc_item_attribute_uids).length
+        ? normalizePositiveIntArray(parseJsonArray(item.whcc_item_attribute_uids))
+        : Array.isArray(options?.whccItemAttributeUIDs)
+        ? normalizePositiveIntArray(options.whccItemAttributeUIDs)
+        : [];
+      const baseCost = normalizeNullableMoney(item.base_cost);
+      const markupPercent = Number(item.markup_percent || 0);
+      const price = baseCost !== null && Number.isFinite(markupPercent)
+        ? Number((baseCost + (baseCost * markupPercent / 100)).toFixed(2))
+        : null;
+      const generatedVariants = buildDefaultWhccVariantsFromCategories({
+        whccProductUID: fallbackUid,
+        whccProductNodeID: fallbackNode,
+        attributeCategories: parseJsonArray(item.whcc_attribute_categories).length ? parseJsonArray(item.whcc_attribute_categories) : options?.whccAttributeCategories,
+        baseCost,
+        basePrice: price,
+      });
+
+      const existing = variantsByItemId.get(itemId) || [];
+      if (existing.length && !shouldReplaceExistingWhccVariants(existing, generatedVariants)) continue;
+
+      if (existing.length) {
+        await mssql.query(
+          'DELETE FROM super_price_list_item_whcc_variants WHERE super_price_list_item_id = @p1',
+          [itemId]
+        );
+      }
+
+      const variantsToInsert = generatedVariants.length
+        ? generatedVariants
+        : [{
+            displayName: '',
+            whccProductUID: fallbackUid,
+            whccProductNodeIDs: fallbackNode > 0 ? [fallbackNode] : [],
+            whccItemAttributeUIDs: fallbackAttrs,
+            baseCost,
+            price,
+            isDefault: true,
+            isActive: true,
+          }];
+
+      for (const variant of variantsToInsert) {
+        await mssql.query(`
+          INSERT INTO super_price_list_item_whcc_variants (
+            super_price_list_item_id,
+            display_name,
+            whcc_product_uid,
+            whcc_product_node_ids,
+            whcc_item_attribute_uids,
+            base_cost,
+            price,
+            is_default,
+            is_active
+          ) VALUES (
+            @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9
+          )
+        `, [
+          itemId,
+          variant.displayName || '',
+          variant.whccProductUID,
+          JSON.stringify(Array.isArray(variant.whccProductNodeIDs) ? variant.whccProductNodeIDs : []),
+          JSON.stringify(Array.isArray(variant.whccItemAttributeUIDs) ? variant.whccItemAttributeUIDs : []),
+          variant.baseCost ?? null,
+          variant.price ?? null,
+          variant.isDefault ? 1 : 0,
+          variant.isActive === false ? 0 : 1,
+        ]);
+      }
+
+      createdVariantRows += variantsToInsert.length;
+      variantsByItemId.set(itemId, variantsToInsert);
+    }
+
+    // Refresh rows so each item has persisted variant IDs/default flags
+    const refreshedVariantRows = await mssql.query(`
+      SELECT v.*,
+             spi.product_size_id
+      FROM super_price_list_item_whcc_variants v
+      INNER JOIN super_price_list_items spi ON spi.id = v.super_price_list_item_id
+      WHERE spi.super_price_list_id = @p1
+      ORDER BY spi.product_size_id, v.is_default DESC, v.id ASC
+    `, [id]);
+
+    const variantsByProductSizeId = new Map();
+    for (const row of refreshedVariantRows) {
+      const productSizeId = Number(row.product_size_id || 0);
+      if (!productSizeId) continue;
+      if (!variantsByProductSizeId.has(productSizeId)) variantsByProductSizeId.set(productSizeId, []);
+      variantsByProductSizeId.get(productSizeId).push(buildWhccVariantPayloadFromRow(row));
+    }
+
+    const productSizeIds = Array.from(variantsByProductSizeId.keys()).filter((v) => Number.isInteger(v) && v > 0);
+    if (productSizeIds.length) {
+      const placeholders = productSizeIds.map((_, index) => `@p${index + 1}`).join(',');
+      const queuedItems = await mssql.query(`
+        SELECT oi.id,
+               oi.product_size_id,
+               oi.product_options_snapshot,
+               p.options as product_options
+        FROM order_items oi
+        INNER JOIN orders o ON o.id = oi.order_id
+        LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id
+        LEFT JOIN products p ON p.id = ps.product_id
+        WHERE oi.product_size_id IN (${placeholders})
+          AND o.is_batch = 1
+          AND (o.lab_submitted = 0 OR o.lab_submitted IS NULL)
+          AND LOWER(ISNULL(o.status, '')) <> 'cancelled'
+      `, productSizeIds);
+
+      for (const queuedItem of queuedItems) {
+        const productSizeId = Number(queuedItem.product_size_id || 0);
+        if (!productSizeId) continue;
+
+        const variants = variantsByProductSizeId.get(productSizeId) || [];
+        if (!variants.length) continue;
+        const preferred = pickPreferredWhccVariant(variants);
+        if (!preferred?.whccProductUID) continue;
+
+        const snapshot = {
+          ...parseJsonObject(queuedItem.product_options_snapshot || queuedItem.product_options),
+          whccVariants: variants,
+          whccProductUID: preferred.whccProductUID,
+          whccProductNodeID: Array.isArray(preferred.whccProductNodeIDs) && preferred.whccProductNodeIDs.length
+            ? preferred.whccProductNodeIDs[0]
+            : null,
+          whccItemAttributeUIDs: Array.isArray(preferred.whccItemAttributeUIDs)
+            ? preferred.whccItemAttributeUIDs
+            : [],
+          whccSelectedVariantId: preferred.id,
+        };
+
+        await mssql.query(
+          'UPDATE order_items SET product_options_snapshot = @p1 WHERE id = @p2',
+          [JSON.stringify(snapshot), queuedItem.id]
+        );
+        hydratedQueuedOrderItems += 1;
+      }
+    }
+
+    res.json({
+      success: true,
+      createdVariantRows,
+      hydratedQueuedOrderItems,
+      productSizeCount: productSizeIds.length,
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to bootstrap WHCC variants', details: err?.message || String(err) });
   }
 });
 
@@ -889,8 +1593,15 @@ router.put('/:id/items/:itemId', async (req, res) => {
     digitalPricingMode,
     super_admin_percentage,
     superAdminPercentage,
+    attribute_pricing_percent,
+    attributePricingPercent,
+    attribute_price_rounding_suffix,
+    attributePriceRoundingSuffix,
+    whccVariants,
   } = req.body;
   try {
+    await ensureWhccVariantsTable();
+    await ensureSuperPriceListItemWhccMetadataColumns();
     // Build dynamic SET to avoid overwriting fields not in payload
     const parts = [];
     const params = [];
@@ -902,7 +1613,8 @@ router.put('/:id/items/:itemId', async (req, res) => {
       await mssql.query(`UPDATE super_price_list_items SET ${parts.join(', ')} WHERE id = @p${params.length}`, params);
     }
 
-    const hasWhccMappingUpdate = whccProductUID !== undefined || whccProductNodeID !== undefined || whccItemAttributeUIDs !== undefined;
+    const hasWhccVariantsUpdate = Array.isArray(whccVariants);
+    const hasWhccMappingUpdate = whccProductUID !== undefined || whccProductNodeID !== undefined || whccItemAttributeUIDs !== undefined || hasWhccVariantsUpdate;
     const hasDigitalConfigUpdate =
       digital_download_scope !== undefined ||
       downloadScope !== undefined ||
@@ -910,7 +1622,45 @@ router.put('/:id/items/:itemId', async (req, res) => {
       digitalPricingMode !== undefined ||
       super_admin_percentage !== undefined ||
       superAdminPercentage !== undefined;
-    if (hasWhccMappingUpdate || hasDigitalConfigUpdate) {
+    const hasAttributePricingConfigUpdate =
+      attribute_pricing_percent !== undefined ||
+      attributePricingPercent !== undefined ||
+      attribute_price_rounding_suffix !== undefined ||
+      attributePriceRoundingSuffix !== undefined;
+    if (hasWhccMappingUpdate || hasDigitalConfigUpdate || hasAttributePricingConfigUpdate) {
+      if (hasWhccMappingUpdate) {
+        const itemParts = [];
+        const itemParams = [];
+
+        if (whccProductUID !== undefined) {
+          const normalizedUID = Number(whccProductUID);
+          itemParams.push(Number.isInteger(normalizedUID) && normalizedUID > 0 ? normalizedUID : null);
+          itemParts.push(`whcc_product_uid = @p${itemParams.length}`);
+        }
+
+        if (whccProductNodeID !== undefined) {
+          const normalizedNodeID = Number(whccProductNodeID);
+          itemParams.push(Number.isInteger(normalizedNodeID) && normalizedNodeID > 0 ? normalizedNodeID : null);
+          itemParts.push(`whcc_product_node_id = @p${itemParams.length}`);
+        }
+
+        if (whccItemAttributeUIDs !== undefined) {
+          const normalizedAttributeUIDs = Array.isArray(whccItemAttributeUIDs)
+            ? whccItemAttributeUIDs.map(Number).filter(value => Number.isInteger(value) && value > 0)
+            : String(whccItemAttributeUIDs || '')
+                .split(',')
+                .map(value => Number(value.trim()))
+                .filter(value => Number.isInteger(value) && value > 0);
+          itemParams.push(normalizedAttributeUIDs.length ? JSON.stringify(normalizedAttributeUIDs) : null);
+          itemParts.push(`whcc_item_attribute_uids = @p${itemParams.length}`);
+        }
+
+        if (itemParts.length) {
+          itemParams.push(itemId);
+          await mssql.query(`UPDATE super_price_list_items SET ${itemParts.join(', ')} WHERE id = @p${itemParams.length}`, itemParams);
+        }
+      }
+
       const itemRows = await mssql.query(`
         SELECT TOP 1 p.id as product_id, p.options as product_options
         FROM super_price_list_items spi
@@ -957,6 +1707,117 @@ router.put('/:id/items/:itemId', async (req, res) => {
         else delete nextOptions.whccItemAttributeUIDs;
       }
 
+      if (hasWhccVariantsUpdate) {
+        await ensureWhccVariantsTable();
+
+        await mssql.query('DELETE FROM super_price_list_item_whcc_variants WHERE super_price_list_item_id = @p1', [itemId]);
+
+        const normalizedVariants = whccVariants
+          .map((variant) => {
+            const uid = Number(variant?.whccProductUID || 0);
+            if (!Number.isInteger(uid) || uid <= 0) return null;
+            const nodeIds = normalizePositiveIntArray(variant?.whccProductNodeIDs || []);
+            const attrIds = normalizePositiveIntArray(variant?.whccItemAttributeUIDs || []);
+            const displayName = String(variant?.displayName || '').trim();
+            return {
+              whccProductUID: uid,
+              whccProductNodeIDs: nodeIds,
+              whccItemAttributeUIDs: attrIds,
+              displayName,
+              baseCost: normalizeNullableMoney(variant?.baseCost),
+              price: normalizeNullableMoney(variant?.price),
+              isDefault: Boolean(variant?.isDefault),
+              isActive: variant?.isActive === undefined ? true : Boolean(variant?.isActive),
+            };
+          })
+          .filter(Boolean);
+
+        let hasDefault = normalizedVariants.some((variant) => variant.isDefault);
+        if (!hasDefault && normalizedVariants.length > 0) {
+          normalizedVariants[0].isDefault = true;
+          hasDefault = true;
+        }
+
+        for (const variant of normalizedVariants) {
+          await mssql.query(
+            `INSERT INTO super_price_list_item_whcc_variants
+              (super_price_list_item_id, display_name, whcc_product_uid, whcc_product_node_ids, whcc_item_attribute_uids, base_cost, price, is_default, is_active)
+             VALUES (@p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9)`,
+            [
+              itemId,
+              variant.displayName || null,
+              variant.whccProductUID,
+              JSON.stringify(variant.whccProductNodeIDs || []),
+              JSON.stringify(variant.whccItemAttributeUIDs || []),
+              variant.baseCost,
+              variant.price,
+              variant.isDefault ? 1 : 0,
+              variant.isActive ? 1 : 0,
+            ]
+          );
+        }
+
+        const defaultVariant = normalizedVariants.find((variant) => variant.isDefault && variant.isActive)
+          || normalizedVariants.find((variant) => variant.isActive)
+          || normalizedVariants[0]
+          || null;
+
+        if (defaultVariant) {
+          nextOptions.whccProductUID = defaultVariant.whccProductUID;
+          if (Array.isArray(defaultVariant.whccProductNodeIDs) && defaultVariant.whccProductNodeIDs.length > 0) {
+            nextOptions.whccProductNodeID = defaultVariant.whccProductNodeIDs[0];
+          } else {
+            delete nextOptions.whccProductNodeID;
+          }
+
+          if (Array.isArray(defaultVariant.whccItemAttributeUIDs) && defaultVariant.whccItemAttributeUIDs.length > 0) {
+            nextOptions.whccItemAttributeUIDs = defaultVariant.whccItemAttributeUIDs;
+          } else {
+            delete nextOptions.whccItemAttributeUIDs;
+          }
+        } else {
+          delete nextOptions.whccProductUID;
+          delete nextOptions.whccProductNodeID;
+          delete nextOptions.whccItemAttributeUIDs;
+        }
+
+        await mssql.query(
+          `UPDATE super_price_list_items
+           SET whcc_product_uid = @p1,
+               whcc_product_node_id = @p2,
+               whcc_item_attribute_uids = @p3
+           WHERE id = @p4`,
+          [
+            defaultVariant?.whccProductUID || null,
+            Array.isArray(defaultVariant?.whccProductNodeIDs) && defaultVariant.whccProductNodeIDs.length
+              ? defaultVariant.whccProductNodeIDs[0]
+              : null,
+            Array.isArray(defaultVariant?.whccItemAttributeUIDs) && defaultVariant.whccItemAttributeUIDs.length
+              ? JSON.stringify(defaultVariant.whccItemAttributeUIDs)
+              : null,
+            itemId,
+          ]
+        );
+
+        const derivedParts = [];
+        const derivedParams = [];
+        const derivedBaseCost = normalizeNullableMoney(defaultVariant?.baseCost);
+        const derivedPrice = normalizeNullableMoney(defaultVariant?.price);
+        if (base_cost === undefined && derivedBaseCost !== null) {
+          derivedParams.push(derivedBaseCost);
+          derivedParts.push(`base_cost = @p${derivedParams.length}`);
+        }
+        if (markup_percent === undefined && derivedBaseCost !== null && derivedPrice !== null && derivedBaseCost > 0) {
+          const derivedMarkupPercent = Number((((derivedPrice - derivedBaseCost) / derivedBaseCost) * 100).toFixed(2));
+          derivedParams.push(derivedMarkupPercent);
+          derivedParts.push(`markup_percent = @p${derivedParams.length}`);
+        }
+        if (derivedParts.length) {
+          derivedParams.push(itemId);
+          await mssql.query(`UPDATE super_price_list_items SET ${derivedParts.join(', ')} WHERE id = @p${derivedParams.length}`, derivedParams);
+        }
+      }
+
       if (hasDigitalConfigUpdate) {
         nextOptions.isDigital = true;
         nextOptions.isActive = nextOptions?.isActive !== false;
@@ -981,12 +1842,279 @@ router.put('/:id/items/:itemId', async (req, res) => {
         }
       }
 
+      if (hasAttributePricingConfigUpdate) {
+        const requestedAttributePct = Number(attribute_pricing_percent ?? attributePricingPercent);
+        if (Number.isFinite(requestedAttributePct) && requestedAttributePct >= 0) {
+          nextOptions.attributePricingPercent = Number(requestedAttributePct.toFixed(2));
+        } else if ((attribute_pricing_percent ?? attributePricingPercent) !== undefined) {
+          delete nextOptions.attributePricingPercent;
+        }
+
+        if ((attribute_price_rounding_suffix ?? attributePriceRoundingSuffix) !== undefined) {
+          nextOptions.attributePriceRoundingSuffix = normalizeAttributePriceRoundingSuffix(
+            attribute_price_rounding_suffix ?? attributePriceRoundingSuffix
+          );
+        }
+      }
+
       await mssql.query('UPDATE products SET options = @p1 WHERE id = @p2', [JSON.stringify(nextOptions), productId]);
     }
 
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Failed to update item' });
+  }
+});
+
+// POST create an empty category within a super price list
+router.post('/:id/categories', async (req, res) => {
+  const { id } = req.params;
+  const category = String(req.body?.category || '').trim();
+  if (!category) {
+    return res.status(400).json({ error: 'category is required' });
+  }
+  try {
+    await ensureCategoryImagesTable();
+    const existing = await mssql.query(
+      'SELECT TOP 1 id FROM super_price_list_category_images WHERE super_price_list_id = @p1 AND category_name = @p2',
+      [id, category]
+    );
+    if (existing.length) {
+      return res.json({ success: true, alreadyExists: true });
+    }
+    await mssql.query(
+      'INSERT INTO super_price_list_category_images (super_price_list_id, category_name, image_url) VALUES (@p1, @p2, NULL)',
+      [id, category]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to create category' });
+  }
+});
+
+// PUT rename a category within a super price list
+router.put('/:id/categories/rename', async (req, res) => {
+  const { id } = req.params;
+  const fromCategory = String(req.body?.fromCategory || '').trim();
+  const toCategory = String(req.body?.toCategory || '').trim();
+  if (!fromCategory || !toCategory) {
+    return res.status(400).json({ error: 'fromCategory and toCategory are required' });
+  }
+  try {
+    await mssql.query(
+      `UPDATE p
+       SET p.category = @p1
+       FROM products p
+       INNER JOIN product_sizes ps ON ps.product_id = p.id
+       INNER JOIN super_price_list_items spi ON spi.product_size_id = ps.id
+       WHERE spi.super_price_list_id = @p2
+         AND p.category = @p3`,
+      [toCategory, id, fromCategory]
+    );
+
+    await ensureCategoryImagesTable();
+    await mssql.query(
+      `UPDATE super_price_list_category_images
+       SET category_name = @p1, updated_at = GETDATE()
+       WHERE super_price_list_id = @p2 AND category_name = @p3`,
+      [toCategory, id, fromCategory]
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to rename category' });
+  }
+});
+
+// DELETE a category (removes all items in this category from the super list and linked studio lists)
+router.delete('/:id/categories', async (req, res) => {
+  const { id } = req.params;
+  const category = String(req.body?.category || req.query?.category || '').trim();
+  if (!category) return res.status(400).json({ error: 'category is required' });
+  try {
+    await mssql.query(
+      `DELETE spi
+       FROM studio_price_list_items spi
+       INNER JOIN studio_price_lists spl ON spl.id = spi.studio_price_list_id
+       INNER JOIN super_price_list_items sspi
+         ON sspi.product_size_id = spi.product_size_id
+        AND sspi.super_price_list_id = spl.super_price_list_id
+       INNER JOIN product_sizes ps ON ps.id = sspi.product_size_id
+       INNER JOIN products p ON p.id = ps.product_id
+       WHERE spl.super_price_list_id = @p1
+         AND p.category = @p2`,
+      [id, category]
+    );
+
+    await mssql.query(
+      `DELETE sspi
+       FROM super_price_list_items sspi
+       INNER JOIN product_sizes ps ON ps.id = sspi.product_size_id
+       INNER JOIN products p ON p.id = ps.product_id
+       WHERE sspi.super_price_list_id = @p1
+         AND p.category = @p2`,
+      [id, category]
+    );
+
+    await ensureCategoryImagesTable();
+    await mssql.query(
+      'DELETE FROM super_price_list_category_images WHERE super_price_list_id = @p1 AND category_name = @p2',
+      [id, category]
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete category' });
+  }
+});
+
+// PUT move all sizes of a product to a different category
+router.put('/:id/products/:productId/category', async (req, res) => {
+  const { id, productId } = req.params;
+  const targetCategory = String(req.body?.targetCategory || '').trim();
+  if (!targetCategory) return res.status(400).json({ error: 'targetCategory is required' });
+  try {
+    const belongs = await mssql.query(
+      `SELECT TOP 1 p.id
+       FROM products p
+       INNER JOIN product_sizes ps ON ps.product_id = p.id
+       INNER JOIN super_price_list_items spi ON spi.product_size_id = ps.id
+       WHERE spi.super_price_list_id = @p1
+         AND p.id = @p2`,
+      [id, Number(productId)]
+    );
+    if (!belongs.length) return res.status(404).json({ error: 'Product not found in this super price list' });
+
+    await mssql.query('UPDATE products SET category = @p1 WHERE id = @p2', [targetCategory, Number(productId)]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to move product category' });
+  }
+});
+
+// PUT move a single size item to another category (creates a new parent product if necessary)
+router.put('/:id/items/:itemId/move-category', async (req, res) => {
+  const { id, itemId } = req.params;
+  const targetCategory = String(req.body?.targetCategory || '').trim();
+  const requestedTargetProductName = String(req.body?.targetProductName || '').trim();
+  if (!targetCategory) return res.status(400).json({ error: 'targetCategory is required' });
+
+  try {
+    const sourceRows = await mssql.query(
+      `SELECT TOP 1
+              spi.id as super_item_id,
+              spi.product_size_id,
+              spi.base_cost,
+              ps.price_list_id,
+              ps.size_name,
+              ps.price as size_price,
+              ps.cost as size_cost,
+              p.name as product_name,
+              p.description as product_description,
+              p.options as product_options,
+              p.image_url as product_image_url
+       FROM super_price_list_items spi
+       INNER JOIN product_sizes ps ON ps.id = spi.product_size_id
+       INNER JOIN products p ON p.id = ps.product_id
+       WHERE spi.super_price_list_id = @p1
+         AND spi.id = @p2`,
+      [id, Number(itemId)]
+    );
+
+    const source = sourceRows[0];
+    if (!source) return res.status(404).json({ error: 'Item not found in this super price list' });
+
+    const targetProductName = requestedTargetProductName || String(source.product_name || '').trim();
+    if (!targetProductName) return res.status(400).json({ error: 'targetProductName is required' });
+
+    let targetProductRows = await mssql.query(
+      'SELECT TOP 1 id FROM products WHERE name = @p1 AND category = @p2 ORDER BY id DESC',
+      [targetProductName, targetCategory]
+    );
+
+    let targetProductId = targetProductRows[0]?.id;
+    if (!targetProductId) {
+      await mssql.query(
+        `INSERT INTO products (name, category, price, description, cost, options, image_url)
+         VALUES (@p1, @p2, @p3, @p4, @p5, @p6, @p7)`,
+        [
+          targetProductName,
+          targetCategory,
+          Number(source.base_cost ?? source.size_price ?? 0),
+          String(source.product_description || ''),
+          Number(source.base_cost ?? source.size_cost ?? 0),
+          source.product_options || null,
+          source.product_image_url || null,
+        ]
+      );
+
+      targetProductRows = await mssql.query(
+        'SELECT TOP 1 id FROM products WHERE name = @p1 AND category = @p2 ORDER BY id DESC',
+        [targetProductName, targetCategory]
+      );
+      targetProductId = targetProductRows[0]?.id;
+    }
+
+    if (!targetProductId) return res.status(500).json({ error: 'Failed to resolve target product' });
+
+    let targetSizeRows = await mssql.query(
+      `SELECT TOP 1 id
+       FROM product_sizes
+       WHERE price_list_id = @p1
+         AND product_id = @p2
+         AND size_name = @p3
+       ORDER BY id DESC`,
+      [Number(source.price_list_id), Number(targetProductId), String(source.size_name || '')]
+    );
+
+    let targetProductSizeId = targetSizeRows[0]?.id;
+    if (!targetProductSizeId) {
+      await mssql.query(
+        `INSERT INTO product_sizes (price_list_id, product_id, size_name, price, cost)
+         VALUES (@p1, @p2, @p3, @p4, @p5)`,
+        [
+          Number(source.price_list_id),
+          Number(targetProductId),
+          String(source.size_name || ''),
+          Number(source.size_price ?? source.base_cost ?? 0),
+          Number(source.size_cost ?? source.base_cost ?? 0),
+        ]
+      );
+
+      targetSizeRows = await mssql.query(
+        `SELECT TOP 1 id
+         FROM product_sizes
+         WHERE price_list_id = @p1
+           AND product_id = @p2
+           AND size_name = @p3
+         ORDER BY id DESC`,
+        [Number(source.price_list_id), Number(targetProductId), String(source.size_name || '')]
+      );
+      targetProductSizeId = targetSizeRows[0]?.id;
+    }
+
+    if (!targetProductSizeId) return res.status(500).json({ error: 'Failed to resolve target size' });
+
+    const oldProductSizeId = Number(source.product_size_id);
+
+    await mssql.query(
+      'UPDATE super_price_list_items SET product_size_id = @p1 WHERE id = @p2',
+      [Number(targetProductSizeId), Number(itemId)]
+    );
+
+    await mssql.query(
+      `UPDATE spi
+       SET spi.product_size_id = @p1
+       FROM studio_price_list_items spi
+       INNER JOIN studio_price_lists spl ON spl.id = spi.studio_price_list_id
+       WHERE spl.super_price_list_id = @p2
+         AND spi.product_size_id = @p3`,
+      [Number(targetProductSizeId), id, oldProductSizeId]
+    );
+
+    res.json({ success: true, product_size_id: Number(targetProductSizeId), product_id: Number(targetProductId) });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to move item category' });
   }
 });
 

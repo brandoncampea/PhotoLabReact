@@ -59,12 +59,16 @@ export const superPriceListService = {
     const res = await api.post(`/super-price-lists/${listId}/import-items`, { items });
     return res.data;
   },
-  async syncWhccCosts(listId: number) {
-    const res = await api.post(`/super-price-lists/${listId}/sync-whcc-costs`);
+  async syncWhccCosts(listId: number, onlyIfZero = false) {
+    const res = await api.post(`/super-price-lists/${listId}/sync-whcc-costs`, { onlyIfZero });
     return res.data;
   },
   async fillMissingWhccNodeIds(listId: number) {
     const res = await api.post(`/super-price-lists/${listId}/fill-missing-whcc-node-ids`);
+    return res.data;
+  },
+  async bootstrapWhccVariants(listId: number) {
+    const res = await api.post(`/super-price-lists/${listId}/bootstrap-whcc-variants`);
     return res.data;
   },
   async bulkSetActive(listId: number, item_ids: number[], is_active: boolean) {
@@ -84,5 +88,25 @@ export const superPriceListService = {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
     return res.data.image_url as string;
+  },
+  async createCategory(listId: number, category: string) {
+    const res = await api.post(`/super-price-lists/${listId}/categories`, { category });
+    return res.data;
+  },
+  async renameCategory(listId: number, fromCategory: string, toCategory: string) {
+    const res = await api.put(`/super-price-lists/${listId}/categories/rename`, { fromCategory, toCategory });
+    return res.data;
+  },
+  async deleteCategory(listId: number, category: string) {
+    const res = await api.delete(`/super-price-lists/${listId}/categories`, { data: { category } });
+    return res.data;
+  },
+  async moveProductToCategory(listId: number, productId: number, targetCategory: string) {
+    const res = await api.put(`/super-price-lists/${listId}/products/${productId}/category`, { targetCategory });
+    return res.data;
+  },
+  async moveItemToCategory(listId: number, itemId: number, targetCategory: string, targetProductName?: string) {
+    const res = await api.put(`/super-price-lists/${listId}/items/${itemId}/move-category`, { targetCategory, targetProductName });
+    return res.data;
   },
 };

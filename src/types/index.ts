@@ -122,6 +122,7 @@ export interface CartItem {
   whccEditorDesignId?: string | null;
   isDigital?: boolean;
   digitalDownloadScope?: 'photo' | 'album';
+  productOptions?: Record<string, any>;
 }
 
 export interface CropData {
@@ -292,6 +293,20 @@ export interface ProductSize {
   width: number;
   height: number;
   price: number;
+  whccVariants?: Array<{
+    id?: number | null;
+    localId?: string;
+    displayName?: string;
+    whccProductUID?: number | null;
+    whccProductNodeIDs?: number[];
+    whccItemAttributeUIDs?: number[];
+    isDefault?: boolean;
+    isActive?: boolean;
+    baseCost?: number | null;
+    price?: number | null;
+    studioPrice?: number | null;
+    studioMarkupPercent?: number | null;
+  }>;
 }
 
 export interface Watermark {
