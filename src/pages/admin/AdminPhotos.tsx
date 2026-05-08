@@ -66,46 +66,12 @@ type DetectionResult = {
 
 
 // Real face detection using BlazeFace
-import * as blazeface from '@tensorflow-models/blazeface';
-import '@tensorflow/tfjs';
+
+import { detectFaceBoxes } from '../../utils/faceDetection';
 
 const detectFaceBoxesInBrowser = async (photo: Photo): Promise<{ faceBoxes: FaceTagBox[]; error?: string }> => {
-  try {
-    const imageUrl = photo.fullImageUrl;
-    if (!imageUrl) return { faceBoxes: [], error: 'No image URL' };
-    // Load image
-    const img = new window.Image();
-    img.crossOrigin = 'anonymous';
-    img.src = imageUrl;
-    await new Promise((resolve, reject) => {
-      img.onload = resolve;
-      img.onerror = reject;
-    });
-    // Load BlazeFace model
-    const model = await blazeface.load();
-    // Run detection
-    const predictions = await model.estimateFaces(img, false);
-    // Convert predictions to FaceTagBox[]
-    const faceBoxes: FaceTagBox[] = predictions.map((pred, idx) => {
-      // pred.topLeft and pred.bottomRight are [x, y] arrays
-      const [x1, y1] = pred.topLeft as [number, number];
-      const [x2, y2] = pred.bottomRight as [number, number];
-      const width = img.width;
-      const height = img.height;
-      return {
-        id: `face-${idx}`,
-        leftPct: (x1 / width) * 100,
-        topPct: (y1 / height) * 100,
-        widthPct: ((x2 - x1) / width) * 100,
-        heightPct: ((y2 - y1) / height) * 100,
-        playerName: null,
-        playerNumber: null,
-      };
-    });
-    return { faceBoxes };
-  } catch (err: any) {
-    return { faceBoxes: [], error: err?.message || 'Face detection failed' };
-  }
+  // Always use the backend asset endpoint for the full-size image (never the thumbnail)
+  return detectFaceBoxes(photo, () => Promise.resolve(`/api/photos/${photo.id}/asset`));
 };
 
 
@@ -144,24 +110,53 @@ function UploadProgressPanel({ uploadItems, uploading, handleRetryUploadItem, se
 
       {/* Always show thumbnails/progress bars */}
 
-      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.5rem', overflowX: 'auto', paddingBottom: 4 }}>
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '0.7rem',
+        marginTop: '0.7rem',
+        background: 'rgba(40,44,60,0.13)',
+        borderRadius: '12px',
+        padding: '1rem',
+        border: '1.5px solid #7ee0b7',
+        boxShadow: '0 2px 16px 0 #7ee0b733',
+        minWidth: 260,
+        maxWidth: 520,
+      }}>
         {uploadItems.map((item: UploadItem) => (
-          <div key={item.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 48 }}>
+          <div key={item.id} style={{
+            display: 'flex', alignItems: 'center', gap: '1rem',
+            background: 'rgba(255,255,255,0.04)',
+            borderRadius: 8, padding: '0.5rem 0.7rem',
+            border: item.status === 'error' ? '1.5px solid var(--error-color)' : '1.5px solid #222',
+            boxShadow: item.status === 'error' ? '0 0 8px 0 #ff4d4f33' : 'none',
+          }}>
             <img
               src={item.previewUrl}
               alt={item.file.name}
-              style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border-color)' }}
+              style={{ width: 38, height: 38, objectFit: 'cover', borderRadius: 7, border: '1.5px solid #7ee0b7', background: '#222' }}
             />
-            <div style={{ width: 36, height: 5, background: 'var(--bg-primary)', borderRadius: 3, marginTop: 2, overflow: 'hidden', border: '1px solid var(--border-color)' }}>
-              <div style={{ width: `${item.progress}%`, height: '100%', background: item.status === 'error' ? 'var(--error-color)' : 'var(--primary-color)', transition: 'width 0.2s' }} />
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: '0.93rem', color: '#fff', fontWeight: 500, marginBottom: 2, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{item.file.name}</div>
+              <div style={{ width: '100%', height: 7, background: '#222', borderRadius: 4, overflow: 'hidden', border: '1px solid #333', marginBottom: 2 }}>
+                <div style={{ width: `${item.progress}%`, height: '100%', background: item.status === 'error' ? 'var(--error-color)' : 'var(--primary-color)', transition: 'width 0.2s' }} />
+              </div>
+              <div style={{ fontSize: '0.8rem', color: item.status === 'error' ? 'var(--error-color)' : '#7ee0b7', fontWeight: 500 }}>
+                {item.status === 'uploading' && 'Uploading...'}
+                {item.status === 'done' && 'Uploaded'}
+                {item.status === 'error' && (item.error || 'Failed')}
+              </div>
             </div>
+            {item.status === 'error' && (
+              <button className="btn btn-secondary" style={{ fontSize: '0.8rem', padding: '0.2rem 0.7rem', marginLeft: 6 }} onClick={() => handleRetryUploadItem(item)}>Retry</button>
+            )}
           </div>
         ))}
-        <span style={{ fontSize: '0.85rem', color: 'var(--muted-color)', marginLeft: 8 }}>
-          {uploadingCount > 0 && `${uploadingCount} uploading`}
-          {doneCount > 0 && ` • ${doneCount} done`}
-          {failedCount > 0 && ` • ${failedCount} failed`}
-        </span>
+        <div style={{ display: 'flex', gap: '1.2rem', marginTop: 4, fontSize: '0.92rem', color: '#aaa', alignItems: 'center' }}>
+          <span style={{ color: uploadingCount > 0 ? '#7ee0b7' : '#aaa' }}>{uploadingCount > 0 && `${uploadingCount} uploading`}</span>
+          <span style={{ color: doneCount > 0 ? '#7ee0b7' : '#aaa' }}>{doneCount > 0 && `${doneCount} done`}</span>
+          <span style={{ color: failedCount > 0 ? 'var(--error-color)' : '#aaa' }}>{failedCount > 0 && `${failedCount} failed`}</span>
+        </div>
       </div>
 
       {/* Show full details only when expanded */}
@@ -1054,7 +1049,23 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
         photoService.getPhotoDetections(photo.id),
         detectFaceBoxesInBrowser(photo),
       ]);
-      const mergedFaceBoxes = mergeDetectedBoxesWithSavedTags(photo, faceBoxResult.faceBoxes || []);
+      let mergedFaceBoxes = mergeDetectedBoxesWithSavedTags(photo, faceBoxResult.faceBoxes || []);
+      // If face matching found matches, assign player names to the corresponding face boxes
+      if (result.faceMatches && Array.isArray(result.faceMatches) && mergedFaceBoxes.length > 0) {
+        mergedFaceBoxes = mergedFaceBoxes.map((box, idx) => {
+          // Try to find a face match for this box by index (assuming order matches)
+          const match = result.faceMatches[idx];
+          if (match && match.playerName) {
+            return { ...box, playerName: match.playerName, playerNumber: match.playerNumber };
+          }
+          return box;
+        });
+      }
+      // If photo has a player name from filename and exactly one face detected, assign that name to the face box (fallback)
+      const playerNameFromFilename = (photo as any).playerNames && String((photo as any).playerNames).split(',')[0].trim();
+      if (playerNameFromFilename && mergedFaceBoxes.length === 1) {
+        mergedFaceBoxes = mergedFaceBoxes.map(box => ({ ...box, playerName: playerNameFromFilename }));
+      }
       setDetectionByPhotoId((prev) => ({
         ...prev,
         [photo.id]: {
@@ -1354,7 +1365,7 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
             {uploadMessage.text}
           </p>
         )}
-        <div style={{ marginTop: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+        <div style={{ marginTop: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.8rem', flexWrap: 'wrap', justifyContent: 'flex-start' }}>
             <input
               type="file"
               id="roster-csv-upload"
@@ -1363,13 +1374,13 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
               onChange={handleRosterCsvUpload}
               disabled={rosterUploading || !albumId}
             />
-            <label htmlFor="roster-csv-upload" className="btn btn-secondary" style={{ margin: 0 }}>
+            <label htmlFor="roster-csv-upload" className="btn btn-secondary" style={{ margin: 0, fontWeight: 600, fontSize: '1.02rem', borderRadius: 8, background: '#232a3a', border: '2px solid #7ee0b7', color: '#7ee0b7', boxShadow: '0 2px 8px #7ee0b733' }}>
               {rosterUploading ? 'Uploading roster…' : '📋 Upload Roster CSV'}
             </label>
             <button
               type="button"
               className="btn btn-primary"
-              style={{ marginLeft: '0.5rem', minWidth: 140 }}
+              style={{ marginLeft: '0.5rem', minWidth: 140, fontWeight: 600, fontSize: '1.02rem', borderRadius: 8, background: '#7ee0b7', color: '#232a3a', boxShadow: '0 2px 8px #7ee0b733', border: '2px solid #7ee0b7' }}
               onClick={handleDetectAll}
               disabled={photos.length === 0}
               title="Detect faces and numbers for all photos in this album"
@@ -1379,7 +1390,7 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
             <button
               type="button"
               className="btn btn-primary"
-              style={{ marginLeft: '0.5rem', minWidth: 140 }}
+              style={{ marginLeft: '0.5rem', minWidth: 140, fontWeight: 600, fontSize: '1.02rem', borderRadius: 8, background: '#7ee0b7', color: '#232a3a', boxShadow: '0 2px 8px #7ee0b733', border: '2px solid #7ee0b7' }}
               onClick={async () => {
                 if (photos.length === 0) {
                   alert('No photos to tag from filenames.');
@@ -1415,7 +1426,7 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
             <button
               type="button"
               className="btn btn-danger"
-              style={{ marginLeft: '0.5rem', minWidth: 140 }}
+              style={{ marginLeft: '0.5rem', minWidth: 140, fontWeight: 600, fontSize: '1.02rem', borderRadius: 8, background: '#ff4d4f', color: '#fff', boxShadow: '0 2px 8px #ff4d4f33', border: '2px solid #ff4d4f' }}
               onClick={async () => {
                 if (photos.length === 0) {
                   alert('No photos to clear tags from.');
@@ -1467,7 +1478,7 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
             boxSizing: 'border-box',
             position: 'relative',
           }}>
-            <div style={{ cursor: 'pointer', position: 'relative' }}
+            <div style={{ cursor: 'pointer', position: 'relative', width: '100%', height: 220 }}
                  onClick={() => window.open(`/api/photos/${photo.id}/asset`, '_blank')}
                  title="Click to view full size">
               {/* Use backend asset endpoint for image preview */}
@@ -1475,10 +1486,63 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
                 src={`/api/photos/${photo.id}/asset?variant=thumbnail`}
                 alt={photo.file_name}
                 className="photo-img"
-                style={{ maxWidth: '120px', maxHeight: '120px', objectFit: 'cover', borderRadius: 8, background: '#222', display: 'block' }}
+                style={{ width: '100%', height: 220, objectFit: 'cover', borderRadius: 8, background: '#222', display: 'block' }}
                 loading="lazy"
                 ref={el => setImageRef(photo.id, el)}
               />
+              {/* Render face boxes as overlays */}
+              {detectionByPhotoId[photo.id] && detectionByPhotoId[photo.id].faceBoxes.length > 0 && (
+                detectionByPhotoId[photo.id].faceBoxes.map((box) => {
+                  // Convert percent to absolute pixel values based on image size (assume 100% width, 220px height)
+                  const left = `${box.leftPct}%`;
+                  const top = `${box.topPct}%`;
+                  const width = `${box.widthPct}%`;
+                  const height = `${box.heightPct}%`;
+                  const isSelected = selectedFaceBoxByPhotoId[photo.id] === box.id;
+                  return (
+                    <div
+                      key={box.id}
+                      onClick={e => {
+                        e.stopPropagation();
+                        setSelectedFaceBoxByPhotoId(prev => ({ ...prev, [photo.id]: box.id }));
+                      }}
+                      title={box.playerName ? `Tagged: ${box.playerName}` : 'Click to select this face'}
+                      style={{
+                        position: 'absolute',
+                        left,
+                        top,
+                        width,
+                        height,
+                        border: isSelected ? '2.5px solid #7ee0b7' : '2.5px solid #f5b041',
+                        borderRadius: '8px',
+                        boxSizing: 'border-box',
+                        background: isSelected ? 'rgba(126,224,183,0.10)' : 'rgba(245,176,65,0.07)',
+                        cursor: 'pointer',
+                        zIndex: 20,
+                        transition: 'border 0.15s, background 0.15s',
+                        pointerEvents: 'auto',
+                        display: 'block',
+                      }}
+                    >
+                      {/* Optionally show face id or tag */}
+                      {box.playerName && (
+                        <span style={{
+                          position: 'absolute',
+                          left: 0,
+                          top: '-1.5em',
+                          background: '#7ee0b7',
+                          color: '#222',
+                          fontSize: '0.72rem',
+                          borderRadius: '6px',
+                          padding: '0.1em 0.5em',
+                          fontWeight: 600,
+                          zIndex: 30,
+                        }}>{box.playerName}</span>
+                      )}
+                    </div>
+                  );
+                })
+              )}
             </div>
             <div className="photo-info">
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
@@ -1784,7 +1848,24 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
                     {(() => {
                       const raw = (playerSearchByPhotoId[photo.id] ?? '').trim();
                       if (!raw) return null;
-                      const filtered = rosterPlayers.filter((p) => p.playerName.toLowerCase().includes(raw.toLowerCase()));
+                      // Filter roster by tagged schools if available
+                      let filtered = rosterPlayers;
+                      if (currentAlbum && Array.isArray(currentAlbum.schoolTags) && currentAlbum.schoolTags.length > 0) {
+                        filtered = filtered.filter((p) => {
+                          // Player must have a school property matching one of the album's schoolTags
+                          if (!p.school) return false;
+                          if (Array.isArray(p.school)) {
+                            return p.school.some((s) => currentAlbum.schoolTags.includes(s));
+                          }
+                          return currentAlbum.schoolTags.includes(p.school);
+                        });
+                      }
+                      // Remove duplicates by playerName (case-insensitive)
+                      filtered = filtered.filter((p, idx, arr) =>
+                        arr.findIndex(x => x.playerName.toLowerCase() === p.playerName.toLowerCase()) === idx
+                      );
+                      // Then filter by search
+                      filtered = filtered.filter((p) => p.playerName.toLowerCase().includes(raw.toLowerCase()));
                       if (filtered.length === 0) return null;
                       return (
                         <div style={{
@@ -1792,25 +1873,28 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
                           top: '100%',
                           left: 0,
                           right: 0,
-                          background: 'var(--bg-primary)',
-                          border: '1px solid var(--border-color)',
-                          borderRadius: '0 0 8px 8px',
-                          boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
+                          background: 'rgba(40, 44, 60, 0.98)',
+                          border: '2px solid #7ee0b7',
+                          borderTop: 'none',
+                          borderRadius: '0 0 12px 12px',
+                          boxShadow: '0 8px 32px rgba(30,255,180,0.10)',
                           zIndex: 20,
-                          maxHeight: 180,
+                          maxHeight: 220,
                           overflowY: 'auto',
+                          minWidth: 180,
                         }}>
                           {filtered.map((p, idx) => (
                             <div
                               key={p.playerName + idx}
                               style={{
-                                padding: '0.38rem 0.7rem',
+                                padding: '0.48rem 1.1rem',
                                 cursor: 'pointer',
-                                fontSize: '0.95em',
+                                fontSize: '1em',
                                 color: '#fff',
                                 background: 'none',
-                                borderBottom: idx !== filtered.length - 1 ? '1px solid var(--border-color)' : 'none',
+                                borderBottom: idx !== filtered.length - 1 ? '1px solid #2e3a3a' : 'none',
                                 transition: 'background 0.15s',
+                                borderLeft: '4px solid transparent',
                               }}
                               onMouseDown={e => {
                                 e.preventDefault();
@@ -1821,6 +1905,14 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
                                   handleTogglePlayerTag(photo, p);
                                 }
                                 setPlayerSearchByPhotoId((prev) => ({ ...prev, [photo.id]: '' }));
+                              }}
+                              onMouseOver={e => {
+                                (e.currentTarget as HTMLDivElement).style.background = '#1b2b2b';
+                                (e.currentTarget as HTMLDivElement).style.borderLeft = '4px solid #7ee0b7';
+                              }}
+                              onMouseOut={e => {
+                                (e.currentTarget as HTMLDivElement).style.background = 'none';
+                                (e.currentTarget as HTMLDivElement).style.borderLeft = '4px solid transparent';
                               }}
                             >
                               {p.playerName}

@@ -86,6 +86,7 @@ export async function detectFaceBoxesFromImageElement(image: HTMLImageElement): 
 
 export async function detectFaceBoxes(photo: Photo, resolvePhotoImageUrl: (photo: Photo) => Promise<string | null>): Promise<{ faceBoxes: FaceTagBox[]; error?: string | null }> {
   try {
+    // Always use the provided resolvePhotoImageUrl result (backend asset endpoint) for face detection
     const imageUrl = await resolvePhotoImageUrl(photo);
     if (!imageUrl) {
       return { faceBoxes: [], error: 'Could not load image for face detection.' };
