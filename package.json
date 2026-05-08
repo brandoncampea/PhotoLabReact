@@ -33,6 +33,7 @@
     "deploy:azure:appservice": "./scripts/deploy-azure-appservice.sh"
   },
   "dependencies": {
+    "crypto-js": "^4.2.0",
     "@azure/storage-blob": "^12.31.0",
     "@hello-pangea/dnd": "^18.0.1",
     "@stripe/react-stripe-js": "^6.1.0",

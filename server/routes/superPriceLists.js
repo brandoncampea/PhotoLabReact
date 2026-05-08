@@ -505,9 +505,19 @@ router.post('/:id/import-items', async (req, res) => {
         const category = (item.category || 'whcc').toString().trim();
         const description = (item.description || 'Imported from WHCC').toString();
 
-        // Extract WHCC product mapping fields supplied by the frontend import
-        const whccProductUID = Number(item.whccProductUID || 0) || null;
-        const whccProductNodeID = Number(item.whccProductNodeID || 0) || null;
+        // Extract WHCC product mapping fields supplied by the frontend import (robust extraction)
+        const whccProductUID =
+          Number(
+            item.whccProductUID ||
+            item.productUID ||
+            item.importId ||
+            item.productUid ||
+            item.ProductUID ||
+            item.product_uid ||
+            item.ProductUid ||
+            0
+          ) || null;
+        const whccProductNodeID = Number(item.whccProductNodeID || item.productNodeID || item.ProductNodeID || 0) || null;
         const whccAttributeCostMultiplierPercent = Number(item.whccAttributeCostMultiplierPercent ?? 0) || 0;
         const whccAttributeCategories = normalizeWhccAttributeCategories(item.whccAttributeCategories);
         const rawAttrUIDs = Array.isArray(item.whccItemAttributeUIDs)
@@ -633,30 +643,23 @@ router.post('/:id/import-items', async (req, res) => {
         if (existing.length) {
           const updateParts = [];
           const updateParams = [];
-          if ((existing[0].base_cost === null || existing[0].base_cost === undefined) && base_cost !== null && base_cost !== undefined) {
+          // Always update these fields with the latest import value
+          if (base_cost !== null && base_cost !== undefined) {
             updateParams.push(base_cost);
             updateParts.push(`base_cost = @p${updateParams.length}`);
           }
-          if ((existing[0].markup_percent === null || existing[0].markup_percent === undefined) && markup_percent !== null && markup_percent !== undefined) {
+          if (markup_percent !== null && markup_percent !== undefined) {
             updateParams.push(markup_percent);
             updateParts.push(`markup_percent = @p${updateParams.length}`);
           }
-          if (whccProductUID) {
-            updateParams.push(whccProductUID);
-            updateParts.push(`whcc_product_uid = @p${updateParams.length}`);
-          }
-          if (whccProductNodeID) {
-            updateParams.push(whccProductNodeID);
-            updateParts.push(`whcc_product_node_id = @p${updateParams.length}`);
-          }
-          if (rawAttrUIDs !== null) {
-            updateParams.push(rawAttrUIDs && rawAttrUIDs.length ? JSON.stringify(rawAttrUIDs) : null);
-            updateParts.push(`whcc_item_attribute_uids = @p${updateParams.length}`);
-          }
-          if (whccAttributeCategories.length) {
-            updateParams.push(JSON.stringify(whccAttributeCategories));
-            updateParts.push(`whcc_attribute_categories = @p${updateParams.length}`);
-          }
+          updateParams.push(whccProductUID);
+          updateParts.push(`whcc_product_uid = @p${updateParams.length}`);
+          updateParams.push(whccProductNodeID);
+          updateParts.push(`whcc_product_node_id = @p${updateParams.length}`);
+          updateParams.push(rawAttrUIDs && rawAttrUIDs.length ? JSON.stringify(rawAttrUIDs) : null);
+          updateParts.push(`whcc_item_attribute_uids = @p${updateParams.length}`);
+          updateParams.push(whccAttributeCategories.length ? JSON.stringify(whccAttributeCategories) : null);
+          updateParts.push(`whcc_attribute_categories = @p${updateParams.length}`);
 
           let optionsChanged = false;
           if (existing[0]?.product_id && whccOptionsJson) {

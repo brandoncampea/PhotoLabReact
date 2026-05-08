@@ -1,12 +1,22 @@
 
+
 import { useState, useEffect } from 'react';
 import AdminLayout from '../components/AdminLayout';
 import api from '../services/api';
+import { superPriceListService } from '../services/superPriceListService';
+
 
 type PricingItem = {
   id: string;
   productName: string;
   price: string;
+  productUid?: number; // for WHCC attribute lookup
+};
+
+type WhccAttributes = {
+  required: Array<{ name: string; description?: string }>;
+  optional: Array<{ name: string; description?: string }>;
+  whccCost?: string;
 };
 
 
@@ -25,6 +35,31 @@ const SuperAdminPricing = () => {
   const [error, setError] = useState<string | null>(null);
   const [editIndex, setEditIndex] = useState<number>(-1);
   const [editValue, setEditValue] = useState<string>('');
+  const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
+  const [whccAttrs, setWhccAttrs] = useState<Record<number, WhccAttributes | null>>({});
+  const [whccLoading, setWhccLoading] = useState<Record<number, boolean>>({});
+  const handleToggleWhccAttrs = async (index: number, productUid?: number) => {
+    if (expandedIndex === index) {
+      setExpandedIndex(null);
+      return;
+    }
+    if (!productUid) {
+      setExpandedIndex(index);
+      return;
+    }
+    setExpandedIndex(index);
+    if (!whccAttrs[productUid]) {
+      setWhccLoading((prev) => ({ ...prev, [productUid]: true }));
+      try {
+        const attrs = await superPriceListService.getWhccProductAttributes(productUid);
+        setWhccAttrs((prev) => ({ ...prev, [productUid]: attrs }));
+      } catch (e) {
+        setWhccAttrs((prev) => ({ ...prev, [productUid]: null }));
+      } finally {
+        setWhccLoading((prev) => ({ ...prev, [productUid]: false }));
+      }
+    }
+  };
 
   useEffect(() => {
     fetchPricing()
@@ -84,6 +119,7 @@ const SuperAdminPricing = () => {
     );
   }
 
+
   return (
     <AdminLayout>
       <div className="admin-content">
@@ -94,34 +130,83 @@ const SuperAdminPricing = () => {
               <th>Product</th>
               <th>Price</th>
               <th>Actions</th>
+              <th>WHCC Attributes</th>
             </tr>
           </thead>
           <tbody>
             {pricing.map((item, index) => (
-              <tr key={item.id}>
-                <td>{item.productName}</td>
-                <td>
-                  {editIndex === index ? (
-                    <input
-                      type="text"
-                      value={editValue}
-                      onChange={(e) => setEditValue(e.target.value)}
-                    />
-                  ) : (
-                    item.price
-                  )}
-                </td>
-                <td>
-                  {editIndex === index ? (
-                    <>
-                      <button onClick={() => handleSave(index)}>Save</button>
-                      <button onClick={handleCancel}>Cancel</button>
-                    </>
-                  ) : (
-                    <button onClick={() => handleEdit(index)}>Edit</button>
-                  )}
-                </td>
-              </tr>
+              <>
+                <tr key={item.id}>
+                  <td>{item.productName}</td>
+                  <td>
+                    {editIndex === index ? (
+                      <input
+                        type="text"
+                        value={editValue}
+                        onChange={(e) => setEditValue(e.target.value)}
+                      />
+                    ) : (
+                      item.price
+                    )}
+                  </td>
+                  <td>
+                    {editIndex === index ? (
+                      <>
+                        <button onClick={() => handleSave(index)}>Save</button>
+                        <button onClick={handleCancel}>Cancel</button>
+                      </>
+                    ) : (
+                      <button onClick={() => handleEdit(index)}>Edit</button>
+                    )}
+                  </td>
+                  <td>
+                    {item.productUid ? (
+                      <button onClick={() => handleToggleWhccAttrs(index, item.productUid)}>
+                        {expandedIndex === index ? 'Hide' : 'Show'}
+                      </button>
+                    ) : (
+                      <span style={{ color: '#aaa' }}>N/A</span>
+                    )}
+                  </td>
+                </tr>
+                {expandedIndex === index && item.productUid && (
+                  <tr>
+                    <td colSpan={4}>
+                      {whccLoading[item.productUid] ? (
+                        <span>Loading WHCC attributes...</span>
+                      ) : whccAttrs[item.productUid] ? (
+                        <div style={{ display: 'flex', gap: '2rem' }}>
+                          <div>
+                            <strong>Required Attributes:</strong>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: 4 }}>
+                              {whccAttrs[item.productUid].required.length === 0 && <span>None</span>}
+                              {whccAttrs[item.productUid].required.map((attr) => (
+                                <span key={attr.name} style={{ background: '#e0e0e0', borderRadius: 8, padding: '2px 8px' }}>{attr.name}</span>
+                              ))}
+                            </div>
+                          </div>
+                          <div>
+                            <strong>Optional Attributes:</strong>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: 4 }}>
+                              {whccAttrs[item.productUid].optional.length === 0 && <span>None</span>}
+                              {whccAttrs[item.productUid].optional.map((attr) => (
+                                <span key={attr.name} style={{ background: '#f5f5f5', borderRadius: 8, padding: '2px 8px' }}>{attr.name}</span>
+                              ))}
+                            </div>
+                          </div>
+                          {whccAttrs[item.productUid].whccCost && (
+                            <div>
+                              <strong>WHCC Cost:</strong> ${whccAttrs[item.productUid].whccCost}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <span style={{ color: 'red' }}>Failed to load WHCC attributes.</span>
+                      )}
+                    </td>
+                  </tr>
+                )}
+              </>
             ))}
           </tbody>
         </table>

@@ -775,6 +775,16 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
                                               />
                                               <span className="admin-whcc-size">{size}</span>
                                               <span className="admin-whcc-name">{product.name || product.Name}</span>
+                                              {/* UID Display */}
+                                              {typeof product.importId !== 'undefined' && (
+                                                <span style={{ fontSize: '0.8em', color: '#888', marginLeft: 6 }}>UID: {product.importId}</span>
+                                              )}
+                                              {typeof product.productUID !== 'undefined' && (
+                                                <span style={{ fontSize: '0.8em', color: '#888', marginLeft: 6 }}>UID: {product.productUID}</span>
+                                              )}
+                                              {typeof product.id !== 'undefined' && (
+                                                <span style={{ fontSize: '0.8em', color: '#888', marginLeft: 6 }}>UID: {product.id}</span>
+                                              )}
                                               <span className={`admin-whcc-price ${product.price ? '' : 'admin-whcc-price-missing'}`}>
                                                 {product.price ? `$${product.price}` : 'No Cost'}
                                               </span>

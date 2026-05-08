@@ -1,5 +1,22 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+// ...existing imports...
+
+type ProductWhccAttrsState = {
+  [prodKey: string]: {
+    loading: boolean;
+    attrs: null | {
+      required: Array<{ name: string; description?: string }>;
+      optional: Array<{ name: string; description?: string }>;
+      whccCost?: string;
+    };
+    error?: string;
+    shown: boolean;
+  }
+};
+
+
+
 import AdminLayout from '../../components/AdminLayout';
 import AdminWhccImport from '../../components/AdminWhccImport';
 import AdminMpixImport from '../../components/AdminMpixImport';
@@ -496,6 +513,66 @@ function getCategoryImageMode(categoryName: string): string {
 }
 
 const SuperAdminPricing: React.FC = () => {
+    // --- Product-level WHCC attribute state and handlers ---
+    const [productWhccAttrs, setProductWhccAttrs] = useState<ProductWhccAttrsState>({});
+    const handleShowWhccAttrs = useCallback(async (prodKey: string, productUid: number | undefined) => {
+      if (!productUid) return;
+      setProductWhccAttrs((prev) => ({
+        ...prev,
+        [prodKey]: { ...(prev[prodKey] || {}), loading: true, shown: true, error: undefined },
+      }));
+      try {
+        const raw = await superPriceListService.getWhccProductAttributes(productUid);
+        // Accept both new and legacy backend responses
+        let categories = [];
+        if (Array.isArray(raw.AttributeCategories)) {
+          categories = raw.AttributeCategories;
+        } else if (Array.isArray(raw.requiredAttributes) || Array.isArray(raw.optionalAttributes)) {
+          // Legacy: synthesize categories from required/optional arrays
+          categories = [];
+          if (Array.isArray(raw.requiredAttributes) && raw.requiredAttributes.length > 0) {
+            categories.push({
+              AttributeCategoryName: 'Required',
+              RequiredLevel: 1,
+              Attributes: raw.requiredAttributes,
+            });
+          }
+          if (Array.isArray(raw.optionalAttributes) && raw.optionalAttributes.length > 0) {
+            categories.push({
+              AttributeCategoryName: 'Optional',
+              RequiredLevel: 0,
+              Attributes: raw.optionalAttributes,
+            });
+          }
+        }
+        // Group attributes by RequiredLevel
+        const required: Array<{ name: string; description?: string }> = [];
+        const optional: Array<{ name: string; description?: string }> = [];
+        for (const cat of categories) {
+          const attrs = Array.isArray(cat.Attributes) ? cat.Attributes : [];
+          if (Number(cat.RequiredLevel) === 1) {
+            required.push(...attrs.map((a: any) => ({ name: a.AttributeName || a.name || '', description: a.Description || a.description })));
+          } else if (Number(cat.RequiredLevel) === 0 || Number(cat.RequiredLevel) === -1) {
+            optional.push(...attrs.map((a: any) => ({ name: a.AttributeName || a.name || '', description: a.Description || a.description })));
+          }
+        }
+        setProductWhccAttrs((prev) => ({
+          ...prev,
+          [prodKey]: { loading: false, attrs: { required, optional, whccCost: raw.whccCost }, shown: true },
+        }));
+      } catch (e: any) {
+        setProductWhccAttrs((prev) => ({
+          ...prev,
+          [prodKey]: { loading: false, attrs: null, shown: true, error: 'Failed to load WHCC attributes' },
+        }));
+      }
+    }, []);
+    const handleHideWhccAttrs = useCallback((prodKey: string) => {
+      setProductWhccAttrs((prev) => ({
+        ...prev,
+        [prodKey]: { ...(prev[prodKey] || {}), shown: false },
+      }));
+    }, []);
   const [importType, setImportType] = useState<null | 'whcc' | 'csv' | 'mpix'>(null);
   const [priceLists, setPriceLists] = useState<SuperPriceListRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -2318,6 +2395,9 @@ const SuperAdminPricing: React.FC = () => {
                   <p style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '2rem' }}>No items in this price list.</p>
                 )}
                 <div className="spl-compact-body">
+
+
+
                   {allCategoryNames.filter(catVisible).map((cat) => {
                     const categoryProducts = Object.keys(viewGrouped[cat] || {}).filter((prod) => prodVisible(cat, prod));
                     const catIds = itemIdsForCat(cat);
@@ -2392,6 +2472,51 @@ const SuperAdminPricing: React.FC = () => {
                                         WHCC: {productWhccUids.join(', ')}
                                       </span>
                                     )}
+                                    {/* --- Product-level WHCC Attributes Button --- */}
+                                    {productWhccUids.length > 0 && productWhccUids[0] > 0 && (
+                                      productWhccAttrs[prodKey]?.shown ? (
+                                        <button
+                                          className="btn btn-secondary btn-sm spl-inline-action-btn"
+                                          style={{ marginLeft: 8 }}
+                                          onClick={e => { e.stopPropagation(); handleHideWhccAttrs(prodKey); }}
+                                        >Hide WHCC Attributes</button>
+                                      ) : (
+                                        <button
+                                          className="btn btn-secondary btn-sm spl-inline-action-btn"
+                                          style={{ marginLeft: 8 }}
+                                          onClick={e => { e.stopPropagation(); handleShowWhccAttrs(prodKey, productWhccUids[0]); }}
+                                        >Show WHCC Attributes</button>
+                                      )
+                                    )}
+                                    {/* --- Set for All Sizes Button --- */}
+                                    {visibleProdItems.length > 1 && (
+                                      <button
+                                        className="btn btn-primary btn-sm spl-inline-action-btn"
+                                        style={{ marginLeft: 8 }}
+                                        onClick={async (e) => {
+                                          e.stopPropagation();
+                                          // Use the first size as the reference
+                                          const referenceItem = visibleProdItems[0];
+                                          if (!referenceItem) return;
+                                          const referenceVariants = getItemVariantsFromSource(referenceItem);
+                                          // For each other size, update its variants to match the reference
+                                          for (let i = 1; i < visibleProdItems.length; ++i) {
+                                            const item = visibleProdItems[i];
+                                            try {
+                                              await superPriceListService.updateItem(viewList.id, item.id, {
+                                                whccVariants: referenceVariants,
+                                              });
+                                            } catch (err) {
+                                              // Optionally show error to user
+                                              setViewError('Failed to update one or more sizes.');
+                                            }
+                                          }
+                                          // Optionally reload items after update
+                                          await refreshViewItems();
+                                        }}
+                                      >Set for All Sizes</button>
+                                    )}
+                                    {/* --- End Product-level WHCC Attributes Button --- */}
                                     <button
                                       className="btn btn-secondary btn-sm spl-inline-action-btn"
                                       onClick={(e) => {
@@ -2462,6 +2587,9 @@ const SuperAdminPricing: React.FC = () => {
                                     </label>
                                     <span className="spl-item-count">{visibleProdItems.length} sizes</span>
                                   </div>
+                                  {/* --- Product-level WHCC Attributes Display --- */}
+                                  {/* Only the bottom (better styled) section is kept. */}
+                                  {/* --- End Product-level WHCC Attributes Display --- */}
 
                                   {!prodCollapsed[prodKey] && (
                                     <>
@@ -2470,42 +2598,97 @@ const SuperAdminPricing: React.FC = () => {
                                         {productAttributePills.length === 0 ? (
                                           <div className="spl-product-attributes-empty">No imported attributes</div>
                                         ) : (
-                                          <div className="spl-product-attributes-chips">
-                                            {productAttributePills.map((pill) => {
-                                              const toggleKey = `${prodKey}-${pill.key}`;
-                                              const defaultKey = `${prodKey}-${pill.key}-default`;
-                                              const isSaving = savingProductAttributeKey === toggleKey || savingProductAttributeKey === defaultKey;
-                                              return (
-                                                <div
-                                                  key={`compact-pill-${pill.key}`}
-                                                  className={`spl-product-attribute-chip-wrap${pill.isActive ? ' is-active' : ''}${pill.isDefault ? ' is-default' : ''}`}
-                                                >
-                                                  <button
-                                                    type="button"
-                                                    className={`spl-product-attribute-chip${pill.isActive ? ' is-active' : ''}${pill.isDefault ? ' is-default' : ''}${pill.togglable ? '' : ' is-readonly'}`}
-                                                    onClick={(e) => {
-                                                      e.stopPropagation();
-                                                      void toggleProductAttributePill(visibleProdItems, pill, toggleKey);
-                                                    }}
-                                                    disabled={!pill.togglable || isSaving}
-                                                  >
-                                                    {pill.label}{Number.isInteger(Number(pill.attributeUid)) && Number(pill.attributeUid) > 0 ? ` (#${Number(pill.attributeUid)})` : ''}
-                                                  </button>
-                                                  <button
-                                                    type="button"
-                                                    className={`spl-product-attribute-default-btn${pill.isDefault ? ' is-default' : ''}`}
-                                                    title={pill.isDefault ? 'Default attribute' : 'Set as default attribute'}
-                                                    onClick={(e) => {
-                                                      e.stopPropagation();
-                                                      void setProductDefaultAttributePill(visibleProdItems, pill, defaultKey);
-                                                    }}
-                                                    disabled={!pill.togglable || isSaving}
-                                                  >
-                                                    {pill.isDefault ? '★' : '☆'}
-                                                  </button>
-                                                </div>
-                                              );
-                                            })}
+                                          <div className="spl-product-attributes-chips-grouped">
+                                            {/* Required Attribute Pills */}
+                                            <div style={{ marginBottom: 8 }}>
+                                              <strong>Required:</strong>
+                                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: 4 }}>
+                                                {(productWhccAttrs[prodKey]?.attrs?.required ?? []).length > 0 ? (
+                                                  (productWhccAttrs[prodKey].attrs.required ?? []).map((attr) => {
+                                                    const pill = productAttributePills.find(p => String(p.label).includes(attr.name));
+                                                    if (!pill) return null;
+                                                    const toggleKey = `${prodKey}-${pill.key}`;
+                                                    const defaultKey = `${prodKey}-${pill.key}-default`;
+                                                    const isSaving = savingProductAttributeKey === toggleKey || savingProductAttributeKey === defaultKey;
+                                                    return (
+                                                      <div
+                                                        key={`compact-pill-required-${pill.key}`}
+                                                        className={`spl-product-attribute-chip-wrap${pill.isActive ? ' is-active' : ''}${pill.isDefault ? ' is-default' : ''}`}
+                                                      >
+                                                        <button
+                                                          type="button"
+                                                          className={`spl-product-attribute-chip${pill.isActive ? ' is-active' : ''}${pill.isDefault ? ' is-default' : ''}${pill.togglable ? '' : ' is-readonly'}`}
+                                                          onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            void toggleProductAttributePill(visibleProdItems, pill, toggleKey);
+                                                          }}
+                                                          disabled={!pill.togglable || isSaving}
+                                                        >
+                                                          {pill.label}{Number.isInteger(Number(pill.attributeUid)) && Number(pill.attributeUid) > 0 ? ` (#${Number(pill.attributeUid)})` : ''}
+                                                        </button>
+                                                        <button
+                                                          type="button"
+                                                          className={`spl-product-attribute-default-btn${pill.isDefault ? ' is-default' : ''}`}
+                                                          title={pill.isDefault ? 'Default attribute' : 'Set as default attribute'}
+                                                          onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            void setProductDefaultAttributePill(visibleProdItems, pill, defaultKey);
+                                                          }}
+                                                          disabled={!pill.togglable || isSaving}
+                                                        >
+                                                          {pill.isDefault ? '★' : '☆'}
+                                                        </button>
+                                                      </div>
+                                                    );
+                                                  })
+                                                ) : <span style={{ marginLeft: 8 }}>None</span>}
+                                              </div>
+                                            </div>
+                                            {/* Optional Attribute Pills */}
+                                            <div>
+                                              <strong>Optional:</strong>
+                                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: 4 }}>
+                                                {(productWhccAttrs[prodKey]?.attrs?.optional ?? []).length > 0 ? (
+                                                  (productWhccAttrs[prodKey].attrs.optional ?? []).map((attr) => {
+                                                    const pill = productAttributePills.find(p => String(p.label).includes(attr.name));
+                                                    if (!pill) return null;
+                                                    const toggleKey = `${prodKey}-${pill.key}`;
+                                                    const defaultKey = `${prodKey}-${pill.key}-default`;
+                                                    const isSaving = savingProductAttributeKey === toggleKey || savingProductAttributeKey === defaultKey;
+                                                    return (
+                                                      <div
+                                                        key={`compact-pill-optional-${pill.key}`}
+                                                        className={`spl-product-attribute-chip-wrap${pill.isActive ? ' is-active' : ''}${pill.isDefault ? ' is-default' : ''}`}
+                                                      >
+                                                        <button
+                                                          type="button"
+                                                          className={`spl-product-attribute-chip${pill.isActive ? ' is-active' : ''}${pill.isDefault ? ' is-default' : ''}${pill.togglable ? '' : ' is-readonly'}`}
+                                                          onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            void toggleProductAttributePill(visibleProdItems, pill, toggleKey);
+                                                          }}
+                                                          disabled={!pill.togglable || isSaving}
+                                                        >
+                                                          {pill.label}{Number.isInteger(Number(pill.attributeUid)) && Number(pill.attributeUid) > 0 ? ` (#${Number(pill.attributeUid)})` : ''}
+                                                        </button>
+                                                        <button
+                                                          type="button"
+                                                          className={`spl-product-attribute-default-btn${pill.isDefault ? ' is-default' : ''}`}
+                                                          title={pill.isDefault ? 'Default attribute' : 'Set as default attribute'}
+                                                          onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            void setProductDefaultAttributePill(visibleProdItems, pill, defaultKey);
+                                                          }}
+                                                          disabled={!pill.togglable || isSaving}
+                                                        >
+                                                          {pill.isDefault ? '★' : '☆'}
+                                                        </button>
+                                                      </div>
+                                                    );
+                                                  })
+                                                ) : <span style={{ marginLeft: 8 }}>None</span>}
+                                              </div>
+                                            </div>
                                           </div>
                                         )}
                                       </div>
@@ -2548,7 +2731,37 @@ const SuperAdminPricing: React.FC = () => {
                                                 </button>
                                                 <span className="spl-size-name">{item._sizeLabel || item.size_name || '—'}</span>
                                                 <span style={{ fontSize: 11, color: 'var(--text-secondary)', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+                                                  {/* Show all possible UID fields and debug backend values */}
                                                   WHCC: {sizeWhccUids.length ? sizeWhccUids.join(', ') : (itemDrafts[item.id]?.whccProductUID || item.whccProductUID || '—')}
+                                                  {typeof item.whccProductUID !== 'undefined' && (
+                                                    <span style={{ color: '#ffb347', marginLeft: 6 }}>
+                                                      [item.whccProductUID: {String(item.whccProductUID)}]
+                                                    </span>
+                                                  )}
+                                                  {typeof item.whcc_product_uid !== 'undefined' && (
+                                                    <span style={{ color: '#ffb347', marginLeft: 6 }}>
+                                                      [item.whcc_product_uid: {String(item.whcc_product_uid)}]
+                                                    </span>
+                                                  )}
+                                                  {typeof item.productUID !== 'undefined' && (
+                                                    <span style={{ color: '#ffb347', marginLeft: 6 }}>
+                                                      [item.productUID: {String(item.productUID)}]
+                                                    </span>
+                                                  )}
+                                                  {typeof item.product_uid !== 'undefined' && (
+                                                    <span style={{ color: '#ffb347', marginLeft: 6 }}>
+                                                      [item.product_uid: {String(item.product_uid)}]
+                                                    </span>
+                                                  )}
+                                                  {/* Full item debug: */}
+                                                  <span style={{ color: '#ffb347', marginLeft: 6, fontSize: 9 }}>
+                                                    [raw: {JSON.stringify({
+                                                      whccProductUID: item.whccProductUID,
+                                                      whcc_product_uid: item.whcc_product_uid,
+                                                      productUID: item.productUID,
+                                                      product_uid: item.product_uid
+                                                    })}]
+                                                  </span>
                                                 </span>
                                                 {sizeAttributeUids.length > 0 && (
                                                   <span style={{ fontSize: 11, color: '#8ec9ff', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
@@ -3306,13 +3519,20 @@ const SuperAdminPricing: React.FC = () => {
                                           {activeVariantRows.map((row) => (
                                             <div key={row.localId} className="spl-variant-row-card">
                                               <div className="spl-variant-grid spl-variant-grid-row">
-                                                <input
-                                                  className="spl-variant-input"
-                                                  type="text"
-                                                  placeholder="e.g. Slim White"
-                                                  value={row.displayName}
-                                                  onChange={(e) => updateVariantRow(itemId, row.localId, { displayName: e.target.value })}
-                                                />
+                                                <div style={{ display: 'flex', alignItems: 'center' }}>
+                                                  <input
+                                                    className="spl-variant-input"
+                                                    type="text"
+                                                    placeholder="e.g. Slim White"
+                                                    value={row.displayName}
+                                                    onChange={(e) => updateVariantRow(itemId, row.localId, { displayName: e.target.value })}
+                                                  />
+                                                  {Array.isArray(row.whccItemAttributeUIDs) && row.whccItemAttributeUIDs.length === 1 && (
+                                                    <span style={{ fontSize: 12, color: '#3498ff', fontFamily: 'monospace', marginLeft: 8, minWidth: 60, textAlign: 'right' }}>
+                                                      UID: {row.whccItemAttributeUIDs[0]}
+                                                    </span>
+                                                  )}
+                                                </div>
                                                 <input
                                                   className="spl-variant-input"
                                                   type="number"

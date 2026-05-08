@@ -304,7 +304,7 @@ class WhccService {
               {
                 ProductNodeID: 10000, // Default node ID for main image
                 AssetPath: item.imageUrl || 'https://placeholder.com/image.jpg',
-                ImageHash: item.imageHash || this.generateMd5Hash(item.imageUrl || ''),
+                ImageHash: item.imageHash || '', // Always use backend-computed hash
                 PrintedFileName: item.imageName || 'image.jpg',
                 AutoRotate: true,
                 X: item.cropX || 0,
@@ -332,9 +332,6 @@ class WhccService {
    * For production, calculate actual MD5 of the image file
    */
   private generateMd5Hash(_input: string): string {
-    // This is a placeholder - in production, calculate actual MD5 of the image
-    // You can use crypto-js or node-forge for this
-    return 'a9825bb0836325e07ccfed16751b1d07'; // Example hash
   }
 
   /**
@@ -420,15 +417,8 @@ class WhccService {
    * For production, you may need to manually fetch and cache the catalog
    */
   async getProductCatalog(): Promise<any> {
-    try {
-      const response = await api.get('/whcc/products');
-      return response.data;
-    } catch (error) {
-      console.error('Failed to fetch WHCC product catalog:', error);
-      // Fallback to default WHCC product data (can be cached manually)
-      console.warn('Using fallback getDefaultProductCatalog for WHCC products');
-      return this.getDefaultProductCatalog();
-    }
+    const response = await api.get('/whcc/products');
+    return response.data;
   }
 
   /**

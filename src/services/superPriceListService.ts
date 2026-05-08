@@ -109,4 +109,11 @@ export const superPriceListService = {
     const res = await api.put(`/super-price-lists/${listId}/items/${itemId}/move-category`, { targetCategory, targetProductName });
     return res.data;
   },
+  /**
+   * Fetch required/optional WHCC attributes for a given productUid
+   */
+  async getWhccProductAttributes(productUid: number) {
+    const res = await api.get(`/whcc/product-attributes`, { params: { productUid } });
+    return res.data;
+  },
 };

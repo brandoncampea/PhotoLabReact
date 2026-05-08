@@ -35,26 +35,26 @@ const WhccProductImport: React.FC = () => {
 
   useEffect(() => {
     whccService.getProductCatalog().then((data) => {
-      // Parse new WHCC catalog structure: flatten all products from all categories
-      if (data && Array.isArray(data.Categories)) {
-        const allProducts: any[] = [];
-        data.Categories.forEach((cat: any) => {
-          if (Array.isArray(cat.ProductList)) {
-            cat.ProductList.forEach((prod: any) => {
-              allProducts.push({ ...prod, CategoryName: cat.Name });
-            });
-          }
-        });
-        // Group by category for UI
-        const grouped: { [cat: string]: any[] } = {};
-        allProducts.forEach((prod) => {
-          if (!grouped[prod.CategoryName]) grouped[prod.CategoryName] = [];
-          grouped[prod.CategoryName].push(prod);
-        });
-        setGroupedProducts(grouped);
-      } else {
-        setGroupedProducts({});
+      // Force error if fallback static catalog is used
+      if (!data || !Array.isArray(data.Categories)) {
+        throw new Error('FATAL: WHCC live API is NOT being used. Fallback static catalog is loaded.');
       }
+      // Parse new WHCC catalog structure: flatten all products from all categories
+      const allProducts: any[] = [];
+      data.Categories.forEach((cat: any) => {
+        if (Array.isArray(cat.ProductList)) {
+          cat.ProductList.forEach((prod: any) => {
+            allProducts.push({ ...prod, CategoryName: cat.Name });
+          });
+        }
+      });
+      // Group by category for UI
+      const grouped: { [cat: string]: any[] } = {};
+      allProducts.forEach((prod) => {
+        if (!grouped[prod.CategoryName]) grouped[prod.CategoryName] = [];
+        grouped[prod.CategoryName].push(prod);
+      });
+      setGroupedProducts(grouped);
     });
   }, []);
 
@@ -80,9 +80,27 @@ const WhccProductImport: React.FC = () => {
     });
   };
 
+  // Debug: show the first product's structure for troubleshooting UID extraction
+
+  const firstCat = Object.keys(groupedProducts)[0];
+  const firstProd = firstCat && groupedProducts[firstCat]?.[0];
+  if (firstProd) {
+    // eslint-disable-next-line no-alert
+    alert('DEBUG: First Product Object: ' + JSON.stringify(firstProd, null, 2));
+    // eslint-disable-next-line no-console
+    console.log('DEBUG: First Product Object:', firstProd);
+  }
+
   return (
-    <div style={{ maxWidth: 500, margin: '0 auto', background: '#222', color: '#fff', borderRadius: 12, padding: 24 }}>
-      <h2 style={{ textAlign: 'center', marginBottom: 16 }}>Import Products from WHCC</h2>
+    <>
+      <div style={{ maxWidth: 700, margin: '0 auto', background: '#181818', color: '#a78bfa', borderRadius: 8, padding: 12, marginBottom: 16 }}>
+        <strong>DEBUG: First Product Object</strong>
+        <pre style={{ background: '#111', color: '#a78bfa', fontSize: 12, padding: 8, borderRadius: 6, margin: 0, overflowX: 'auto' }}>
+          {firstProd ? JSON.stringify(firstProd, null, 2) : 'No products loaded.'}
+        </pre>
+      </div>
+      <div style={{ maxWidth: 500, margin: '0 auto', background: '#222', color: '#fff', borderRadius: 12, padding: 24 }}>
+        <h2 style={{ textAlign: 'center', marginBottom: 16 }}>Import Products from WHCC</h2>
       <input
         type="text"
         placeholder="Search products..."
@@ -101,7 +119,12 @@ const WhccProductImport: React.FC = () => {
           {expanded[cat] && (
             <div style={{ marginTop: 8 }}>
               {(prods as Product[]).map((prod: Product) => {
-                const key = prod.Id?.toString() || prod.ProductUID?.toString();
+                // Show all ProductUIDs from ProductNodes (WHCC live API structure)
+                let uids: string[] = [];
+                if (Array.isArray(prod.ProductNodes)) {
+                  uids = prod.ProductNodes.map((n: any) => n.ProductUID).filter(Boolean).map(String);
+                }
+                const key = uids.length > 0 ? uids.join(',') : '';
                 return key ? (
                   <label key={key} style={{ display: 'flex', alignItems: 'center', marginBottom: 4, cursor: 'pointer' }}>
                     <input
@@ -110,7 +133,14 @@ const WhccProductImport: React.FC = () => {
                       onChange={e => setSelected(sel => ({ ...sel, [key]: e.target.checked }))}
                       style={{ marginRight: 8 }}
                     />
-                    <span>{formatLabel(prod)}</span>
+                    <span>
+                      {formatLabel(prod)}
+                      {uids.length > 0 && (
+                        <span style={{ fontSize: 12, color: '#a78bfa', fontFamily: 'monospace', marginLeft: 10 }}>
+                          &nbsp;[UID{uids.length > 1 ? 's' : ''}: {uids.join(', ')}]
+                        </span>
+                      )}
+                    </span>
                   </label>
                 ) : null;
               })}

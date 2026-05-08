@@ -1,3 +1,10 @@
+
+// ---------------------------------------------------------------------------
+// GET /api/whcc/product-attributes?productUid=12345
+// Returns required and optional attributes for a WHCC product UID
+// ---------------------------------------------------------------------------
+// (Moved after router initialization)
+
 import express from 'express';
 import axios from 'axios';
 import { adminRequired } from '../middleware/auth.js';
@@ -6,6 +13,103 @@ import mssql from '../mssql.cjs';
 const { queryRow, query } = mssql;
 
 const router = express.Router();
+
+// ---------------------------------------------------------------------------
+// GET /api/whcc/product-attributes?productUid=12345
+// Returns required and optional attributes for a WHCC product UID
+// ---------------------------------------------------------------------------
+router.get('/whcc/product-attributes', adminRequired, async (req, res) => {
+  const productUid = Number(req.query.productUid);
+  if (!productUid || isNaN(productUid)) {
+    return res.status(400).json({ error: 'Missing or invalid productUid parameter.' });
+  }
+  try {
+    // Use existing credentials logic
+    const { consumerKey, consumerSecret, isSandbox } = getCredentials(req);
+    if (!consumerKey || !consumerSecret) {
+      return res.status(400).json({ error: 'Missing WHCC_CONSUMER_KEY or WHCC_CONSUMER_SECRET.' });
+    }
+    // Get access token
+    const token = await fetchToken(consumerKey, consumerSecret, isSandbox);
+    // Fetch full catalog
+    const catalogUrl = `${getBaseUrl(isSandbox)}/api/catalog`;
+    const catalogResp = await axios.get(catalogUrl, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/json',
+      },
+    });
+    // Recursively search the catalog for the productUid
+    function findProductByUid(obj, uid, path = '') {
+      if (!obj || typeof obj !== 'object') return null;
+      // Check for both productUID and Id fields
+      if (Number(obj.productUID) === uid || Number(obj.Id) === uid) {
+        return obj;
+      }
+      // If this is a Category with a ProductList, search that array specifically
+      if (Array.isArray(obj.ProductList)) {
+        for (let i = 0; i < obj.ProductList.length; i++) {
+          const found = findProductByUid(obj.ProductList[i], uid, `${path}/ProductList[${i}]`);
+          if (found) return found;
+        }
+      }
+      for (const key of Object.keys(obj)) {
+        const val = obj[key];
+        if (Array.isArray(val)) {
+          for (let i = 0; i < val.length; i++) {
+            const found = findProductByUid(val[i], uid, `${path}/${key}[${i}]`);
+            if (found) return found;
+          }
+        } else if (val && typeof val === 'object') {
+          const found = findProductByUid(val, uid, `${path}/${key}`);
+          if (found) return found;
+        }
+      }
+      return null;
+    }
+    // Assign product at the very top before any use
+    const product = findProductByUid(catalogResp.data, productUid);
+    if (!product) {
+      return res.status(404).json({ error: 'Product not found in WHCC catalog.' });
+    }
+    // Find parent category for the found product
+    let parentCategory = null;
+    if (Array.isArray(catalogResp.data.Categories)) {
+      for (const cat of catalogResp.data.Categories) {
+        if (Array.isArray(cat.ProductList) && cat.ProductList.some(p => Number(p.Id) === productUid || Number(p.productUID) === productUid)) {
+          parentCategory = cat;
+          break;
+        }
+      }
+    }
+    // Try to extract attributes from product, then from parent category's OrderAttributeCategoryList
+    let required = Array.isArray(product.requiredAttributes) ? product.requiredAttributes : [];
+    let optional = Array.isArray(product.optionalAttributes) ? product.optionalAttributes : [];
+    let attributeCategories = Array.isArray(product.AttributeCategories) ? product.AttributeCategories : [];
+    if ((!required.length && !optional.length) && parentCategory && Array.isArray(parentCategory.OrderAttributeCategoryList)) {
+      // Flatten all required/optional attributes from all attribute categories
+      required = parentCategory.OrderAttributeCategoryList.flatMap(cat => Array.isArray(cat.RequiredAttributeList) ? cat.RequiredAttributeList : []);
+      optional = parentCategory.OrderAttributeCategoryList.flatMap(cat => Array.isArray(cat.OptionalAttributeList) ? cat.OptionalAttributeList : []);
+      // Also try to synthesize AttributeCategories from OrderAttributeCategoryList if missing
+      if (!attributeCategories.length) {
+        attributeCategories = parentCategory.OrderAttributeCategoryList.map(cat => ({
+          AttributeCategoryName: cat.CategoryName || cat.AttributeCategoryName || '',
+          RequiredLevel: typeof cat.RequiredLevel === 'number' ? cat.RequiredLevel : -1,
+          Attributes: Array.isArray(cat.Attributes) ? cat.Attributes : [],
+        }));
+      }
+    }
+    res.json({
+      productUid,
+      requiredAttributes: required ?? [],
+      optionalAttributes: optional ?? [],
+      AttributeCategories: attributeCategories ?? [],
+    });
+  } catch (err) {
+    console.error('[WHCCProxy] Product attributes error:', err?.response?.data || err.message);
+    res.status(502).json({ error: 'Failed to fetch WHCC product attributes', details: err?.response?.data || err.message });
+  }
+});
 
 const WHCC_PROD_URL = 'https://apps.whcc.com';
 const WHCC_SANDBOX_URL = 'https://sandbox.apps.whcc.com';

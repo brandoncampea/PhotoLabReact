@@ -2591,7 +2591,7 @@ import { pipeAssetToResponse } from './photos.utils.js';
 router.get('/:id/asset', async (req, res) => {
   try {
     const photoId = req.params.id;
-    const variant = req.query.variant === 'thumb' ? 'thumb' : 'full';
+    const variant = (req.query.variant === 'thumb' || req.query.variant === 'thumbnail') ? 'thumb' : 'full';
     // Fetch photo from DB
     const photo = await queryRow('SELECT thumbnail_url, full_image_url FROM photos WHERE id = $1', [photoId]);
     if (!photo) {
