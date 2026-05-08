@@ -743,6 +743,7 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
               p.options as productOptions,
               p.image_url as productImageUrl,
               ph.file_name as fileName,
+              ph.album_id as photoAlbumId,
               ph.full_image_url as fullImageUrl,
               ph.thumbnail_url as thumbnailUrl,
               ph.width as photoWidth,
@@ -1266,6 +1267,7 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
     // Patch: fetch image buffer and compute SHA-256 hash for WHCC ImageHash
     const { computeImageSignature } = await import('../utils/imageSignature.js');
 
+
     const resolvedWhccItems = await Promise.all(
       items.map(async (item, index) => {
         const productOptions = parseProductOptions(item.productOptions);
@@ -1274,34 +1276,36 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
         }
 
 
-        // Always use Azure Blob Storage URL if available and public
 
+        // Always use Azure Blob Storage URLs for WHCC image upload and hash calculation
         let assetPath = null;
-        const isLocal = process.env.NODE_ENV !== 'production' && process.env.AZURE_BASE_URL;
-        if (isLocal) {
-          // In local/dev, always use Azure URL for WHCC if available
-          const base = process.env.AZURE_BASE_URL.replace(/\/$/, '');
-          if (item.fullImageUrl && !/^https?:\/\//i.test(item.fullImageUrl)) {
-            assetPath = `${base}/${item.fullImageUrl.replace(/^\//, '')}`;
-          } else if (item.fullImageUrl && /^https?:\/\//i.test(item.fullImageUrl)) {
-            assetPath = item.fullImageUrl;
-          } else if (item.thumbnailUrl && !/^https?:\/\//i.test(item.thumbnailUrl)) {
-            assetPath = `${base}/${item.thumbnailUrl.replace(/^\//, '')}`;
-          } else if (item.thumbnailUrl && /^https?:\/\//i.test(item.thumbnailUrl)) {
-            assetPath = item.thumbnailUrl;
+        if (item.fullImageUrl && /\.blob\.core\.windows\.net\//i.test(item.fullImageUrl)) {
+          assetPath = item.fullImageUrl;
+        } else if (item.thumbnailUrl && /\.blob\.core\.windows\.net\//i.test(item.thumbnailUrl)) {
+          assetPath = item.thumbnailUrl;
+        } else if (item.fileName && item.photoAlbumId) {
+          // Construct the Azure Blob URL using AZURE_BASE_URL from env
+          const baseUrl = (process.env.AZURE_BASE_URL || '').replace(/\/$/, '');
+          if (baseUrl) {
+            assetPath = `${baseUrl}/albums/${item.photoAlbumId}/${item.fileName}`;
+            console.log('[WHCC][DEBUG] Constructed Azure Blob URL from AZURE_BASE_URL:', assetPath);
           } else {
-            assetPath = toAbsoluteAssetUrl(item.fullImageUrl) || toAbsoluteAssetUrl(item.thumbnailUrl);
+            console.warn('[WHCC][ERROR] AZURE_BASE_URL is not set in environment. Cannot construct blob URL.');
+            return null;
           }
         } else {
-          // Production: use current logic
-          if (item.fullImageUrl && /^https?:\/\//i.test(item.fullImageUrl)) {
-            assetPath = item.fullImageUrl;
-          } else if (item.thumbnailUrl && /^https?:\/\//i.test(item.thumbnailUrl)) {
-            assetPath = item.thumbnailUrl;
-          } else {
-            assetPath = toAbsoluteAssetUrl(item.fullImageUrl) || toAbsoluteAssetUrl(item.thumbnailUrl);
-          }
+          // If no way to construct a blob URL, do not proceed
+          console.warn('[WHCC][ERROR] No Azure Blob Storage URL found or could be constructed for order item', item.id);
+          return null;
         }
+
+        // Always keep the original public Azure Blob URL for WHCC (no SAS token)
+        const whccImageUrl = assetPath;
+        // If the blob is private and no SAS token is present, generate a signed URL for backend fetch only
+        let fetchAssetPath = assetPath;
+        // Always use the plain public Azure Blob URL for fetchAssetPath; only use SAS as a fallback if public fetch fails
+        fetchAssetPath = assetPath;
+        // Debug: log asset URLs for each item
 
         // Debug: log asset URLs for each item
         console.log('[WHCC][DEBUG] Order item asset URLs:', {
@@ -1310,6 +1314,8 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
           fullImageUrl: item.fullImageUrl,
           thumbnailUrl: item.thumbnailUrl,
           assetPath,
+          whccImageUrl,
+          fetchAssetPath,
         });
 
         if (!assetPath) {
@@ -1319,12 +1325,89 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
 
         // Fetch image as buffer and compute SHA-256 hash
         let imageHash = null;
+        let whccAssetPath = null;
         try {
-          const response = await axios.get(assetPath, { responseType: 'arraybuffer' });
-          const buffer = Buffer.from(response.data);
+          let fetchUrl = fetchAssetPath;
+          let buffer = null;
+          // If using internal /api/photos/:id/asset?variant=full, fetch directly from DB/blob, not via axios to localhost
+          const internalAssetMatch = String(fetchUrl).match(/\/api\/photos\/(\d+)\/asset\?variant=full$/);
+          if (internalAssetMatch) {
+            // Use direct DB lookup and blob fetch for this photoId
+            const photoId = Number(internalAssetMatch[1]);
+            const mssql = await import('../mssql.cjs');
+            const { queryRow } = mssql.default || mssql;
+            // Try to get all possible blob path fields
+            const photo = await queryRow('SELECT full_image_url, file_name, thumbnail_url FROM photos WHERE id = $1', [photoId]);
+            let blobPath = null;
+            if (photo) {
+              // Prefer full_image_url, fallback to thumbnail_url, then file_name
+              blobPath = photo.full_image_url || photo.thumbnail_url || photo.file_name || null;
+            }
+            // Normalize blob path: remove leading slashes, handle absolute URLs
+            if (blobPath && !/^https?:\/\//i.test(blobPath)) {
+              blobPath = blobPath.replace(/^\/+/, '');
+            }
+            console.log('[WHCC][DEBUG] Resolved blob path for photo', photoId, ':', blobPath);
+            if (!blobPath) throw new Error('No valid blob path found for internal asset fetch');
+            const { downloadBlob } = await import('../services/azureStorage.js');
+            buffer = await downloadBlob(blobPath);
+            if (!buffer) throw new Error('Failed to fetch blob for internal asset');
+          } else {
+            // Try fetching the public Azure Blob URL directly first
+            let fetchError = null;
+            try {
+              console.log('[WHCC][DEBUG] Fetching asset via public Azure URL', fetchUrl);
+              // Print the exact URL for comparison with standalone script
+              console.log('[WHCC][DEBUG] EXACT FETCH URL:', fetchUrl);
+              // Debug: print URL character codes to catch invisible encoding/whitespace issues
+              console.log('[WHCC][DEBUG] URL char codes:', Array.from(fetchUrl).map(c => c.charCodeAt(0)).join(','));
+              // Force no custom headers for Azure Blob fetch (fixes 404 issue)
+              const response = await axios.get(fetchUrl, { responseType: 'arraybuffer', headers: {} });
+              buffer = Buffer.from(response.data);
+            } catch (err) {
+              fetchError = err;
+              if (err.response) {
+                console.error('[WHCC][ERROR] Axios fetch failed:', {
+                  url: fetchUrl,
+                  status: err.response.status,
+                  statusText: err.response.statusText,
+                  headers: err.response.headers,
+                  data: err.response.data && typeof err.response.data === 'string' ? err.response.data.slice(0, 500) : '[binary]',
+                });
+              } else {
+                console.error('[WHCC][ERROR] Axios fetch failed (no response):', err.message || err);
+              }
+              // If public fetch fails, try with SAS URL
+              if (
+                typeof fetchUrl === 'string' &&
+                fetchUrl.includes('.blob.core.windows.net/') &&
+                !fetchUrl.includes('?') &&
+                process.env.AZURE_STORAGE_ACCOUNT &&
+                process.env.AZURE_STORAGE_KEY &&
+                (process.env.AZURE_CONTAINER_NAME || process.env.AZURE_STORAGE_CONTAINER)
+              ) {
+                const { getSignedReadUrl } = await import('../services/azureStorage.js');
+                const sasUrl = getSignedReadUrl(fetchUrl);
+                console.log('[WHCC][DEBUG] Public fetch failed, retrying with SAS URL:', sasUrl);
+                // Force no custom headers for Azure Blob fetch (fixes 404 issue)
+                const sasResponse = await axios.get(sasUrl, { responseType: 'arraybuffer', headers: {} });
+                buffer = Buffer.from(sasResponse.data);
+              } else {
+                throw fetchError;
+              }
+            }
+          }
           imageHash = await computeImageSignature(buffer);
+          // Debug: print buffer length, sample, and hash to match standalone test
+          console.log('[WHCC][DEBUG] Buffer length:', buffer.length);
+          console.log('[WHCC][DEBUG] Buffer sample (first 32 bytes):', buffer.slice(0, 32));
+          console.log('[WHCC][DEBUG] MD5 hash:', imageHash);
+
+          // --- PATCH: Use public Azure Blob URL directly for WHCC AssetPath ---
+          whccAssetPath = assetPath;
+          // Optionally, you may want to validate the URL is public and accessible here.
         } catch (err) {
-          console.warn(`[WHCC] Failed to fetch image or compute hash for asset: ${assetPath}`, err?.message || err);
+          console.warn(`[WHCC] Failed to fetch, hash, or upload image for asset: ${assetPath}`, err?.message || err);
           return null;
         }
 
@@ -1500,7 +1583,7 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
             ? 'static-fallback'
             : 'unresolved',
           catalogProductName: catalogMatch?.Name || catalogMatch?.name || null,
-            effectiveCatalogProductName: effectiveCatalogMatch?.Name || effectiveCatalogMatch?.name || null,
+          effectiveCatalogProductName: effectiveCatalogMatch?.Name || effectiveCatalogMatch?.name || null,
           nodeCount: productNodeIDs.length,
           payload: {
             ProductUID: productUID,
@@ -1509,7 +1592,7 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
             // One ItemAsset per ProductNode — WHCC requires this for multi-node products
             ItemAssets: productNodeIDs.map((nodeId) => ({
               ProductNodeID: nodeId,
-              AssetPath: assetPath,
+              AssetPath: whccImageUrl,
               ImageHash: imageHash,
               PrintedFileName: item.fileName || `order-${orderId}-item-${index + 1}.jpg`,
               AutoRotate: true,

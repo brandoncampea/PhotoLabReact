@@ -1,3 +1,4 @@
+console.log('[PHOTOS.JS] photos.js loaded');
 import express from 'express';
 const router = express.Router();
 
@@ -2589,18 +2590,22 @@ router.get('/:id/recommendations', async (req, res) => {
 // Serve photo asset (thumbnail or full image)
 import { pipeAssetToResponse } from './photos.utils.js';
 router.get('/:id/asset', async (req, res) => {
+    console.log('[ASSET ROUTE] asset route hit', req.url);
   try {
     const photoId = req.params.id;
     const variant = (req.query.variant === 'thumb' || req.query.variant === 'thumbnail') ? 'thumb' : 'full';
     // Fetch photo from DB
     const photo = await queryRow('SELECT thumbnail_url, full_image_url FROM photos WHERE id = $1', [photoId]);
     if (!photo) {
-      return res.status(404).json({ error: 'Photo not found' });
+      console.error(`[ASSET ROUTE] Photo not found for id=${photoId}`);
+      return res.status(404).json({ error: 'Photo not found', photoId });
     }
     const assetUrl = variant === 'thumb' ? photo.thumbnail_url : photo.full_image_url;
     if (!assetUrl) {
-      return res.status(404).json({ error: 'Asset not found' });
+      console.error(`[ASSET ROUTE] Asset URL missing for id=${photoId}, variant=${variant}, photo=`, photo);
+      return res.status(404).json({ error: 'Asset not found', photoId, variant, photo });
     }
+    console.log(`[ASSET ROUTE] Serving asset for id=${photoId}, variant=${variant}, assetUrl=${assetUrl}`);
     await pipeAssetToResponse(assetUrl, res);
   } catch (error) {
     console.error('Error serving photo asset:', error);

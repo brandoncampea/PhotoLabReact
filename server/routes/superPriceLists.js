@@ -1,5 +1,6 @@
 
 import mssql from '../mssql.js';
+import { getWhccCatalogMap, matchWhccProduct } from '../services/whccCatalog.js';
 // Super Admin Price List Routes
 import express from 'express';
 import multer from 'multer';
@@ -478,6 +479,14 @@ router.post('/:id/import-items', async (req, res) => {
     let skippedCount = 0;
     const errorSamples = [];
 
+    // Fetch WHCC catalog once for all items
+    let whccCatalogMap = null;
+    try {
+      whccCatalogMap = await getWhccCatalogMap();
+    } catch (err) {
+      return res.status(500).json({ error: 'Failed to fetch WHCC catalog from API', details: err?.message || String(err) });
+    }
+
     // Fetch linked studio price list IDs once — used to propagate new/updated items
     const linkedStudioRows = await mssql.query('SELECT id FROM studio_price_lists WHERE super_price_list_id = @p1', [id]);
     const linkedStudioIds = linkedStudioRows.map(r => Number(r.id)).filter(v => Number.isInteger(v) && v > 0);
@@ -505,19 +514,20 @@ router.post('/:id/import-items', async (req, res) => {
         const category = (item.category || 'whcc').toString().trim();
         const description = (item.description || 'Imported from WHCC').toString();
 
-        // Extract WHCC product mapping fields supplied by the frontend import (robust extraction)
-        const whccProductUID =
-          Number(
-            item.whccProductUID ||
-            item.productUID ||
-            item.importId ||
-            item.productUid ||
-            item.ProductUID ||
-            item.product_uid ||
-            item.ProductUid ||
-            0
-          ) || null;
-        const whccProductNodeID = Number(item.whccProductNodeID || item.productNodeID || item.ProductNodeID || 0) || null;
+        // Always match WHCC product from live catalog
+        let whccProductUID = null;
+        let whccProductNodeID = null;
+        let whccProductMatch = null;
+        try {
+          whccProductMatch = await (async () => {
+            const key = `${require('../services/whccCatalog.js').normalize(productName.replace(sizeName, '').trim())}|${require('../services/whccCatalog.js').normalize(sizeName)}`;
+            return whccCatalogMap.get(key) || null;
+          })();
+        } catch (_) {}
+        if (whccProductMatch) {
+          whccProductUID = Number(whccProductMatch.ProductCode) || null;
+          whccProductNodeID = Number(whccProductMatch.ProductNodeId || whccProductMatch.ProductNodeID) || null;
+        }
         const whccAttributeCostMultiplierPercent = Number(item.whccAttributeCostMultiplierPercent ?? 0) || 0;
         const whccAttributeCategories = normalizeWhccAttributeCategories(item.whccAttributeCategories);
         const rawAttrUIDs = Array.isArray(item.whccItemAttributeUIDs)

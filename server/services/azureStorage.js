@@ -84,13 +84,12 @@ export function getBlobNameFromUrlOrName(blobUrlOrName) {
 
   try {
     const parsed = new URL(blobUrlOrName);
-    const marker = `/${STORAGE_CONTAINER}/`;
-    const markerIndex = parsed.pathname.indexOf(marker);
-    if (markerIndex < 0) {
-      return null;
-    }
-
-    return decodeURIComponent(parsed.pathname.slice(markerIndex + marker.length));
+    // Robust: extract everything after the container name (first 3 slashes)
+    // Example: /photostest/albums/70/1F2A6812.jpg => albums/70/1F2A6812.jpg
+    const pathParts = parsed.pathname.split('/').filter(Boolean);
+    if (pathParts.length < 2) return null;
+    // Remove the container name (first part)
+    return decodeURIComponent(pathParts.slice(1).join('/'));
   } catch {
     return null;
   }

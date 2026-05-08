@@ -214,7 +214,7 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
             category: String(hit.category || 'whcc'),
             description: 'Imported from WHCC',
             ...(attrMultiplierPercent > 0 ? { whccAttributeCostMultiplierPercent: attrMultiplierPercent } : {}),
-            ...(whccUID ? { whccProductUID: whccUID } : {}),
+            ...(whccUID ? { whccEditorProductId: whccUID } : {}),
             ...(whccNodeID ? { whccProductNodeID: whccNodeID } : {}),
             ...(whccAttrUIDs.length ? { whccItemAttributeUIDs: whccAttrUIDs } : {}),
             ...(whccAttributeCategories.length ? { whccAttributeCategories } : {}),
@@ -516,7 +516,8 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
           let status: PreviewRow['status'];
           if (!hit) {
             status = 'new';
-          } else if (!hit.whccProductUID && !hit.whccProductNodeID) {
+          } else if (!hit.whccEditorProductId) {
+            // Product exists by name/size/category but is missing the UID, so allow update
             status = 'enrich';
           } else {
             status = 'unchanged';
@@ -870,9 +871,6 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
                     }}
                     style={{ width: 90 }}
                   />
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)', alignSelf: 'center' }}>
-                  Upcharge percentages applied to imported base cost when matching attributes are present.
                 </div>
               </div>
               {previewLoading ? (

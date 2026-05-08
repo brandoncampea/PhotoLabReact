@@ -15,6 +15,7 @@ import { createRequire } from 'module';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import fs from 'fs';
+import fetch from 'node-fetch';
 
 const require = createRequire(import.meta.url);
 const db = require('../server/mssql.cjs');
@@ -23,7 +24,30 @@ const DRY_RUN = process.argv.includes('--dry-run');
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const CSV_PATH = join(ROOT, '..', 'whcc_all_products_full.csv');
 
-// ─── CSV Loading ─────────────────────────────────────────────────────────────
+
+// ─── WHCC API Catalog Fetch ─────────────────────────────────────────────
+const WHCC_API_URL = 'https://sandbox.whcc.com/api/v1/request-catalog'; // Use production for live
+const WHCC_API_KEY = process.env.WHCC_API_KEY || '';
+if (!WHCC_API_KEY) {
+  console.error('Set WHCC_API_KEY in your environment.');
+  process.exit(1);
+}
+
+async function fetchWhccCatalog() {
+  const res = await fetch(WHCC_API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${WHCC_API_KEY}`,
+    },
+    body: JSON.stringify({})
+  });
+  if (!res.ok) {
+    console.error('Failed to fetch WHCC catalog:', res.status, await res.text());
+    process.exit(1);
+  }
+  return res.json();
+}
 
 function loadCsv(path) {
   const text = fs.readFileSync(path, 'utf8');
@@ -140,7 +164,34 @@ function findBestCsvMatch(csvRows, productName, sizeName) {
   return best;
 }
 
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
+
+console.log(`[syncWhccOptions] Fetching WHCC catalog from API...`);
+const whccCatalog = await fetchWhccCatalog();
+
+// Flatten catalog to map: { normalizedName|normalizedSize: { ProductCode, ProductName, ... } }
+function flattenCatalog(catalog) {
+  const map = new Map();
+  function walk(obj) {
+    if (obj && typeof obj === 'object') {
+      if (obj.ProductName && obj.ProductCode) {
+        // Try to extract size from ProductName if present
+        const name = String(obj.ProductName);
+        const sizeMatch = name.match(/(\d+(?:x\d+)+)/);
+        const size = sizeMatch ? sizeMatch[1] : '';
+        const key = `${normalize(name.replace(size, '').trim())}|${normalize(size)}`;
+        map.set(key, obj);
+      }
+      for (const key in obj) walk(obj[key]);
+    }
+  }
+  walk(catalog);
+  return map;
+}
+
+const whccMap = flattenCatalog(whccCatalog);
+console.log(`[syncWhccOptions] WHCC catalog flattened to ${whccMap.size} products`);
 
 console.log(`[syncWhccOptions] Loading CSV from ${CSV_PATH}`);
 const csvRows = loadCsv(CSV_PATH);
@@ -176,12 +227,13 @@ let matched = 0, unmatched = 0, costFilled = 0, uidFilled = 0, skipped = 0;
 // Deduplicate product-level updates (same product_id may appear in multiple sizes)
 const productUpdated = new Set();
 
+
 for (const item of items) {
   const existingOptions = (() => {
     try { return JSON.parse(item.options || '{}'); } catch { return {}; }
   })();
 
-  const alreadyHasUID = !!existingOptions.whccProductUID;
+  const alreadyHasUID = !!existingOptions.whccEditorProductId;
   const costMissing = !item.base_cost || Number(item.base_cost) === 0;
 
   // Skip if both are already fine
@@ -190,9 +242,11 @@ for (const item of items) {
     continue;
   }
 
-  const csvMatch = findBestCsvMatch(validCsvRows, item.product_name, item.size_name);
+  // Match by normalized name and size
+  const nameKey = `${normalize(item.product_name.replace(item.size_name, '').trim())}|${normalize(item.size_name)}`;
+  const whccProduct = whccMap.get(nameKey);
 
-  if (!csvMatch) {
+  if (!whccProduct) {
     unmatched++;
     if (!alreadyHasUID) {
       console.log(`  [NO-MATCH] ${item.category}/${item.product_name} | size:${item.size_name}`);
@@ -201,14 +255,17 @@ for (const item of items) {
   }
 
   matched++;
-  const whccUID = Number(csvMatch['Product Code']);
-  const csvPrice = parseFloat(csvMatch['Price']);
+  const whccUID = whccProduct.ProductCode;
 
-  // ── Update products.options with whccProductUID ──────────────────────────
+  // Find cost from CSV (if available)
+  const csvMatch = findBestCsvMatch(validCsvRows, item.product_name, item.size_name);
+  const csvPrice = csvMatch ? parseFloat(csvMatch['Price']) : null;
+
+  // ── Update products.options with whccEditorProductId only ───────────────
   if (!alreadyHasUID && !productUpdated.has(item.product_id)) {
     const newOptions = JSON.stringify({
       ...existingOptions,
-      whccProductUID: whccUID,
+      whccEditorProductId: whccUID,
     });
 
     if (!DRY_RUN) {
@@ -216,11 +273,11 @@ for (const item of items) {
     }
     productUpdated.add(item.product_id);
     uidFilled++;
-    console.log(`  [UID] ${item.product_name} (id:${item.product_id}) → whccProductUID=${whccUID} (CSV: "${csvMatch['Product Name/Size']}")`);
+    console.log(`  [UID] ${item.product_name} (id:${item.product_id}) → whccEditorProductId=${whccUID} (API: "${whccProduct.ProductName}")`);
   }
 
   // ── Fill missing base_cost on super_price_list_item ──────────────────────
-  if (costMissing && !isNaN(csvPrice) && csvPrice > 0) {
+  if (costMissing && csvPrice && !isNaN(csvPrice) && csvPrice > 0) {
     if (!DRY_RUN) {
       await db.query(
         'UPDATE super_price_list_items SET base_cost = @p1 WHERE id = @p2',
