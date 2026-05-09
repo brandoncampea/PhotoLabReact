@@ -66,7 +66,9 @@ import smugmugRoutes from './routes/smugmug.js';
 import whccEditorRoutes from './routes/whccEditor.js';
 import ticketRoutes from './tickets/routes.js';
 import notifyWatchersRoutes from './routes/notifyWatchers.js';
+
 import runWhccEditorBackfillOnce from './startup/runWhccEditorBackfillOnce.js';
+import './startup/ensureFreeBatchShippingColumn.js';
 
 
 

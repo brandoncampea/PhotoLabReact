@@ -1267,6 +1267,13 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
     // Patch: fetch image buffer and compute SHA-256 hash for WHCC ImageHash
     const { computeImageSignature } = await import('../utils/imageSignature.js');
 
+    // --- PATCH: Check if studio has free batch shipping ---
+    let studioHasFreeBatchShipping = false;
+    if (order && order.studio_id) {
+      const studioRow = await queryRow('SELECT can_receive_free_batch_shipping FROM studios WHERE id = $1', [order.studio_id]);
+      studioHasFreeBatchShipping = !!studioRow?.can_receive_free_batch_shipping;
+    }
+
 
     const resolvedWhccItems = await Promise.all(
       items.map(async (item, index) => {
@@ -1609,6 +1616,14 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
 
     const whccOrderItems = filteredWhccItems.map((item) => item.payload);
 
+    // --- PATCH: Inject AttributeUID 547 for free batch shipping studios ---
+    let orderAttributes = (order?.orderAttributes || []).slice();
+    if (studioHasFreeBatchShipping) {
+      if (!orderAttributes.some(attr => Number(attr.AttributeUID) === 547)) {
+        orderAttributes.push({ AttributeUID: 547 });
+      }
+    }
+
 
     // whccEntryId and whccReference must be declared before logging
     const whccEntryId = isAggregateSubmission
@@ -1655,7 +1670,7 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
           SendNotificationEmailToAccount: true,
           ShipToAddress: whccShipAddress,
           ShipFromAddress: whccShipAddress,
-          OrderAttributes: orderAttributeUIDs.map((uid) => ({ AttributeUID: uid })),
+          OrderAttributes: orderAttributes,
           OrderItems: whccOrderItems,
         },
       ],

@@ -1,3 +1,4 @@
+
 import express from 'express';
 import crypto from 'crypto';
 import mssql from '../mssql.cjs';
@@ -8,6 +9,17 @@ import stripeService from '../services/stripeService.js';
 import { getSignedReadUrl } from '../services/azureStorage.js';
 
 const router = express.Router();
+
+// Set free batch shipping flag (super admin only)
+router.put('/:studioId/free-batch-shipping', authRequired, async (req, res) => {
+  const { studioId } = req.params;
+  const { enabled } = req.body;
+  if (req.user.role !== 'super_admin') {
+    return res.status(403).json({ error: 'Only super admins can change free batch shipping.' });
+  }
+  await query('UPDATE studios SET can_receive_free_batch_shipping = $1 WHERE id = $2', [enabled ? 1 : 0, studioId]);
+  res.json({ success: true, studioId, can_receive_free_batch_shipping: !!enabled });
+});
 
 // Public list of studios (id, name, publicSlug)
 router.get('/public-list', async (req, res) => {
