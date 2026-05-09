@@ -7,7 +7,16 @@ const router = express.Router();
 router.post('/api/whcc-webhook', async (req, res) => {
   try {
     const event = req.body;
-    if (!event || !event.orderId) {
+    // Handle WHCC verification POST (no orderId, may include verificationCode)
+    if (!event || (!event.orderId && !event.verificationCode)) {
+      // Accept and respond 200 OK for unknown/verification payloads
+      return res.status(200).json({ success: true });
+    }
+    if (event.verificationCode) {
+      // Echo the verification code if present (WHCC expects this)
+      return res.status(200).json({ verificationCode: event.verificationCode });
+    }
+    if (!event.orderId) {
       return res.status(400).json({ error: 'Missing orderId in webhook payload' });
     }
 
