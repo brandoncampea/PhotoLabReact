@@ -725,9 +725,34 @@ const Cart: React.FC = () => {
   const handleSaveCrop = () => {
     if (!editingItem) return;
     const cropper = cropperRef?.cropper || cropperRef;
-    if (!cropper?.getData) return;
+    if (!cropper || typeof cropper.getData !== 'function') {
+      window.alert('Cropper is not ready. Please try again.');
+      return;
+    }
     const data = cropper.getData();
-    updateCropData(editingItem.photoId, {
+    console.log('[CropModal] Cropper data:', data);
+    if (!data || isNaN(data.x) || isNaN(data.y) || isNaN(data.width) || isNaN(data.height) || data.width <= 0 || data.height <= 0) {
+      window.alert('Invalid crop area. Please adjust the crop and try again.');
+      return;
+    }
+    const formatted = formatCropData(data);
+    console.log('[CropModal] Calling updateCropData with:', {
+      photoId: editingItem.photoId,
+      cropData: formatted,
+      productId: editingItem.productId,
+      productSizeId: editingItem.productSizeId
+    });
+    updateCropData(editingItem.photoId, formatted, editingItem.productId, editingItem.productSizeId);
+    setTimeout(() => {
+      console.log('[CropModal] Closing modal after crop save.');
+      setEditingItem(null);
+      setCropperRef(null);
+    }, 0);
+  };
+
+  // Centralized crop data formatting utility (should be moved to a shared utils file if used elsewhere)
+  function formatCropData(data: any) {
+    return {
       x: Math.round(data.x),
       y: Math.round(data.y),
       width: Math.round(data.width),
@@ -735,10 +760,8 @@ const Cart: React.FC = () => {
       rotate: 0,
       scaleX: 1,
       scaleY: 1,
-    }, editingItem.productId, editingItem.productSizeId);
-    setEditingItem(null);
-    setCropperRef(null);
-  };
+    };
+  }
 
   const finalizeSuccessfulCheckout = async (paymentIntentId: string) => {
     if (shippingOption === 'batch' && !isBatchAvailable()) {
@@ -918,9 +941,11 @@ const Cart: React.FC = () => {
         <div className="cart-items">
           {items.map((item) => {
             const resolvedItem = getResolvedCartItem(item);
+            // Add cropData hash to key to force re-render on crop change
+            const cropKey = item.cropData ? `${item.cropData.x}-${item.cropData.y}-${item.cropData.width}-${item.cropData.height}` : 'nocrop';
             return (
               <CartItem
-                key={item.photoId + '-' + (item.productId || '') + '-' + (item.productSizeId || '')}
+                key={item.photoId + '-' + (item.productId || '') + '-' + (item.productSizeId || '') + '-' + cropKey}
                 item={resolvedItem}
                 onEditCrop={setEditingItem}
                 onOpenWhccEditor={handleOpenWhccEditor}
@@ -1307,7 +1332,8 @@ const Cart: React.FC = () => {
                 minContainerWidth={200}
                 onInitialized={(cropper) => {
                   setCropperRef(cropper);
-                  if (editingItem.cropData) {
+                  // Always load latest cropData when opening modal
+                  if (editingItem && editingItem.cropData) {
                     cropper.setData({
                       x: editingItem.cropData.x,
                       y: editingItem.cropData.y,

@@ -1,4 +1,5 @@
 import { Suspense, lazy } from 'react';
+
 const StudioTickets = lazy(() => import('./pages/admin/StudioTickets'));
 const AdminTickets = lazy(() => import('./pages/admin/AdminTickets'));
 import { Routes, Route, Navigate } from 'react-router-dom';
@@ -103,17 +104,14 @@ function App() {
               <Route path="/admin/configuration" element={<AdminProtectedRoute><AdminConfiguration /></AdminProtectedRoute>} />
               <Route path="/admin/vendor-integrations" element={<AdminProtectedRoute><AdminVendorIntegrations /></AdminProtectedRoute>} />
               <Route path="/admin/users" element={<AdminProtectedRoute><AdminUsers /></AdminProtectedRoute>} />
-
               {/* Studio: My Tickets */}
               <Route path="/admin/studio-tickets" element={<AdminProtectedRoute><StudioTickets /></AdminProtectedRoute>} />
               {/* Super Admin: All Tickets */}
               <Route path="/admin/tickets" element={<AdminProtectedRoute><AdminTickets /></AdminProtectedRoute>} />
-
               <Route path="/admin/studio-admins" element={<AdminProtectedRoute><AdminStudioAdmins /></AdminProtectedRoute>} />
               <Route path="/admin/subscription" element={<AdminProtectedRoute><AdminSubscription /></AdminProtectedRoute>} />
               <Route path="/admin/subscription-gateway" element={<AdminProtectedRoute><AdminSubscriptionGateway /></AdminProtectedRoute>} />
               <Route path="/admin/stripe" element={<AdminProtectedRoute><AdminStripe /></AdminProtectedRoute>} />
-
             {/* Catch-all route to redirect to landing page */}
             <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
@@ -121,7 +119,6 @@ function App() {
         </Layout>
       </CartProvider>
     </AuthProvider>
-  );
+	);
 }
-
-  export default App;
+export default App;

@@ -50,6 +50,7 @@ const WhccProductPhotoSelector: React.FC<WhccProductPhotoSelectorProps> = ({
   useEffect(() => {
     onChange(selected);
   }, [selected, onChange]);
+// ...existing code...
 
   const handlePhotoSelect = (nodeId: number, photo: Photo | null) => {
     setSelected((prev) => ({ ...prev, [nodeId]: photo }));

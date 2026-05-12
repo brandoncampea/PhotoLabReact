@@ -1,5 +1,6 @@
 
 import React, { useState } from 'react';
+
 import { Link } from 'react-router-dom';
 import styles from './Sidebar.module.css';
 import { useAuth } from '../../contexts/AuthContext';
@@ -88,7 +89,7 @@ const Sidebar: React.FC = () => {
 					{superAdminOpen && !collapsed && (
 						<ul className={styles.sidebarSubmenu}>
 							{superAdminLinks.map(link => (
-								<li key={link.to}>
+								<li>
 									<Link to={link.to} className={styles.sidebarLink}>
 										{link.label}
 									</Link>

@@ -781,6 +781,77 @@ const AdminOrders: React.FC = () => {
         </div>
       </div>
 
+      {/* --- WHCC Preview/Approval UI --- */}
+      {canViewWhccDetails && (
+        (() => {
+          const whccPreview = whccPreviewByOrder[order.id];
+          const approvalStatus = whccPreview?.approvalStatus || order.approvalStatus || '';
+          const previewPayload = whccPreview?.preview;
+          const handleApprove = async () => {
+            setWhccApprovalLoading((cur) => ({ ...cur, [order.id]: true }));
+            setWhccApprovalError((cur) => ({ ...cur, [order.id]: null }));
+            try {
+              await approveWhccOrder(order.id);
+              await ensureOrderDetailsLoaded(order.id);
+              setMessage('Order approved and submitted to WHCC.');
+            } catch (err: any) {
+              setWhccApprovalError((cur) => ({ ...cur, [order.id]: err?.response?.data?.error || 'Failed to approve order.' }));
+            } finally {
+              setWhccApprovalLoading((cur) => ({ ...cur, [order.id]: false }));
+            }
+          };
+          const handleReject = async () => {
+            setWhccApprovalLoading((cur) => ({ ...cur, [order.id]: true }));
+            setWhccApprovalError((cur) => ({ ...cur, [order.id]: null }));
+            try {
+              await rejectWhccOrder(order.id);
+              await ensureOrderDetailsLoaded(order.id);
+              setMessage('Order rejected.');
+            } catch (err: any) {
+              setWhccApprovalError((cur) => ({ ...cur, [order.id]: err?.response?.data?.error || 'Failed to reject order.' }));
+            } finally {
+              setWhccApprovalLoading((cur) => ({ ...cur, [order.id]: false }));
+            }
+          };
+          return (
+            <div className="whcc-approval-section">
+              <div style={{ marginBottom: 8 }}>
+                <strong>WHCC Approval Status:</strong>{' '}
+                <span className={`whcc-approval-status whcc-approval-status-${approvalStatus}`}>{approvalStatus || 'unknown'}</span>
+              </div>
+              {approvalStatus === 'pending' && (
+                <div style={{ marginBottom: 8 }}>
+                  <button
+                    className="btn btn-success"
+                    style={{ marginRight: 8 }}
+                    disabled={whccApprovalLoading[order.id]}
+                    onClick={handleApprove}
+                  >
+                    {whccApprovalLoading[order.id] ? 'Approving…' : 'Approve & Submit to WHCC'}
+                  </button>
+                  <button
+                    className="btn btn-danger"
+                    disabled={whccApprovalLoading[order.id]}
+                    onClick={handleReject}
+                  >
+                    {whccApprovalLoading[order.id] ? 'Rejecting…' : 'Reject'}
+                  </button>
+                  {whccApprovalError[order.id] && (
+                    <div style={{ color: 'red', marginTop: 6 }}>{whccApprovalError[order.id]}</div>
+                  )}
+                </div>
+              )}
+              {previewPayload && (
+                <details className="whcc-preview-panel" open>
+                  <summary className="whcc-preview-summary">WHCC Order Preview Payload</summary>
+                  <pre className="whcc-preview-content">{JSON.stringify(previewPayload, null, 2)}</pre>
+                </details>
+              )}
+            </div>
+          );
+        })()
+      )}
+      {/* --- End WHCC Preview/Approval UI --- */}
       {canViewWhccDetails && (hasWhccData || !order.labSubmitted) && (
         <div className="whcc-detail-section">
           <div className="whcc-detail-header">

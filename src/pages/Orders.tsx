@@ -70,6 +70,7 @@ function OrderItemWithSas({ item }: { item: any }) {
   );
 }
 import React, { useEffect, useState } from 'react';
+
 import { useLocation } from 'react-router-dom';
 import { Order } from '../types';
 import { orderService } from '../services/orderService';
@@ -141,6 +142,32 @@ const Orders: React.FC = () => {
     return <div className="loading">Loading orders...</div>;
   }
 
+  // Defensive: filter out orders/items with invalid ids and log them
+  let safeOrders = Array.isArray(orders) ? orders.filter(o => {
+    const valid = o && (typeof o.id === 'string' || typeof o.id === 'number');
+    if (!valid) {
+      console.error('[Orders] Invalid order id:', o && o.id, o);
+    }
+    return valid;
+  }) : [];
+
+  safeOrders = safeOrders.map(order => {
+    let safeItems = Array.isArray(order.items) ? order.items.filter(i => {
+      const valid = i && (typeof i.id === 'string' || typeof i.id === 'number');
+      if (!valid) {
+        console.error('[Orders] Invalid item id:', i && i.id, i);
+      }
+      return valid;
+    }) : [];
+    return { ...order, items: safeItems };
+  });
+
+  // Log the full orders array and safeOrders for diagnosis
+  if (orders && orders.length > 0) {
+    console.log('[Orders] Raw orders:', orders);
+    console.log('[Orders] Safe orders:', safeOrders);
+  }
+
   return (
     <>
       {/* <TopNavbar /> */}
@@ -156,79 +183,84 @@ const Orders: React.FC = () => {
 
         {error && <div className="orders-error-message">{error}</div>}
 
-        {orders.length === 0 ? (
+        {safeOrders.length === 0 ? (
           <div className="empty-state">
             <p>No orders yet</p>
           </div>
         ) : (
           <div className="orders-list">
-            {orders.map((order) => (
-              <div key={order.id} className="order-card">
-                <div className="order-header">
-                  <div>
-                    <h3>Order #{order.id}</h3>
-                    <p className="order-date">
-                      {new Date(order.orderDate).toLocaleDateString()}
-                    </p>
+            {safeOrders.map((order) => {
+              // Log each order before rendering
+              console.log('[Orders] Current order:', order, 'id:', order.id, 'typeof id:', typeof order.id);
+              return (
+                <div key={order.id} className="order-card">
+                  <div className="order-header">
+                    <div>
+                      <h3>Order #{order.id}</h3>
+                      <p className="order-date">
+                        {new Date(order.orderDate).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <div className="order-status">
+                      <span className={`status-badge status-${(order.status || 'pending').toLowerCase()}`}>
+                        {order.status || 'Pending'}
+                      </span>
+                      <p className="order-total">${Number(order.totalAmount || 0).toFixed(2)}</p>
+                      <button
+                        type="button"
+                        className="order-toggle-button"
+                        onClick={() => {
+                          void toggleOrderDetails(order.id);
+                        }}
+                      >
+                        {selectedOrderId === order.id ? 'Hide details' : 'View details'}
+                      </button>
+                    </div>
                   </div>
-                  <div className="order-status">
-                    <span className={`status-badge status-${(order.status || 'pending').toLowerCase()}`}>
-                      {order.status || 'Pending'}
-                    </span>
-                    <p className="order-total">${Number(order.totalAmount || 0).toFixed(2)}</p>
-                    <button
-                      type="button"
-                      className="order-toggle-button"
-                      onClick={() => {
-                        void toggleOrderDetails(order.id);
-                      }}
-                    >
-                      {selectedOrderId === order.id ? 'Hide details' : 'View details'}
-                    </button>
-                  </div>
-                </div>
-                {selectedOrderId === order.id && (
-                  <>
-                    {loadingOrderDetails[order.id] ? (
-                      <div className="loading" style={{ paddingTop: '1rem' }}>Loading order details...</div>
-                    ) : (
-                      <>
-                        <div className="order-items">
-                          {(order.items || []).map((item) => {
-                            // No need to compute downloadUrl; use item.downloadUrls directly
-                            return <OrderItemWithSas key={item.id} item={item} />;
-                          })}
-                        </div>
-                        <div className="order-pricing-summary">
-                          {order.subtotal != null && (
-                            <div className="pricing-row">
-                              <span>Subtotal</span>
-                              <span>${Number(order.subtotal).toFixed(2)}</span>
-                            </div>
-                          )}
-                          {Number(order.shippingCost) > 0 && (
-                            <div className="pricing-row">
-                              <span>Shipping</span>
-                              <span>${Number(order.shippingCost).toFixed(2)}</span>
-                            </div>
-                          )}
-                          {Number(order.taxAmount) > 0 && (
-                            <div className="pricing-row">
-                              <span>Tax</span>
-                              <span>${Number(order.taxAmount).toFixed(2)}</span>
-                            </div>
-                          )}
-                          <div className="pricing-row pricing-total-row">
-                            <span>Total Charged</span>
-                            <span>${Number(order.totalAmount || 0).toFixed(2)}</span>
+                  {selectedOrderId === order.id && (
+                    <>
+                      {loadingOrderDetails[order.id] ? (
+                        <div className="loading" style={{ paddingTop: '1rem' }}>Loading order details...</div>
+                      ) : (
+                        <>
+                          <div className="order-items">
+                            {(order.items || []).map((item) => {
+                                console.log('[Orders] Current item:', item, 'id:', item.id, 'typeof id:', typeof item.id);
+                                // No need to compute downloadUrl; use item.downloadUrls directly
+                                return <OrderItemWithSas key={item.id} item={item} />;
+                              })}
                           </div>
-                        </div>
-                      </>
-                    )}
-                  </>
-                )}
-              </div>
-            ))}
+                          <div className="order-pricing-summary">
+                            {order.subtotal != null && (
+                              <div className="pricing-row">
+                                <span>Subtotal</span>
+                                <span>${Number(order.subtotal).toFixed(2)}</span>
+                              </div>
+                            )}
+                            {Number(order.shippingCost) > 0 && (
+                              <div className="pricing-row">
+                                <span>Shipping</span>
+                                <span>${Number(order.shippingCost).toFixed(2)}</span>
+                              </div>
+                            )}
+                            {Number(order.taxAmount) > 0 && (
+                              <div className="pricing-row">
+                                <span>Tax</span>
+                                <span>${Number(order.taxAmount).toFixed(2)}</span>
+                              </div>
+                            )}
+                            <div className="pricing-row pricing-total-row">
+                              <span>Total Charged</span>
+                              <span>${Number(order.totalAmount || 0).toFixed(2)}</span>
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

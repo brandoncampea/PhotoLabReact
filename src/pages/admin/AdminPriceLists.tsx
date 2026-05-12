@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
+
 import { studioPriceListService } from '../../services/studioPriceListService';
 import { superPriceListService } from '../../services/superPriceListService';
 import { useAuth } from '../../contexts/AuthContext';
@@ -831,9 +832,9 @@ const [savingProductKey, setSavingProductKey] = useState<string | null>(null);
 				</form>
 			)}
 
-			<ul className="admin-price-lists-list">
-				{priceLists.map(list => (
-					<li key={list.id} className="admin-price-lists-list-item" style={{ marginBottom: 8 }}>
+				<ul className="admin-price-lists-list">
+					{priceLists.map(list => (
+						<li key={list.id} className="admin-price-lists-list-item" style={{ marginBottom: 8 }}>
 						<button onClick={() => handleSelectList(list)} className="btn btn-link">{list.name}</button>
 						{list.super_price_list_name && <span style={{ marginLeft: 8, color: '#aaa' }}>from {list.super_price_list_name}</span>}
 						{list.description && <span style={{ marginLeft: 8, color: '#888' }}>{list.description}</span>}

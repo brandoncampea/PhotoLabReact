@@ -1,4 +1,5 @@
 import React from 'react';
+
 import { Photo } from '../types';
 
 // Props for the reusable photo tagging card

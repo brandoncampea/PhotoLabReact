@@ -1,5 +1,6 @@
 import React from 'react';
 
+
 interface DataTableProps {
   columns: string[];
   data: Array<Record<string, any>>;

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { SUBSCRIPTION_PLANS } from '../services/subscriptionService';
 
+
 interface Studio {
   id: number;
   name: string;

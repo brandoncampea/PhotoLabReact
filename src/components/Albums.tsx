@@ -7,6 +7,7 @@ function AlbumSasCover({ albumId, alt }: { albumId: number, alt: string }) {
 
 import { useNavigate } from 'react-router-dom';
 
+
 // Example albums array; in real usage, covers may be Azure blobs
 const albums = [
   { id: 1, name: 'NWC Girls', cover: 'https://picsum.photos/seed/album1/400/300' },

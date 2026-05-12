@@ -50,7 +50,7 @@ export default function PlayerSearch() {
       // Helper component for SAS-protected player search result items
       <ul>
         {results.map(r => (
-            <PlayerSearchResultItem key={r.id} result={r} />
+          <PlayerSearchResultItem key={r.id} result={r} />
         ))}
       </ul>
     </div>

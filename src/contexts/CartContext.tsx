@@ -310,16 +310,30 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     );
   };
 
+  // Patch: Always force update, even if cropData is unchanged, to guarantee re-render
   const updateCropData = (photoId: number, cropData: CropData, productId?: number, productSizeId?: number) => {
-    setItems((prevItems) =>
-      prevItems.map((item) =>
-        item.photoId === photoId &&
-        (productId == null || Number(item.productId || 0) === Number(productId || 0)) &&
-        (productSizeId == null || Number(item.productSizeId || 0) === Number(productSizeId || 0))
-          ? { ...item, cropData }
-          : item
-      )
-    );
+    setItems((prevItems) => {
+      let changed = false;
+      const next = prevItems.map((item) => {
+        const matchPhoto = String(item.photoId) === String(photoId);
+        const matchProduct = productId == null || String(item.productId ?? '') === String(productId ?? '');
+        const matchSize = productSizeId == null || String(item.productSizeId ?? '') === String(productSizeId ?? '');
+        if (matchPhoto && matchProduct && matchSize) {
+          changed = true;
+          const updated = { ...item, cropData: { ...cropData } };
+          console.log('[CartContext] updateCropData: updating item', { item, updated });
+          return updated;
+        }
+        return item;
+      });
+      if (changed) {
+        console.log('[CartContext] updateCropData: new cart state', next);
+        return next;
+      } else {
+        console.log('[CartContext] updateCropData: no change, returning copy', next);
+        return [...next];
+      }
+    });
   };
 
   const clearCart = () => {

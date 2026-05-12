@@ -101,59 +101,60 @@ const WhccProductImport: React.FC = () => {
       </div>
       <div style={{ maxWidth: 500, margin: '0 auto', background: '#222', color: '#fff', borderRadius: 12, padding: 24 }}>
         <h2 style={{ textAlign: 'center', marginBottom: 16 }}>Import Products from WHCC</h2>
-      <input
-        type="text"
-        placeholder="Search products..."
-        value={search}
-        onChange={(e: ChangeEvent<HTMLInputElement>) => setSearch(e.target.value)}
-        style={{ width: '100%', marginBottom: 16, padding: 8, borderRadius: 6, border: '1px solid #444', background: '#111', color: '#fff' }}
-      />
-      {Object.entries(filtered).map(([cat, prods]) => (
-        <div key={cat} style={{ marginBottom: 16, background: '#181818', borderRadius: 8, padding: 8 }}>
-          <div style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }} onClick={() => setExpanded(e => ({ ...e, [cat]: !e[cat] }))}>
-            <strong style={{ flex: 1 }}>{cat}</strong>
-            <button style={{ marginLeft: 8 }} onClick={e => { e.stopPropagation(); toggleAll(cat, true); }}>Select All</button>
-            <button style={{ marginLeft: 4 }} onClick={e => { e.stopPropagation(); toggleAll(cat, false); }}>Deselect All</button>
-            <span style={{ marginLeft: 8 }}>{expanded[cat] ? '▼' : '▶'}</span>
-          </div>
-          {expanded[cat] && (
-            <div style={{ marginTop: 8 }}>
-              {(prods as Product[]).map((prod: Product) => {
-                // Show all ProductUIDs from ProductNodes (WHCC live API structure)
-                let uids: string[] = [];
-                if (Array.isArray(prod.ProductNodes)) {
-                  uids = prod.ProductNodes.map((n: any) => n.ProductUID).filter(Boolean).map(String);
-                }
-                const key = uids.length > 0 ? uids.join(',') : '';
-                return key ? (
-                  <label key={key} style={{ display: 'flex', alignItems: 'center', marginBottom: 4, cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={!!selected[key]}
-                      onChange={e => setSelected(sel => ({ ...sel, [key]: e.target.checked }))}
-                      style={{ marginRight: 8 }}
-                    />
-                    <span>
-                      {formatLabel(prod)}
-                      {uids.length > 0 && (
-                        <span style={{ fontSize: 12, color: '#a78bfa', fontFamily: 'monospace', marginLeft: 10 }}>
-                          &nbsp;[UID{uids.length > 1 ? 's' : ''}: {uids.join(', ')}]
-                        </span>
-                      )}
-                    </span>
-                  </label>
-                ) : null;
-              })}
+        <input
+          type="text"
+          placeholder="Search products..."
+          value={search}
+          onChange={(e: ChangeEvent<HTMLInputElement>) => setSearch(e.target.value)}
+          style={{ width: '100%', marginBottom: 16, padding: 8, borderRadius: 6, border: '1px solid #444', background: '#111', color: '#fff' }}
+        />
+        {Object.entries(filtered).map(([cat, prods]) => (
+          <div key={cat} style={{ marginBottom: 16, background: '#181818', borderRadius: 8, padding: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }} onClick={() => setExpanded(e => ({ ...e, [cat]: !e[cat] }))}>
+              <strong style={{ flex: 1 }}>{cat}</strong>
+              <button style={{ marginLeft: 8 }} onClick={e => { e.stopPropagation(); toggleAll(cat, true); }}>Select All</button>
+              <button style={{ marginLeft: 4 }} onClick={e => { e.stopPropagation(); toggleAll(cat, false); }}>Deselect All</button>
+              <span style={{ marginLeft: 8 }}>{expanded[cat] ? '▼' : '▶'}</span>
             </div>
-          )}
+            {expanded[cat] && (
+              <div style={{ marginTop: 8 }}>
+                {(prods as Product[]).map((prod: Product) => {
+                  // Show all ProductUIDs from ProductNodes (WHCC live API structure)
+                  let uids: string[] = [];
+                  if (Array.isArray(prod.ProductNodes)) {
+                    uids = prod.ProductNodes.map((n: any) => n.ProductUID).filter(Boolean).map(String);
+                  }
+                  const key = uids.length > 0 ? uids.join(',') : '';
+                  return key ? (
+                    <label key={key} style={{ display: 'flex', alignItems: 'center', marginBottom: 4, cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={!!selected[key]}
+                        onChange={e => setSelected(sel => ({ ...sel, [key]: e.target.checked }))}
+                        style={{ marginRight: 8 }}
+                      />
+                      <span>
+                        {formatLabel(prod)}
+                        {uids.length > 0 && (
+                          <span style={{ fontSize: 12, color: '#a78bfa', fontFamily: 'monospace', marginLeft: 10 }}>
+                            &nbsp;[UID{uids.length > 1 ? 's' : ''}: {uids.join(', ')}]
+                          </span>
+                        )}
+                      </span>
+                    </label>
+                  ) : null;
+                })}
+              </div>
+            )}
+          </div>
+        ))}
+        <div style={{ position: 'sticky', bottom: 0, background: '#222', padding: 12, borderRadius: 8, textAlign: 'center', marginTop: 16 }}>
+          <button style={{ background: '#a78bfa', color: '#222', border: 'none', borderRadius: 6, padding: '10px 24px', fontWeight: 600, fontSize: 16 }}>
+            Review & Import ({Object.values(selected).filter(Boolean).length})
+          </button>
         </div>
-      ))}
-      <div style={{ position: 'sticky', bottom: 0, background: '#222', padding: 12, borderRadius: 8, textAlign: 'center', marginTop: 16 }}>
-        <button style={{ background: '#a78bfa', color: '#222', border: 'none', borderRadius: 6, padding: '10px 24px', fontWeight: 600, fontSize: 16 }}>
-          Review & Import ({Object.values(selected).filter(Boolean).length})
-        </button>
       </div>
-    </div>
+    </>
   );
 };
 

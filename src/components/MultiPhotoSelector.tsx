@@ -61,19 +61,15 @@ const MultiPhotoSelector: React.FC<MultiPhotoSelectorProps> = ({
 
     const cropper = cropperRef.current.cropper;
     const rawCropData = cropper.getData();
-    const imageData = cropper.getImageData();
-    
-    // Normalize to percentages
-    const toPercent = (value: number, dimension: number) => (value / dimension) * 100;
-
+    // Save cropData in natural/original image pixels
     const newSlots = [...slots];
     newSlots[activeSlotIndex] = {
       ...newSlots[activeSlotIndex],
       cropData: {
-        x: toPercent(rawCropData.x, imageData.naturalWidth),
-        y: toPercent(rawCropData.y, imageData.naturalHeight),
-        width: toPercent(rawCropData.width, imageData.naturalWidth),
-        height: toPercent(rawCropData.height, imageData.naturalHeight),
+        x: Math.round(rawCropData.x),
+        y: Math.round(rawCropData.y),
+        width: Math.round(rawCropData.width),
+        height: Math.round(rawCropData.height),
         rotate: rawCropData.rotate || 0,
         scaleX: rawCropData.scaleX || 1,
         scaleY: rawCropData.scaleY || 1,

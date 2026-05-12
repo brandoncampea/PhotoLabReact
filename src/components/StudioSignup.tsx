@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+// import { safeKey } from '../utils/safeKey';
 import { SUBSCRIPTION_PLANS } from '../services/subscriptionService';
 
 interface StudioSignupProps {

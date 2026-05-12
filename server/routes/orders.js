@@ -8,6 +8,79 @@ import orderReceiptService from '../services/orderReceiptService.js';
 import { fetchToken as fetchWhccToken } from './whccProxy.js';
 const router = express.Router();
 
+// --- API: Get WHCC preview payload for an order (admin/studio only) ---
+router.get('/admin/:orderId/whcc-preview', adminRequired, async (req, res) => {
+  try {
+    const orderId = Number(req.params.orderId);
+    if (!orderId) return res.status(400).json({ error: 'Invalid orderId' });
+    const order = await queryRow('SELECT id, preview_payload, approval_status FROM orders WHERE id = $1', [orderId]);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    return res.json({
+      orderId: order.id,
+      approvalStatus: order.approval_status,
+      preview: safeJsonParse(order.preview_payload, null),
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+// --- API: Approve or reject an order (admin/studio only) ---
+router.post('/admin/:orderId/whcc-approval', adminRequired, async (req, res) => {
+  try {
+    const orderId = Number(req.params.orderId);
+    const { action } = req.body;
+    if (!orderId || !['approve', 'reject'].includes(action)) {
+      return res.status(400).json({ error: 'Invalid orderId or action' });
+    }
+    const order = await queryRow('SELECT id, approval_status FROM orders WHERE id = $1', [orderId]);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (order.approval_status === 'approved' && action === 'approve') {
+      return res.json({ success: true, message: 'Order already approved' });
+    }
+    const newStatus = action === 'approve' ? 'approved' : 'rejected';
+    await query('UPDATE orders SET approval_status = $1, approved_at = CASE WHEN $1 = \'approved\' THEN CURRENT_TIMESTAMP ELSE NULL END WHERE id = $2', [newStatus, orderId]);
+    // If approved, trigger WHCC submission (forceSubmit)
+    if (action === 'approve') {
+      try {
+        await submitOrderToWhcc(orderId, { forceSubmit: true });
+      } catch (err) {
+        return res.status(500).json({ error: 'Order approved but WHCC submission failed', details: err?.message || err });
+      }
+    }
+    return res.json({ success: true, approvalStatus: newStatus });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+// --- API: Batch approve/reject (admin/studio only) ---
+router.post('/admin/whcc-approval/batch', adminRequired, async (req, res) => {
+  try {
+    const { orderIds, action } = req.body;
+    if (!Array.isArray(orderIds) || !orderIds.length || !['approve', 'reject'].includes(action)) {
+      return res.status(400).json({ error: 'Invalid orderIds or action' });
+    }
+    const newStatus = action === 'approve' ? 'approved' : 'rejected';
+    await query(`UPDATE orders SET approval_status = $1, approved_at = CASE WHEN $1 = 'approved' THEN CURRENT_TIMESTAMP ELSE NULL END WHERE id IN (${orderIds.map((_, i) => `$${i + 2}`).join(',')})`, [newStatus, ...orderIds]);
+    // If approved, trigger WHCC submission for all
+    if (action === 'approve') {
+      for (const orderId of orderIds) {
+        try {
+          await submitOrderToWhcc(orderId, { forceSubmit: true });
+        } catch (err) {
+          // Log but do not fail batch
+          console.error(`[WHCC][BATCH APPROVAL] Failed to submit order ${orderId}:`, err?.message || err);
+        }
+      }
+    }
+    return res.json({ success: true, approvalStatus: newStatus });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+
 // Admin: Resend digital download links for an order
 router.post('/admin/:orderId/resend-digital-download', adminRequired, async (req, res) => {
   try {
@@ -565,6 +638,10 @@ const calculateItemAccountingSnapshot = ({
 };
 
 const submitOrderToWhcc = async (orderId, options = {}) => {
+  // Approval/preview logic: if not forced, only generate preview and set approval_status to 'pending'.
+  // Only submit to WHCC if approval_status is 'approved' or options.forceSubmit === true.
+  const forceSubmit = options?.forceSubmit === true;
+
     // Ensure axios is loaded before first use
     const axios = (await import('axios')).default;
     // Ensure isSandbox is defined before first use
@@ -673,7 +750,17 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
   let requestLog = null;
   const nowIso = () => new Date().toISOString();
 
+
   const targetOrderIds = isAggregateSubmission ? aggregateOrderIds : [orderId];
+
+  // Check approval status for all target orders
+  const approvalRows = await queryRows(
+    `SELECT id, approval_status FROM orders WHERE id IN (${targetOrderIds.map((_, i) => `$${i + 1}`).join(',')})`,
+    targetOrderIds
+  );
+  const anyPending = approvalRows.some(row => row.approval_status === 'pending');
+  const allApproved = approvalRows.every(row => row.approval_status === 'approved');
+
 
   try {
     let orders = [];
@@ -1632,6 +1719,33 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
     const whccReference = isAggregateSubmission
       ? `Batch Orders #${targetOrderIds.join(',')}`
       : `Order #${orderId}`;
+
+
+    // --- PREVIEW/APPROVAL LOGIC ---
+    // Always generate and persist preview payload, set approval_status to 'pending' if not already set
+    const previewPayload = {
+      whccEntryId,
+      whccReference,
+      whccOrderItems,
+      orderId,
+      targetOrderIds,
+      whccOrderRequest,
+      shippingAddress,
+      specialInstructions,
+      generatedAt: nowIso(),
+    };
+    await query(
+      `UPDATE orders SET preview_payload = $1, approval_status = COALESCE(approval_status, 'pending') WHERE id IN (${targetOrderIds.map((_, i) => `$${i + 2}`).join(',')})`,
+      [stringifyForDb(previewPayload), ...targetOrderIds]
+    );
+
+    // If not forceSubmit and not all approved, do NOT submit to WHCC yet
+    if (!forceSubmit && !allApproved) {
+      console.log(`[WHCC][PREVIEW] Preview payload persisted for order(s) ${targetOrderIds.join(', ')}. Awaiting approval.`);
+      return;
+    }
+
+    // Only proceed to submit if all orders are approved or forceSubmit is true
 
     // Debug: log the full WHCC order payload before submission
     console.log('[WHCC][DEBUG] Order payload to be submitted:', JSON.stringify({

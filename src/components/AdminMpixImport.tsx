@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+
 import styles from './AdminMpixImport.module.css';
 import { mpixService } from '../services/mpixService';
 import { priceListAdminService } from '../services/priceListAdminService';
@@ -286,7 +287,7 @@ const AdminMpixImport: React.FC<{ onClose: () => void; onImportComplete: () => v
                   >
                     <option value="">-- Select a price list --</option>
                     {priceLists.map((list) => (
-                      <option key={`pricelist-${list.id}`} value={list.id}>
+                      <option value={list.id}>
                         {list.name} ({list.description})
                       </option>
                     ))}
@@ -361,7 +362,7 @@ const AdminMpixImport: React.FC<{ onClose: () => void; onImportComplete: () => v
                 const mapping = selectedProducts.get(product.productUID);
 
                 // Use both productUID and productId, fallback to index for uniqueness
-                const uniqueKey = `mpix-product-${product.productUID}-${product.productId}-${product.name}`;
+                const uniqueKey = [product.productUID, product.productId, product.name].join('-');
                 return (
                   <div
                     key={uniqueKey}
@@ -495,9 +496,8 @@ const AdminMpixImport: React.FC<{ onClose: () => void; onImportComplete: () => v
                   const cost = product?.basePrice || 0;
                   const retailPrice = mapping.useCustomPrice && mapping.customPrice ? mapping.customPrice : cost * (1 + (mapping.markupPercentage ?? 100) / 100);
                   const margin = ((retailPrice - cost) / cost * 100).toFixed(0);
-                  
                   return (
-                    <li key={`mpix-summary-${mapping.productUID}`} className={`${styles.adminmpixMb8} ${styles.adminmpixFs12}`}>
+                    <li className={`${styles.adminmpixMb8} ${styles.adminmpixFs12}`}>
                       <strong>{product?.name}</strong>
                       {' — Cost: '}
                       <span style={{ color: 'var(--error-color)' }}>${cost.toFixed(2)}</span>

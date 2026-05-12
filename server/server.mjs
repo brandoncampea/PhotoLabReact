@@ -69,6 +69,7 @@ import notifyWatchersRoutes from './routes/notifyWatchers.js';
 
 import runWhccEditorBackfillOnce from './startup/runWhccEditorBackfillOnce.js';
 import './startup/ensureFreeBatchShippingColumn.js';
+import './startup/ensureOrderApprovalColumns.js';
 
 
 
