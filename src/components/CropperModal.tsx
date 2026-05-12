@@ -1,7 +1,7 @@
 
 // Example: import Cropper from 'react-easy-crop'; // Uncomment and adjust for your cropper library
 
-import React, { useRef } from 'react';
+import { useRef } from 'react';
 import Cropper from 'react-cropper';
 import 'cropperjs/dist/cropper.css';
 import { useCart } from '../contexts/CartContext';

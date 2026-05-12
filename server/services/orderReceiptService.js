@@ -115,12 +115,13 @@ const resolveDiscountDetails = (order = {}) => {
 };
 
 const renderItemsRows = (items) => items.map((item) => {
-  const photoName = item.photoFileName || `Photo #${item.photoId}`;
+  const photoName = item.photoFileName || item.fileName || item.filename || `Photo #${item.photoId}`;
+  const productName = item.productName || item.name || 'Product';
   const unitPrice = Number(item.unitPrice ?? item.price ?? 0);
   const quantity = Number(item.quantity || 0);
   const lineTotal = unitPrice * quantity;
   return `<tr>
-    <td style="padding:10px 8px;border-bottom:1px solid #343b45;color:#e7edf6;">${esc(item.productName || 'Product')}</td>
+    <td style="padding:10px 8px;border-bottom:1px solid #343b45;color:#e7edf6;">${esc(productName)}</td>
     <td style="padding:10px 8px;border-bottom:1px solid #343b45;color:#d0d8e3;">${esc(photoName)}</td>
     <td style="padding:10px 8px;border-bottom:1px solid #343b45;text-align:right;color:#d0d8e3;">${currency(unitPrice)}</td>
     <td style="padding:10px 8px;border-bottom:1px solid #343b45;text-align:right;color:#d0d8e3;">${quantity}</td>
@@ -128,14 +129,15 @@ const renderItemsRows = (items) => items.map((item) => {
   </tr>`;
 }).join('');
 
-const renderCustomerReceiptHtml = ({ customerName, order, items, digitalDownloads }) => {
+const renderCustomerReceiptHtml = ({ customerName, order, items, digitalDownloads, customMessage, isUpdate }) => {
   const discount = resolveDiscountDetails(order);
-  const discountCodeRow = discount.code
-    ? `<tr><td style="padding:4px 0;">Discount code</td><td style="padding:4px 0;text-align:right;">${esc(discount.code)}</td></tr>`
-    : '';
-  const discountAmountRow = discount.amount > 0
-    ? `<tr><td style="padding:4px 0;">Discount</td><td style="padding:4px 0;text-align:right;color:#86efac;">-${currency(discount.amount)}</td></tr>`
-    : '';
+  // Only show discount code/amount if there is a real discount (amount > 0 and code is not empty)
+  let discountCodeRow = '';
+  let discountAmountRow = '';
+  if (discount.amount > 0 && discount.code) {
+    discountCodeRow = `<tr><td style="padding:4px 0;">Discount code</td><td style="padding:4px 0;text-align:right;">${esc(discount.code)}</td></tr>`;
+    discountAmountRow = `<tr><td style="padding:4px 0;">Discount</td><td style="padding:4px 0;text-align:right;color:#86efac;">-${currency(discount.amount)}</td></tr>`;
+  }
   const downloadSection = Array.isArray(digitalDownloads) && digitalDownloads.length > 0
     ? `<div style="margin-top:20px;padding:16px;border:1px solid #3f4957;border-radius:10px;background:#141922;">
         <div style="font-size:16px;font-weight:700;color:#fff;margin-bottom:8px;">Digital Downloads</div>
@@ -159,7 +161,12 @@ const renderCustomerReceiptHtml = ({ customerName, order, items, digitalDownload
         </div>
       </div>
 
-      <div style="margin-top:16px;font-size:14px;color:#d3dceb;">Thanks${customerName ? ` ${esc(customerName)}` : ''}! Your order has been received.</div>
+      <div style="margin-top:16px;font-size:14px;color:#d3dceb;">Thanks${customerName ? ` ${esc(customerName)}` : ''}! Your order has been ${isUpdate ? 'updated' : 'received'}.</div>
+
+      <div style="margin-top:10px;font-size:15px;color:#b8c2d1;">
+        <strong>Status:</strong> ${esc(order.status || 'processing')}
+      </div>
+      ${customMessage ? `<div style=\"margin-top:10px;font-size:15px;color:#7cc7ff;\"><strong>Message:</strong> ${esc(customMessage)}</div>` : ''}
 
       <table style="width:100%;border-collapse:collapse;margin-top:18px;background:#111722;border:1px solid #303846;border-radius:8px;overflow:hidden;">
         <thead>
@@ -180,16 +187,16 @@ const renderCustomerReceiptHtml = ({ customerName, order, items, digitalDownload
 
       <div style="margin-top:18px;display:flex;justify-content:flex-end;">
         <table style="width:300px;border-collapse:collapse;color:#d3dceb;">
-          <tr><td style="padding:4px 0;">Item(s) Subtotal:</td><td style="padding:4px 0;text-align:right;">${currency(order.subtotal)}</td></tr>
-          <tr><td style="padding:4px 0;">Shipping:</td><td style="padding:4px 0;text-align:right;">${currency(order.shippingCost)}</td></tr>
-          <tr><td style="padding:4px 0;">Sales Tax:</td><td style="padding:4px 0;text-align:right;">${currency(order.taxAmount)}</td></tr>
+          <tr><td style="padding:4px 0;">Item(s) Subtotal:</td><td style="padding:4px 0;text-align:right;">${currency(order.subtotal ?? order.sub_total ?? 0)}</td></tr>
+          <tr><td style="padding:4px 0;">Shipping:</td><td style="padding:4px 0;text-align:right;">${currency(order.shippingCost ?? order.shipping_cost ?? 0)}</td></tr>
+          <tr><td style="padding:4px 0;">Sales Tax:</td><td style="padding:4px 0;text-align:right;">${currency(order.taxAmount ?? order.tax_amount ?? 0)}</td></tr>
           ${discountCodeRow}
           ${discountAmountRow}
-          <tr><td style="padding:8px 0 0 0;font-weight:700;color:#fff;">Grand Total:</td><td style="padding:8px 0 0 0;text-align:right;font-weight:700;color:#fff;">${currency(order.totalAmount)}</td></tr>
+          <tr><td style="padding:8px 0 0 0;font-weight:700;color:#fff;">Grand Total:</td><td style="padding:8px 0 0 0;text-align:right;font-weight:700;color:#fff;">${currency(order.totalAmount ?? order.total ?? 0)}</td></tr>
         </table>
       </div>
 
-      ${appBaseUrl ? `<div style="margin-top:18px;font-size:13px;"><a href="${esc(appBaseUrl)}" style="color:#7cc7ff;">Open Photo Lab</a></div>` : ''}
+      ${appBaseUrl ? `<div style=\"margin-top:18px;font-size:13px;\"><a href=\"${esc(appBaseUrl)}\" style=\"color:#7cc7ff;\">Open Photo Lab</a></div>` : ''}
     </div>
   `;
 };
@@ -426,9 +433,9 @@ export const orderReceiptService = {
     return true;
   },
 
-  async sendCustomerReceipt({ to, customerName, order, items, digitalDownloads = [] }) {
+  async sendCustomerReceipt({ to, customerName, order, items, digitalDownloads = [], customMessage, isUpdate }) {
     if (!isConfigured() || !to) return false;
-    const html = renderCustomerReceiptHtml({ customerName, order, items, digitalDownloads });
+    const html = renderCustomerReceiptHtml({ customerName, order, items, digitalDownloads, customMessage, isUpdate });
     const discount = resolveDiscountDetails(order);
     const discountText = discount.hasDiscount
       ? `\nDiscount code: ${discount.code || 'N/A'}${discount.amount > 0 ? `\nDiscount amount: -${currency(discount.amount)}` : ''}`
@@ -441,7 +448,7 @@ export const orderReceiptService = {
       to: Array.isArray(to) ? to.map(email => ({ email })) : [{ email: to }],
       subject: `Photo Lab receipt — Order #${order.id}`,
       html,
-      text: `Order #${order.id}\nTotal charged: ${currency(order.totalAmount)}\nSubtotal: ${currency(order.subtotal)}\nShipping: ${currency(order.shippingCost)}\nTax: ${currency(order.taxAmount)}${discountText}${digitalDownloads.length ? `\nDigital downloads:\n${digitalDownloads.map((entry) => `- ${entry.productName || 'Digital product'}: ${entry.url}`).join('\n')}` : ''}`,
+      text: `Order #${order.id}\nStatus: ${order.status || 'processing'}${customMessage ? `\nMessage: ${customMessage}` : ''}\nTotal charged: ${currency(order.totalAmount ?? order.total ?? 0)}\nSubtotal: ${currency(order.subtotal ?? order.sub_total ?? 0)}\nShipping: ${currency(order.shippingCost ?? order.shipping_cost ?? 0)}\nTax: ${currency(order.taxAmount ?? order.tax_amount ?? 0)}${discountText}${digitalDownloads.length ? `\nDigital downloads:\n${digitalDownloads.map((entry) => `- ${entry.productName || 'Digital product'}: ${entry.url}`).join('\n')}` : ''}`,
       reply_to: smtpReplyTo,
       category: 'Order Receipt',
     });

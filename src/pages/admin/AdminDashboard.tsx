@@ -62,7 +62,7 @@ type DashboardStats = {
 const AdminDashboard: React.FC = () => {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [, setAnalyticsLoading] = useState(false);
   const [revenueRange, setRevenueRange] = useState<'day' | 'week' | 'month'>('day');
   const [ordersRange, setOrdersRange] = useState<'day' | 'week' | 'month'>('day');
   const [customersRange, setCustomersRange] = useState<'day' | 'week' | 'month'>('day');

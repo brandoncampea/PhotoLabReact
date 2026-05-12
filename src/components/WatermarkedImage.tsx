@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Watermark } from '../types';
 import { watermarkService } from '../services/watermarkService';
-import { getBlobUrl } from '../utils/getBlobUrl';
+
 
 interface WatermarkedImageProps {
   src: string;

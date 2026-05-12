@@ -124,7 +124,6 @@ const [newListName, setNewListName] = useState('');
 const [newListDesc, setNewListDesc] = useState('');
 const [selectedSuperListId, setSelectedSuperListId] = useState<number | ''>('');
 const [draftPrices, setDraftPrices] = useState<Record<number, string>>({});
-const [productOrderDrafts, setProductOrderDrafts] = useState<Record<string, string>>({});
 const [draggingProductKey, setDraggingProductKey] = useState<string | null>(null);
 const [draggingRecommendedProductId, setDraggingRecommendedProductId] = useState<number | null>(null);
 const [markupPercent, setMarkupPercent] = useState('');
@@ -151,7 +150,6 @@ const [savingProductKey, setSavingProductKey] = useState<string | null>(null);
 				const attrs = Array.isArray(variant?.whccItemAttributeUIDs)
 					? variant.whccItemAttributeUIDs.map(Number).filter((v: number) => Number.isInteger(v) && v > 0)
 					: [];
-				const superBase = Number(variant?.baseCost);
 				const superPrice = Number(variant?.price);
 				const superCost = Number.isFinite(superPrice)
 					? Number(superPrice.toFixed(2))

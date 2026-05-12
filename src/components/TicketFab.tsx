@@ -24,8 +24,8 @@ const TicketFab: React.FC = () => {
       await createTicket({
         subject,
         description,
-        created_by: user?.id ? String(user.id) : '',
-        created_for_studio: user?.studioId ? String(user.studioId) : '',
+        createdBy: user?.id ? String(user.id) : '',
+        createdForStudio: user?.studioId ? String(user.studioId) : '',
         meta: {
           page: location.pathname + location.search,
           user: user ? { id: user.id, email: user.email, name: user.firstName + ' ' + user.lastName } : null,

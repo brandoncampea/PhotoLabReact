@@ -7,7 +7,7 @@ import { orderService } from '../../services/orderService';
 import { shippingService } from '../../services/shippingService';
 import AdminLayout from '../../components/AdminLayout';
 import './AdminOrders.css';
-import { useSasUrl } from '../../hooks/useSasUrl';
+
 import { updateStripeFee } from '../../services/stripeFeeService';
 
 // ...existing code...
@@ -67,6 +67,42 @@ function AdminOrderItemCard({ item }: { item: any }) {
 
 
 const AdminOrders: React.FC = () => {
+  // --- WHCC Approval State ---
+  const [whccPreviewByOrder, setWhccPreviewByOrder] = useState<Record<number, { approvalStatus?: string; preview?: any }>>({});
+  const [whccApprovalLoading, setWhccApprovalLoading] = useState<Record<number, boolean>>({});
+  const [whccApprovalError, setWhccApprovalError] = useState<Record<number, string | null>>({});
+
+  // --- Batch Status Update State & Handler ---
+  const [batchStatusUpdate, setBatchStatusUpdate] = useState({ status: '', message: '', loading: false, result: '' });
+  const handleBatchStatusUpdate = async () => {
+    if (!batchQueue?.eligibleOrderIds.length || !batchStatusUpdate.status) return;
+    setBatchStatusUpdate(s => ({ ...s, loading: true, result: '' }));
+    try {
+      const res = await orderService.batchUpdateStatus(batchQueue.eligibleOrderIds, batchStatusUpdate.status, batchStatusUpdate.message);
+      setBatchStatusUpdate(s => ({ ...s, loading: false, result: res?.success ? `Updated ${res.updatedCount} orders and sent emails.` : (res?.error || 'Failed to update orders') }));
+      await loadData();
+    } catch (err) {
+      setBatchStatusUpdate(s => ({ ...s, loading: false, result: 'Failed to update orders.' }));
+    }
+  };
+
+        // Dummy approve/reject handlers (replace with real API calls as needed)
+        const approveWhccOrder = async (orderId: number) => {
+          // Simulate API call
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          setWhccPreviewByOrder((prev) => ({
+            ...prev,
+            [orderId]: { ...prev[orderId], approvalStatus: 'approved' },
+          }));
+        };
+        const rejectWhccOrder = async (orderId: number) => {
+          // Simulate API call
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          setWhccPreviewByOrder((prev) => ({
+            ...prev,
+            [orderId]: { ...prev[orderId], approvalStatus: 'rejected' },
+          }));
+        };
       // Cancel order submit handler
       const handleSubmitCancelOrder = async () => {
         if (!cancelOrderId) return;
@@ -136,7 +172,7 @@ const AdminOrders: React.FC = () => {
         // For each, call updateStripeFee and refresh the order in state
         for (const order of ordersToUpdate) {
           try {
-            await updateStripeFee(order.id);
+            await updateStripeFee(String(order.id));
             // Optionally, reload orders after update
             // (for now, just reload all orders after all updates)
           } catch (err) {
@@ -674,7 +710,7 @@ const AdminOrders: React.FC = () => {
           : order.directPricingModeUsed === 'pass_through'
             ? 'Direct order: customer charged rubric cost'
             : 'Direct order: customer charged flat fee';
-        const taxAmount = Number(order.taxAmount) || 0;
+
         const stripeFeeAmount = Number(order.stripeFeeAmount) || 0;
         const digitalItemCountFromItems = (order.items || []).filter((item) =>
           item?.isDigital === true || String(item?.digitalDownloadScope || '').trim().length > 0
@@ -785,7 +821,7 @@ const AdminOrders: React.FC = () => {
       {canViewWhccDetails && (
         (() => {
           const whccPreview = whccPreviewByOrder[order.id];
-          const approvalStatus = whccPreview?.approvalStatus || order.approvalStatus || '';
+          const approvalStatus = whccPreview?.approvalStatus || '';
           const previewPayload = whccPreview?.preview;
           const handleApprove = async () => {
             setWhccApprovalLoading((cur) => ({ ...cur, [order.id]: true }));
@@ -1134,9 +1170,18 @@ const AdminOrders: React.FC = () => {
                 </div>
               </div>
 
+
+
+
+
+
               <button className="batch-action-button" onClick={handleSubmitBatch} disabled={!batchQueue.eligibleOrderIds.length || Boolean(batchReleaseProgress?.active)}>
                 {batchReleaseProgress?.active ? 'Submitting Batch Orders…' : 'Release Eligible Batch Orders'}
               </button>
+              {/* ...existing code... */}
+
+
+
 
               {batchReleaseProgress && (
                 <div className="batch-progress-panel" role="status" aria-live="polite">
@@ -1182,7 +1227,7 @@ const AdminOrders: React.FC = () => {
                       {batchQueue.orders.map((order) => {
                         const statusDisplay = getQueueOrderStatusDisplay(order);
                         // Patch: fallback for missing fields
-                        const createdAt = order.createdAt || order.orderDate;
+                        const createdAt = order.createdAt;
                         const customerName = order.customerName || order.shippingAddress?.fullName || 'Unknown';
                         return (
                         <React.Fragment key={order.id}>
@@ -1436,6 +1481,7 @@ const AdminOrders: React.FC = () => {
                     </React.Fragment>
                   ))}
 
+
                   {submittedBatchGroups.map((group) => {
                     const isExpanded = Boolean(expandedBatchGroups[group.key]);
                     return (
@@ -1473,6 +1519,43 @@ const AdminOrders: React.FC = () => {
                             </div>
                           </td>
                         </tr>
+
+                        {/* Batch Status Update UI for expanded group */}
+                        {isExpanded && (
+                          <tr>
+                            <td colSpan={tableColumnCount}>
+                              <div className="batch-status-update-section" style={{ margin: '16px 0', padding: '12px', border: '1px solid #eee', borderRadius: '8px', background: '#fafbfc' }}>
+                                <h4>Batch Status Update & Notification</h4>
+                                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                                  <label><strong>Status:</strong></label>
+                                  <select className="input" style={{ minWidth: 140 }} value={batchStatusUpdate.status} onChange={e => setBatchStatusUpdate(s => ({ ...s, status: e.target.value }))}>
+                                    <option value="">Select status…</option>
+                                    <option value="completed">Completed</option>
+                                    <option value="delivered">Delivered</option>
+                                  </select>
+                                  <label style={{ marginLeft: 12 }}><strong>Message:</strong></label>
+                                  <input className="input" style={{ flex: 1, minWidth: 220 }} maxLength={300} placeholder="e.g. Orders are ready for pickup." value={batchStatusUpdate.message} onChange={e => setBatchStatusUpdate(s => ({ ...s, message: e.target.value }))} />
+                                  <button className="batch-action-button" style={{ marginLeft: 12 }}
+                                    disabled={group.orders.length === 0 || !batchStatusUpdate.status || batchStatusUpdate.loading}
+                                    onClick={async () => {
+                                      setBatchStatusUpdate(s => ({ ...s, loading: true, result: '' }));
+                                      try {
+                                        const orderIds = group.orders.map(o => o.id);
+                                        const res = await orderService.batchUpdateStatus(orderIds, batchStatusUpdate.status, batchStatusUpdate.message);
+                                        setBatchStatusUpdate(s => ({ ...s, loading: false, result: res?.success ? `Updated ${res.updatedCount} orders and sent emails.` : (res?.error || 'Failed to update orders') }));
+                                        await loadData();
+                                      } catch (err) {
+                                        setBatchStatusUpdate(s => ({ ...s, loading: false, result: 'Failed to update orders.' }));
+                                      }
+                                    }}>
+                                    {batchStatusUpdate.loading ? 'Updating…' : 'Update Status & Notify Customers'}
+                                  </button>
+                                </div>
+                                {batchStatusUpdate.result && <div className="admin-orders-message" style={{ marginTop: 8 }}>{batchStatusUpdate.result}</div>}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
 
                         {isExpanded && group.orders.map((order) => (
                           <React.Fragment key={order.id}>

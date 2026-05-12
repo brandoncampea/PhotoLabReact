@@ -18,8 +18,8 @@ const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop, onOpenWhccEditor,
   let displayImageUrl = '';
   if (item?.photo?.id) {
     displayImageUrl = `/api/photos/${item.photo.id}/asset?variant=thumbnail`;
-  } else if (item?.photo?.photoId) {
-    displayImageUrl = `/api/photos/${item.photo.photoId}/asset?variant=thumbnail`;
+  } else if (item?.photo?.id) {
+    displayImageUrl = `/api/photos/${item.photo.id}/asset?variant=thumbnail`;
   } else if (String(item?.photo?.thumbnailUrl || '').trim()) {
     displayImageUrl = String(item.photo.thumbnailUrl).trim();
   } else {
@@ -112,7 +112,7 @@ const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop, onOpenWhccEditor,
     const widthPx = rawW * scaleX;
     const heightPx = rawH * scaleY;
 
-    const overlayStyle = {
+    const overlayStyle: React.CSSProperties = {
       position: 'absolute',
       left: `${leftPx}px`,
       top: `${topPx}px`,
@@ -121,7 +121,7 @@ const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop, onOpenWhccEditor,
       border: '2px solid #7b61ff',
       boxShadow: '0 0 0 9999px rgba(10, 8, 24, 0.45)',
       borderRadius: 2,
-      pointerEvents: 'none',
+      pointerEvents: 'none' as React.CSSProperties['pointerEvents'],
       zIndex: 3,
     };
 

@@ -16,7 +16,7 @@ export const CreateTicketForm: React.FC<CreateTicketFormProps> = ({ currentUserI
     e.preventDefault();
     setLoading(true);
     try {
-      const ticket = await createTicket({ subject, description, created_by: currentUserId });
+      const ticket = await createTicket({ subject, description, createdBy: currentUserId });
       onCreated(ticket);
       setSubject('');
       setDescription('');

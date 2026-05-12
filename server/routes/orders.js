@@ -1,12 +1,57 @@
+
 import express from 'express';
 import jwt from 'jsonwebtoken';
 import mssql from '../mssql.cjs';
 const { queryRow, queryRows, query } = mssql;
 import { authRequired, adminRequired, superAdminRequired } from '../middleware/auth.js';
 import { requireActiveSubscription } from '../middleware/subscription.js';
+
+const router = express.Router();
+
+// Batch update status and notify customers (admin)
+router.post('/admin/batch-update-status', adminRequired, async (req, res) => {
+  try {
+    const { orderIds, status, message } = req.body;
+    if (!Array.isArray(orderIds) || !orderIds.length || !['completed', 'delivered'].includes(status)) {
+      return res.status(400).json({ error: 'Invalid orderIds or status' });
+    }
+    let updatedCount = 0;
+    for (const orderId of orderIds) {
+      // Update status
+      await query('UPDATE orders SET status = $1 WHERE id = $2', [status, orderId]);
+      updatedCount++;
+      // Fetch order and items for email
+      const order = await queryRow('SELECT o.*, u.email as customerEmail, u.name as customerName FROM orders o LEFT JOIN users u ON u.id = o.user_id WHERE o.id = $1', [orderId]);
+      // Join products and photos for correct productName and photoFileName
+      const items = await queryRows(`
+        SELECT oi.*, p.name as productName, ph.file_name as photoFileName
+        FROM order_items oi
+        LEFT JOIN products p ON p.id = oi.product_id
+        LEFT JOIN photos ph ON ph.id = oi.photo_id
+        WHERE oi.order_id = $1
+      `, [orderId]);
+      // Send email using receipt template with custom message
+      try {
+        await orderReceiptService.sendCustomerReceipt({
+          to: order.customerEmail,
+          customerName: order.customerName,
+          order: { ...order, status },
+          items,
+          customMessage: message,
+          isUpdate: true,
+        });
+      } catch (emailErr) {
+        // Log but do not fail batch
+        console.error('[Batch Status Email] Failed to send for order', orderId, emailErr);
+      }
+    }
+    return res.json({ success: true, updatedCount });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 import orderReceiptService from '../services/orderReceiptService.js';
 import { fetchToken as fetchWhccToken } from './whccProxy.js';
-const router = express.Router();
 
 // --- API: Get WHCC preview payload for an order (admin/studio only) ---
 router.get('/admin/:orderId/whcc-preview', adminRequired, async (req, res) => {

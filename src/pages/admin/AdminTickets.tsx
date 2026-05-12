@@ -74,7 +74,7 @@ const AdminTickets: React.FC = () => {
         >
           <div style={{ background: '#fff', borderRadius: 10, minWidth: 400, maxWidth: 600, padding: 24, boxShadow: '0 4px 32px rgba(0,0,0,0.18)', position: 'relative' }} onClick={e => e.stopPropagation()}>
             <button style={{ position: 'absolute', top: 12, right: 12, fontSize: 18, background: 'none', border: 'none', cursor: 'pointer' }} onClick={() => setSelectedTicketId(null)}>&times;</button>
-            <TicketDetails ticketId={selectedTicketId} currentUserId={user?.id || ''} onBack={() => setSelectedTicketId(null)} />
+            <TicketDetails ticketId={selectedTicketId} currentUserId={String(user?.id || '')} onBack={() => setSelectedTicketId(null)} />
           </div>
         </div>
       )}

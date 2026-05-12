@@ -1,8 +1,15 @@
 import api from './api';
-// import { mockApi } from './mockApi'; // Removed: unused
 import { Order, CartItem, ShippingAddress, BatchQueueSummary } from '../types';
 
 export const orderService = {
+  async batchUpdateStatus(orderIds: number[], status: string, message: string): Promise<{ success: boolean; updatedCount?: number; error?: string }> {
+    const response = await api.post('/orders/admin/batch-update-status', {
+      orderIds,
+      status,
+      message,
+    });
+    return response.data;
+  },
   async cancelOrder(orderId: number, cancelReason: string, refund: boolean): Promise<{ success: boolean; message?: string }> {
     const response = await api.patch(`/orders/admin/${orderId}/status`, {
       status: 'cancelled',
