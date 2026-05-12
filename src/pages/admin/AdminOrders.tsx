@@ -1,5 +1,106 @@
 
 import React, { useEffect, useRef, useState } from 'react';
+
+// --- WHCC Preview/Submit helpers (must be top-level, not inside component) ---
+export async function fetchWhccPreview(orderId: number) {
+  const res = await fetch(`/api/admin/${orderId}/whcc-preview`);
+  if (!res.ok) throw new Error('Failed to fetch WHCC preview');
+  return await res.json();
+}
+
+export async function submitWhccOrder(orderId: number) {
+  const res = await fetch(`/api/admin/${orderId}/whcc-approval`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'approve' }),
+  });
+  if (!res.ok) throw new Error('Failed to submit order to WHCC');
+  return await res.json();
+}
+
+
+// --- WHCC Preview Modal ---
+// (MUST be at top-level, not inside any other function or component)
+function WhccPreviewModal({ orderId, onClose }: { orderId: number; onClose: () => void }) {
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+  const [preview, setPreview] = React.useState<any>(null);
+  const [approvalStatus, setApprovalStatus] = React.useState<string | null>(null);
+  const [submitting, setSubmitting] = React.useState(false);
+  const [submitError, setSubmitError] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    setLoading(true);
+    setError(null);
+    fetchWhccPreview(orderId)
+      .then((data) => {
+        setPreview(data.preview);
+        setApprovalStatus(data.approvalStatus);
+      })
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false));
+  }, [orderId]);
+
+  const handleSubmit = async () => {
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      await submitWhccOrder(orderId);
+      setApprovalStatus('approved');
+    } catch (err: any) {
+      setSubmitError(err.message || 'Failed to submit');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="whcc-preview-modal-overlay">
+      <div className="whcc-preview-modal">
+        <button className="whcc-preview-close" onClick={onClose}>&times;</button>
+        <h3>WHCC Order Preview (Order #{orderId})</h3>
+        {loading ? (
+          <div>Loading preview…</div>
+        ) : error ? (
+          <div className="error">{error}</div>
+        ) : preview ? (
+          <pre className="whcc-preview-json">{JSON.stringify(preview, null, 2)}</pre>
+        ) : (
+          <div>No preview available.</div>
+        )}
+        <div style={{ marginTop: 16 }}>
+          <strong>Status:</strong> {approvalStatus || 'unknown'}
+        </div>
+        {approvalStatus !== 'approved' && (
+          <button className="whcc-submit-btn" onClick={handleSubmit} disabled={submitting} style={{ marginTop: 12 }}>
+            {submitting ? 'Submitting…' : 'Submit to WHCC'}
+          </button>
+        )}
+        {submitError && <div className="error" style={{ marginTop: 8 }}>{submitError}</div>}
+      </div>
+      <style>{`
+        .whcc-preview-modal-overlay {
+          position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.35); z-index: 9999; display: flex; align-items: center; justify-content: center;
+        }
+        .whcc-preview-modal {
+          background: #fff; border-radius: 8px; padding: 24px; min-width: 400px; max-width: 90vw; max-height: 80vh; overflow: auto; position: relative;
+        }
+        .whcc-preview-close {
+          position: absolute; top: 8px; right: 12px; background: none; border: none; font-size: 2rem; cursor: pointer;
+        }
+        .whcc-preview-json {
+          background: #f6f8fa; border-radius: 4px; padding: 12px; font-size: 0.95em; max-height: 40vh; overflow: auto;
+        }
+        .whcc-submit-btn {
+          background: #0070f3; color: #fff; border: none; border-radius: 4px; padding: 8px 18px; font-size: 1rem; cursor: pointer;
+        }
+        .whcc-submit-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        .error { color: #b00; margin-top: 8px; }
+      `}</style>
+    </div>
+  );
+}
+  // --- WHCC Preview Modal State ---
+  const [whccPreviewOrderId, setWhccPreviewOrderId] = useState<number | null>(null);
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Order, BatchQueueSummary, ShippingAddress } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
@@ -1367,6 +1468,13 @@ const AdminOrders: React.FC = () => {
                               ) : (
                                 <div className="whcc-pill whcc-muted">Not submitted</div>
                               )}
+                              <button
+                                className="whcc-preview-btn"
+                                style={{ marginTop: 6, marginBottom: 2, fontSize: '0.95em', padding: '2px 10px', borderRadius: 4, border: '1px solid #0070f3', background: '#f6f8fa', color: '#0070f3', cursor: 'pointer' }}
+                                onClick={e => { e.stopPropagation(); setWhccPreviewOrderId(order.id); }}
+                              >
+                                View WHCC Preview
+                              </button>
                               {order.whccSubmitResponse?.Received && (
                                 <div className="whcc-meta">Submitted: {String(order.whccSubmitResponse.Received)}</div>
                               )}
@@ -1392,6 +1500,10 @@ const AdminOrders: React.FC = () => {
                             </div>
                           </td>
                         )}
+                            {/* WHCC Preview Modal */}
+                            {whccPreviewOrderId && (
+                              <WhccPreviewModal orderId={whccPreviewOrderId} onClose={() => setWhccPreviewOrderId(null)} />
+                            )}
                       </tr>
                       {selectedOrderId === order.id && (
                         <tr className="admin-order-details-row">
