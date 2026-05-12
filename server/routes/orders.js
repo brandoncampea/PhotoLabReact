@@ -887,10 +887,15 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
       targetOrderIds
     );
 
+
     if (!items || items.length === 0) {
       console.warn(`[WHCC] No items found for order(s) ${targetOrderIds.join(', ')}`);
       return;
     }
+
+    // --- PATCH: If all items are digital, auto-approve; if any are physical, require approval ---
+    const allDigital = items.every((item) => isDigitalOrderItem(item));
+    const anyPhysical = items.some((item) => !isDigitalOrderItem(item));
 
     // Get WHCC credentials from environment (support both naming conventions)
     const consumerKey = process.env.WHCC_CONSUMER_KEY || process.env.WHCC_API_KEY;
@@ -1766,7 +1771,8 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
 
 
     // --- PREVIEW/APPROVAL LOGIC ---
-    // Always generate and persist preview payload, set approval_status to 'pending' if not already set
+
+    // Always generate and persist preview payload
     const previewPayload = {
       whccEntryId,
       whccReference,
@@ -1778,15 +1784,25 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
       specialInstructions,
       generatedAt: nowIso(),
     };
-    await query(
-      `UPDATE orders SET preview_payload = $1, approval_status = COALESCE(approval_status, 'pending') WHERE id IN (${targetOrderIds.map((_, i) => `$${i + 2}`).join(',')})`,
-      [stringifyForDb(previewPayload), ...targetOrderIds]
-    );
 
-    // If not forceSubmit and not all approved, do NOT submit to WHCC yet
-    if (!forceSubmit && !allApproved) {
-      console.log(`[WHCC][PREVIEW] Preview payload persisted for order(s) ${targetOrderIds.join(', ')}. Awaiting approval.`);
-      return;
+    // If all items are digital, auto-approve and proceed
+    if (allDigital) {
+      await query(
+        `UPDATE orders SET preview_payload = $1, approval_status = 'approved', approved_at = CURRENT_TIMESTAMP WHERE id IN (${targetOrderIds.map((_, i) => `$${i + 2}`).join(',')})`,
+        [stringifyForDb(previewPayload), ...targetOrderIds]
+      );
+      // Continue to WHCC submission (if any physical items, this block is skipped)
+    } else {
+      // If any physical items, set approval_status to 'pending' unless forceSubmit or allApproved
+      await query(
+        `UPDATE orders SET preview_payload = $1, approval_status = COALESCE(approval_status, 'pending') WHERE id IN (${targetOrderIds.map((_, i) => `$${i + 2}`).join(',')})`,
+        [stringifyForDb(previewPayload), ...targetOrderIds]
+      );
+      // If not forceSubmit and not all approved, do NOT submit to WHCC yet
+      if (!forceSubmit && !allApproved) {
+        console.log(`[WHCC][PREVIEW] Preview payload persisted for order(s) ${targetOrderIds.join(', ')}. Awaiting approval.`);
+        return;
+      }
     }
 
     // Only proceed to submit if all orders are approved or forceSubmit is true
