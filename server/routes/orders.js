@@ -166,15 +166,14 @@ router.post('/admin/:orderId/resend-digital-download', adminRequired, async (req
           sourceAlbumId: resolveDigitalSourceAlbumId({ item }),
         });
         const relativeUrl = `/api/orders/digital-download/${token}`;
-        const parsedPhotoIds = safeJsonParse(item.photoIds, item.photoId ? [item.photoId] : []);
-        const photoCount = Array.isArray(parsedPhotoIds) ? parsedPhotoIds.length : 0;
+        // Always use the actual filename for digital downloads, sanitized
+        const rawFileName = item.photoFileName || item.fileName || item.filename || `photo_${item.photoId}.jpg`;
+        const fileName = sanitizeDownloadFileName(rawFileName, `photo_${item.photoId}.jpg`);
         return {
           orderItemId: item.id,
           photoId: item.photoId,
           productName: item.productName,
-          photoFileName: downloadScope === 'album'
-            ? `${photoCount || 0} photo${photoCount === 1 ? '' : 's'} in album`
-            : item.photoFileName,
+          photoFileName: fileName,
           url: appBase ? `${appBase}${relativeUrl}` : relativeUrl,
         };
       });

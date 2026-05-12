@@ -2594,8 +2594,8 @@ router.get('/:id/asset', async (req, res) => {
   try {
     const photoId = req.params.id;
     const variant = (req.query.variant === 'thumb' || req.query.variant === 'thumbnail') ? 'thumb' : 'full';
-    // Fetch photo from DB
-    const photo = await queryRow('SELECT thumbnail_url, full_image_url FROM photos WHERE id = $1', [photoId]);
+    // Fetch photo from DB, include file_name for download
+    const photo = await queryRow('SELECT file_name, thumbnail_url, full_image_url FROM photos WHERE id = $1', [photoId]);
     if (!photo) {
       console.error(`[ASSET ROUTE] Photo not found for id=${photoId}`);
       return res.status(404).json({ error: 'Photo not found', photoId });
@@ -2605,7 +2605,10 @@ router.get('/:id/asset', async (req, res) => {
       console.error(`[ASSET ROUTE] Asset URL missing for id=${photoId}, variant=${variant}, photo=`, photo);
       return res.status(404).json({ error: 'Asset not found', photoId, variant, photo });
     }
-    console.log(`[ASSET ROUTE] Serving asset for id=${photoId}, variant=${variant}, assetUrl=${assetUrl}`);
+    // Set Content-Disposition header for download with correct filename
+    const downloadName = photo.file_name || `photo-${photoId}.jpg`;
+    res.setHeader('Content-Disposition', `attachment; filename="${downloadName}"`);
+    console.log(`[ASSET ROUTE] Serving asset for id=${photoId}, variant=${variant}, assetUrl=${assetUrl}, filename=${downloadName}`);
     await pipeAssetToResponse(assetUrl, res);
   } catch (error) {
     console.error('Error serving photo asset:', error);

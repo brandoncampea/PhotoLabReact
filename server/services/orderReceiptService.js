@@ -129,6 +129,11 @@ const renderItemsRows = (items) => items.map((item) => {
   </tr>`;
 }).join('');
 
+function getDigitalDownloadFileName(entry) {
+  // Prefer actual filename, fallback to productName or a generic label
+  return entry.photoFileName || entry.fileName || entry.filename || entry.productName || 'Digital Product';
+}
+
 const renderCustomerReceiptHtml = ({ customerName, order, items, digitalDownloads, customMessage, isUpdate }) => {
   const discount = resolveDiscountDetails(order);
   // Only show discount code/amount if there is a real discount (amount > 0 and code is not empty)
@@ -144,8 +149,8 @@ const renderCustomerReceiptHtml = ({ customerName, order, items, digitalDownload
         <div style="font-size:13px;color:#b8c2d1;margin-bottom:10px;">Use your unique links below to download your digital products.</div>
         ${digitalDownloads.map((entry) => `
           <div style="margin-bottom:8px;">
-            <a href="${esc(entry.url)}" style="display:inline-block;padding:9px 12px;background:#6ee7b7;color:#0f172a;text-decoration:none;border-radius:8px;font-weight:700;font-size:13px;">Download ${esc(entry.productName || 'Digital Product')}</a>
-            <div style="font-size:12px;color:#95a3b8;margin-top:4px;">${esc(entry.photoFileName || '')}</div>
+            <a href="${esc(entry.url)}" download="${esc(getDigitalDownloadFileName(entry))}" style="display:inline-block;padding:9px 12px;background:#6ee7b7;color:#0f172a;text-decoration:none;border-radius:8px;font-weight:700;font-size:13px;">Download ${esc(getDigitalDownloadFileName(entry))}</a>
+            <div style="font-size:12px;color:#95a3b8;margin-top:4px;">${esc(getDigitalDownloadFileName(entry))}</div>
           </div>
         `).join('')}
       </div>`
@@ -448,7 +453,7 @@ export const orderReceiptService = {
       to: Array.isArray(to) ? to.map(email => ({ email })) : [{ email: to }],
       subject: `Photo Lab receipt — Order #${order.id}`,
       html,
-      text: `Order #${order.id}\nStatus: ${order.status || 'processing'}${customMessage ? `\nMessage: ${customMessage}` : ''}\nTotal charged: ${currency(order.totalAmount ?? order.total ?? 0)}\nSubtotal: ${currency(order.subtotal ?? order.sub_total ?? 0)}\nShipping: ${currency(order.shippingCost ?? order.shipping_cost ?? 0)}\nTax: ${currency(order.taxAmount ?? order.tax_amount ?? 0)}${discountText}${digitalDownloads.length ? `\nDigital downloads:\n${digitalDownloads.map((entry) => `- ${entry.productName || 'Digital product'}: ${entry.url}`).join('\n')}` : ''}`,
+      text: `Order #${order.id}\nStatus: ${order.status || 'processing'}${customMessage ? `\nMessage: ${customMessage}` : ''}\nTotal charged: ${currency(order.totalAmount ?? order.total ?? 0)}\nSubtotal: ${currency(order.subtotal ?? order.sub_total ?? 0)}\nShipping: ${currency(order.shippingCost ?? order.shipping_cost ?? 0)}\nTax: ${currency(order.taxAmount ?? order.tax_amount ?? 0)}${discountText}${digitalDownloads.length ? `\nDigital downloads:\n${digitalDownloads.map((entry) => `- ${getDigitalDownloadFileName(entry)}: ${entry.url}`).join('\n')}` : ''}`,
       reply_to: smtpReplyTo,
       category: 'Order Receipt',
     });
