@@ -1530,6 +1530,11 @@ const AdminOrders: React.FC = () => {
                             {whccPreviewOrderId && (
                               <WhccPreviewModal orderId={whccPreviewOrderId} onClose={() => setWhccPreviewOrderId(null)} />
                             )}
+                        )}
+                            {/* WHCC Preview Modal */}
+                            {whccPreviewOrderId && (
+                              <WhccPreviewModal orderId={whccPreviewOrderId} onClose={() => setWhccPreviewOrderId(null)} />
+                            )}
                       </tr>
                       {selectedOrderId === order.id && (
                         <tr className="admin-order-details-row">
