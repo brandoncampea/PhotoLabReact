@@ -728,21 +728,13 @@ const Cart: React.FC = () => {
       return;
     }
     const data = cropper.getData();
-    console.log('[CropModal] Cropper data:', data);
     if (!data || isNaN(data.x) || isNaN(data.y) || isNaN(data.width) || isNaN(data.height) || data.width <= 0 || data.height <= 0) {
       window.alert('Invalid crop area. Please adjust the crop and try again.');
       return;
     }
     const formatted = formatCropData(data);
-    console.log('[CropModal] Calling updateCropData with:', {
-      photoId: editingItem.photoId,
-      cropData: formatted,
-      productId: editingItem.productId,
-      productSizeId: editingItem.productSizeId
-    });
     updateCropData(editingItem.photoId, formatted, editingItem.productId, editingItem.productSizeId);
     setTimeout(() => {
-      console.log('[CropModal] Closing modal after crop save.');
       setEditingItem(null);
       setCropperRef(null);
     }, 0);
@@ -1370,20 +1362,10 @@ const Cart: React.FC = () => {
               {error}
             </div>
           )}
-          <div style={{ background: '#232336', color: '#fff', padding: 12, borderRadius: 8, marginBottom: 16, fontSize: 13 }}>
-            <strong>Debug Info:</strong>
-            <div>items.length: {items.length}</div>
-            <div>stripeConfig: {JSON.stringify(stripeConfig)}</div>
-            <div>shippingAddress: {JSON.stringify(shippingAddress)}</div>
-            <div>shippingOption: {shippingOption}</div>
-            <div>loading: {String(loading)}</div>
-            <div>error: {error}</div>
-            <div>activePaymentIntent: {typeof activePaymentIntent !== 'undefined' ? (activePaymentIntent ? JSON.stringify(activePaymentIntent) : 'null') : 'undefined'}</div>
-            <div>showPaymentModal: {String(showPaymentModal)}</div>
-          </div>
+          {/* Debug panel removed */}
           <div className="cart-actions">
             <button
-              onClick={() => { console.log('[UI] Pay with Stripe clicked'); handleCheckout(); }}
+              onClick={handleCheckout}
               className="btn btn-primary btn-checkout cart-action-button"
               disabled={loading || !stripeConfig?.publishableKey || stripeConfig.publishableKey.startsWith('sk_')}
             >
