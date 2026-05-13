@@ -120,12 +120,21 @@ const renderItemsRows = (items) => items.map((item) => {
   const unitPrice = Number(item.unitPrice ?? item.price ?? 0);
   const quantity = Number(item.quantity || 0);
   const lineTotal = unitPrice * quantity;
+  // Render product attributes if present
+  let attrHtml = '';
+  if (item.attributes) {
+    if (Array.isArray(item.attributes)) {
+      attrHtml = item.attributes.map(attr => `<div style=\"font-size:12px;color:#7b61ff;\">${esc(attr)}</div>`).join('');
+    } else {
+      attrHtml = `<div style=\"font-size:12px;color:#7b61ff;\">${esc(item.attributes)}</div>`;
+    }
+  }
   return `<tr>
-    <td style="padding:10px 8px;border-bottom:1px solid #343b45;color:#e7edf6;">${esc(productName)}</td>
-    <td style="padding:10px 8px;border-bottom:1px solid #343b45;color:#d0d8e3;">${esc(photoName)}</td>
-    <td style="padding:10px 8px;border-bottom:1px solid #343b45;text-align:right;color:#d0d8e3;">${currency(unitPrice)}</td>
-    <td style="padding:10px 8px;border-bottom:1px solid #343b45;text-align:right;color:#d0d8e3;">${quantity}</td>
-    <td style="padding:10px 8px;border-bottom:1px solid #343b45;text-align:right;color:#fff;">${currency(lineTotal)}</td>
+    <td style=\"padding:10px 8px;border-bottom:1px solid #343b45;color:#e7edf6;\">${esc(productName)}${attrHtml ? `<div>${attrHtml}</div>` : ''}</td>
+    <td style=\"padding:10px 8px;border-bottom:1px solid #343b45;color:#d0d8e3;\">${esc(photoName)}</td>
+    <td style=\"padding:10px 8px;border-bottom:1px solid #343b45;text-align:right;color:#d0d8e3;\">${currency(unitPrice)}</td>
+    <td style=\"padding:10px 8px;border-bottom:1px solid #343b45;text-align:right;color:#d0d8e3;\">${quantity}</td>
+    <td style=\"padding:10px 8px;border-bottom:1px solid #343b45;text-align:right;color:#fff;\">${currency(lineTotal)}</td>
   </tr>`;
 }).join('');
 

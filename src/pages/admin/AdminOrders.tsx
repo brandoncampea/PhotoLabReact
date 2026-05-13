@@ -166,6 +166,17 @@ function AdminOrderItemCard({ item }: { item: any }) {
       <div className="admin-order-item-details">
         <h4>{item.productName || 'Unknown Product'}</h4>
         <p className="admin-order-item-size">{item.productSizeName || 'Unknown Size'}</p>
+        {/* Product Attributes */}
+        {item.attributes && (
+          <div style={{ marginTop: 2, marginBottom: 2 }}>
+            {Array.isArray(item.attributes)
+              ? item.attributes.map((attr: string, idx: number) => (
+                  <div key={idx} style={{ fontSize: 12, color: '#7b61ff' }}>{attr}</div>
+                ))
+              : <div style={{ fontSize: 12, color: '#7b61ff' }}>{item.attributes}</div>
+            }
+          </div>
+        )}
         <div className="admin-order-item-meta-row">
           <span className="admin-order-qty-pill">Qty: {item.quantity}</span>
           <span className="admin-order-item-price">${Number((item.price || 0) * (item.quantity || 0)).toFixed(2)}</span>

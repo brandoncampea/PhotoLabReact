@@ -921,15 +921,54 @@ const AlbumDetails: React.FC = () => {
     try {
       const cropper = cropperRef?.cropper || cropperRef;
       const cropData = cropper?.getData ? cropper.getData() : null;
-      const cropValues = cropData ? {
-        x: Math.round(cropData.x),
-        y: Math.round(cropData.y),
-        width: Math.round(cropData.width),
-        height: Math.round(cropData.height),
-        rotate: 0,
-        scaleX: 1,
-        scaleY: 1,
-      } : { x: 0, y: 0, width: 100, height: 100, rotate: 0, scaleX: 1, scaleY: 1 };
+      let cropValues;
+      const originalWidth = Number(selectedPhoto.width || selectedPhoto.metadata?.width || 0);
+      const originalHeight = Number(selectedPhoto.height || selectedPhoto.metadata?.height || 0);
+      if (cropData && selectedPhoto) {
+        // Get the displayed (thumbnail) image size from the cropper
+        const displayedWidth = cropper.getImageData().naturalWidth;
+        const displayedHeight = cropper.getImageData().naturalHeight;
+        // Calculate scale factors
+        const scaleX = originalWidth > 0 && displayedWidth > 0 ? originalWidth / displayedWidth : 1;
+        const scaleY = originalHeight > 0 && displayedHeight > 0 ? originalHeight / displayedHeight : 1;
+        cropValues = {
+          x: Math.round(cropData.x * scaleX),
+          y: Math.round(cropData.y * scaleY),
+          width: Math.round(cropData.width * scaleX),
+          height: Math.round(cropData.height * scaleY),
+          rotate: 0,
+          scaleX: 1,
+          scaleY: 1,
+        };
+        console.log('[AlbumDetails] handleCropConfirm - cropperData:', cropData, 'displayed:', displayedWidth, displayedHeight, 'original:', originalWidth, originalHeight, 'scale:', scaleX, scaleY, 'final crop:', cropValues);
+
+      } else {
+        // Default to centered crop with correct aspect ratio for the product size
+        let cropAspect = 1;
+        if (size && size.width && size.height) {
+          cropAspect = Number(size.width) / Number(size.height);
+        }
+        function getCenteredCrop(naturalWidth, naturalHeight, targetAspect) {
+          const imageAspect = naturalWidth / naturalHeight;
+          let cropWidth, cropHeight, cropX, cropY;
+          if (imageAspect > targetAspect) {
+            // Image is wider than target aspect: crop width
+            cropHeight = naturalHeight;
+            cropWidth = Math.round(cropHeight * targetAspect);
+            cropX = Math.round((naturalWidth - cropWidth) / 2);
+            cropY = 0;
+          } else {
+            // Image is taller than target aspect: crop height
+            cropWidth = naturalWidth;
+            cropHeight = Math.round(cropWidth / targetAspect);
+            cropX = 0;
+            cropY = Math.round((naturalHeight - cropHeight) / 2);
+          }
+          return { x: cropX, y: cropY, width: cropWidth, height: cropHeight, rotate: 0, scaleX: 1, scaleY: 1 };
+        }
+        cropValues = getCenteredCrop(originalWidth, originalHeight, cropAspect);
+        console.log('[AlbumDetails] handleCropConfirm - no cropData or selectedPhoto, using centered aspect crop', cropValues);
+      }
 
       await addToCart(
         selectedPhoto,
@@ -1849,6 +1888,37 @@ const AlbumDetails: React.FC = () => {
                 autoCropArea={1}
                 minContainerHeight={200}
                 minContainerWidth={200}
+                onInitialized={cropper => {
+                  setCropperRef(cropper);
+                  // Load cropData from cart item if available and scale to displayed image
+                  const cart = JSON.parse(localStorage.getItem('cart') || '[]');
+                  const cartItem = cart.find((item: any) => item.photoId === selectedPhoto.id && item.productId === productToCrop?.id && item.productSizeId === sizeToCrop?.id);
+                  if (cartItem && cartItem.cropData && selectedPhoto) {
+                    // Get displayed (thumbnail) and original image sizes
+                    const checkAndSet = () => {
+                      const imgData = cropper.getImageData();
+                      const displayedWidth = imgData.naturalWidth;
+                      const displayedHeight = imgData.naturalHeight;
+                      const originalWidth = Number(selectedPhoto.width || selectedPhoto.metadata?.width || 0);
+                      const originalHeight = Number(selectedPhoto.height || selectedPhoto.metadata?.height || 0);
+                      if (displayedWidth > 0 && displayedHeight > 0 && originalWidth > 0 && originalHeight > 0) {
+                        // Scale from original to displayed
+                        const scaleX = displayedWidth / originalWidth;
+                        const scaleY = displayedHeight / originalHeight;
+                        cropper.setData({
+                          x: cartItem.cropData.x * scaleX,
+                          y: cartItem.cropData.y * scaleY,
+                          width: cartItem.cropData.width * scaleX,
+                          height: cartItem.cropData.height * scaleY,
+                        });
+                      } else {
+                        // Retry after a short delay if image not ready
+                        setTimeout(checkAndSet, 50);
+                      }
+                    };
+                    checkAndSet();
+                  }
+                }}
               />
             </div>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>

@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 // import { useSasUrl } from '../hooks/useSasUrl';
 // SlotImage import removed; component not found.
 import { Photo, Product, ProductSize, CropData } from '../types';
-import Cropper, { ReactCropperElement } from 'react-cropper';
+import SharedCropper from './SharedCropper';
 
 interface PhotoSlot {
   position: number;
@@ -43,7 +43,7 @@ const MultiPhotoSelector: React.FC<MultiPhotoSelectorProps> = ({
   const [activeSlotIndex, setActiveSlotIndex] = useState<number | null>(
     initialPhoto ? 0 : null
   );
-  const cropperRef = useRef<ReactCropperElement>(null);
+  // No need for cropperRef, handled by SharedCropper
 
   const handlePhotoSelect = (photo: Photo, slotIndex: number) => {
     const newSlots = [...slots];
@@ -56,24 +56,12 @@ const MultiPhotoSelector: React.FC<MultiPhotoSelectorProps> = ({
     setActiveSlotIndex(slotIndex);
   };
 
-  const handleSaveCrop = () => {
-    if (activeSlotIndex === null || !cropperRef.current?.cropper) return;
-
-    const cropper = cropperRef.current.cropper;
-    const rawCropData = cropper.getData();
-    // Save cropData in natural/original image pixels
+  const handleSaveCrop = (cropData: CropData) => {
+    if (activeSlotIndex === null) return;
     const newSlots = [...slots];
     newSlots[activeSlotIndex] = {
       ...newSlots[activeSlotIndex],
-      cropData: {
-        x: Math.round(rawCropData.x),
-        y: Math.round(rawCropData.y),
-        width: Math.round(rawCropData.width),
-        height: Math.round(rawCropData.height),
-        rotate: rawCropData.rotate || 0,
-        scaleX: rawCropData.scaleX || 1,
-        scaleY: rawCropData.scaleY || 1,
-      },
+      cropData,
     };
     setSlots(newSlots);
     setActiveSlotIndex(null);
@@ -122,40 +110,17 @@ const MultiPhotoSelector: React.FC<MultiPhotoSelectorProps> = ({
       {/* Cropper Area or Slot Preview */}
       <div className="multi-photo-selector-crop-area">
         {activeSlot && activeSlot.photo ? (
-          <>
-            <Cropper
-              ref={cropperRef}
-              src={activeSlot.photo.id ? `/api/photos/${activeSlot.photo.id}/asset?variant=thumb` : ''}
-              crossOrigin="anonymous"
-              className="multi-photo-selector-cropper"
-              aspectRatio={selectedSize.width / selectedSize.height}
-              viewMode={1}
-              guides={true}
-              minCropBoxHeight={10}
-              minCropBoxWidth={10}
-              background={false}
-              responsive={true}
-              autoCropArea={1}
-              checkOrientation={false}
-            />
-            <div className="multi-photo-selector-crop-label">
-              Cropping Photo #{activeSlot.position}
-            </div>
-            <div className="multi-photo-selector-crop-actions">
-              <button
-                onClick={() => setActiveSlotIndex(null)}
-                className="btn btn-secondary"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSaveCrop}
-                className="btn btn-primary"
-              >
-                ✓ Save Crop
-              </button>
-            </div>
-          </>
+          <SharedCropper
+            imageUrl={activeSlot.photo.id ? `/api/photos/${activeSlot.photo.id}/asset?variant=thumb` : ''}
+            aspectRatio={selectedSize.width / selectedSize.height}
+            initialCropData={activeSlot.cropData}
+            onSave={handleSaveCrop}
+            onCancel={() => setActiveSlotIndex(null)}
+            cropLabel={`Cropping Photo #${activeSlot.position}`}
+            saveLabel="✓ Save Crop"
+            cancelLabel="Cancel"
+            className="multi-photo-selector-cropper"
+          />
         ) : (
           <div className="multi-photo-selector-crop-empty">
             Select a photo slot below to begin

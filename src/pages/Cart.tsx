@@ -1,9 +1,12 @@
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { Elements } from '@stripe/react-stripe-js';
 import { loadStripe } from '@stripe/stripe-js';
 import Cropper from 'react-cropper';
+import CropperModal from '../components/CropperModal';
+import Modal from '../components/Modal/Modal';
 import { getPhotoAssetUrl } from '../utils/getPhotoAssetUrl';
 import { getCropAspectRatioForPhotoAndProduct } from '../utils/getCropAspectRatio';
 import { formatDateInStudioTimezone } from '../utils/studioDateTime';
@@ -12,7 +15,6 @@ import './Cart.css';
 import { useCart } from '../contexts/CartContext';
 import CartItem from '../components/CartItem';
 import StripePaymentForm from '../components/StripePaymentForm';
-
 import { orderService } from '../services/orderService';
 import { shippingService } from '../services/shippingService';
 import { stripeService } from '../services/stripeService';
@@ -25,80 +27,76 @@ import { superPriceListService } from '../services/superPriceListService';
 import { ShippingConfig, StripeConfig, Product, DiscountCode, DiscountValidation, ShippingAddress, CartItem as CartItemType, PaymentIntent, ShippingQuote } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 
-const Cart: React.FC = () => {
-  const { items, getTotalPrice, getTotalItems, clearCart, updateCropData } = useCart();
-  const { user } = useAuth();
-  const navigate = useNavigate();
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [shippingConfig, setShippingConfig] = useState<ShippingConfig | null>(null);
-  const [shippingQuote, setShippingQuote] = useState<ShippingQuote | null>(null);
-  const [stripeConfig, setStripeConfig] = useState<StripeConfig | null>(null);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [shippingOption, setShippingOption] = useState<'batch' | 'direct'>('batch');
-  const [processingPayment, setProcessingPayment] = useState(false);
-  const [discountCode, setDiscountCode] = useState('');
-  const [appliedDiscount, setAppliedDiscount] = useState<DiscountCode | null>(null);
-  const [discountValidation, setDiscountValidation] = useState<DiscountValidation | null>(null);
-  const [discountError, setDiscountError] = useState('');
-  const [discountInfo, setDiscountInfo] = useState('');
-  const [bestDiscountSearchLoading, setBestDiscountSearchLoading] = useState(false);
-  const [editingItem, setEditingItem] = useState<CartItemType | null>(null);
-  const [cropperRef, setCropperRef] = useState<any>(null);
-  const [activePaymentIntent, setActivePaymentIntent] = useState<PaymentIntent | null>(null);
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const autoLaunchEditorRef = useRef(false);
 
-  const [studioFees, setStudioFees] = useState<{ feeType: string; feeValue: number } | null>(null);
+const Cart: React.FC = () => {
+    // Stripe config state must be defined before using in useMemo
+    const [stripeConfig, setStripeConfig] = useState<any>(null);
+    // Memoized Stripe promise instance
+    const stripePromise = useMemo(() => {
+      if (stripeConfig && stripeConfig.publishableKey) {
+        return loadStripe(stripeConfig.publishableKey);
+      }
+      return null;
+    }, [stripeConfig]);
+    // Ensure shipping config is loaded on mount
+    useEffect(() => {
+      loadShippingConfig();
+    }, []);
+
+    // Stripe payment intent state
+    const [activePaymentIntent, setActivePaymentIntent] = useState<any>(null);
+  const [shippingQuote, setShippingQuote] = useState<ShippingQuote | null>(null);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [appliedDiscount, setAppliedDiscount] = useState<any>(null);
+    const [editingItem, setEditingItem] = useState(null);
+    const [showPaymentModal, setShowPaymentModal] = useState(false);
+    const autoLaunchEditorRef = useRef(null);
+    // State for product images
+    const [productImages, setProductImages] = useState<Record<string, string>>({});
+  // State for best discount search loading
+  const [bestDiscountSearchLoading, setBestDiscountSearchLoading] = useState(false);
+  const [discountCode, setDiscountCode] = useState<string>('');
+  const [discountValidation, setDiscountValidation] = useState<any>(null);
+  const [studioFees, setStudioFees] = useState<any>(null);
+  // Place this after all state/hooks
+  useEffect(() => {
+    if (!stripeConfig) {
+      loadStripeConfig();
+    }
+  }, [stripeConfig]);
+
+    // Ensure Stripe config is loaded if missing
+    useEffect(() => {
+      if (!stripeConfig) {
+        loadStripeConfig();
+      }
+    }, [stripeConfig]);
+  const [error, setError] = useState<string | null>(null);
+  // State for discount error
+  const [discountError, setDiscountError] = useState<string | null>(null);
+  // State for discount info
+  const [discountInfo, setDiscountInfo] = useState<string>('');
+  // State for payment processing
+  const [processingPayment, setProcessingPayment] = useState(false);
+  // State for generic loading
+  const [loading, setLoading] = useState(false);
+  const { items, getTotalPrice, getTotalItems, clearCart, updateCropData } = useCart();
+
+  const { user } = useAuth();
+  const [shippingConfig, setShippingConfig] = useState<ShippingConfig | null>(null);
+  const [albumDetailsById, setAlbumDetailsById] = useState<{ [albumId: number]: any }>({});
+  const [shippingOption, setShippingOption] = useState<any>(null);
   const [shippingAddress, setShippingAddress] = useState<ShippingAddress>({
     fullName: '',
+    email: '',
     addressLine1: '',
     addressLine2: '',
     city: '',
     state: '',
     zipCode: '',
-    country: 'US', // Default to ISO code
-    email: user?.email || '',
-    phone: ''
+    country: 'US',
+    phone: '',
   });
-
-  const stripePromise = useMemo(() => {
-    if (!stripeConfig?.publishableKey) return null;
-    if (stripeConfig.publishableKey.startsWith('sk_')) return null;
-    return loadStripe(stripeConfig.publishableKey);
-  }, [stripeConfig?.publishableKey]);
-
-  const [productImages, setProductImages] = useState<Record<number, string>>({});
-  const [categoryImages, setCategoryImages] = useState<Record<string, string>>({});
-  const [albumDetailsById, setAlbumDetailsById] = useState<Record<number, { name?: string; coverImageUrl?: string }>>({});
-
-  useEffect(() => {
-    loadShippingConfig();
-    loadStripeConfig();
-    loadStudioFees();
-  }, []);
-
-  useEffect(() => {
-    loadProducts();
-    // Fallback: try to get a super price list ID from the first product if available
-    const priceListId = (products[0] as any)?.super_price_list_id;
-    if (priceListId) {
-      superPriceListService.getProductImages(priceListId).then((data) => {
-        const map: Record<number, string> = {};
-        (data || []).forEach((row: any) => {
-          if (row.product_id && row.image_url) map[Number(row.product_id)] = row.image_url;
-        });
-        setProductImages(map);
-      });
-      superPriceListService.getCategoryImages(priceListId).then((data) => {
-        const map: Record<string, string> = {};
-        (data || []).forEach((row: any) => {
-          if (row.category_name && row.image_url) map[String(row.category_name)] = row.image_url;
-        });
-        setCategoryImages(map);
-      });
-    }
-  }, [items]);
 
   useEffect(() => {
     // Update email in shipping address when user changes
@@ -451,7 +449,7 @@ const Cart: React.FC = () => {
     const discount = getDiscountAmount();
     let fees = 0;
     if (studioFees && studioFees.feeValue > 0) {
-      if (studioFees.feeType === 'percentage') {
+        if (!item.productId || !item.productSizeId) {
         fees = (subtotal * studioFees.feeValue) / 100;
       } else if (studioFees.feeType === 'fixed') {
         fees = studioFees.feeValue * items.reduce((count, item) => count + item.quantity, 0);
@@ -725,7 +723,7 @@ const Cart: React.FC = () => {
   const handleSaveCrop = () => {
     if (!editingItem) return;
     const cropper = cropperRef?.cropper || cropperRef;
-    if (!cropper || typeof cropper.getData !== 'function') {
+        if (!cropper || typeof cropper.getData !== 'function' || !editingItem.productId || !editingItem.productSizeId) {
       window.alert('Cropper is not ready. Please try again.');
       return;
     }
@@ -787,8 +785,15 @@ const Cart: React.FC = () => {
     }
 
     // Create the order and get the result (should include orderId)
+    // Defensive: ensure every item has the latest cropData from cart state
+    const itemsWithCrop = items.map(item => {
+      const latest = items.find(
+        ci => ci.photoId === item.photoId && ci.productId === item.productId && ci.productSizeId === item.productSizeId
+      );
+      return latest ? { ...item, cropData: latest.cropData } : item;
+    });
     const orderResult = await orderService.createOrder(
-      items,
+      itemsWithCrop,
       shippingAddress,
       shippingOption,
       getShippingCost(),
@@ -844,9 +849,15 @@ const Cart: React.FC = () => {
   };
 
   const handleCheckout = async () => {
-    if (items.length === 0) return;
+    console.log('[Stripe Checkout] handleCheckout called');
+    if (items.length === 0) {
+      console.warn('[Stripe Checkout] No items in cart');
+      setError('No items in cart.');
+      return;
+    }
 
     if (!stripeConfig?.isActive) {
+      console.warn('[Stripe Checkout] Stripe is not active', stripeConfig);
       setError('Payment processing is currently unavailable. Please try again later.');
       return;
     }
@@ -854,6 +865,7 @@ const Cart: React.FC = () => {
     // Validate shipping address
     if (!shippingAddress.fullName || !shippingAddress.addressLine1 || 
         !shippingAddress.city || !shippingAddress.state || !shippingAddress.zipCode || !shippingAddress.email) {
+      console.warn('[Stripe Checkout] Incomplete shipping address', shippingAddress);
       setError('Please complete all required shipping address fields.');
       return;
     }
@@ -861,11 +873,20 @@ const Cart: React.FC = () => {
     if (shippingOption === 'batch' && !isBatchAvailable()) {
       setShippingOption('direct');
       setError('Batch shipping is no longer available because the deadline has passed. Shipping was switched to direct. Please review totals and continue checkout.');
+      console.warn('[Stripe Checkout] Batch shipping not available');
       return;
     }
 
     setLoading(true);
     setError('');
+    console.log('[Stripe Checkout] Creating payment intent', {
+      items,
+      shippingOption,
+      shippingCost: getShippingCost(),
+      discountAmount: getDiscountAmount(),
+      taxAmount,
+      studioFee: getStudioFeeAmount(),
+    });
 
     try {
       // Create payment intent with final total
@@ -880,17 +901,20 @@ const Cart: React.FC = () => {
 
       if (!paymentIntent.clientSecret) {
         setError('Payment initialization failed. Please try again.');
+        console.error('[Stripe Checkout] No clientSecret in paymentIntent', paymentIntent);
         return;
       }
 
       const publishableIsLive = !!stripeConfig?.publishableKey?.startsWith('pk_live_');
       if (typeof paymentIntent.livemode === 'boolean' && paymentIntent.livemode !== publishableIsLive) {
         setError('Stripe configuration mismatch: publishable key mode does not match payment intent mode. Please verify Stripe keys.');
+        console.error('[Stripe Checkout] Publishable/live mode mismatch', { paymentIntent, stripeConfig });
         return;
       }
 
       setActivePaymentIntent(paymentIntent);
       setShowPaymentModal(true);
+      console.log('[Stripe Checkout] Payment modal should now be visible');
     } catch (err: any) {
       // Show detailed Stripe error if present
       const data = err?.response?.data;
@@ -903,8 +927,10 @@ const Cart: React.FC = () => {
           if (data.raw) details += `Raw: ${typeof data.raw === 'string' ? data.raw : JSON.stringify(data.raw)}`;
         }
         setError(details);
+        console.error('[Stripe Checkout] Stripe error', details);
       } else {
         setError(err.message || 'Payment failed. Please try again.');
+        console.error('[Stripe Checkout] Unknown error', err);
       }
     } finally {
       setLoading(false);
@@ -941,13 +967,21 @@ const Cart: React.FC = () => {
         <div className="cart-items">
           {items.map((item) => {
             const resolvedItem = getResolvedCartItem(item);
+            const photo = item.photo || item;
             // Add cropData hash to key to force re-render on crop change
             const cropKey = item.cropData ? `${item.cropData.x}-${item.cropData.y}-${item.cropData.width}-${item.cropData.height}` : 'nocrop';
             return (
               <CartItem
                 key={item.photoId + '-' + (item.productId || '') + '-' + (item.productSizeId || '') + '-' + cropKey}
                 item={resolvedItem}
-                onEditCrop={setEditingItem}
+                photo={photo}
+                onEditCrop={(editItem, editPhoto) => {
+                  // Always use the latest item from cart state to ensure fresh cropData
+                  const latest = items.find(
+                    (i) => i.photoId === editItem.photoId && i.productId === editItem.productId && i.productSizeId === editItem.productSizeId
+                  );
+                  setEditingItem(latest || editItem);
+                }}
                 onOpenWhccEditor={handleOpenWhccEditor}
                 showWhccEditorButton={!!resolvedItem?.requiresWhccEditor}
                 studioId={user?.studioId}
@@ -1098,7 +1132,7 @@ const Cart: React.FC = () => {
           {shippingConfig && hasPhysicalProducts() && (
             <div className="cart-section-card">
               <h3>Shipping Options</h3>
-              
+              {/* Always show both options if batch is available, otherwise show only direct, but always show the section */}
               {isBatchAvailable() && (
                 <label className={`cart-shipping-option ${shippingOption === 'batch' ? 'selected' : ''}`}>
                   <input
@@ -1126,7 +1160,7 @@ const Cart: React.FC = () => {
                   )}
                 </label>
               )}
-
+              {/* Always show direct shipping option */}
               <label className={`cart-shipping-option ${shippingOption === 'direct' ? 'selected' : ''}`}>
                 <input
                   type="radio"
@@ -1142,11 +1176,66 @@ const Cart: React.FC = () => {
                   Ships immediately (2-3 business days)
                 </p>
               </label>
-
               {!isBatchAvailable() && shippingOption === 'batch' && (
                 <p className="cart-deadline-warning">
                   Batch shipping deadline has passed
                 </p>
+              )}
+            </div>
+          )}
+
+          {/* Shipping Options Section - always show if physical products */}
+          {shippingConfig && (
+            <div className="cart-section-card section-spacing">
+              <h3>Shipping Options</h3>
+              {isBatchAvailable() && (
+                <label className={`cart-shipping-option ${shippingOption === 'batch' ? 'selected' : ''}`}>
+                  <input
+                    type="radio"
+                    name="shipping"
+                    value="batch"
+                    checked={shippingOption === 'batch'}
+                    onChange={() => setShippingOption('batch')}
+                  />
+                  <strong>Batch Shipping - FREE</strong>
+                  {getBatchDeadlineDate() ? (
+                    <p>
+                      Ships in {getDaysUntilDeadline()} days (by {formatDateInStudioTimezone(getBatchDeadlineDate())})
+                    </p>
+                  ) : (
+                    <p>
+                      Included with the next available batch shipment.
+                    </p>
+                  )}
+                  {shippingOption === 'batch' && shippingConfig?.batchShippingNote && (
+                    <div style={{ marginTop: 8, background: '#232336', color: '#bdbdbd', borderRadius: 6, padding: '8px 12px', fontSize: '0.98em' }}>
+                      {shippingConfig.batchShippingNote}
+                    </div>
+                  )}
+                </label>
+              )}
+              <label className={`cart-shipping-option ${shippingOption === 'direct' ? 'selected' : ''}`}>
+                <input
+                  type="radio"
+                  name="shipping"
+                  value="direct"
+                  checked={shippingOption === 'direct'}
+                  onChange={() => setShippingOption('direct')}
+                />
+                <span style={{ fontWeight: 600, fontSize: '1.1em', color: '#fff' }}>
+                  Direct Shipping - ${getShippingCostFor('direct').toFixed(2)}
+                </span>
+                <p style={{ color: '#bdbdbd', margin: 0 }}>
+                  Ships immediately (2-3 business days)
+                </p>
+              </label>
+              {!isBatchAvailable() && shippingOption === 'batch' && (
+                <p className="cart-deadline-warning">
+                  Batch shipping deadline has passed
+                </p>
+              )}
+              {!isBatchAvailable() && shippingOption !== 'direct' && (
+                <p style={{ color: '#ff6b6b', marginTop: 12 }}>No shipping options are currently available. Please contact support.</p>
               )}
             </div>
           )}
@@ -1281,9 +1370,20 @@ const Cart: React.FC = () => {
               {error}
             </div>
           )}
+          <div style={{ background: '#232336', color: '#fff', padding: 12, borderRadius: 8, marginBottom: 16, fontSize: 13 }}>
+            <strong>Debug Info:</strong>
+            <div>items.length: {items.length}</div>
+            <div>stripeConfig: {JSON.stringify(stripeConfig)}</div>
+            <div>shippingAddress: {JSON.stringify(shippingAddress)}</div>
+            <div>shippingOption: {shippingOption}</div>
+            <div>loading: {String(loading)}</div>
+            <div>error: {error}</div>
+            <div>activePaymentIntent: {typeof activePaymentIntent !== 'undefined' ? (activePaymentIntent ? JSON.stringify(activePaymentIntent) : 'null') : 'undefined'}</div>
+            <div>showPaymentModal: {String(showPaymentModal)}</div>
+          </div>
           <div className="cart-actions">
             <button
-              onClick={handleCheckout}
+              onClick={() => { console.log('[UI] Pay with Stripe clicked'); handleCheckout(); }}
               className="btn btn-primary btn-checkout cart-action-button"
               disabled={loading || !stripeConfig?.publishableKey || stripeConfig.publishableKey.startsWith('sk_')}
             >
@@ -1300,76 +1400,21 @@ const Cart: React.FC = () => {
       </div>
 
       {editingItem && (
-        <div className="cart-crop-modal-overlay">
-          <div className="cart-crop-modal">
-            <h3>Edit Crop</h3>
-            <div className="cart-crop-frame">
-              <Cropper
-                ref={setCropperRef}
-                // Always use SAS-protected URL for Azure blobs
-                src={getPhotoAssetUrl(editingItem.photo || editingItem, 'thumb')}
-                crossOrigin="anonymous"
-                style={{ maxHeight: 500, width: '100%' }}
-                aspectRatio={(() => {
-                  const photo = editingItem.photo || editingItem;
-                  const product = products.find((p) => p.id === editingItem.productId);
-                  const size = product?.sizes?.find((s) => s.id === editingItem.productSizeId);
-                  if (photo && size) {
-                    return getCropAspectRatioForPhotoAndProduct({
-                      photoWidth: Number(photo.width || photo.metadata?.width || 0),
-                      photoHeight: Number(photo.height || photo.metadata?.height || 0),
-                      productWidth: Number(size.width || 0),
-                      productHeight: Number(size.height || 0),
-                    });
-                  }
-                  return NaN;
-                })()}
-                viewMode={1}
-                guides={true}
-                responsive={true}
-                autoCropArea={1}
-                minContainerHeight={200}
-                minContainerWidth={200}
-                onInitialized={(cropper) => {
-                  setCropperRef(cropper);
-                  // Always load latest cropData when opening modal
-                  if (editingItem && editingItem.cropData) {
-                    cropper.setData({
-                      x: editingItem.cropData.x,
-                      y: editingItem.cropData.y,
-                      width: editingItem.cropData.width,
-                      height: editingItem.cropData.height,
-                    });
-                  }
-                }}
-              />
-            </div>
-            <div className="cart-crop-actions">
-              <button
-                className="btn btn-secondary"
-                onClick={() => {
-                  const cropper = cropperRef?.cropper || cropperRef;
-                  if (cropper?.reset) cropper.reset();
-                }}
-              >
-                Reset Crop
-              </button>
-              <button
-                className="btn btn-secondary"
-                onClick={() => {
-                  setEditingItem(null);
-                  setCropperRef(null);
-                }}
-              >
-                Cancel
-              </button>
-              <button className="btn btn-primary" onClick={handleSaveCrop}>Save Crop</button>
-            </div>
-          </div>
-        </div>
+        <Modal isOpen={true} onClose={() => setEditingItem(null)} contentClassName="cart-crop-modal">
+          <CropperModal
+            key={
+              editingItem.photoId + '-' +
+              (editingItem.productId || '') + '-' +
+              (editingItem.productSizeId || '') + '-' +
+              (editingItem.cropData ? `${editingItem.cropData.x}-${editingItem.cropData.y}-${editingItem.cropData.width}-${editingItem.cropData.height}` : 'nocrop')
+            }
+            item={editingItem}
+            onClose={() => setEditingItem(null)}
+          />
+        </Modal>
       )}
 
-      {showPaymentModal && activePaymentIntent?.clientSecret && stripePromise && (
+      {typeof activePaymentIntent !== 'undefined' && showPaymentModal && activePaymentIntent?.clientSecret && stripePromise && (
         <div className="cart-crop-modal-overlay">
           <div className="cart-payment-modal">
             <h3>Complete Payment</h3>

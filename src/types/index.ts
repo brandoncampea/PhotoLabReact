@@ -123,6 +123,7 @@ export interface CartItem {
   isDigital?: boolean;
   digitalDownloadScope?: 'photo' | 'album';
   productOptions?: Record<string, any>;
+  attributes?: string[] | string; // Added: product attributes (e.g., Lustre, Glossy)
 }
 
 export interface CropData {

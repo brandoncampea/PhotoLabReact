@@ -183,6 +183,30 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const newItemVariantKey = `${selectedVariantId}|${selectedVariantLocalId}`;
 
+
+    // Extract attributes from productOptions (e.g., surface, finish, display name, etc.)
+    const extractAttributes = (opts?: Record<string, any>): string[] => {
+      if (!opts) return [];
+      const keys = Object.keys(opts);
+      const attrs: string[] = [];
+      // Heuristic: include any string value for keys like surface, finish, paper, coating, etc.
+      for (const k of keys) {
+        if (/surface|finish|paper|coating|type|material|attribute|option/i.test(k) && typeof opts[k] === 'string') {
+          attrs.push(opts[k]);
+        }
+      }
+      // Also include WHCC display name fields if present
+      if (typeof opts.whccSelectedVariantDisplayName === 'string' && opts.whccSelectedVariantDisplayName.trim()) {
+        attrs.push(opts.whccSelectedVariantDisplayName.trim());
+      }
+      if (typeof opts.displayName === 'string' && opts.displayName.trim()) {
+        attrs.push(opts.displayName.trim());
+      }
+      // Remove duplicates
+      return Array.from(new Set(attrs));
+    };
+    const attributes = extractAttributes(options?.productOptions);
+
     setItems((prevItems) => {
       const existingItem = prevItems.find((item) => (
         item.photoId === photo.id
@@ -215,6 +239,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 whccEditorProductId: product.whccEditorProductId ?? item.whccEditorProductId,
                 whccEditorDesignId: product.whccEditorDesignId ?? item.whccEditorDesignId,
                 productOptions: options?.productOptions ?? item.productOptions,
+                attributes: attributes.length ? attributes : item.attributes,
               }
             : item
         );
@@ -239,6 +264,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         whccEditorDesignId: product.whccEditorDesignId,
         digitalDownloadScope: options?.digitalDownloadScope,
         productOptions: options?.productOptions,
+        attributes,
         price 
       }];
     });
@@ -312,6 +338,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Patch: Always force update, even if cropData is unchanged, to guarantee re-render
   const updateCropData = (photoId: number, cropData: CropData, productId?: number, productSizeId?: number) => {
+    console.log('[CartContext] updateCropData - saving cropData:', cropData, 'for photoId:', photoId, 'productId:', productId, 'productSizeId:', productSizeId);
     setItems((prevItems) => {
       let changed = false;
       const next = prevItems.map((item) => {

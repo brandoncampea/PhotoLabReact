@@ -1,3 +1,12 @@
+    function handleEditCrop() {
+      // Debug: log when Edit Crop is clicked and what data is being sent
+      console.log('[CartItem] handleEditCrop clicked', {
+        item,
+        photo,
+        cropData: item?.cropData
+      });
+      // ...existing code...
+    }
 import React, { useMemo, useState, useRef, useLayoutEffect } from 'react';
 import { CartItem as CartItemType } from '../types';
 import { useCart } from '../contexts/CartContext';
@@ -6,13 +15,14 @@ import { getPhotoAssetUrl } from '../utils/getPhotoAssetUrl';
 
 interface CartItemProps {
   item: CartItemType;
-  onEditCrop?: (item: CartItemType) => void;
+  photo?: any;
+  onEditCrop?: (item: CartItemType, photo?: any) => void;
   onOpenWhccEditor?: (item: CartItemType) => void;
   showWhccEditorButton?: boolean;
   studioId?: number;
 }
 
-const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop, onOpenWhccEditor, showWhccEditorButton, studioId }) => {
+const CartItem: React.FC<CartItemProps> = ({ item, photo, onEditCrop, onOpenWhccEditor, showWhccEditorButton, studioId }) => {
 
   // Cart preview should always use thumbnail assets.
   let displayImageUrl = '';
@@ -37,15 +47,28 @@ const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop, onOpenWhccEditor,
 
   const imageRef = useRef<HTMLImageElement | null>(null);
   const [expanded, setExpanded] = useState(true);
-  const [drawnSize, setDrawnSize] = useState({ width: 240, height: 280 });
+  const [drawnSize, setDrawnSize] = useState({ width: 240, height: 180 });
 
   useLayoutEffect(() => {
-    if (imageRef.current) {
-      setDrawnSize({
-        width: imageRef.current.clientWidth,
-        height: imageRef.current.clientHeight,
-      });
+    function updateDrawnSize() {
+      if (imageRef.current) {
+        setDrawnSize({
+          width: imageRef.current.clientWidth,
+          height: imageRef.current.clientHeight,
+        });
+      }
     }
+    updateDrawnSize();
+    // Listen for image load events
+    const img = imageRef.current;
+    if (img) {
+      img.addEventListener('load', updateDrawnSize);
+    }
+    return () => {
+      if (img) {
+        img.removeEventListener('load', updateDrawnSize);
+      }
+    };
   }, [displayImageUrl, expanded, item.cropData]);
 
   const { updateQuantity, removeFromCart } = useCart();
@@ -70,11 +93,13 @@ const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop, onOpenWhccEditor,
 
   // --- Overlay math matches cropper modal exactly ---
   const cropOverlayStyle = useMemo<React.CSSProperties | null>(() => {
-    if (isDigitalItem || !item?.cropData) return null;
+    if (isDigitalItem || !item?.cropData) {
+      return null;
+    }
 
     // Use the original image size for cropData
-    const naturalWidth = Number(item?.photo?.width || item?.photo?.metadata?.width || 0);
-    const naturalHeight = Number(item?.photo?.height || item?.photo?.metadata?.height || 0);
+    const naturalWidth = Number(item?.photo?.width || 0);
+    const naturalHeight = Number(item?.photo?.height || 0);
     if (!(naturalWidth > 0 && naturalHeight > 0)) return null;
 
     // Use the actual rendered image size
@@ -83,7 +108,7 @@ const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop, onOpenWhccEditor,
     const frameAspect = frameW / frameH;
     const photoAspect = naturalWidth / naturalHeight;
 
-    // Calculate how the image is drawn in the frame (objectFit: contain)
+    // Letterboxing logic (objectFit: contain)
     let drawnW = frameW;
     let drawnH = frameH;
     let offsetX = 0;
@@ -99,34 +124,34 @@ const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop, onOpenWhccEditor,
     }
 
     // Map crop coordinates (in natural/original image pixels) to drawn image in frame
-    const scaleX = drawnW / naturalWidth;
-    const scaleY = drawnH / naturalHeight;
     const rawX = Number(item.cropData.x || 0);
     const rawY = Number(item.cropData.y || 0);
     const rawW = Number(item.cropData.width || 0);
     const rawH = Number(item.cropData.height || 0);
-    if (!(rawW > 0 && rawH > 0)) return null;
 
+    // Scale crop rectangle to drawn image
+    const scaleX = drawnW / naturalWidth;
+    const scaleY = drawnH / naturalHeight;
     const leftPx = offsetX + rawX * scaleX;
     const topPx = offsetY + rawY * scaleY;
     const widthPx = rawW * scaleX;
     const heightPx = rawH * scaleY;
 
+    // Overlay style: always show full image, overlay crop area
     const overlayStyle: React.CSSProperties = {
       position: 'absolute',
       left: `${leftPx}px`,
       top: `${topPx}px`,
       width: `${widthPx}px`,
       height: `${heightPx}px`,
-      border: '2px solid #7b61ff',
+      border: '2px solid #ffe066',
       boxShadow: '0 0 0 9999px rgba(10, 8, 24, 0.45)',
       borderRadius: 2,
       pointerEvents: 'none' as React.CSSProperties['pointerEvents'],
       zIndex: 3,
     };
-
     return overlayStyle;
-  }, [isDigitalItem, item?.cropData, item?.photo?.width, item?.photo?.height, item?.photo?.metadata?.width, item?.photo?.metadata?.height]);
+  }, [isDigitalItem, item?.cropData, item?.photo?.width, item?.photo?.height, drawnSize.width, drawnSize.height]);
 
   const displayName = isAlbumScopeItem
     ? (item.albumName || 'Full Album')
@@ -152,23 +177,29 @@ const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop, onOpenWhccEditor,
         <div style={{ padding: 16, display: 'grid', gridTemplateColumns: '240px 1fr', gap: 24 }}>
           {/* Photo Preview Section */}
           <div>
-            <div style={{ marginBottom: 12, borderRadius: 6, overflow: 'hidden', background: '#000', height: 280, position: 'relative' }}>
+            <div style={{ marginBottom: 12, borderRadius: 6, overflow: 'hidden', background: '#000', width: 240, position: 'relative' }}>
               {displayImageUrl ? (
                 <>
-                  <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+                  <div style={{ width: 240, position: 'relative' }}>
                     <WatermarkedImage
                       src={displayImageUrl}
                       alt={item.productName || item.photo?.fileName || 'Product'}
-                      style={{ width: '100%', height: '100%', objectFit: 'contain', outline: '2px solid #00f' }}
+                      style={{ width: 240, height: 'auto', objectFit: 'contain', border: '3px dashed #ff0', background: '#222', display: 'block' }}
                       studioId={studioId}
                       showWatermark={false}
                       fill={false}
                       imageRef={imageRef}
                     />
+                    {cropOverlayStyle ? (
+                      <div style={{
+                        ...cropOverlayStyle,
+                        background: 'rgba(123, 97, 255, 0.18)',
+                        border: '3px solid #ff0',
+                        boxSizing: 'border-box',
+                        pointerEvents: 'none',
+                      }} />
+                    ) : null}
                   </div>
-                  {cropOverlayStyle ? (
-                    <div style={cropOverlayStyle} />
-                  ) : null}
                 </>
               ) : (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#666' }}>
@@ -183,7 +214,7 @@ const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop, onOpenWhccEditor,
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {onEditCrop && !isDigitalItem && (
                 <button 
-                  onClick={() => onEditCrop(item)}
+                  onClick={() => onEditCrop(item, photo)}
                   style={{ 
                     padding: '8px 10px', 
                     background: '#7b61ff', 
@@ -225,6 +256,17 @@ const CartItem: React.FC<CartItemProps> = ({ item, onEditCrop, onOpenWhccEditor,
             <div style={{ marginBottom: 12, paddingBottom: 12, borderBottom: '1px solid #2a2740' }}>
               <div style={{ fontWeight: 700, marginBottom: 4 }}>{item.productName || 'Selected Product'}</div>
               <div style={{ fontSize: 12, color: '#aaa' }}>{item.productSizeName || 'Selected Size'}</div>
+              {/* Product Attributes */}
+              {item.attributes && (
+                <div style={{ marginTop: 4, marginBottom: 4 }}>
+                  {Array.isArray(item.attributes)
+                    ? item.attributes.map((attr: string, idx: number) => (
+                        <div key={idx} style={{ fontSize: 12, color: '#7b61ff' }}>{attr}</div>
+                      ))
+                    : <div style={{ fontSize: 12, color: '#7b61ff' }}>{item.attributes}</div>
+                  }
+                </div>
+              )}
             </div>
 
             {/* Pricing and Quantity */}

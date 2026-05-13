@@ -42,6 +42,17 @@ function OrderItemWithSas({ item }: { item: any }) {
           {item.productName || 'Unknown Product'}
         </h4>
         <p className="item-size-name">{item.productSizeName || 'Unknown Size'}</p>
+        {/* Product Attributes */}
+        {item.attributes && (
+          <div style={{ marginTop: 2, marginBottom: 2 }}>
+            {Array.isArray(item.attributes)
+              ? item.attributes.map((attr: string, idx: number) => (
+                  <div key={idx} style={{ fontSize: 12, color: '#7b61ff' }}>{attr}</div>
+                ))
+              : <div style={{ fontSize: 12, color: '#7b61ff' }}>{item.attributes}</div>
+            }
+          </div>
+        )}
         <div>
           <span className="item-quantity">Qty: {item.quantity}</span>
         </div>
