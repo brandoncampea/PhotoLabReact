@@ -1,0 +1,118 @@
+/* Upload panel styling with always-visible border */
+.admin-photos-upload-panel {
+  border: 2.5px dashed #7b61ff;
+  background: #18182a;
+  color: #bdbdfc;
+  border-radius: 12px;
+  margin-bottom: 32px;
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  box-shadow: 0 2px 12px rgba(30,20,60,0.08);
+  transition: border-color 0.2s, background 0.2s;
+  outline: none;
+}
+/* AdminPhotos.css - Restores grid, thumbnail, and admin photo styling */
+
+.admin-photos-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  margin-top: 16px;
+  justify-content: flex-start;
+}
+
+.admin-photo-card {
+  background: #23234a;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transition: box-shadow 0.2s;
+  width: 400px;
+  min-width: 400px;
+  max-width: 400px;
+}
+  display: flex;
+.admin-photo-img {
+  width: 400px;
+  height: auto;
+  display: block;
+  object-fit: cover;
+  border-radius: 6px;
+  margin-bottom: 6px;
+  background: #111;
+}
+  color: #bdbdfc;
+  border-radius: 10px;
+  margin-bottom: 32px;
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  box-shadow: 0 2px 12px rgba(30,20,60,0.08);
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.admin-photos-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 24px;
+  margin-top: 16px;
+}
+
+.admin-photo-card {
+  background: #23234a;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transition: box-shadow 0.2s;
+}
+
+.admin-photo-card:hover {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+}
+
+.admin-photo-img {
+  width: 400px;
+  height: auto;
+  max-width: 100%;
+  object-fit: cover;
+  border-radius: 6px;
+  margin-bottom: 6px;
+  background: #111;
+}
+
+.admin-photo-meta {
+  width: 100%;
+  text-align: left;
+  font-size: 0.98em;
+  color: #e0e0ff;
+}
+
+.admin-photo-meta button {
+  margin-right: 6px;
+  margin-top: 6px;
+  font-size: 0.95em;
+}
+
+.empty-state {
+  color: #bbb;
+  text-align: center;
+  margin: 32px 0;
+}
+
+.upload-message.success {
+  color: #4ade80;
+}
+.upload-message.error {
+  color: #f87171;
+}

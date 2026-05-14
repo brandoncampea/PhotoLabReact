@@ -893,6 +893,7 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
       return;
     }
 
+
     // --- PATCH: If all items are digital, auto-approve; if any are physical, require approval ---
     const allDigital = items.every((item) => isDigitalOrderItem(item));
     const anyPhysical = items.some((item) => !isDigitalOrderItem(item));
@@ -2449,7 +2450,6 @@ router.post('/', requireActiveSubscription, async (req, res) => {
     const userId = req.user.id;
     const { 
       items, 
-      total, 
       subtotal,
       taxAmount,
       taxRate,
@@ -2463,6 +2463,12 @@ router.post('/', requireActiveSubscription, async (req, res) => {
       batchShippingAddress,
       batchLabVendor,
     } = req.body;
+
+    // Calculate total to always include subtotal + shipping + tax
+    const computedSubtotal = Number(subtotal) || 0;
+    const computedShipping = Number(shippingCost) || 0;
+    const computedTax = Number(taxAmount) || 0;
+    const total = +(computedSubtotal + computedShipping + computedTax).toFixed(2);
 
     const paymentAccounting = await fetchPaymentIntentAccounting(paymentIntentId);
 
@@ -2499,11 +2505,13 @@ router.post('/', requireActiveSubscription, async (req, res) => {
 
     // Insert order and get the returned id
 
+    // Set approval_status to 'pending' for all new WHCC-fulfillable orders
     const orderResult = await queryRow(`
       INSERT INTO orders (
         studio_id,
         user_id, 
         status,
+        approval_status,
         total, 
         subtotal,
         tax_amount,
@@ -2526,13 +2534,14 @@ router.post('/', requireActiveSubscription, async (req, res) => {
         stripe_charge_id
       )
       VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, CASE WHEN $19 = 1 THEN CURRENT_TIMESTAMP ELSE NULL END, $20, $21, $22
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, CASE WHEN $20 = 1 THEN CURRENT_TIMESTAMP ELSE NULL END, $21, $22, $23
       )
       RETURNING id
     `, [
       orderStudioId,
       userId, 
       nextStatus,
+      'pending', // approval_status
       total,
       subtotal || 0, 
       taxAmount || 0,

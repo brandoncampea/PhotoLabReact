@@ -60,7 +60,7 @@ function getContainerClient() {
   return containerClient;
 }
 
-export async function uploadImageBufferToAzure(buffer, blobName, contentType = 'application/octet-stream') {
+export async function uploadImageBufferToAzure(buffer, blobName, contentType = 'application/octet-stream', accessTier = undefined) {
   const container = getContainerClient();
   await container.createIfNotExists();
 
@@ -70,6 +70,11 @@ export async function uploadImageBufferToAzure(buffer, blobName, contentType = '
       blobContentType: contentType,
     },
   });
+
+  // Set access tier if specified (e.g., 'Cool', 'Hot', 'Archive')
+  if (accessTier) {
+    await blockBlobClient.setAccessTier(accessTier);
+  }
 
   // Return only the blob path (relative to container)
   return blobName;

@@ -178,7 +178,11 @@ const renderCustomerReceiptHtml = ({ customerName, order, items, digitalDownload
       <div style="margin-top:16px;font-size:14px;color:#d3dceb;">Thanks${customerName ? ` ${esc(customerName)}` : ''}! Your order has been ${isUpdate ? 'updated' : 'received'}.</div>
 
       <div style="margin-top:10px;font-size:15px;color:#b8c2d1;">
-        <strong>Status:</strong> ${esc(order.status || 'processing')}
+        <strong>Status:</strong> ${
+          order.approval_status && order.approval_status !== 'approved'
+            ? 'Pending Review'
+            : esc(order.status || 'processing')
+        }
       </div>
       ${customMessage ? `<div style=\"margin-top:10px;font-size:15px;color:#7cc7ff;\"><strong>Message:</strong> ${esc(customMessage)}</div>` : ''}
 

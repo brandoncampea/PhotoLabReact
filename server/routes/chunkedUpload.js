@@ -80,12 +80,17 @@ router.post('/assemble-chunks', express.json({ limit: '2mb' }), async (req, res)
     }
 
 
-    // Upload original image to Azure
+    // Upload original image to Azure (set to 'Cool' tier)
     // Remove spaces from filename
     const safeFileName = fileName.replace(/\s+/g, '_');
     const blobName = `${albumId}/${Date.now()}_${safeFileName}`;
     // Store only the blob path (relative to container)
-    const photoBlobPath = await uploadImageBufferToAzure(fileBuffer, blobName, mimetype || 'application/octet-stream');
+    const photoBlobPath = await uploadImageBufferToAzure(
+      fileBuffer,
+      blobName,
+      mimetype || 'application/octet-stream',
+      'Cool' // Set full-size images to Cool tier
+    );
 
     // Generate thumbnail (max 400px width/height, JPEG)
     let thumbnailBuffer;
@@ -100,10 +105,10 @@ router.post('/assemble-chunks', express.json({ limit: '2mb' }), async (req, res)
       thumbnailBuffer = fileBuffer; // fallback to original if sharp fails
     }
 
-    // Upload thumbnail to Azure
+    // Upload thumbnail to Azure (default Hot tier)
     const thumbBlobName = `${albumId}/thumb_${Date.now()}_${safeFileName.replace(/\.[^.]+$/, '.jpg')}`;
     // Store only the blob path (relative to container)
-    const thumbnailBlobPath = await uploadImageBufferToAzure(thumbnailBuffer, thumbBlobName, 'image/jpeg');
+    const thumbnailBlobPath = await uploadImageBufferToAzure(thumbnailBuffer, thumbBlobName, 'image/jpeg', 'Hot');
 
     // Extract metadata
     let extractedMetadata = {};

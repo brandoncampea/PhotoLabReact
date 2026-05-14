@@ -51,6 +51,7 @@ const detectFaceBoxesInBrowser = async (photo: Photo): Promise<{ faceBoxes: Face
 
 const setImageRef = (_photoId: number, _el: HTMLImageElement | null) => {};
 import React, { useState, useEffect } from 'react';
+import './AdminPhotos.css';
 
 // UploadProgressPanel and related unused props removed
 
@@ -983,11 +984,141 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
     multiple: true,
     disabled: uploading,
   });
+  const [infoPhoto, setInfoPhoto] = useState<Photo | null>(null);
+  const [showInfoModal, setShowInfoModal] = useState(false);
+
+  const openInfoModal = (photo: Photo) => {
+    setInfoPhoto(photo);
+    setShowInfoModal(true);
+  };
+  const closeInfoModal = () => {
+    setShowInfoModal(false);
+    setInfoPhoto(null);
+  };
+
+  if (earlyReturn) return earlyReturn;
   return (
-    <>
-      {/* ...existing code for header, upload panel, and photo grid... */}
-    </>
+    <div className="admin-page">
+      <div className="page-header">
+        <h1>Manage Photos</h1>
+        <div style={{ marginTop: 8 }}>
+          <label htmlFor="album-select">Album:</label>{' '}
+          <select id="album-select" value={albumId ?? ''} onChange={handleAlbumChange}>
+            {albums.map((album) => (
+              <option key={album.id} value={album.id}>{album.name}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+      <div className="admin-photos-controls">
+        <button className="btn btn-danger" onClick={handleDeleteAll} disabled={photos.length === 0}>Delete All Photos</button>
+        <button className="btn btn-secondary" onClick={handleDetectAll} disabled={photos.length === 0 || loading}>Auto-Tag All</button>
+        <button className="btn btn-info" onClick={handleNotifyWatchers} disabled={notifyLoading || !watchedTaggedPlayers.length}>Notify Watchers</button>
+        <input type="file" accept=".csv" onChange={handleRosterCsvUpload} disabled={rosterUploading} style={{ marginLeft: 12 }} />
+        {rosterUploading && <span style={{ marginLeft: 8 }}>Uploading roster…</span>}
+        {rosterMessage && <span style={{ marginLeft: 8 }}>{rosterMessage}</span>}
+        {notifyResult && <span style={{ marginLeft: 8 }}>{notifyResult}</span>}
+      </div>
+      <div className="admin-photos-upload-panel" {...getRootProps()} style={{ padding: 24, margin: '24px 0', background: isDragActive ? '#23234a' : undefined, cursor: uploading ? 'not-allowed' : 'pointer' }}>
+        <input {...getInputProps()} />
+        <p>{uploading ? 'Uploading photos…' : 'Drag and drop photos here, or click to select files.'}</p>
+        {uploadMessage && <div className={`upload-message ${uploadMessage.type}`}>{uploadMessage.text}</div>}
+        {uploadItems && uploadItems.length > 0 && (
+          <div className="upload-progress-list" style={{ marginTop: 16 }}>
+            {uploadItems.map((item) => (
+              <div key={item.id} className="upload-progress-item" style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 14 }}>{item.file.name}</span>
+                <div style={{ width: 120, margin: '0 12px' }}>
+                  <div style={{ height: 8, background: '#e0e0e0', borderRadius: 4, overflow: 'hidden' }}>
+                    <div style={{ width: `${item.progress}%`, height: 8, background: item.status === 'done' ? '#4caf50' : item.status === 'error' ? '#f44336' : '#7b61ff', transition: 'width 0.3s' }} />
+                  </div>
+                </div>
+                <span style={{ width: 60, textAlign: 'right', fontSize: 13 }}>
+                  {item.status === 'uploading' && `${item.progress}%`}
+                  {item.status === 'done' && 'Done'}
+                  {item.status === 'error' && 'Error'}
+                  {item.status === 'queued' && 'Queued'}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      {/* Photo grid */}
+      <div className="admin-photos-grid">
+        {photos.length === 0 ? (
+          <div className="empty-state">No photos in this album.</div>
+        ) : (
+          photos.map((photo) => (
+            <div key={photo.id} className="admin-photo-card">
+              <img src={`/api/photos/${photo.id}/asset?variant=thumbnail`} alt={photo.fileName} className="admin-photo-img" />
+              <div className="admin-photo-meta">
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <strong>{photo.fileName}</strong>
+                  <button
+                    title="Show photo info"
+                    style={{ background: 'none', border: 'none', color: '#7b61ff', cursor: 'pointer', fontSize: 18, marginLeft: 6 }}
+                    onClick={() => openInfoModal(photo)}
+                  >
+                    <span style={{ fontWeight: 700, fontSize: 18, display: 'inline-block', lineHeight: 1 }}>i</span>
+                  </button>
+                </div>
+                <div>ID: {photo.id}</div>
+                <div>Players: {photo.playerNames || '—'}</div>
+                <button className="btn btn-danger" onClick={() => handleDelete(photo.id)}>Delete</button>
+                <button className="btn btn-secondary" onClick={() => handleSetCover(photo)}>Set as Cover</button>
+                <button className="btn btn-info" onClick={() => handleDetectPlayers(photo)}>Detect Players/Faces</button>
+                <button className="btn btn-warning" onClick={() => handleClearPhotoTags(photo)}>Clear Tags</button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Info Modal */}
+      {showInfoModal && infoPhoto && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
+          background: 'rgba(0,0,0,0.45)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center'
+        }}>
+          <div style={{ background: '#23234a', color: '#fff', borderRadius: 10, padding: 28, minWidth: 340, maxWidth: 480, maxHeight: '80vh', overflow: 'auto', boxShadow: '0 4px 32px rgba(30,20,60,0.18)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <h3 style={{ margin: 0, fontSize: 20 }}>Photo Info</h3>
+              <button onClick={closeInfoModal} style={{ background: 'none', border: 'none', color: '#fff', fontSize: 22, cursor: 'pointer', marginLeft: 12 }} title="Close">&times;</button>
+            </div>
+            <div style={{ fontSize: 13, lineHeight: 1.6 }}>
+              {Object.entries(getMetadataForDisplay(infoPhoto)).map(([key, value]) => (
+                <div key={key} style={{ marginBottom: 4 }}>
+                  <span style={{ color: '#bdbdfc', fontWeight: 500 }}>{key}:</span> <span style={{ color: '#fff' }}>{value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
+}
+
+
+// Helper to parse photo metadata safely
+function parsePhotoMetadata(photo: Photo | null): Record<string, any> {
+  if (!photo) return {};
+  const rawMetadata = (photo as any).metadata;
+  if (rawMetadata && typeof rawMetadata === 'object') {
+    return rawMetadata as Record<string, any>;
+  }
+  if (typeof rawMetadata === 'string') {
+    try {
+      const parsed = JSON.parse(rawMetadata);
+      if (parsed && typeof parsed === 'object') {
+        return parsed as Record<string, any>;
+      }
+    } catch {
+      return {};
+    }
+  }
+  return {};
 }
 
 // Helper to format photo metadata for display

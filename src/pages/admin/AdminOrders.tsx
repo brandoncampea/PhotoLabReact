@@ -100,17 +100,7 @@ function WhccPreviewModal({ orderId, onClose }: { orderId: number; onClose: () =
   );
 }
 
-// ...existing imports...
 
-// Move this inside your main AdminOrders component:
-
-// function AdminOrders() {
-//   ...
-//   const [whccPreviewOrderId, setWhccPreviewOrderId] = useState<number | null>(null);
-//   ...
-// }
-
-// Remove the invalid top-level hook call above.
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Order, BatchQueueSummary, ShippingAddress } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
@@ -118,10 +108,10 @@ import { orderService } from '../../services/orderService';
 import { shippingService } from '../../services/shippingService';
 import AdminLayout from '../../components/AdminLayout';
 import './AdminOrders.css';
-
 import { updateStripeFee } from '../../services/stripeFeeService';
 
 // ...existing code...
+
 
 
 
@@ -1525,11 +1515,6 @@ const AdminOrders: React.FC = () => {
                               {order.whccLastError && <div className="whcc-pill whcc-error">Error stored</div>}
                             </div>
                           </td>
-                        )}
-                            {/* WHCC Preview Modal */}
-                            {whccPreviewOrderId && (
-                              <WhccPreviewModal orderId={whccPreviewOrderId} onClose={() => setWhccPreviewOrderId(null)} />
-                            )}
                         )}
                             {/* WHCC Preview Modal */}
                             {whccPreviewOrderId && (
