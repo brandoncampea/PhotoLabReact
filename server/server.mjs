@@ -25,6 +25,7 @@ import superPriceListsRouter from './routes/superPriceLists.js';
 import studioPriceListsRouter from './routes/studioPriceLists.js';
 import albumProductsRouter from './routes/albumProducts.js';
 import photoRoutes from './routes/photos.js';
+import '../server/startup/ensureOrderItemAttributesColumn.js';
 
 // ...existing code...
 import express from 'express';
@@ -70,6 +71,8 @@ import notifyWatchersRoutes from './routes/notifyWatchers.js';
 import runWhccEditorBackfillOnce from './startup/runWhccEditorBackfillOnce.js';
 import './startup/ensureFreeBatchShippingColumn.js';
 import './startup/ensureOrderApprovalColumns.js';
+
+import '../server/startup/ensureOrderItemAttributesColumn.js';
 
 
 

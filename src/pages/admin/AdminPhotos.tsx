@@ -1096,6 +1096,63 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
           </div>
         </div>
       )}
+
+      {/* Duplicate Upload Modal */}
+      {pendingDuplicateFiles && pendingDuplicateFiles.length > 0 && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
+          background: 'rgba(0,0,0,0.45)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center'
+        }}>
+          <div style={{ background: '#fff', color: '#23234a', borderRadius: 10, padding: 28, minWidth: 340, maxWidth: 420, boxShadow: '0 4px 32px rgba(30,20,60,0.18)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <h3 style={{ margin: 0, fontSize: 20 }}>Duplicate Photos Detected</h3>
+            </div>
+            <div style={{ fontSize: 15, marginBottom: 16 }}>
+              {pendingDuplicateCount} duplicate photo{pendingDuplicateCount === 1 ? '' : 's'} detected.<br />
+              How would you like to handle them?
+            </div>
+            <div style={{ marginBottom: 18 }}>
+              <label style={{ display: 'block', marginBottom: 8 }}>
+                <input
+                  type="radio"
+                  name="duplicateMode"
+                  value="skip"
+                  checked={duplicateModeSelection === 'skip'}
+                  onChange={() => setDuplicateModeSelection('skip')}
+                  style={{ marginRight: 8 }}
+                />
+                Skip duplicates (upload only new photos)
+              </label>
+              <label style={{ display: 'block', marginBottom: 8 }}>
+                <input
+                  type="radio"
+                  name="duplicateMode"
+                  value="overwrite"
+                  checked={duplicateModeSelection === 'overwrite'}
+                  onChange={() => setDuplicateModeSelection('overwrite')}
+                  style={{ marginRight: 8 }}
+                />
+                Overwrite existing photos with same name
+              </label>
+              <label style={{ display: 'block', marginBottom: 8 }}>
+                <input
+                  type="radio"
+                  name="duplicateMode"
+                  value="allow"
+                  checked={duplicateModeSelection === 'allow'}
+                  onChange={() => setDuplicateModeSelection('allow')}
+                  style={{ marginRight: 8 }}
+                />
+                Allow duplicates (upload all)
+              </label>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+              <button className="btn btn-secondary" onClick={handleCancelDuplicateMode}>Cancel</button>
+              <button className="btn btn-primary" onClick={handleConfirmDuplicateMode}>Continue</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -12,6 +12,7 @@ import { CartItem as CartItemType } from '../types';
 import { useCart } from '../contexts/CartContext';
 import WatermarkedImage from './WatermarkedImage';
 import { getPhotoAssetUrl } from '../utils/getPhotoAssetUrl';
+import ProductAttributes from './ProductAttributes';
 
 interface CartItemProps {
   item: CartItemType;
@@ -256,17 +257,7 @@ const CartItem: React.FC<CartItemProps> = ({ item, photo, onEditCrop, onOpenWhcc
             <div style={{ marginBottom: 12, paddingBottom: 12, borderBottom: '1px solid #2a2740' }}>
               <div style={{ fontWeight: 700, marginBottom: 4 }}>{item.productName || 'Selected Product'}</div>
               <div style={{ fontSize: 12, color: '#aaa' }}>{item.productSizeName || 'Selected Size'}</div>
-              {/* Product Attributes */}
-              {item.attributes && (
-                <div style={{ marginTop: 4, marginBottom: 4 }}>
-                  {Array.isArray(item.attributes)
-                    ? item.attributes.map((attr: string, idx: number) => (
-                        <div key={idx} style={{ fontSize: 12, color: '#7b61ff' }}>{attr}</div>
-                      ))
-                    : <div style={{ fontSize: 12, color: '#7b61ff' }}>{item.attributes}</div>
-                  }
-                </div>
-              )}
+              <ProductAttributes attributes={item.attributes} />
             </div>
 
             {/* Pricing and Quantity */}

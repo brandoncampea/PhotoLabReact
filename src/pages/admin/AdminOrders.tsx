@@ -1,9 +1,11 @@
 
 import React, { useEffect, useRef, useState } from 'react';
+import ReactDOM from 'react-dom';
 
 // --- WHCC Preview/Submit helpers (must be top-level, not inside component) ---
 export async function fetchWhccPreview(orderId: number) {
-  const res = await fetch(`/api/admin/${orderId}/whcc-preview`);
+  // Use the correct backend route as mounted in server/server.mjs
+  const res = await fetch(`/api/orders/admin/${orderId}/whcc-preview`);
   if (!res.ok) throw new Error('Failed to fetch WHCC preview');
   return await res.json();
 }
@@ -33,8 +35,10 @@ function WhccPreviewModal({ orderId, onClose }: { orderId: number; onClose: () =
     setError(null);
     fetchWhccPreview(orderId)
       .then((data) => {
-        setPreview(data.preview);
-        setApprovalStatus(data.approvalStatus);
+        // The backend returns the WHCC payload directly as the response
+        setPreview(data);
+        // Optionally, if approvalStatus is included, set it; otherwise, null
+        setApprovalStatus(data?.approvalStatus || null);
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
@@ -53,48 +57,149 @@ function WhccPreviewModal({ orderId, onClose }: { orderId: number; onClose: () =
     }
   };
 
+
+
   return (
     <div className="whcc-preview-modal-overlay">
       <div className="whcc-preview-modal">
-        <button className="whcc-preview-close" onClick={onClose}>&times;</button>
-        <h3>WHCC Order Preview (Order #{orderId})</h3>
-        {loading ? (
-          <div>Loading preview…</div>
-        ) : error ? (
-          <div className="error">{error}</div>
-        ) : preview ? (
-          <pre className="whcc-preview-json">{JSON.stringify(preview, null, 2)}</pre>
-        ) : (
-          <div>No preview available.</div>
-        )}
-        <div style={{ marginTop: 16 }}>
-          <strong>Status:</strong> {approvalStatus || 'unknown'}
+        <div className="whcc-preview-header">
+          <h3>WHCC Order Preview <span className="order-id">(Order #{orderId})</span></h3>
+          <button className="whcc-preview-close" onClick={onClose} title="Close">&times;</button>
         </div>
-        {approvalStatus !== 'approved' && (
-          <button className="whcc-submit-btn" onClick={handleSubmit} disabled={submitting} style={{ marginTop: 12 }}>
-            {submitting ? 'Submitting…' : 'Submit to WHCC'}
-          </button>
-        )}
-        {submitError && <div className="error" style={{ marginTop: 8 }}>{submitError}</div>}
+        <div className="whcc-preview-content">
+          {loading ? (
+            <div className="whcc-preview-loading">Loading preview…</div>
+          ) : error ? (
+            <div className="error">{error}</div>
+          ) : preview ? (
+            <pre className="whcc-preview-json">{JSON.stringify(preview, null, 2)}</pre>
+          ) : (
+            <div className="whcc-preview-empty">No preview available.</div>
+          )}
+        </div>
+        <div className="whcc-preview-footer">
+          <div className="whcc-preview-status"><strong>Status:</strong> {approvalStatus || 'unknown'}</div>
+          {approvalStatus !== 'approved' && (
+            <button className="whcc-submit-btn" onClick={handleSubmit} disabled={submitting}>
+              {submitting ? 'Submitting…' : 'Submit to WHCC'}
+            </button>
+          )}
+          {submitError && <div className="error" style={{ marginTop: 8 }}>{submitError}</div>}
+        </div>
       </div>
       <style>{`
         .whcc-preview-modal-overlay {
-          position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.35); z-index: 9999; display: flex; align-items: center; justify-content: center;
+          position: fixed;
+          top: 0; left: 0; width: 100vw; height: 100vh;
+          background: rgba(0,0,0,0.35);
+          z-index: 9999;
+          display: flex;
+          align-items: center;
+          justify-content: center;
         }
         .whcc-preview-modal {
-          background: #fff; border-radius: 8px; padding: 24px; min-width: 400px; max-width: 90vw; max-height: 80vh; overflow: auto; position: relative;
+          background: #fff;
+          border-radius: 12px;
+          box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+          min-width: 340px;
+          max-width: 95vw;
+          width: 600px;
+          max-height: 90vh;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+          position: relative;
+          animation: whcc-fadein 0.18s;
+        }
+        @keyframes whcc-fadein {
+          from { transform: scale(0.97); opacity: 0.5; }
+          to { transform: scale(1); opacity: 1; }
+        }
+        .whcc-preview-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          background: #f6f8fa;
+          border-bottom: 1px solid #e5e7eb;
+          padding: 18px 24px 14px 24px;
+        }
+        .whcc-preview-header h3 {
+          margin: 0;
+          font-size: 1.18rem;
+          font-weight: 600;
+          color: #222;
+        }
+        .whcc-preview-header .order-id {
+          color: #888;
+          font-weight: 400;
+          font-size: 0.98em;
         }
         .whcc-preview-close {
-          position: absolute; top: 8px; right: 12px; background: none; border: none; font-size: 2rem; cursor: pointer;
+          background: none;
+          border: none;
+          font-size: 2rem;
+          color: #888;
+          cursor: pointer;
+          transition: color 0.15s;
+        }
+        .whcc-preview-close:hover {
+          color: #0070f3;
+        }
+        .whcc-preview-content {
+          flex: 1 1 auto;
+          padding: 24px;
+          overflow-y: auto;
+          background: #fff;
         }
         .whcc-preview-json {
-          background: #f6f8fa; border-radius: 4px; padding: 12px; font-size: 0.95em; max-height: 40vh; overflow: auto;
+          background: #f6f8fa;
+          border-radius: 4px;
+          padding: 16px;
+          font-size: 1em;
+          max-height: 55vh;
+          overflow: auto;
+          font-family: 'Fira Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
+          border: 1px solid #e5e7eb;
+        }
+        .whcc-preview-loading, .whcc-preview-empty {
+          color: #888;
+          font-size: 1.08em;
+          padding: 18px 0;
+        }
+        .whcc-preview-footer {
+          border-top: 1px solid #e5e7eb;
+          background: #fafbfc;
+          padding: 16px 24px;
+          display: flex;
+          align-items: center;
+          gap: 18px;
+          flex-wrap: wrap;
+        }
+        .whcc-preview-status {
+          font-size: 1.04em;
         }
         .whcc-submit-btn {
-          background: #0070f3; color: #fff; border: none; border-radius: 4px; padding: 8px 18px; font-size: 1rem; cursor: pointer;
+          background: #0070f3;
+          color: #fff;
+          border: none;
+          border-radius: 4px;
+          padding: 8px 18px;
+          font-size: 1rem;
+          cursor: pointer;
+          margin-left: auto;
+          transition: background 0.15s;
         }
-        .whcc-submit-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-        .error { color: #b00; margin-top: 8px; }
+        .whcc-submit-btn:hover:not(:disabled) {
+          background: #0059c9;
+        }
+        .whcc-submit-btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+        .error {
+          color: #b00;
+          margin-top: 8px;
+        }
       `}</style>
     </div>
   );
@@ -108,6 +213,7 @@ import { orderService } from '../../services/orderService';
 import { shippingService } from '../../services/shippingService';
 import AdminLayout from '../../components/AdminLayout';
 import './AdminOrders.css';
+import ProductAttributes from '../../components/ProductAttributes';
 import { updateStripeFee } from '../../services/stripeFeeService';
 
 // ...existing code...
@@ -156,17 +262,58 @@ function AdminOrderItemCard({ item }: { item: any }) {
       <div className="admin-order-item-details">
         <h4>{item.productName || 'Unknown Product'}</h4>
         <p className="admin-order-item-size">{item.productSizeName || 'Unknown Size'}</p>
-        {/* Product Attributes */}
-        {item.attributes && (
-          <div style={{ marginTop: 2, marginBottom: 2 }}>
-            {Array.isArray(item.attributes)
-              ? item.attributes.map((attr: string, idx: number) => (
-                  <div key={idx} style={{ fontSize: 12, color: '#7b61ff' }}>{attr}</div>
-                ))
-              : <div style={{ fontSize: 12, color: '#7b61ff' }}>{item.attributes}</div>
+        {/* Attribute display logic */}
+        {(() => {
+          // Try to extract attribute UIDs and map to names from product_options_snapshot
+          let attrUids: number[] = [];
+          let attrNames: string[] = [];
+          // 1. Get attribute UIDs from item.attributes (stringified array or array)
+          if (item.attributes) {
+            if (typeof item.attributes === 'string') {
+              try {
+                const parsed = JSON.parse(item.attributes);
+                if (Array.isArray(parsed)) attrUids = parsed.map(Number).filter((v) => Number.isInteger(v));
+              } catch {
+                // fallback: single UID as string
+                if (!isNaN(Number(item.attributes))) attrUids = [Number(item.attributes)];
+              }
+            } else if (Array.isArray(item.attributes)) {
+              attrUids = item.attributes.map(Number).filter((v) => Number.isInteger(v));
             }
-          </div>
-        )}
+          }
+          // 2. Try to get attribute label mapping from product_options_snapshot
+          let whccCategories: any[] = [];
+          let whccAttrMap: Record<number, string> = {};
+          let optionsSnapshot = item.product_options_snapshot || item.productOptionsSnapshot;
+          if (typeof optionsSnapshot === 'string') {
+            try { optionsSnapshot = JSON.parse(optionsSnapshot); } catch { optionsSnapshot = {}; }
+          }
+          if (optionsSnapshot && typeof optionsSnapshot === 'object') {
+            whccCategories = optionsSnapshot.whccAttributeCategories || optionsSnapshot.whcc_attribute_categories || [];
+            // Build UID->name map
+            for (const cat of whccCategories) {
+              if (Array.isArray(cat.attributes)) {
+                for (const attr of cat.attributes) {
+                  const uid = Number(attr.uid ?? attr.AttributeUID ?? attr.attributeUID ?? attr.id);
+                  const name = String(attr.name ?? attr.AttributeName ?? attr.DisplayName ?? attr.displayName ?? '').trim();
+                  if (uid && name) whccAttrMap[uid] = name;
+                }
+              }
+            }
+          }
+          // 3. Map UIDs to names if possible
+          attrNames = attrUids.map((uid) => whccAttrMap[uid] || `#${uid}`);
+          // 4. Display
+          return attrNames.length > 0 ? (
+            <div style={{ margin: '4px 0' }}>
+              {attrNames.map((name, idx) => (
+                <span key={idx} style={{ fontSize: 12, color: '#7b61ff', marginRight: 8 }}>{name}</span>
+              ))}
+            </div>
+          ) : (
+            <div style={{ fontSize: 12, color: '#999', margin: '4px 0' }}>[No attributes]</div>
+          );
+        })()}
         <div className="admin-order-item-meta-row">
           <span className="admin-order-qty-pill">Qty: {item.quantity}</span>
           <span className="admin-order-item-price">${Number((item.price || 0) * (item.quantity || 0)).toFixed(2)}</span>
@@ -178,16 +325,52 @@ function AdminOrderItemCard({ item }: { item: any }) {
 }
 
 
+
 const AdminOrders: React.FC = () => {
-  // --- WHCC Preview Modal State ---
+  // --- All hooks and state at the top ---
+  const [orders, setOrders] = useState<Order[]>([]);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
   const [whccPreviewOrderId, setWhccPreviewOrderId] = useState<number | null>(null);
-  // --- WHCC Approval State ---
   const [whccPreviewByOrder, setWhccPreviewByOrder] = useState<Record<number, { approvalStatus?: string; preview?: any }>>({});
   const [whccApprovalLoading, setWhccApprovalLoading] = useState<Record<number, boolean>>({});
   const [whccApprovalError, setWhccApprovalError] = useState<Record<number, string | null>>({});
-
-  // --- Batch Status Update State & Handler ---
+  const whccPreviewModalPortal = whccPreviewOrderId
+    ? ReactDOM.createPortal(
+        <WhccPreviewModal orderId={whccPreviewOrderId} onClose={() => setWhccPreviewOrderId(null)} />,
+        document.body
+      )
+    : null;
   const [batchStatusUpdate, setBatchStatusUpdate] = useState({ status: '', message: '', loading: false, result: '' });
+
+
+  // --- Auto-open order details if orderId is present in the URL query string ---
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const orderIdParam = params.get('orderId');
+    if (orderIdParam && !selectedOrderId) {
+      const parsed = parseInt(orderIdParam, 10);
+      if (!isNaN(parsed)) {
+        setSelectedOrderId(parsed);
+      }
+    }
+  }, [location.search, selectedOrderId]);
+
+  // --- Ensure details panel opens after orders are loaded (for direct navigation) ---
+  useEffect(() => {
+    if (!selectedOrderId || !orders || orders.length === 0) return;
+    const found = orders.some(order => order.id === selectedOrderId);
+    if (!found) {
+      // Optionally: fetch the order directly if not in the list
+      // Example: orderService.getOrder(selectedOrderId).then(...)
+      // For now, do nothing (panel will show not found)
+    }
+    // If found, details panel will render as normal
+    // If you have a collapsed/expanded state, ensure it is set here
+  }, [selectedOrderId, orders]);
+
+  // --- Batch Status Update Handler ---
   const handleBatchStatusUpdate = async () => {
     if (!batchQueue?.eligibleOrderIds.length || !batchStatusUpdate.status) return;
     setBatchStatusUpdate(s => ({ ...s, loading: true, result: '' }));
@@ -270,7 +453,7 @@ const AdminOrders: React.FC = () => {
   const [cancelOrderId, setCancelOrderId] = useState<number | null>(null);
   const [cancelLoading, setCancelLoading] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
-  const [orders, setOrders] = useState<Order[]>([]);
+  // const [orders, setOrders] = useState<Order[]>([]); // Duplicate, removed
     // Auto-recalculate Stripe fee for orders with $0 fee and valid paymentIntentId
     useEffect(() => {
       const recalcStripeFees = async () => {
@@ -315,7 +498,7 @@ const AdminOrders: React.FC = () => {
   const [batchSpecialInstructions, setBatchSpecialInstructions] = useState('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
-  const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
+  // const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null); // Duplicate, removed
   const [searchQuery, setSearchQuery] = useState('');
   const [whccRetrying, setWhccRetrying] = useState<number | null>(null);
   const [whccRetryMessageByOrder, setWhccRetryMessageByOrder] = useState<Record<number, { tone: 'info' | 'error'; text: string }>>({});
@@ -334,8 +517,8 @@ const AdminOrders: React.FC = () => {
   } | null>(null);
   const [batchStatusByOrderId, setBatchStatusByOrderId] = useState<Record<number, 'pending' | 'submitting' | 'submitted' | 'failed'>>({});
   const batchProgressIntervalRef = useRef<number | null>(null);
-  const location = useLocation();
-  const navigate = useNavigate();
+  // const location = useLocation(); // Duplicate, removed
+  // const navigate = useNavigate(); // Duplicate, removed
 
   const stopBatchProgressPolling = () => {
     if (batchProgressIntervalRef.current != null) {
@@ -721,7 +904,15 @@ const AdminOrders: React.FC = () => {
 
     try {
       const orderDetails = await orderService.getAdminOrderDetails(orderId);
-      setOrders((current) => current.map((entry) => (entry.id === orderId ? { ...entry, ...orderDetails } : entry)));
+      setOrders((current) => {
+        // If order already exists, update it; otherwise, add it
+        const exists = current.some((entry) => entry.id === orderId);
+        if (exists) {
+          return current.map((entry) => (entry.id === orderId ? { ...entry, ...orderDetails } : entry));
+        } else {
+          return [...current, orderDetails];
+        }
+      });
     } catch {
       setMessage(`Failed to load details for order #${orderId}`);
     } finally {
@@ -1516,10 +1707,8 @@ const AdminOrders: React.FC = () => {
                             </div>
                           </td>
                         )}
-                            {/* WHCC Preview Modal */}
-                            {whccPreviewOrderId && (
-                              <WhccPreviewModal orderId={whccPreviewOrderId} onClose={() => setWhccPreviewOrderId(null)} />
-                            )}
+      {/* Render WHCC Preview Modal at the end of the component to avoid DOM nesting issues */}
+      {whccPreviewModalPortal}
                       </tr>
                       {selectedOrderId === order.id && (
                         <tr className="admin-order-details-row">
