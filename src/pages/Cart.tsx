@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { formatCropData } from '../utils/formatCropData';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { Elements } from '@stripe/react-stripe-js';
@@ -740,18 +741,7 @@ const Cart: React.FC = () => {
     }, 0);
   };
 
-  // Centralized crop data formatting utility (should be moved to a shared utils file if used elsewhere)
-  function formatCropData(data: any) {
-    return {
-      x: Math.round(data.x),
-      y: Math.round(data.y),
-      width: Math.round(data.width),
-      height: Math.round(data.height),
-      rotate: 0,
-      scaleX: 1,
-      scaleY: 1,
-    };
-  }
+  // formatCropData now imported from utils/formatCropData
 
   const finalizeSuccessfulCheckout = async (paymentIntentId: string) => {
     if (shippingOption === 'batch' && !isBatchAvailable()) {

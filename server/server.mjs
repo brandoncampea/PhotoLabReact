@@ -1,3 +1,8 @@
+import { initializeDatabase } from './initializeDatabasePatch.js';
+import cors from 'cors';
+import fs from 'fs';
+import express from 'express';
+
 import taxRoutes from './routes/tax.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -5,6 +10,7 @@ import { fileURLToPath } from 'url';
 // Must be declared before any usage
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
 
 import priceSuggestionsRoutes from './routes/priceSuggestions.js';
 console.log('[server.mjs] Server entrypoint loaded');
@@ -17,6 +23,7 @@ import dotenv from 'dotenv';
 // __filename and __dirname already declared above
 dotenv.config({ path: path.join(__dirname, '../.env.local') });
 import adminDashboardRoutes from './routes/adminDashboard.js';
+import studioDashboardRoutes from './routes/studioDashboard.js';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const blobSasRoutes = require('./routes/blobSas.cjs');
@@ -27,12 +34,7 @@ import albumProductsRouter from './routes/albumProducts.js';
 import photoRoutes from './routes/photos.js';
 import '../server/startup/ensureOrderItemAttributesColumn.js';
 
-// ...existing code...
-import express from 'express';
-import cors from 'cors';
-import fs from 'fs';
-import mssql from './mssql.cjs';
-const { initializeDatabase } = mssql;
+
 
 import authRoutes from './routes/auth.js';
 const infoRoutes = require('./routes/info.cjs');
@@ -120,6 +122,7 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Use routes
 app.use('/api/admin', adminDashboardRoutes);
+app.use('/api/studio-dashboard', studioDashboardRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/albums', albumRoutes);
 app.use('/api/photos', photoRoutes);

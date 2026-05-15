@@ -159,6 +159,9 @@ router.post('/add', async (req, res) => {
     const user = getOptionalUser(req);
     const userId = user?.id;
     const { productId, quantity = 1 } = req.body;
+    // Fetch product to check if digital
+    const productRow = await queryRow('SELECT TOP 1 id, is_digital FROM products WHERE id = $1', [productId]);
+    const isDigital = !!(productRow && (productRow.is_digital === true || productRow.is_digital === 1));
     if (!userId) {
       return res.status(401).json({ error: 'Not authenticated' });
     }
@@ -176,9 +179,13 @@ router.post('/add', async (req, res) => {
     // Add or update item
     const idx = cart.findIndex(item => item.productId === productId);
     if (idx >= 0) {
-      cart[idx].quantity = (cart[idx].quantity || 1) + quantity;
+      if (isDigital) {
+        cart[idx].quantity = 1;
+      } else {
+        cart[idx].quantity = (cart[idx].quantity || 1) + quantity;
+      }
     } else {
-      cart.push({ productId, quantity });
+      cart.push({ productId, quantity: isDigital ? 1 : quantity });
     }
     const cartData = JSON.stringify(cart);
     await query(`

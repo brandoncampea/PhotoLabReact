@@ -266,25 +266,45 @@ const CartItem: React.FC<CartItemProps> = ({ item, photo, onEditCrop, onOpenWhcc
                 <div style={{ color: '#aaa', fontSize: 13 }}>Item Total</div>
                 <div style={{ textAlign: 'right', fontWeight: 600 }}>${item.price.toFixed(2)}</div>
                 <div style={{ textAlign: 'right', width: 40 }}>
-                  <input
-                    type="number"
-                    min={1}
-                    value={item.quantity}
-                    onChange={(e) => {
-                      handleQuantityChange(parseInt(e.target.value) || 1);
-                    }}
-                    style={{
-                      width: '100%',
-                      padding: '4px 6px',
-                      background: '#0f0f16',
-                      border: '1px solid #2a2740',
-                      borderRadius: 3,
-                      color: '#fff',
-                      textAlign: 'center',
-                      opacity: 1,
-                      cursor: 'pointer',
-                    }}
-                  />
+                  {isDigitalItem ? (
+                    <input
+                      type="number"
+                      min={1}
+                      value={1}
+                      disabled
+                      style={{
+                        width: '100%',
+                        padding: '4px 6px',
+                        background: '#181828',
+                        border: '1px solid #2a2740',
+                        borderRadius: 3,
+                        color: '#aaa',
+                        textAlign: 'center',
+                        opacity: 0.7,
+                        cursor: 'not-allowed',
+                      }}
+                    />
+                  ) : (
+                    <input
+                      type="number"
+                      min={1}
+                      value={item.quantity}
+                      onChange={(e) => {
+                        handleQuantityChange(parseInt(e.target.value) || 1);
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '4px 6px',
+                        background: '#0f0f16',
+                        border: '1px solid #2a2740',
+                        borderRadius: 3,
+                        color: '#fff',
+                        textAlign: 'center',
+                        opacity: 1,
+                        cursor: 'pointer',
+                      }}
+                    />
+                  )}
                 </div>
                 <div style={{ textAlign: 'right', fontWeight: 700, fontSize: 14 }}>${subtotal.toFixed(2)}</div>
               </div>

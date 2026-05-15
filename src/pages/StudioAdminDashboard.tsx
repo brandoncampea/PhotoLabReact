@@ -1,3 +1,32 @@
+  // Customers with Cart state
+  const [customersWithCart, setCustomersWithCart] = useState<number | null>(null);
+  const [customersWithCartLoading, setCustomersWithCartLoading] = useState(false);
+  const [customersWithCartError, setCustomersWithCartError] = useState('');
+
+  useEffect(() => {
+    if (effectiveStudioId) {
+      const fetchCustomersWithCart = async () => {
+        setCustomersWithCartLoading(true);
+        setCustomersWithCartError('');
+        try {
+          const res = await fetch('/api/studio-dashboard/customers-with-cart', {
+            headers: getAuthHeaders(),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            setCustomersWithCart(data.count ?? 0);
+          } else {
+            setCustomersWithCartError('Failed to load cart data');
+          }
+        } catch (err) {
+          setCustomersWithCartError('Failed to load cart data');
+        } finally {
+          setCustomersWithCartLoading(false);
+        }
+      };
+      fetchCustomersWithCart();
+    }
+  }, [effectiveStudioId]);
 import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { analyticsService } from '../services/analyticsService';
@@ -507,6 +536,19 @@ export default function StudioAdminDashboard() {
       <h1>Studio Dashboard</h1>
 
       {/* Analytics Dashboard Section */}
+      <div style={{ background: 'var(--bg-tertiary)', borderRadius: 12, padding: 24, marginBottom: 32, marginTop: 24 }}>
+        <h2 style={{ marginBottom: 16 }}>Customers With Products In Cart</h2>
+        <div style={{ marginBottom: 18, display: 'flex', gap: 18, alignItems: 'center' }}>
+          {customersWithCartLoading ? (
+            <span style={{ color: 'var(--text-secondary)' }}>Loading...</span>
+          ) : customersWithCartError ? (
+            <span style={{ color: 'var(--error-color)' }}>{customersWithCartError}</span>
+          ) : (
+            <span style={{ fontSize: 32, fontWeight: 700, color: 'var(--primary-color)' }}>{customersWithCart ?? 0}</span>
+          )}
+          <span style={{ fontSize: 18, color: 'var(--text-secondary)', marginLeft: 8 }}>customer{(customersWithCart ?? 0) === 1 ? '' : 's'} currently have products in their cart</span>
+        </div>
+      </div>
       <div style={{ background: 'var(--bg-tertiary)', borderRadius: 12, padding: 24, marginBottom: 32, marginTop: 24 }}>
         <h2 style={{ marginBottom: 16 }}>Analytics</h2>
         <div style={{ marginBottom: 18, display: 'flex', gap: 8, flexWrap: 'wrap' }}>

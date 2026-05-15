@@ -362,17 +362,29 @@ const wrapHtml = (title, intro, content) => `
     ${appBaseUrl ? `<p style="margin-top:24px;"><a href="${esc(appBaseUrl)}">Open Photo Lab</a></p>` : ''}
   </div>`;
 
-const renderInternalAccounting = (order) => `
-  <div style="margin-top:20px;padding:16px;border:1px solid #eee;border-radius:8px;background:#fafafa;">
-    <h2 style="margin:0 0 12px 0;font-size:18px;">Internal accounting</h2>
-    <table style="width:100%;max-width:480px;border-collapse:collapse;">
-      <tr><td style="padding:4px 0;">Studio revenue</td><td style="padding:4px 0;text-align:right;">${currency(order.studioRevenue)}</td></tr>
-      <tr><td style="padding:4px 0;">Gross studio markup</td><td style="padding:4px 0;text-align:right;">${currency(order.grossStudioMarkup)}</td></tr>
-      <tr><td style="padding:4px 0;">Stripe fee</td><td style="padding:4px 0;text-align:right;">${currency(order.stripeFeeAmount)}</td></tr>
-      <tr><td style="padding:4px 0;font-weight:bold;">Estimated studio profit</td><td style="padding:4px 0;text-align:right;font-weight:bold;">${currency(order.studioProfitNet)}</td></tr>
-    </table>
-    ${order.orderUrl ? `<p style="margin:12px 0 0 0;"><a href="${esc(order.orderUrl)}">View this order in Photo Lab</a></p>` : ''}
-  </div>`;
+const renderInternalAccounting = (order) => {
+  // Calculate discount using the same logic as resolveDiscountDetails
+  const subtotal = Number(order?.subtotal || 0);
+  const taxAmount = Number(order?.taxAmount || 0);
+  const shippingCost = Number(order?.shippingCost || 0);
+  const totalAmount = Number(order?.totalAmount || order?.total || 0);
+  const discount = (subtotal + taxAmount) - totalAmount;
+  // Adjusted values
+  const studioRevenue = Math.max(0, Number(order.studioRevenue) - discount);
+  const grossStudioMarkup = Math.max(0, Number(order.grossStudioMarkup) - discount);
+  const studioProfitNet = Math.max(0, Number(order.studioProfitNet) - discount);
+  return `
+    <div style="margin-top:20px;padding:16px;border:1px solid #eee;border-radius:8px;background:#fafafa;">
+      <h2 style="margin:0 0 12px 0;font-size:18px;">Internal accounting</h2>
+      <table style="width:100%;max-width:480px;border-collapse:collapse;">
+        <tr><td style="padding:4px 0;">Studio revenue</td><td style="padding:4px 0;text-align:right;">${currency(studioRevenue)}</td></tr>
+        <tr><td style="padding:4px 0;">Gross studio markup</td><td style="padding:4px 0;text-align:right;">${currency(grossStudioMarkup)}</td></tr>
+        <tr><td style="padding:4px 0;">Stripe fee</td><td style="padding:4px 0;text-align:right;">${currency(order.stripeFeeAmount)}</td></tr>
+        <tr><td style="padding:4px 0;font-weight:bold;">Estimated studio profit</td><td style="padding:4px 0;text-align:right;font-weight:bold;">${currency(studioProfitNet)}</td></tr>
+      </table>
+      ${order.orderUrl ? `<p style="margin:12px 0 0 0;"><a href="${esc(order.orderUrl)}">View this order in Photo Lab</a></p>` : ''}
+    </div>`;
+};
 
 // ─── Player photo notification ────────────────────────────────────────────────
 

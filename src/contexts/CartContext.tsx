@@ -207,6 +207,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
     const attributes = extractAttributes(options?.productOptions);
 
+    const isDigital = !!(product.isDigital || options?.digitalDownloadScope || product.editorProvider === 'digital');
     setItems((prevItems) => {
       const existingItem = prevItems.find((item) => (
         item.photoId === photo.id
@@ -214,7 +215,64 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         && item.productSizeId === size.id
         && getItemVariantKey(item) === newItemVariantKey
       ));
-      
+      if (isDigital) {
+        // For digital products, only allow quantity 1 per photo/product/size/variant
+        if (existingItem) {
+          // Replace with quantity 1 and update other fields
+          return prevItems.map((item) =>
+            item.photoId === photo.id
+            && item.productId === product.id
+            && item.productSizeId === size.id
+            && getItemVariantKey(item) === newItemVariantKey
+              ? {
+                  ...item,
+                  quantity: 1,
+                  cropData,
+                  price,
+                  photoIds: allPhotoIds,
+                  photos: allPhotos,
+                  productName: product.name,
+                  productSizeName: size.name,
+                  albumId: options?.albumId ?? item.albumId,
+                  albumName: options?.albumName ?? item.albumName,
+                  albumCoverImageUrl: options?.albumCoverImageUrl ?? item.albumCoverImageUrl,
+                  digitalDownloadScope: options?.digitalDownloadScope ?? item.digitalDownloadScope,
+                  editorProvider: product.editorProvider ?? item.editorProvider,
+                  requiresWhccEditor: product.requiresWhccEditor ?? item.requiresWhccEditor,
+                  whccEditorProductId: product.whccEditorProductId ?? item.whccEditorProductId,
+                  whccEditorDesignId: product.whccEditorDesignId ?? item.whccEditorDesignId,
+                  productOptions: options?.productOptions ?? item.productOptions,
+                  attributes: attributes.length ? attributes : item.attributes,
+                }
+              : item
+          );
+        }
+        // Not in cart yet, add with quantity 1
+        return [...prevItems, {
+          photoId: photo.id,
+          photo,
+          albumId: options?.albumId,
+          albumName: options?.albumName,
+          albumCoverImageUrl: options?.albumCoverImageUrl,
+          photoIds: allPhotoIds,
+          photos: allPhotos,
+          quantity: 1,
+          cropData,
+          productId: product.id,
+          productSizeId: size.id,
+          productName: product.name,
+          productSizeName: size.name,
+          editorProvider: product.editorProvider,
+          requiresWhccEditor: product.requiresWhccEditor,
+          whccEditorProductId: product.whccEditorProductId,
+          whccEditorDesignId: product.whccEditorDesignId,
+          digitalDownloadScope: options?.digitalDownloadScope,
+          productOptions: options?.productOptions,
+          attributes,
+          price
+        }];
+      }
+      // Physical products: allow incrementing quantity
       if (existingItem) {
         return prevItems.map((item) =>
           item.photoId === photo.id

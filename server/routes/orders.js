@@ -86,13 +86,7 @@ router.get('/admin/:orderId/whcc-preview', adminRequired, async (req, res) => {
       }
     }
 
-    // Store the generated JSON in the order's whcc_lab_details field
-    await query(
-      'UPDATE orders SET whcc_lab_details = $1 WHERE id = $2',
-      [JSON.stringify(result.whccPayload, null, 2), orderId]
-    );
-
-    // Return only the JSON for review
+    // Return only the JSON for review (no DB persistence)
     return res.json(result.whccPayload);
   } catch (error) {
     return res.status(500).json({ error: error.message });
@@ -818,6 +812,7 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
       webhookId = webhookRegisterResponse?.data?.WebhookId || webhookRegisterResponse?.data?.webhookId || null;
       if (!webhookId) {
         console.error('[WHCC][ERROR] Webhook registration did not return a webhookId. Response:', webhookRegisterResponse?.data);
+        // Proceed without webhook, do not abort submission
       } else {
         console.log('[WHCC] Registered webhook with ID:', webhookId);
         // Store webhookId in all orders in the batch (or single order)
@@ -868,6 +863,7 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
       }
     } catch (err) {
       console.error('[WHCC][ERROR] Failed to register webhook:', err?.message || err);
+      // Proceed without webhook, do not abort submission
     }
   const allowBatch = Boolean(options?.allowBatch);
   const shippingAddressOverride = options?.shippingAddressOverride || null;
@@ -1002,7 +998,7 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
 
     const { createHash } = await import('node:crypto');
 
-    const parseProductOptions = (value) => safeJsonParse(value, {}) || {};
+    // Use top-level parseProductOptions
     const extractWhccItemConfig = (productOptions) => {
       const direct = productOptions || {};
       const nested = direct.whcc || direct.whccConfig || {};
@@ -1081,16 +1077,7 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
           : [],
       };
     };
-    const isDigitalOrderItem = (item, productOptions = null) => {
-      const category = String(item?.productCategory || '').toLowerCase();
-      const name = String(item?.productName || '').toLowerCase();
-      const options = productOptions || parseProductOptions(item?.productOptions);
-      const optionDigital =
-        options?.isDigital === true ||
-        options?.is_digital_only === true ||
-        options?.digitalOnly === true;
-      return optionDigital || category.includes('digital') || name.includes('digital');
-    };
+    // Use top-level isDigitalOrderItem
 
     const getCatalogProducts = (catalogPayload) => {
       if (Array.isArray(catalogPayload?.Products)) return catalogPayload.Products;
@@ -1844,9 +1831,9 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
 
     const whccOrderItems = filteredWhccItems.map((item) => item.payload);
 
-    // --- PATCH: Inject AttributeUID 547 for free batch shipping studios ---
+    // --- PATCH: Inject AttributeUID 547 for free batch shipping studios (batch shipping only) ---
     let orderAttributes = (order?.orderAttributes || []).slice();
-    if (studioHasFreeBatchShipping) {
+    if (studioHasFreeBatchShipping && order.is_batch) {
       if (!orderAttributes.some(attr => Number(attr.AttributeUID) === 547)) {
         orderAttributes.push({ AttributeUID: 547 });
       }
@@ -1871,7 +1858,6 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
       whccOrderItems,
       orderId,
       targetOrderIds,
-      whccOrderRequest,
       shippingAddress,
       specialInstructions,
       generatedAt: nowIso(),
@@ -1883,6 +1869,9 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
         `UPDATE orders SET preview_payload = $1, approval_status = 'approved', approved_at = CURRENT_TIMESTAMP WHERE id IN (${targetOrderIds.map((_, i) => `$${i + 2}`).join(',')})`,
         [stringifyForDb(previewPayload), ...targetOrderIds]
       );
+      if (options.previewOnly) {
+        return { whccPayload: previewPayload };
+      }
       // Continue to WHCC submission (if any physical items, this block is skipped)
     } else {
       // If any physical items, set approval_status to 'pending' unless forceSubmit or allApproved
@@ -1893,6 +1882,9 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
       // If not forceSubmit and not all approved, do NOT submit to WHCC yet
       if (!forceSubmit && !allApproved) {
         console.log(`[WHCC][PREVIEW] Preview payload persisted for order(s) ${targetOrderIds.join(', ')}. Awaiting approval.`);
+        if (options.previewOnly) {
+          return { whccPayload: previewPayload };
+        }
         return;
       }
     }
@@ -1925,6 +1917,7 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
       Phone: normalizePhone(shippingAddress.phone),
     };
 
+    // Build WHCC order request for submission
     const whccOrder = {
       SequenceNumber: 1,
       Reference: whccReference,
@@ -3759,6 +3752,7 @@ router.get('/admin/order-details/:orderId', adminRequired, async (req, res) => {
               oi.quantity,
               oi.price,
               oi.crop_data as cropData,
+              oi.product_options_snapshot as productOptionsSnapshot,
               p.name as productName,
               p.category as productCategory,
               p.options as productOptions,

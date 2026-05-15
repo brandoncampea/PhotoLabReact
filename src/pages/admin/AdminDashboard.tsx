@@ -60,6 +60,26 @@ type DashboardStats = {
 };
 
 const AdminDashboard: React.FC = () => {
+  // Customers with Cart state
+  const [customersWithCart, setCustomersWithCart] = useState<number | null>(null);
+  const [customersWithCartLoading, setCustomersWithCartLoading] = useState(false);
+  const [customersWithCartError, setCustomersWithCartError] = useState('');
+
+  useEffect(() => {
+    const fetchCustomersWithCart = async () => {
+      setCustomersWithCartLoading(true);
+      setCustomersWithCartError('');
+      try {
+        const res = await api.get('/studio-dashboard/customers-with-cart');
+        setCustomersWithCart(res.data.count ?? 0);
+      } catch (err) {
+        setCustomersWithCartError('Failed to load cart data');
+      } finally {
+        setCustomersWithCartLoading(false);
+      }
+    };
+    fetchCustomersWithCart();
+  }, []);
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [, setAnalyticsLoading] = useState(false);
@@ -140,6 +160,21 @@ const AdminDashboard: React.FC = () => {
       </div>
 
       <div className="dashboard-metrics tallydark-metrics admin-dashboard-metrics">
+        <div className="dashboard-card tallydark-card admin-dashboard-card" role="region" tabIndex={0}>
+          <div className="dashboard-card-label">Customers With Products In Cart</div>
+          <div className="dashboard-card-value" style={{ fontSize: 32, fontWeight: 700, color: 'var(--primary-color)' }}>
+            {customersWithCartLoading ? (
+              <span style={{ color: 'var(--text-secondary)' }}>Loading...</span>
+            ) : customersWithCartError ? (
+              <span style={{ color: 'var(--error-color)' }}>{customersWithCartError}</span>
+            ) : (
+              <span>{customersWithCart ?? 0}</span>
+            )}
+          </div>
+          <div className="dashboard-card-sub">
+            <span style={{ fontSize: 18, color: 'var(--text-secondary)' }}>{customersWithCart === 1 ? 'customer has' : 'customers have'} products in their cart</span>
+          </div>
+        </div>
         <div className="dashboard-card tallydark-card admin-dashboard-card admin-dashboard-card--revenue" role="region" tabIndex={0}>
           <div className="dashboard-card-label">Total Revenue</div>
           <div className="dashboard-card-value revenue admin-dashboard-revenue-value">

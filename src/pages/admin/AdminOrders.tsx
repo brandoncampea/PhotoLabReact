@@ -1,5 +1,6 @@
 
 import React, { useEffect, useRef, useState } from 'react';
+import AdminOrderCropOverlay from '../../components/AdminOrderCropOverlay';
 import ReactDOM from 'react-dom';
 
 // --- WHCC Preview/Submit helpers (must be top-level, not inside component) ---
@@ -10,11 +11,11 @@ export async function fetchWhccPreview(orderId: number) {
   return await res.json();
 }
 
-export async function submitWhccOrder(orderId: number) {
-  const res = await fetch(`/api/admin/${orderId}/whcc-approval`, {
+export async function submitWhccOrder(orderId: number, specialInstructions?: string) {
+  const res = await fetch(`/api/orders/admin/${orderId}/whcc-approval`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'approve' }),
+    body: JSON.stringify({ action: 'approve', specialInstructions }),
   });
   if (!res.ok) throw new Error('Failed to submit order to WHCC');
   return await res.json();
@@ -30,15 +31,15 @@ function WhccPreviewModal({ orderId, onClose }: { orderId: number; onClose: () =
   const [approvalStatus, setApprovalStatus] = React.useState<string | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
   const [submitError, setSubmitError] = React.useState<string | null>(null);
+  const [specialInstructions, setSpecialInstructions] = React.useState('');
   React.useEffect(() => {
     setLoading(true);
     setError(null);
     fetchWhccPreview(orderId)
       .then((data) => {
-        // The backend returns the WHCC payload directly as the response
         setPreview(data);
-        // Optionally, if approvalStatus is included, set it; otherwise, null
         setApprovalStatus(data?.approvalStatus || null);
+        if (data?.specialInstructions) setSpecialInstructions(data.specialInstructions);
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
@@ -48,7 +49,7 @@ function WhccPreviewModal({ orderId, onClose }: { orderId: number; onClose: () =
     setSubmitting(true);
     setSubmitError(null);
     try {
-      await submitWhccOrder(orderId);
+      await submitWhccOrder(orderId, specialInstructions);
       setApprovalStatus('approved');
     } catch (err: any) {
       setSubmitError(err.message || 'Failed to submit');
@@ -61,7 +62,11 @@ function WhccPreviewModal({ orderId, onClose }: { orderId: number; onClose: () =
 
   return (
     <div className="whcc-preview-modal-overlay">
-      <div className="whcc-preview-modal">
+      <div
+        className="whcc-preview-modal"
+        tabIndex={-1}
+        onClick={e => e.stopPropagation()} // Prevent overlay click from closing
+      >
         <div className="whcc-preview-header">
           <h3>WHCC Order Preview <span className="order-id">(Order #{orderId})</span></h3>
           <button className="whcc-preview-close" onClick={onClose} title="Close">&times;</button>
@@ -79,6 +84,19 @@ function WhccPreviewModal({ orderId, onClose }: { orderId: number; onClose: () =
         </div>
         <div className="whcc-preview-footer">
           <div className="whcc-preview-status"><strong>Status:</strong> {approvalStatus || 'unknown'}</div>
+          <div style={{ flex: 1 }} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 220 }}>
+            <label htmlFor="whcc-special-instructions" style={{ color: '#a0a0b3', fontSize: '0.98em', marginBottom: 2 }}>Special Instructions (sent to WHCC)</label>
+            <textarea
+              id="whcc-special-instructions"
+              value={specialInstructions}
+              onChange={e => setSpecialInstructions(e.target.value)}
+              placeholder="Optional notes to include in WHCC Special Instructions"
+              rows={2}
+              style={{ resize: 'vertical', minHeight: 32, maxHeight: 80, fontSize: '1em', padding: 6, borderRadius: 4, border: '1px solid #23263a', background: '#23263a', color: '#f3f4fa' }}
+              disabled={submitting || approvalStatus === 'approved'}
+            />
+          </div>
           {approvalStatus !== 'approved' && (
             <button className="whcc-submit-btn" onClick={handleSubmit} disabled={submitting}>
               {submitting ? 'Submitting…' : 'Submit to WHCC'}
@@ -91,16 +109,16 @@ function WhccPreviewModal({ orderId, onClose }: { orderId: number; onClose: () =
         .whcc-preview-modal-overlay {
           position: fixed;
           top: 0; left: 0; width: 100vw; height: 100vh;
-          background: rgba(0,0,0,0.35);
+          background: rgba(10,12,24,0.65);
           z-index: 9999;
           display: flex;
           align-items: center;
           justify-content: center;
         }
         .whcc-preview-modal {
-          background: #fff;
+          background: var(--bg-primary, #181a24);
           border-radius: 12px;
-          box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+          box-shadow: 0 8px 32px rgba(0,0,0,0.28);
           min-width: 340px;
           max-width: 95vw;
           width: 600px;
@@ -119,18 +137,18 @@ function WhccPreviewModal({ orderId, onClose }: { orderId: number; onClose: () =
           display: flex;
           align-items: center;
           justify-content: space-between;
-          background: #f6f8fa;
-          border-bottom: 1px solid #e5e7eb;
+          background: var(--bg-secondary, #23263a);
+          border-bottom: 1px solid var(--border-color, #23263a);
           padding: 18px 24px 14px 24px;
         }
         .whcc-preview-header h3 {
           margin: 0;
           font-size: 1.18rem;
           font-weight: 600;
-          color: #222;
+          color: var(--text-primary, #f3f4fa);
         }
         .whcc-preview-header .order-id {
-          color: #888;
+          color: var(--text-secondary, #a0a0b3);
           font-weight: 400;
           font-size: 0.98em;
         }
@@ -138,37 +156,38 @@ function WhccPreviewModal({ orderId, onClose }: { orderId: number; onClose: () =
           background: none;
           border: none;
           font-size: 2rem;
-          color: #888;
+          color: var(--text-secondary, #888);
           cursor: pointer;
           transition: color 0.15s;
         }
         .whcc-preview-close:hover {
-          color: #0070f3;
+          color: var(--primary-color, #7a7aff);
         }
         .whcc-preview-content {
           flex: 1 1 auto;
           padding: 24px;
           overflow-y: auto;
-          background: #fff;
+          background: var(--bg-primary, #181a24);
         }
         .whcc-preview-json {
-          background: #f6f8fa;
+          background: var(--bg-secondary, #23263a);
           border-radius: 4px;
           padding: 16px;
           font-size: 1em;
           max-height: 55vh;
           overflow: auto;
           font-family: 'Fira Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
-          border: 1px solid #e5e7eb;
+          border: 1px solid var(--border-color, #23263a);
+          color: var(--text-primary, #f3f4fa);
         }
         .whcc-preview-loading, .whcc-preview-empty {
-          color: #888;
+          color: var(--text-secondary, #a0a0b3);
           font-size: 1.08em;
           padding: 18px 0;
         }
         .whcc-preview-footer {
-          border-top: 1px solid #e5e7eb;
-          background: #fafbfc;
+          border-top: 1px solid var(--border-color, #23263a);
+          background: var(--bg-secondary, #23263a);
           padding: 16px 24px;
           display: flex;
           align-items: center;
@@ -177,9 +196,10 @@ function WhccPreviewModal({ orderId, onClose }: { orderId: number; onClose: () =
         }
         .whcc-preview-status {
           font-size: 1.04em;
+          color: var(--text-secondary, #a0a0b3);
         }
         .whcc-submit-btn {
-          background: #0070f3;
+          background: var(--primary-color, #7a7aff);
           color: #fff;
           border: none;
           border-radius: 4px;
@@ -190,14 +210,14 @@ function WhccPreviewModal({ orderId, onClose }: { orderId: number; onClose: () =
           transition: background 0.15s;
         }
         .whcc-submit-btn:hover:not(:disabled) {
-          background: #0059c9;
+          background: var(--primary-color-hover, #5a5aff);
         }
         .whcc-submit-btn:disabled {
           opacity: 0.6;
           cursor: not-allowed;
         }
         .error {
-          color: #b00;
+          color: #ff6b6b;
           margin-top: 8px;
         }
       `}</style>
@@ -230,6 +250,10 @@ function AdminOrderItemCard({ item }: { item: any }) {
   const photoWidth = item.photo?.width;
   const photoHeight = item.photo?.height;
 
+  // Set display width/height for overlays and image
+  const displayWidth = 400;
+  const displayHeight = 'auto';
+
   let cropStyle: React.CSSProperties | null = null;
   if (cropData && photoWidth && photoHeight) {
     cropStyle = {
@@ -244,14 +268,27 @@ function AdminOrderItemCard({ item }: { item: any }) {
     ? `x:${Math.round(cropData.x)} y:${Math.round(cropData.y)} w:${Math.round(cropData.width)} h:${Math.round(cropData.height)} sx:${Number(cropData.scaleX || 1).toFixed(2)} sy:${Number(cropData.scaleY || 1).toFixed(2)}`
     : null;
 
+  const [showOverlay, setShowOverlay] = React.useState(false);
+  // Digital item check
+  const isDigital = item?.isDigital === true || String(item?.digitalDownloadScope || '').trim().length > 0;
+
+  // WHCC crop: you may need to fetch this from the preview payload or store it on the item if available
+  // For now, try to get from item.whccCrop or similar (you may need to wire this up)
+  const whccCrop = item.whccCrop || null;
+
+  // Use the thumbnail for overlay, fallback to main asset
+  const thumbnailUrl = item.photo?.thumbnailUrl || (photoId ? `/api/photos/${photoId}/asset?variant=thumbnail` : undefined);
+  const photoUrl = photoId ? `/api/photos/${photoId}/asset` : '';
+
   return (
     <div className="admin-order-item-card">
       <div className="admin-order-item-image-container">
         {photoId ? (
           <img
-            src={`/api/photos/${photoId}/asset`}
+            src={photoUrl}
             alt={item.photo?.fileName || 'Photo'}
             className="admin-order-item-image"
+            style={{ width: displayWidth, height: displayHeight, objectFit: 'contain' }}
           />
         ) : (
           <div className="admin-order-item-image-placeholder">No Image</div>
@@ -263,62 +300,93 @@ function AdminOrderItemCard({ item }: { item: any }) {
         <h4>{item.productName || 'Unknown Product'}</h4>
         <p className="admin-order-item-size">{item.productSizeName || 'Unknown Size'}</p>
         {/* Attribute display logic */}
-        {(() => {
-          // Try to extract attribute UIDs and map to names from product_options_snapshot
-          let attrUids: number[] = [];
-          let attrNames: string[] = [];
-          // 1. Get attribute UIDs from item.attributes (stringified array or array)
-          if (item.attributes) {
-            if (typeof item.attributes === 'string') {
-              try {
-                const parsed = JSON.parse(item.attributes);
-                if (Array.isArray(parsed)) attrUids = parsed.map(Number).filter((v) => Number.isInteger(v));
-              } catch {
-                // fallback: single UID as string
-                if (!isNaN(Number(item.attributes))) attrUids = [Number(item.attributes)];
+          {(() => {
+            let attrUids: number[] = [];
+            let attrNames: string[] = [];
+            if (item.attributes) {
+              if (typeof item.attributes === 'string') {
+                try {
+                  const parsed = JSON.parse(item.attributes);
+                  if (Array.isArray(parsed)) attrUids = parsed.map(Number).filter((v) => Number.isInteger(v));
+                } catch {
+                  if (!isNaN(Number(item.attributes))) attrUids = [Number(item.attributes)];
+                }
+              } else if (Array.isArray(item.attributes)) {
+                attrUids = item.attributes.map(Number).filter((v) => Number.isInteger(v));
               }
-            } else if (Array.isArray(item.attributes)) {
-              attrUids = item.attributes.map(Number).filter((v) => Number.isInteger(v));
             }
-          }
-          // 2. Try to get attribute label mapping from product_options_snapshot
-          let whccCategories: any[] = [];
-          let whccAttrMap: Record<number, string> = {};
-          let optionsSnapshot = item.product_options_snapshot || item.productOptionsSnapshot;
-          if (typeof optionsSnapshot === 'string') {
-            try { optionsSnapshot = JSON.parse(optionsSnapshot); } catch { optionsSnapshot = {}; }
-          }
-          if (optionsSnapshot && typeof optionsSnapshot === 'object') {
-            whccCategories = optionsSnapshot.whccAttributeCategories || optionsSnapshot.whcc_attribute_categories || [];
-            // Build UID->name map
-            for (const cat of whccCategories) {
-              if (Array.isArray(cat.attributes)) {
-                for (const attr of cat.attributes) {
-                  const uid = Number(attr.uid ?? attr.AttributeUID ?? attr.attributeUID ?? attr.id);
-                  const name = String(attr.name ?? attr.AttributeName ?? attr.DisplayName ?? attr.displayName ?? '').trim();
-                  if (uid && name) whccAttrMap[uid] = name;
+            let whccCategories: any[] = [];
+            let whccAttrMap: Record<number, string> = {};
+            let optionsSnapshot = item.product_options_snapshot || item.productOptionsSnapshot;
+            if (typeof optionsSnapshot === 'string') {
+              try { optionsSnapshot = JSON.parse(optionsSnapshot); } catch { optionsSnapshot = {}; }
+            }
+            if (optionsSnapshot && typeof optionsSnapshot === 'object') {
+              whccCategories = optionsSnapshot.whccAttributeCategories || optionsSnapshot.whcc_attribute_categories || [];
+              for (const cat of whccCategories) {
+                if (Array.isArray(cat.attributes)) {
+                  for (const attr of cat.attributes) {
+                    const uid = Number(attr.uid ?? attr.AttributeUID ?? attr.attributeUID ?? attr.id);
+                    const name = String(attr.name ?? attr.AttributeName ?? attr.DisplayName ?? attr.displayName ?? '').trim();
+                    if (uid && name) whccAttrMap[uid] = name;
+                  }
                 }
               }
             }
-          }
-          // 3. Map UIDs to names if possible
-          attrNames = attrUids.map((uid) => whccAttrMap[uid] || `#${uid}`);
-          // 4. Display
-          return attrNames.length > 0 ? (
-            <div style={{ margin: '4px 0' }}>
-              {attrNames.map((name, idx) => (
-                <span key={idx} style={{ fontSize: 12, color: '#7b61ff', marginRight: 8 }}>{name}</span>
-              ))}
-            </div>
-          ) : (
-            <div style={{ fontSize: 12, color: '#999', margin: '4px 0' }}>[No attributes]</div>
-          );
-        })()}
+            attrNames = attrUids.map((uid) => whccAttrMap[uid] || `#${uid}`);
+            if (attrNames.length === 0 && optionsSnapshot) {
+              const whccVariants = optionsSnapshot.whccVariants || optionsSnapshot.whcc_variants || [];
+              const selectedVariantId = optionsSnapshot.whccSelectedVariantId || optionsSnapshot.whcc_selected_variant_id;
+              if (Array.isArray(whccVariants) && selectedVariantId) {
+                const selected = whccVariants.find((v: any) => v.id === selectedVariantId || v.id === Number(selectedVariantId));
+                if (selected && selected.displayName) {
+                  attrNames = [selected.displayName];
+                }
+              }
+            }
+            return attrNames.length > 0 ? (
+              <div style={{ margin: '4px 0' }}>
+                {attrNames.map((name, idx) => (
+                  <span key={idx} style={{ fontSize: 12, color: '#7b61ff', marginRight: 8 }}>{name}</span>
+                ))}
+              </div>
+            ) : (
+              <div style={{ fontSize: 12, color: '#999', margin: '4px 0' }}>[No attributes]</div>
+            );
+          })()}
         <div className="admin-order-item-meta-row">
           <span className="admin-order-qty-pill">Qty: {item.quantity}</span>
           <span className="admin-order-item-price">${Number((item.price || 0) * (item.quantity || 0)).toFixed(2)}</span>
         </div>
         {cropDebugText && <p className="item-size-name" style={{ marginTop: 6 }}>Crop: {cropDebugText}</p>}
+        {/* Overlay button for non-digital items */}
+        {!isDigital && (
+          <button
+            className="btn btn-outline-primary"
+            style={{ marginTop: 8, fontSize: 13, padding: '4px 10px' }}
+            onClick={() => setShowOverlay(true)}
+          >
+            Show Crop Overlay
+          </button>
+        )}
+        {showOverlay && (
+          <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.7)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ background: '#181828', borderRadius: 10, padding: 24, boxShadow: '0 2px 16px rgba(0,0,0,0.18)', position: 'relative' }}>
+              <button onClick={() => setShowOverlay(false)} style={{ position: 'absolute', top: 8, right: 8, background: 'none', border: 'none', color: '#fff', fontSize: 24, cursor: 'pointer' }}>&times;</button>
+              <AdminOrderCropOverlay
+                photoUrl={photoUrl}
+                thumbnailUrl={thumbnailUrl}
+                photoWidth={photoWidth || 1}
+                photoHeight={photoHeight || 1}
+                cropData={cropData}
+                whccCrop={whccCrop}
+              />
+              <div style={{ color: '#fff', marginTop: 12, fontSize: 13 }}>
+                <b>Yellow:</b> Customer crop &nbsp; <b>Magenta:</b> WHCC crop
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -684,22 +752,21 @@ const AdminOrders: React.FC = () => {
       [orderId]: { tone: 'info', text: `Retry started at ${startedAt}…` },
     }));
     try {
-      const result = await orderService.whccRetry(orderId);
+      await submitWhccOrder(orderId);
       setWhccRetryMessageByOrder((prev) => ({
         ...prev,
         [orderId]: {
           tone: 'info',
-          text: `${result.message || `WHCC retry started for order #${orderId}.`} (${new Date().toLocaleString()})`,
+          text: `WHCC submission (retry) started for order #${orderId}. (${new Date().toLocaleString()})`,
         },
       }));
-      // Reload after a short delay to pick up new status
-      setTimeout(() => loadData(), 3500);
+      await loadData();
     } catch (err: any) {
       setWhccRetryMessageByOrder((prev) => ({
         ...prev,
         [orderId]: {
           tone: 'error',
-          text: `${err?.response?.data?.error || `Failed to retry WHCC submission for order #${orderId}`} (${new Date().toLocaleString()})`,
+          text: `${err?.message || `Failed to retry WHCC submission for order #${orderId}`} (${new Date().toLocaleString()})`,
         },
       }));
     } finally {
@@ -1672,8 +1739,8 @@ const AdminOrders: React.FC = () => {
                                 <>
                                   <div className="whcc-pill whcc-muted">Not submitted</div>
                                   <button
-                                    className="whcc-preview-btn"
-                                    style={{ marginTop: 6, marginBottom: 2, fontSize: '0.95em', padding: '2px 10px', borderRadius: 4, border: '1px solid #0070f3', background: '#f6f8fa', color: '#0070f3', cursor: 'pointer' }}
+                                    className="batch-action-button whcc-preview-btn"
+                                    style={{ marginTop: 6, marginBottom: 2 }}
                                     onClick={e => { e.stopPropagation(); setWhccPreviewOrderId(order.id); }}
                                   >
                                     View WHCC Preview

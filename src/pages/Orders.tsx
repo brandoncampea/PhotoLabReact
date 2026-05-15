@@ -175,8 +175,6 @@ const Orders: React.FC = () => {
 
   // Log the full orders array and safeOrders for diagnosis
   if (orders && orders.length > 0) {
-    console.log('[Orders] Raw orders:', orders);
-    console.log('[Orders] Safe orders:', safeOrders);
   }
 
   return (
@@ -202,7 +200,6 @@ const Orders: React.FC = () => {
           <div className="orders-list">
             {safeOrders.map((order) => {
               // Log each order before rendering
-              console.log('[Orders] Current order:', order, 'id:', order.id, 'typeof id:', typeof order.id);
               return (
                 <div key={order.id} className="order-card">
                   <div className="order-header">
@@ -236,7 +233,6 @@ const Orders: React.FC = () => {
                         <>
                           <div className="order-items">
                             {(order.items || []).map((item) => {
-                                console.log('[Orders] Current item:', item, 'id:', item.id, 'typeof id:', typeof item.id);
                                 // No need to compute downloadUrl; use item.downloadUrls directly
                                 return <OrderItemWithSas key={item.id} item={item} />;
                               })}

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { formatCropData } from '../utils/formatCropData';
 import { analyticsService } from '../services/analyticsService';
 import { Link, useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import WatermarkedImage from '../components/WatermarkedImage';
@@ -931,17 +932,16 @@ const AlbumDetails: React.FC = () => {
         // Calculate scale factors
         const scaleX = originalWidth > 0 && displayedWidth > 0 ? originalWidth / displayedWidth : 1;
         const scaleY = originalHeight > 0 && displayedHeight > 0 ? originalHeight / displayedHeight : 1;
-        cropValues = {
-          x: Math.round(cropData.x * scaleX),
-          y: Math.round(cropData.y * scaleY),
-          width: Math.round(cropData.width * scaleX),
-          height: Math.round(cropData.height * scaleY),
-          rotate: 0,
-          scaleX: 1,
-          scaleY: 1,
-        };
+        cropValues = formatCropData({
+          x: cropData.x * scaleX,
+          y: cropData.y * scaleY,
+          width: cropData.width * scaleX,
+          height: cropData.height * scaleY,
+          rotate: typeof cropData.rotate === 'number' ? cropData.rotate : 0,
+          scaleX: typeof cropData.scaleX === 'number' ? cropData.scaleX : 1,
+          scaleY: typeof cropData.scaleY === 'number' ? cropData.scaleY : 1,
+        });
         console.log('[AlbumDetails] handleCropConfirm - cropperData:', cropData, 'displayed:', displayedWidth, displayedHeight, 'original:', originalWidth, originalHeight, 'scale:', scaleX, scaleY, 'final crop:', cropValues);
-
       } else {
         // Default to centered crop with correct aspect ratio for the product size
         let cropAspect = 1;
