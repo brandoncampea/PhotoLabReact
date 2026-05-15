@@ -1,3 +1,21 @@
+// Ensure published/hidden columns exist on albums table
+const ensureAlbumPublishedHiddenColumns = async () => {
+  await query(`
+    IF COL_LENGTH('albums', 'published') IS NULL
+      ALTER TABLE albums ADD published BIT NOT NULL CONSTRAINT DF_albums_published DEFAULT 1;
+  `);
+  await query(`
+    IF COL_LENGTH('albums', 'hidden') IS NULL
+      ALTER TABLE albums ADD hidden BIT NOT NULL CONSTRAINT DF_albums_hidden DEFAULT 0;
+  `);
+  // Set all existing albums as published if null (should only run once)
+  await query(`
+    UPDATE albums SET published = 1 WHERE published IS NULL;
+  `);
+  await query(`
+    UPDATE albums SET hidden = 0 WHERE hidden IS NULL;
+  `);
+};
 import express from 'express';
 import mssql from '../mssql.cjs';
 const { queryRow, queryRows, query } = mssql;
@@ -60,6 +78,7 @@ const ensureAlbumSchema = async () => {
   await ensureAlbumBatchShippingColumn();
   await ensureAlbumPurchaseToggleColumn();
   await ensureAlbumSchoolTagSchema();
+  await ensureAlbumPublishedHiddenColumns();
 };
 
 const parseSchoolTags = (value) => {
@@ -137,7 +156,7 @@ router.get('/public', async (req, res) => {
     if (!studio) {
       return res.status(404).json({ error: 'Studio not found' });
     }
-    // Only return albums that are not deleted and are public (add more filters if needed)
+    // Only return albums that are published, not hidden, and not deleted
     const albums = await queryRows(`
       SELECT 
         a.id,
@@ -159,7 +178,7 @@ router.get('/public', async (req, res) => {
         a.created_at as createdDate
       FROM albums a
       LEFT JOIN shipping_config sc ON sc.id = a.studio_id
-      WHERE a.studio_id = $1
+      WHERE a.studio_id = $1 AND a.published = 1 AND a.hidden = 0
       ORDER BY a.created_at DESC
     `, [studio.id]);
     const albumsWithPreviews = await addAlbumPreviewImages(albums);
@@ -243,6 +262,8 @@ router.get('/', authRequired, async (req, res) => {
           a.password_hint as passwordHint,
           COALESCE(a.batch_shipping_active, 0) as batchShippingActive,
           COALESCE(a.album_purchase_enabled, 1) as albumPurchaseEnabled,
+          a.published,
+          a.hidden,
           a.created_at as createdDate,
           a.studio_id as "studioId",
           s.public_slug as "studioPublicSlug"
@@ -268,6 +289,8 @@ router.get('/', authRequired, async (req, res) => {
           a.password_hint as passwordHint,
           COALESCE(a.batch_shipping_active, 0) as batchShippingActive,
           COALESCE(a.album_purchase_enabled, 1) as albumPurchaseEnabled,
+          a.published,
+          a.hidden,
           a.created_at as createdDate,
           a.studio_id as "studioId",
           s.public_slug as "studioPublicSlug"
@@ -418,7 +441,7 @@ router.get('/:id', async (req, res) => {
 router.post('/', requireActiveSubscription, async (req, res) => {
   try {
     await ensureAlbumSchema();
-    const { title, name, description, coverImageUrl, coverPhotoId, category, priceListId, isPasswordProtected, password, passwordHint, batchShippingActive, schoolTags, albumPurchaseEnabled } = req.body;
+    const { title, name, description, coverImageUrl, coverPhotoId, category, priceListId, isPasswordProtected, password, passwordHint, batchShippingActive, schoolTags, albumPurchaseEnabled, published, hidden } = req.body;
     const albumName = title || name || '';
     const normalizedSchoolTags = parseSchoolTags(schoolTags);
     const normalizedAlbumPurchaseEnabled = albumPurchaseEnabled === undefined ? true : !!albumPurchaseEnabled;
@@ -432,8 +455,8 @@ router.post('/', requireActiveSubscription, async (req, res) => {
     }
     
     const result = await queryRow(`
-      INSERT INTO albums (name, title, description, cover_image_url, cover_photo_id, category, school_tags, price_list_id, is_password_protected, password, password_hint, studio_id, batch_shipping_active, album_purchase_enabled)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      INSERT INTO albums (name, title, description, cover_image_url, cover_photo_id, category, school_tags, price_list_id, is_password_protected, password, password_hint, studio_id, batch_shipping_active, album_purchase_enabled, published, hidden)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
       RETURNING id
     `, [
       albumName,
@@ -450,6 +473,8 @@ router.post('/', requireActiveSubscription, async (req, res) => {
       req.studioId || null,
       !!batchShippingActive,
       normalizedAlbumPurchaseEnabled,
+      false, // published: always false for new albums
+      hidden === true ? true : false // hidden: allow explicit set, default false
     ]);
 
     await syncStudioSchoolRoster(req.studioId || null, normalizedSchoolTags, result.id);
@@ -470,6 +495,8 @@ router.post('/', requireActiveSubscription, async (req, res) => {
         password_hint as passwordHint,
         COALESCE(batch_shipping_active, 0) as batchShippingActive,
         COALESCE(album_purchase_enabled, 1) as albumPurchaseEnabled,
+        published,
+        hidden,
         created_at as createdDate
       FROM albums WHERE id = $1
     `, [result.id]);
@@ -486,25 +513,28 @@ router.post('/', requireActiveSubscription, async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     await ensureAlbumSchema();
-    const { title, name, description, coverImageUrl, coverPhotoId, category, priceListId, isPasswordProtected, password, passwordHint, batchShippingActive, schoolTags, albumPurchaseEnabled } = req.body;
-    
+    const { title, name, description, coverImageUrl, coverPhotoId, category, priceListId, isPasswordProtected, password, passwordHint, batchShippingActive, schoolTags, albumPurchaseEnabled, published, hidden } = req.body;
+
+    // Log incoming payload
+    console.log('[PUT /albums/:id] Incoming payload:', req.body);
+
     // Get the current album to preserve existing values
     const currentAlbum = await queryRow('SELECT * FROM albums WHERE id = $1', [req.params.id]);
     if (!currentAlbum) {
       return res.status(404).json({ error: 'Album not found' });
     }
-    
+
     // Use provided values or keep existing ones
     const albumName = title || name || currentAlbum.name || currentAlbum.title || '';
     const newDescription = description !== undefined ? description : currentAlbum.description;
     let newCoverUrl = coverImageUrl !== undefined ? coverImageUrl : currentAlbum.cover_image_url;
     const newCoverPhotoId = coverPhotoId !== undefined ? coverPhotoId : currentAlbum.cover_photo_id;
-        if (newCoverPhotoId) {
-          const selectedPhoto = await queryRow('SELECT full_image_url as fullImageUrl FROM photos WHERE id = $1', [newCoverPhotoId]);
-          if (selectedPhoto?.fullImageUrl) {
-            newCoverUrl = selectedPhoto.fullImageUrl;
-          }
-        }
+    if (newCoverPhotoId) {
+      const selectedPhoto = await queryRow('SELECT full_image_url as fullImageUrl FROM photos WHERE id = $1', [newCoverPhotoId]);
+      if (selectedPhoto?.fullImageUrl) {
+        newCoverUrl = selectedPhoto.fullImageUrl;
+      }
+    }
 
     const newCategory = category !== undefined ? category : currentAlbum.category;
     const newSchoolTags = schoolTags !== undefined ? parseSchoolTags(schoolTags) : parseSchoolTags(currentAlbum.school_tags);
@@ -514,31 +544,57 @@ router.put('/:id', async (req, res) => {
     const newPasswordHint = newIsProtected ? (passwordHint !== undefined ? passwordHint : currentAlbum.password_hint) : null;
     const newBatchShippingActive = batchShippingActive !== undefined ? !!batchShippingActive : !!currentAlbum.batch_shipping_active;
     const newAlbumPurchaseEnabled = albumPurchaseEnabled !== undefined ? !!albumPurchaseEnabled : (currentAlbum.album_purchase_enabled === undefined || currentAlbum.album_purchase_enabled === null ? true : !!currentAlbum.album_purchase_enabled);
-    
-    await query(`
-      UPDATE albums 
-      SET name = $1, title = $2, description = $3, cover_image_url = $4, cover_photo_id = $5, category = $6, school_tags = $7, price_list_id = $8, 
-          is_password_protected = $9, password = $10, password_hint = $11, batch_shipping_active = $12, album_purchase_enabled = $13
-        WHERE id = $14
-    `, [
-      albumName,
+    const newPublished = published !== undefined ? !!published : (currentAlbum.published === undefined || currentAlbum.published === null ? true : !!currentAlbum.published);
+    const newHidden = hidden !== undefined ? !!hidden : (currentAlbum.hidden === undefined || currentAlbum.hidden === null ? false : !!currentAlbum.hidden);
+
+    // Log computed values
+    console.log('[PUT /albums/:id] Computed values:', {
       albumName,
       newDescription,
       newCoverUrl,
       newCoverPhotoId,
       newCategory,
-      toSchoolTagsCsv(newSchoolTags),
+      newSchoolTags,
       newPriceListId,
-      !!newIsProtected,
+      newIsProtected,
       newPassword,
       newPasswordHint,
       newBatchShippingActive,
       newAlbumPurchaseEnabled,
-      req.params.id,
-    ]);
+      newPublished,
+      newHidden
+    });
+
+    await query(
+      `UPDATE albums 
+      SET name = $1, title = $2, description = $3, cover_image_url = $4, cover_photo_id = $5, category = $6, school_tags = $7, price_list_id = $8, 
+          is_password_protected = $9, password = $10, password_hint = $11, batch_shipping_active = $12, album_purchase_enabled = $13, published = $14, hidden = $15
+        WHERE id = $16`,
+      [
+        albumName,
+        albumName,
+        newDescription,
+        newCoverUrl,
+        newCoverPhotoId,
+        newCategory,
+        toSchoolTagsCsv(newSchoolTags),
+        newPriceListId,
+        !!newIsProtected,
+        newPassword,
+        newPasswordHint,
+        newBatchShippingActive,
+        newAlbumPurchaseEnabled,
+        newPublished,
+        newHidden,
+        req.params.id,
+      ]
+    );
+
+    // Log after DB update
+    console.log('[PUT /albums/:id] Updated DB for album', req.params.id, 'published:', newPublished, 'hidden:', newHidden);
 
     await syncStudioSchoolRoster(currentAlbum.studio_id || null, newSchoolTags, Number(req.params.id));
-    
+
     const album = await queryRow(`
       SELECT 
         id,
@@ -555,11 +611,16 @@ router.put('/:id', async (req, res) => {
         password_hint as passwordHint,
         COALESCE(batch_shipping_active, 0) as batchShippingActive,
         COALESCE(album_purchase_enabled, 1) as albumPurchaseEnabled,
+        published,
+        hidden,
         created_at as createdDate
       FROM albums WHERE id = $1
     `, [req.params.id]);
+    // Log returned album
+    console.log('[PUT /albums/:id] Returning album:', album);
     res.json(signAlbumForResponse(album));
   } catch (error) {
+    console.error('[PUT /albums/:id] Error:', error);
     res.status(500).json({ error: error.message });
   }
 });

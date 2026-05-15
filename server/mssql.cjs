@@ -427,6 +427,8 @@ async function initializeDatabase() {
 				studio_id INT FOREIGN KEY REFERENCES studios(id) ON DELETE CASCADE,
 				name NVARCHAR(255) NOT NULL,
 				description NVARCHAR(MAX),
+				published BIT NOT NULL CONSTRAINT DF_albums_published DEFAULT 1,
+				hidden BIT NOT NULL CONSTRAINT DF_albums_hidden DEFAULT 0,
 				created_at DATETIME2 DEFAULT GETDATE()
 			)
 		END

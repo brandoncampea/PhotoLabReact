@@ -1,5 +1,6 @@
 import api from './api';
 import { siteConfigService } from './siteConfigService';
+import { toWhccCrop } from '../utils/whccCrop';
 
 export interface WhccConfig {
   consumerKey: string;
@@ -224,23 +225,23 @@ class WhccService {
     orderId: string
   ): WhccOrderRequest {
 
-    // Centralize mapping of cropData to cropX/cropY/zoomX/zoomY for WHCC
+    // Centralize mapping of cropData to WHCC crop values (X, Y, ZoomX, ZoomY, ImageRotation)
     const mappedCartItems = cartItems.map((item) => {
-      // Always use the full-size image URL for WHCC AssetPath
       let fullImageUrl = item?.photo?.fullImageUrl || item?.fullImageUrl || item?.imageUrl || '';
-      if (item.cropData) {
-        return {
-          ...item,
-          imageUrl: fullImageUrl,
-          cropX: typeof item.cropData.x === 'number' ? Math.round(item.cropData.x) : 0,
-          cropY: typeof item.cropData.y === 'number' ? Math.round(item.cropData.y) : 0,
-          zoomX: typeof item.cropData.width === 'number' ? Math.round(item.cropData.width) : 100,
-          zoomY: typeof item.cropData.height === 'number' ? Math.round(item.cropData.height) : 100,
-        };
+      let whccCrop = null;
+      if (item.cropData && item.photo && item.photo.width && item.photo.height) {
+        whccCrop = toWhccCrop(item.cropData, item.photo.width, item.photo.height);
       }
       return {
         ...item,
         imageUrl: fullImageUrl,
+        ...(whccCrop ? {
+          X: whccCrop.X,
+          Y: whccCrop.Y,
+          ZoomX: whccCrop.ZoomX,
+          ZoomY: whccCrop.ZoomY,
+          ImageRotation: whccCrop.ImageRotation,
+        } : {}),
       };
     });
 

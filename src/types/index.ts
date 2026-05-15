@@ -41,6 +41,8 @@ export interface Album {
   viewOpenCount?: number;
   viewClickCount?: number;
   studioPublicSlug?: string;
+  published?: boolean;
+  hidden?: boolean;
 }
 
 export interface Photo {

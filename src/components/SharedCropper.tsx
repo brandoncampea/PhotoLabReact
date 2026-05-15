@@ -13,6 +13,9 @@ export interface SharedCropperProps {
   cancelLabel?: string;
   className?: string;
   showFullPhoto?: boolean;
+  cropperRefCallback?: (ref: ReactCropperElement | null) => void;
+  width?: number;
+  height?: number;
 }
 
 const SharedCropper: React.FC<SharedCropperProps> = ({
@@ -26,6 +29,9 @@ const SharedCropper: React.FC<SharedCropperProps> = ({
   cancelLabel = 'Cancel',
   className = '',
   showFullPhoto = false,
+  cropperRefCallback,
+  width = 240,
+  height = 180,
 }) => {
   const cropperRef = useRef<ReactCropperElement>(null);
 
@@ -34,6 +40,12 @@ const SharedCropper: React.FC<SharedCropperProps> = ({
   React.useEffect(() => {
     initialCropDataRef.current = initialCropData;
   }, [initialCropData]);
+  // Expose cropper ref to parent if callback provided
+  React.useEffect(() => {
+    if (typeof cropperRefCallback === 'function') {
+      cropperRefCallback(cropperRef.current);
+    }
+  }, [cropperRefCallback]);
 
   // Handler for cropper ready event
   const handleCropperReady = useCallback(() => {
@@ -41,17 +53,10 @@ const SharedCropper: React.FC<SharedCropperProps> = ({
     if (cropper) {
       // Log image size and crop data for debugging
       const imgData = cropper.getImageData();
-      console.log('[SharedCropper] ready', {
-        imageUrl,
-        naturalWidth: imgData.naturalWidth,
-        naturalHeight: imgData.naturalHeight,
-        initialCropData: initialCropDataRef.current
-      });
       if (initialCropDataRef.current) {
         cropper.setData(initialCropDataRef.current);
         // Log the crop box after setting
         setTimeout(() => {
-          console.log('[SharedCropper] after setData', cropper.getData());
         }, 100);
       } else if (showFullPhoto) {
         cropper.reset();
@@ -68,7 +73,10 @@ const SharedCropper: React.FC<SharedCropperProps> = ({
   };
 
   return (
-    <div className={`shared-cropper-container ${className}`.trim()}>
+    <div
+      className={`shared-cropper-container ${className}`.trim()}
+      style={{ width, height, maxWidth: width, maxHeight: height, overflow: 'hidden', position: 'relative' }}
+    >
       <Cropper
         ref={cropperRef}
         src={imageUrl}
@@ -80,10 +88,11 @@ const SharedCropper: React.FC<SharedCropperProps> = ({
         minCropBoxHeight={10}
         minCropBoxWidth={10}
         background={false}
-        responsive={true}
+        responsive={false}
         autoCropArea={1}
         checkOrientation={false}
         restore={false}
+        style={{ width, height, maxWidth: width, maxHeight: height, display: 'block' }}
         ready={handleCropperReady}
       />
       {cropLabel && <div className="shared-cropper-label">{cropLabel}</div>}

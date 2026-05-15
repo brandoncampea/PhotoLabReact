@@ -57,6 +57,8 @@ const AdminAlbums: React.FC = () => {
     albumSize: '',
     batchShippingActive: false,
     albumPurchaseEnabled: true,
+    published: false,
+    hidden: false,
   };
   const [albums, setAlbums] = useState<Album[]>([]);
   const [priceLists, setPriceLists] = useState<PriceList[]>([]);
@@ -154,6 +156,7 @@ const AdminAlbums: React.FC = () => {
     setShowModal(true);
   };
   const handleEdit = (album: Album) => {
+    console.log('[AdminAlbums] handleEdit album:', album);
     setEditingAlbum(album);
     setNewModalCategory('');
     setNewSchoolTag('');
@@ -171,6 +174,8 @@ const AdminAlbums: React.FC = () => {
       albumSize: '',
       batchShippingActive: !!album.batchShippingActive,
       albumPurchaseEnabled: album.albumPurchaseEnabled !== false,
+      published: album.published === undefined || album.published === null ? true : !!album.published,
+      hidden: album.hidden ?? false,
     });
     setShowModal(true);
   };
@@ -187,7 +192,16 @@ const AdminAlbums: React.FC = () => {
       passwordHint: formData.isPasswordProtected ? formData.passwordHint : undefined,
       batchShippingActive: !!formData.batchShippingActive,
       albumPurchaseEnabled: formData.albumPurchaseEnabled !== false,
+      published: !!formData.published,
+      hidden: !!formData.hidden,
     };
+      // Helper for unique hidden album URL
+      const getHiddenAlbumUrl = (albumId: number) => {
+        const studioSlug = (editingAlbum as any)?.studioPublicSlug || localStorage.getItem('studioSlug') || '';
+        return studioSlug
+          ? `${window.location.origin}/albums/${albumId}?studioSlug=${encodeURIComponent(studioSlug)}&hidden=1`
+          : `${window.location.origin}/albums/${albumId}?hidden=1`;
+      };
     if (!payload.name) {
       alert('Album name is required.');
       return;
@@ -203,6 +217,7 @@ const AdminAlbums: React.FC = () => {
       setNewModalCategory('');
       setNewSchoolTag('');
       setFormData(emptyFormData);
+      // Always reload albums from backend to get latest published/hidden state
       await loadAlbums();
       await loadSchoolRoster();
     } catch (error: any) {
@@ -516,6 +531,52 @@ const AdminAlbums: React.FC = () => {
                   Allow customers to buy the entire album (enabled by default)
                 </span>
               </div>
+              <div className="form-group">
+                <label>Published</label>
+                <input
+                  type="checkbox"
+                  checked={!!formData.published}
+                  onChange={e => setFormData(f => ({ ...f, published: e.target.checked }))}
+                />
+                <span style={{ marginLeft: 8, fontSize: '0.92em', color: '#aaa' }}>
+                  Customers can view and search this album when published
+                </span>
+              </div>
+              <div className="form-group">
+                <label>Hidden</label>
+                <input
+                  type="checkbox"
+                  checked={!!formData.hidden}
+                  onChange={e => setFormData(f => ({ ...f, hidden: e.target.checked }))}
+                />
+                <span style={{ marginLeft: 8, fontSize: '0.92em', color: '#aaa' }}>
+                  Hide this album from your public albums page and search
+                </span>
+              </div>
+              {formData.hidden && editingAlbum && (
+                <div className="form-group">
+                  <label>Unique Shareable URL</label>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <input
+                      type="text"
+                      value={getHiddenAlbumUrl(editingAlbum.id)}
+                      readOnly
+                      style={{ flex: 1, fontSize: 13, background: '#222', color: '#fff', border: '1px solid #444', borderRadius: 4, padding: '4px 8px' }}
+                    />
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={() => {
+                        navigator.clipboard.writeText(getHiddenAlbumUrl(editingAlbum.id));
+                        alert('Hidden album link copied to clipboard!');
+                      }}
+                    >Copy</button>
+                  </div>
+                  <div style={{ fontSize: 12, color: '#aaa', marginTop: 4 }}>
+                    Only users with this link can view the album. It will not appear in search or album lists.
+                  </div>
+                </div>
+              )}
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24 }}>
                 <button type="button" className="btn" onClick={() => setShowModal(false)}>Cancel</button>
                 <button type="submit" className="btn btn-primary">Save</button>

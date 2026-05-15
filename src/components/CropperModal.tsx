@@ -1,15 +1,27 @@
+
+import React from 'react';
 import { getPhotoAssetUrl } from '../utils/getPhotoAssetUrl';
 import SharedCropper from './SharedCropper';
 import { useCart } from '../contexts/CartContext';
-import React from 'react';
+import { mapCropToDisplay, mapCropToOriginal } from '../utils/mapCropToDisplay';
 
 export type CropperModalProps = {
   item: any;
   onClose: () => void;
+  displayWidth?: number;
+  displayHeight?: number;
 };
 
-export default function CropperModal({ item, onClose }: CropperModalProps) {
+
+export default function CropperModal({ item, onClose, displayWidth, displayHeight }: CropperModalProps) {
   const { updateCropData } = useCart();
+  const cropperRef = React.useRef<any>(null);
+  const handleRotate = () => {
+    const cropper = cropperRef.current?.cropper || cropperRef.current;
+    if (cropper && typeof cropper.rotate === 'function') {
+      cropper.rotate(90);
+    }
+  };
   const photo = item.photo || item;
   // Use the same logic as MultiPhotoSelector for aspect ratio
   const originalWidth = Number(photo.width || 0);
@@ -28,17 +40,16 @@ export default function CropperModal({ item, onClose }: CropperModalProps) {
   // We'll need to know the original and thumbnail sizes
   // Assume photo.width/height is original, and thumbnail is 400x296 (from your logs)
   // Dynamically size the cropper area to match the image aspect ratio and fit modal
-  let thumbWidth = 480;
-  let thumbHeight = 320;
+  // Use passed display size if provided (from CartItem), else fallback to default
+  // Use drawnSize from cart if provided, else fallback to aspect ratio logic
+  // Always use 400px wide, height auto (preserve aspect ratio)
+  let thumbWidth = 400;
+  let thumbHeight = 400;
   if (originalWidth > 0 && originalHeight > 0) {
     const aspect = originalWidth / originalHeight;
-    thumbWidth = 480;
     thumbHeight = Math.round(thumbWidth / aspect);
-    if (thumbHeight > 400) {
-      thumbHeight = 400;
-      thumbWidth = Math.round(thumbHeight * aspect);
-    }
   }
+  // Debug: log modal cropper size
 
   // If no cropData, use the full image as the default crop in original coordinates
   let cropData = item?.cropData;
@@ -46,44 +57,19 @@ export default function CropperModal({ item, onClose }: CropperModalProps) {
     cropData = { x: 0, y: 0, width: originalWidth, height: originalHeight, rotate: 0, scaleX: 1, scaleY: 1 };
   }
 
-  // Scale cropData from original to thumb size, accounting for letterboxing (objectFit: contain)
+  // Map cropData from original image coordinates to modal cropper size
   let scaledCropData = cropData;
   if (cropData && originalWidth > 0 && originalHeight > 0) {
-    // Letterboxing logic
-    const thumbAspect = thumbWidth / thumbHeight;
-    const photoAspect = originalWidth / originalHeight;
-    let drawnW = thumbWidth;
-    let drawnH = thumbHeight;
-    if (photoAspect > thumbAspect) {
-      drawnW = thumbWidth;
-      drawnH = thumbWidth / photoAspect;
-    } else {
-      drawnH = thumbHeight;
-      drawnW = thumbHeight * photoAspect;
-    }
-    const scaleX = drawnW / originalWidth;
-    const scaleY = drawnH / originalHeight;
-    // If full image crop, set to exactly the image area
-    const isFullImageCrop = cropData.x === 0 && cropData.y === 0 && cropData.width === originalWidth && cropData.height === originalHeight;
-    if (isFullImageCrop) {
-      scaledCropData = {
-        x: 0,
-        y: 0,
-        width: drawnW,
-        height: drawnH,
-        rotate: 0,
-        scaleX: 1,
-        scaleY: 1,
-      };
-    } else {
-      scaledCropData = {
-        ...cropData,
-        x: cropData.x * scaleX,
-        y: cropData.y * scaleY,
-        width: cropData.width * scaleX,
-        height: cropData.height * scaleY,
-      };
-    }
+    scaledCropData = mapCropToDisplay({
+      crop: cropData,
+      originalWidth,
+      originalHeight,
+      displayWidth: thumbWidth,
+      displayHeight: thumbHeight,
+    });
+    // Debug: log crop mapping in modal
+    // Preserve rotate/scaleX/scaleY if present
+    scaledCropData = { ...scaledCropData, rotate: cropData.rotate, scaleX: cropData.scaleX, scaleY: cropData.scaleY };
   }
 
 
@@ -91,16 +77,15 @@ export default function CropperModal({ item, onClose }: CropperModalProps) {
   const handleSave = (cropData: any) => {
     let finalCropData = cropData;
     if (originalWidth > 0 && originalHeight > 0) {
-      // cropData is in thumb coordinates, scale up to original
-      const scaleX = originalWidth / thumbWidth;
-      const scaleY = originalHeight / thumbHeight;
-      finalCropData = {
-        ...cropData,
-        x: cropData.x * scaleX,
-        y: cropData.y * scaleY,
-        width: cropData.width * scaleX,
-        height: cropData.height * scaleY,
-      };
+      finalCropData = mapCropToOriginal({
+        crop: cropData,
+        originalWidth,
+        originalHeight,
+        displayWidth: thumbWidth,
+        displayHeight: thumbHeight,
+      });
+      // Preserve rotate/scaleX/scaleY if present
+      finalCropData = { ...finalCropData, rotate: cropData.rotate, scaleX: cropData.scaleX, scaleY: cropData.scaleY };
     }
     updateCropData(item.photoId, finalCropData, item.productId, item.productSizeId);
     onClose();
@@ -135,10 +120,15 @@ export default function CropperModal({ item, onClose }: CropperModalProps) {
           onCancel={onClose}
           className="cart-cropper-modal"
           showFullPhoto
+          cropperRefCallback={(ref) => (cropperRef.current = ref)}
+          width={thumbWidth}
+          height={thumbHeight}
+          style={{ width: thumbWidth, height: thumbHeight, maxWidth: '100%', maxHeight: '100%' }}
         />
       </div>
       <div style={{ display: 'flex', justifyContent: 'center', gap: 16, width: thumbWidth, marginTop: 0 }}>
         <button onClick={onClose} className="btn btn-secondary" style={{ minWidth: 100 }}>Cancel</button>
+        <button onClick={handleRotate} className="btn btn-outline-secondary" style={{ minWidth: 100 }}>⟳ Rotate 90°</button>
         <button onClick={() => handleSave(scaledCropData)} className="btn btn-primary" style={{ minWidth: 120 }}>✓ Save Crop</button>
       </div>
     </div>

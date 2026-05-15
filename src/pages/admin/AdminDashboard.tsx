@@ -135,8 +135,13 @@ const AdminDashboard: React.FC = () => {
   const totalPhotoOpens = stats.analytics?.photoViews?.reduce((sum, photo) => sum + (photo.opens || 0), 0) || 0;
   const totalPhotoClicks = stats.analytics?.photoViews?.reduce((sum, photo) => sum + (photo.clicks || 0), 0) || 0;
   const totalTax = Number(stats.revenueComposition?.totalTax || 0);
-  const totalRevenueExTax = Math.max(0, Number(stats.totalRevenue || 0) - totalTax);
-  const totalMargin = Number(stats.grossMarginBreakdown?.totalGrossMargin || 0);
+  const totalRevenue = Number(stats.totalRevenue || 0);
+  const totalRevenueExTax = Math.max(0, totalRevenue - totalTax);
+  const totalBaseCost = Number(stats.grossMarginBreakdown?.totalBaseRevenue || 0);
+  const totalShippingMargin = Number(stats.grossMarginBreakdown?.totalShippingMargin || 0);
+  const totalStripeFees = Number(stats.grossMarginBreakdown?.totalStripeFees || 0);
+  // New margin logic: (revenue (gross-tax)) - base cost + shipping margin - stripe fees
+  const totalMargin = totalRevenueExTax - totalBaseCost + totalShippingMargin - totalStripeFees;
   const avgRevenuePerOrder = stats.totalOrders ? (totalRevenueExTax / stats.totalOrders) : 0;
   const avgMarginPerOrder = stats.totalOrders ? (totalMargin / stats.totalOrders) : 0;
   const revenueSeries = stats.revenueSeries?.[revenueRange] || { labels: [], data: [] };
@@ -160,21 +165,23 @@ const AdminDashboard: React.FC = () => {
       </div>
 
       <div className="dashboard-metrics tallydark-metrics admin-dashboard-metrics">
-        <div className="dashboard-card tallydark-card admin-dashboard-card" role="region" tabIndex={0}>
-          <div className="dashboard-card-label">Customers With Products In Cart</div>
-          <div className="dashboard-card-value" style={{ fontSize: 32, fontWeight: 700, color: 'var(--primary-color)' }}>
-            {customersWithCartLoading ? (
-              <span style={{ color: 'var(--text-secondary)' }}>Loading...</span>
-            ) : customersWithCartError ? (
-              <span style={{ color: 'var(--error-color)' }}>{customersWithCartError}</span>
-            ) : (
-              <span>{customersWithCart ?? 0}</span>
-            )}
-          </div>
-          <div className="dashboard-card-sub">
-            <span style={{ fontSize: 18, color: 'var(--text-secondary)' }}>{customersWithCart === 1 ? 'customer has' : 'customers have'} products in their cart</span>
-          </div>
-        </div>
+
+          {/* ...other dashboard cards... */}
+                <div className="dashboard-card tallydark-card admin-dashboard-card" role="region" tabIndex={0}>
+                  <div className="dashboard-card-label">Customers With Products In Cart</div>
+                  <div className="dashboard-card-value" style={{ fontSize: 32, fontWeight: 700, color: 'var(--primary-color)' }}>
+                    {customersWithCartLoading ? (
+                      <span style={{ color: 'var(--text-secondary)' }}>Loading...</span>
+                    ) : customersWithCartError ? (
+                      <span style={{ color: 'var(--error-color)' }}>{customersWithCartError}</span>
+                    ) : (
+                      <span>{customersWithCart ?? 0}</span>
+                    )}
+                  </div>
+                  <div className="dashboard-card-sub">
+                    <span style={{ fontSize: 18, color: 'var(--text-secondary)' }}>{customersWithCart === 1 ? 'customer has' : 'customers have'} products in their cart</span>
+                  </div>
+                </div>
         <div className="dashboard-card tallydark-card admin-dashboard-card admin-dashboard-card--revenue" role="region" tabIndex={0}>
           <div className="dashboard-card-label">Total Revenue</div>
           <div className="dashboard-card-value revenue admin-dashboard-revenue-value">
@@ -203,12 +210,12 @@ const AdminDashboard: React.FC = () => {
               )}
               {!!stats.grossMarginBreakdown && (
                 <div className="dashboard-card-sub" style={{ marginTop: 6, lineHeight: 1.35 }}>
-                  <div style={{ opacity: 0.9 }}>Gross Margin:</div>
-                  <div>+ Studio Price: ${Number(stats.grossMarginBreakdown.totalStudioRevenue || 0).toFixed(2)}</div>
-                  <div>- Base Cost: ${Number(stats.grossMarginBreakdown.totalBaseRevenue || 0).toFixed(2)}</div>
-                  <div>+ Shipping Margin: ${Number(stats.grossMarginBreakdown.totalShippingMargin || 0).toFixed(2)}</div>
-                  <div>- Stripe Fees: ${Number(stats.grossMarginBreakdown.totalStripeFees || 0).toFixed(2)}</div>
-                  <div style={{ marginTop: 2 }}>= Margin: ${Number(stats.grossMarginBreakdown.totalGrossMargin || 0).toFixed(2)}</div>
+                  <div style={{ opacity: 0.9 }}>Gross Margin (custom logic):</div>
+                  <div>Revenue (ex Tax): ${totalRevenueExTax.toFixed(2)}</div>
+                  <div>- Base Cost: ${totalBaseCost.toFixed(2)}</div>
+                  <div>+ Shipping Margin: ${totalShippingMargin.toFixed(2)}</div>
+                  <div>- Stripe Fees: ${totalStripeFees.toFixed(2)}</div>
+                  <div style={{ marginTop: 2 }}>= Margin: ${totalMargin.toFixed(2)}</div>
                 </div>
               )}
             </div>

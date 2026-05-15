@@ -50,6 +50,7 @@ const Cart: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [appliedDiscount, setAppliedDiscount] = useState<any>(null);
     const [editingItem, setEditingItem] = useState(null);
+    const [editingDrawnSize, setEditingDrawnSize] = useState<{ width: number; height: number } | null>(null);
     const [showPaymentModal, setShowPaymentModal] = useState(false);
     const autoLaunchEditorRef = useRef(null);
     // State for product images
@@ -957,12 +958,13 @@ const Cart: React.FC = () => {
                 key={item.photoId + '-' + (item.productId || '') + '-' + (item.productSizeId || '') + '-' + cropKey}
                 item={resolvedItem}
                 photo={photo}
-                onEditCrop={(editItem, editPhoto) => {
+                onEditCrop={(editItem, editPhoto, drawnSize) => {
                   // Always use the latest item from cart state to ensure fresh cropData
                   const latest = items.find(
                     (i) => i.photoId === editItem.photoId && i.productId === editItem.productId && i.productSizeId === editItem.productSizeId
                   );
                   setEditingItem(latest || editItem);
+                  setEditingDrawnSize(drawnSize || null);
                 }}
                 onOpenWhccEditor={handleOpenWhccEditor}
                 showWhccEditorButton={!!resolvedItem?.requiresWhccEditor}
@@ -1372,16 +1374,19 @@ const Cart: React.FC = () => {
       </div>
 
       {editingItem && (
-        <Modal isOpen={true} onClose={() => setEditingItem(null)} contentClassName="cart-crop-modal">
+        <Modal isOpen={true} onClose={() => { setEditingItem(null); setEditingDrawnSize(null); }} contentClassName="cart-crop-modal">
           <CropperModal
             key={
               editingItem.photoId + '-' +
               (editingItem.productId || '') + '-' +
               (editingItem.productSizeId || '') + '-' +
-              (editingItem.cropData ? `${editingItem.cropData.x}-${editingItem.cropData.y}-${editingItem.cropData.width}-${editingItem.cropData.height}` : 'nocrop')
+              (editingItem.cropData ? `${editingItem.cropData.x}-${editingItem.cropData.y}-${editingItem.cropData.width}-${editingItem.cropData.height}` : 'nocrop') +
+              '-' + (editingDrawnSize ? `${editingDrawnSize.width}x${editingDrawnSize.height}` : 'noSize')
             }
             item={editingItem}
-            onClose={() => setEditingItem(null)}
+            displayWidth={editingDrawnSize?.width}
+            displayHeight={editingDrawnSize?.height}
+            onClose={() => { setEditingItem(null); setEditingDrawnSize(null); }}
           />
         </Modal>
       )}

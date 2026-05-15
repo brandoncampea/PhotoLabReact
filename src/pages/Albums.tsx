@@ -61,6 +61,8 @@ const Albums: React.FC = () => {
   const [shareNotification, setShareNotification] = useState('');
   const [deals, setDeals] = useState<PublicDeal[]>([]);
   const [loadingDeals, setLoadingDeals] = useState(false);
+  // Detect if a hidden album should be shown (direct link)
+  const showHidden = searchParams.get('hidden') === '1';
 
   const isBatchEnabledForAlbum = (album: PublicAlbum) => {
     return Boolean(album.batchShippingActive) && Boolean(album.studioBatchShippingActive);
@@ -198,6 +200,10 @@ const Albums: React.FC = () => {
   // Filtering and sorting for albums
   const filteredAlbums = React.useMemo(() => {
     let filtered = albums;
+    // Hide hidden albums unless showHidden is true and only for the direct album
+    if (!showHidden) {
+      filtered = filtered.filter((album) => !(album as any).hidden);
+    }
     const query = albumQuery.trim().toLowerCase();
     if (query) {
       filtered = filtered.filter((album) =>
@@ -215,7 +221,7 @@ const Albums: React.FC = () => {
       return albumSort === 'recent' ? bDate - aDate : aDate - bDate;
     });
     return filtered;
-  }, [albums, albumQuery, albumSort, selectedCategory]);
+  }, [albums, albumQuery, albumSort, selectedCategory, showHidden]);
 
   if (loading) {
     return <div className="loading">Loading...</div>;

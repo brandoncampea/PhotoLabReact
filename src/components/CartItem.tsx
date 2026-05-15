@@ -1,13 +1,8 @@
     function handleEditCrop() {
-      // Debug: log when Edit Crop is clicked and what data is being sent
-      console.log('[CartItem] handleEditCrop clicked', {
-        item,
-        photo,
-        cropData: item?.cropData
-      });
       // ...existing code...
     }
-import React, { useMemo, useState, useRef, useLayoutEffect } from 'react';
+import React, { useMemo, useState, useRef, useLayoutEffect, useEffect } from 'react';
+import { mapCropToDisplay } from '../utils/mapCropToDisplay';
 import { CartItem as CartItemType } from '../types';
 import { useCart } from '../contexts/CartContext';
 import WatermarkedImage from './WatermarkedImage';
@@ -17,7 +12,7 @@ import ProductAttributes from './ProductAttributes';
 interface CartItemProps {
   item: CartItemType;
   photo?: any;
-  onEditCrop?: (item: CartItemType, photo?: any) => void;
+  onEditCrop?: (item: CartItemType, photo?: any, drawnSize?: { width: number; height: number }) => void;
   onOpenWhccEditor?: (item: CartItemType) => void;
   showWhccEditorButton?: boolean;
   studioId?: number;
@@ -27,10 +22,10 @@ const CartItem: React.FC<CartItemProps> = ({ item, photo, onEditCrop, onOpenWhcc
 
   // Cart preview should always use thumbnail assets.
   let displayImageUrl = '';
+  // Use useEffect to handle side effects
+  // Use a scaled, uncropped version of the original for accurate crop mapping
   if (item?.photo?.id) {
-    displayImageUrl = `/api/photos/${item.photo.id}/asset?variant=thumbnail`;
-  } else if (item?.photo?.id) {
-    displayImageUrl = `/api/photos/${item.photo.id}/asset?variant=thumbnail`;
+    displayImageUrl = `/api/photos/${item.photo.id}/asset?variant=thumb`;
   } else if (String(item?.photo?.thumbnailUrl || '').trim()) {
     displayImageUrl = String(item.photo.thumbnailUrl).trim();
   } else {
@@ -41,36 +36,29 @@ const CartItem: React.FC<CartItemProps> = ({ item, photo, onEditCrop, onOpenWhcc
     const cover = String(item.albumCoverImageUrl || '').trim();
     if (cover) {
       displayImageUrl = /^\d+$/.test(cover)
-        ? `/api/photos/${cover}/asset?variant=thumbnail`
+        ? `/api/photos/${cover}/asset?variant=thumb`
         : cover;
     }
   }
 
   const imageRef = useRef<HTMLImageElement | null>(null);
   const [expanded, setExpanded] = useState(true);
-  const [drawnSize, setDrawnSize] = useState({ width: 240, height: 180 });
+  // Dynamically size preview: fixed width, height based on image aspect ratio
+  const [drawnSize, setDrawnSize] = useState<{ width: number; height: number }>({ width: 240, height: 180 });
 
-  useLayoutEffect(() => {
-    function updateDrawnSize() {
-      if (imageRef.current) {
-        setDrawnSize({
-          width: imageRef.current.clientWidth,
-          height: imageRef.current.clientHeight,
-        });
-      }
+  // Calculate aspect ratio from photo
+  useEffect(() => {
+    const naturalWidth = Number(item?.photo?.width || 0);
+    const naturalHeight = Number(item?.photo?.height || 0);
+    if (naturalWidth > 0 && naturalHeight > 0) {
+      const aspect = naturalWidth / naturalHeight;
+      const width = 240;
+      const height = Math.round(width / aspect);
+      setDrawnSize({ width, height });
     }
-    updateDrawnSize();
-    // Listen for image load events
-    const img = imageRef.current;
-    if (img) {
-      img.addEventListener('load', updateDrawnSize);
-    }
-    return () => {
-      if (img) {
-        img.removeEventListener('load', updateDrawnSize);
-      }
-    };
-  }, [displayImageUrl, expanded, item.cropData]);
+  }, [item?.photo?.width, item?.photo?.height]);
+
+  // No need for useLayoutEffect to measure image; we set size by aspect ratio
 
   const { updateQuantity, removeFromCart } = useCart();
 
@@ -97,61 +85,28 @@ const CartItem: React.FC<CartItemProps> = ({ item, photo, onEditCrop, onOpenWhcc
     if (isDigitalItem || !item?.cropData) {
       return null;
     }
-
-    // Use the original image size for cropData
     const naturalWidth = Number(item?.photo?.width || 0);
     const naturalHeight = Number(item?.photo?.height || 0);
     if (!(naturalWidth > 0 && naturalHeight > 0)) return null;
-
-    // Use the actual rendered image size
-    const frameW = drawnSize.width;
-    const frameH = drawnSize.height;
-    const frameAspect = frameW / frameH;
-    const photoAspect = naturalWidth / naturalHeight;
-
-    // Letterboxing logic (objectFit: contain)
-    let drawnW = frameW;
-    let drawnH = frameH;
-    let offsetX = 0;
-    let offsetY = 0;
-    if (photoAspect > frameAspect) {
-      drawnW = frameW;
-      drawnH = frameW / photoAspect;
-      offsetY = (frameH - drawnH) / 2;
-    } else {
-      drawnH = frameH;
-      drawnW = frameH * photoAspect;
-      offsetX = (frameW - drawnW) / 2;
-    }
-
-    // Map crop coordinates (in natural/original image pixels) to drawn image in frame
-    const rawX = Number(item.cropData.x || 0);
-    const rawY = Number(item.cropData.y || 0);
-    const rawW = Number(item.cropData.width || 0);
-    const rawH = Number(item.cropData.height || 0);
-
-    // Scale crop rectangle to drawn image
-    const scaleX = drawnW / naturalWidth;
-    const scaleY = drawnH / naturalHeight;
-    const leftPx = offsetX + rawX * scaleX;
-    const topPx = offsetY + rawY * scaleY;
-    const widthPx = rawW * scaleX;
-    const heightPx = rawH * scaleY;
-
-    // Overlay style: always show full image, overlay crop area
-    const overlayStyle: React.CSSProperties = {
+    const mapped = mapCropToDisplay({
+      crop: item.cropData,
+      originalWidth: naturalWidth,
+      originalHeight: naturalHeight,
+      displayWidth: drawnSize.width,
+      displayHeight: drawnSize.height,
+    });
+    return {
       position: 'absolute',
-      left: `${leftPx}px`,
-      top: `${topPx}px`,
-      width: `${widthPx}px`,
-      height: `${heightPx}px`,
+      left: `${mapped.x}px`,
+      top: `${mapped.y}px`,
+      width: `${mapped.width}px`,
+      height: `${mapped.height}px`,
       border: '2px solid #ffe066',
       boxShadow: '0 0 0 9999px rgba(10, 8, 24, 0.45)',
       borderRadius: 2,
       pointerEvents: 'none' as React.CSSProperties['pointerEvents'],
       zIndex: 3,
     };
-    return overlayStyle;
   }, [isDigitalItem, item?.cropData, item?.photo?.width, item?.photo?.height, drawnSize.width, drawnSize.height]);
 
   const displayName = isAlbumScopeItem
@@ -178,14 +133,14 @@ const CartItem: React.FC<CartItemProps> = ({ item, photo, onEditCrop, onOpenWhcc
         <div style={{ padding: 16, display: 'grid', gridTemplateColumns: '240px 1fr', gap: 24 }}>
           {/* Photo Preview Section */}
           <div>
-            <div style={{ marginBottom: 12, borderRadius: 6, overflow: 'hidden', background: '#000', width: 240, position: 'relative' }}>
+            <div style={{ marginBottom: 12, borderRadius: 6, overflow: 'hidden', background: '#000', width: drawnSize.width, height: drawnSize.height, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {displayImageUrl ? (
                 <>
-                  <div style={{ width: 240, position: 'relative' }}>
+                  <div style={{ width: drawnSize.width, height: drawnSize.height, position: 'relative' }}>
                     <WatermarkedImage
                       src={displayImageUrl}
                       alt={item.productName || item.photo?.fileName || 'Product'}
-                      style={{ width: 240, height: 'auto', objectFit: 'contain', border: '3px dashed #ff0', background: '#222', display: 'block' }}
+                      style={{ width: drawnSize.width, height: drawnSize.height, objectFit: 'contain', border: '3px dashed #ff0', background: '#222', display: 'block' }}
                       studioId={studioId}
                       showWatermark={false}
                       fill={false}
@@ -203,7 +158,7 @@ const CartItem: React.FC<CartItemProps> = ({ item, photo, onEditCrop, onOpenWhcc
                   </div>
                 </>
               ) : (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#666' }}>
+                <div style={{ width: drawnSize.width, height: drawnSize.height, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#666' }}>
                   No Image
                 </div>
               )}
@@ -215,7 +170,7 @@ const CartItem: React.FC<CartItemProps> = ({ item, photo, onEditCrop, onOpenWhcc
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {onEditCrop && !isDigitalItem && (
                 <button 
-                  onClick={() => onEditCrop(item, photo)}
+                  onClick={() => onEditCrop(item, photo, drawnSize)}
                   style={{ 
                     padding: '8px 10px', 
                     background: '#7b61ff', 
