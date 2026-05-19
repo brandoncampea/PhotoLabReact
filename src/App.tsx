@@ -1,4 +1,5 @@
 import { Suspense, lazy } from 'react';
+const Reports = lazy(() => import('./pages/Reports'));
 
 const StudioTickets = lazy(() => import('./pages/admin/StudioTickets'));
 const AdminTickets = lazy(() => import('./pages/admin/AdminTickets'));
@@ -95,6 +96,8 @@ function App() {
                 <Route path="/admin/photos" element={<AdminProtectedRoute><AdminPhotos /></AdminProtectedRoute>} />
                 <Route path="/admin/products" element={<AdminProtectedRoute><AdminProducts /></AdminProtectedRoute>} />
                 <Route path="/admin/orders" element={<AdminProtectedRoute><AdminOrders /></AdminProtectedRoute>} />
+                <Route path="/admin/reports" element={<AdminProtectedRoute><Reports /></AdminProtectedRoute>} />
+                <Route path="/super-admin/reports" element={<AdminProtectedRoute><Reports /></AdminProtectedRoute>} />
                 <Route path="/admin/customers" element={<AdminProtectedRoute><AdminCustomers /></AdminProtectedRoute>} />
                 <Route path="/admin/shipping" element={<AdminProtectedRoute><AdminShipping /></AdminProtectedRoute>} />
                 <Route path="/admin/super-shipping" element={<AdminProtectedRoute><SuperAdminShipping /></AdminProtectedRoute>} />

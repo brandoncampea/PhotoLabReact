@@ -67,9 +67,11 @@ import playerWatchlistRoutes from './routes/playerWatchlist.js';
 import smugmugRoutes from './routes/smugmug.js';
 
 
+
 import whccEditorRoutes from './routes/whccEditor.js';
 import ticketRoutes from './tickets/routes.js';
 import notifyWatchersRoutes from './routes/notifyWatchers.js';
+import reportsRoutes from './routes/reports.js';
 
 import runWhccEditorBackfillOnce from './startup/runWhccEditorBackfillOnce.js';
 import './startup/ensureFreeBatchShippingColumn.js';
@@ -174,8 +176,10 @@ app.use('/api/player-watchlist', playerWatchlistRoutes);
 app.use('/api/blob-sas', blobSasRoutes);
 app.use('/api/smugmug', smugmugRoutes);
 
+
 app.use('/api/whcc-editor', whccEditorRoutes);
 app.use('/api/tickets', ticketRoutes);
+app.use('/api/reports', reportsRoutes);
 
 // Notify watchers endpoint
 app.use('/api/notify-watchers', notifyWatchersRoutes);

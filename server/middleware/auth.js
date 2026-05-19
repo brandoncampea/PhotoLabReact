@@ -1,3 +1,22 @@
+// Require studio admin or super admin (for reports)
+export const requireStudioOrSuperAdmin = async (req, res, next) => {
+  await authRequired(req, res, () => {
+    if (req.user?.role !== 'studio_admin' && req.user?.role !== 'super_admin') {
+      return res.status(403).json({ error: 'Studio or super admin access required' });
+    }
+    next();
+  });
+};
+
+// Require super admin only (for super admin reports)
+export const requireSuperAdmin = async (req, res, next) => {
+  await authRequired(req, res, () => {
+    if (req.user?.role !== 'super_admin') {
+      return res.status(403).json({ error: 'Super admin access required' });
+    }
+    next();
+  });
+};
 import jwt from 'jsonwebtoken';
 import mssql from '../mssql.cjs';
 const { queryRow } = mssql;

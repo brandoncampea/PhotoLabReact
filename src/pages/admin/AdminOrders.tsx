@@ -6,7 +6,9 @@ import ReactDOM from 'react-dom';
 // --- WHCC Preview/Submit helpers (must be top-level, not inside component) ---
 export async function fetchWhccPreview(orderId: number) {
   // Use the correct backend route as mounted in server/server.mjs
-  const res = await fetch(`/api/orders/admin/${orderId}/whcc-preview`);
+  const res = await fetch(`/api/orders/admin/${orderId}/whcc-preview`, {
+    credentials: 'include',
+  });
   if (!res.ok) throw new Error('Failed to fetch WHCC preview');
   return await res.json();
 }

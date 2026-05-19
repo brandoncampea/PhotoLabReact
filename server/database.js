@@ -259,6 +259,8 @@ const initDb = () => {
   return { db, initDb };
 };
 
+export default db;
+
 
 // Initialize DB schema when run directly
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

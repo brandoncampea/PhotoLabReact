@@ -51,6 +51,7 @@ const Sidebar: React.FC = () => {
 				<li><Link to={dashboardPath} className={styles.sidebarLink}>{collapsed ? '🏠' : 'Dashboard'}</Link></li>
 				<li><Link to="/admin/albums" className={styles.sidebarLink}>{collapsed ? '📚' : 'Albums'}</Link></li>
 				<li><Link to="/admin/orders" className={styles.sidebarLink}>{collapsed ? '🛒' : 'Orders'}</Link></li>
+				<li><Link to={isSuperAdmin ? "/super-admin/reports" : "/admin/reports"} className={styles.sidebarLink}>{collapsed ? '📈' : 'Reports'}</Link></li>
 				<li><Link to="/admin/watermarks" className={styles.sidebarLink}>{collapsed ? '💧' : 'Watermarks'}</Link></li>
 				<li><Link to="/admin/shipping" className={styles.sidebarLink}>{collapsed ? '🚚' : 'Shipping'}</Link></li>
 				{inStudioAdminMenu && (
