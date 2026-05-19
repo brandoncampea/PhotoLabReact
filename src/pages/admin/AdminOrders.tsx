@@ -283,12 +283,19 @@ function AdminOrderItemCard({ item }: { item: any }) {
   return (
     <div className="admin-order-item-card">
       <div className="admin-order-item-image-container">
-        {photoId ? (
+        {thumbnailUrl ? (
+          <img
+            src={thumbnailUrl}
+            alt={item.photo?.fileName || 'Photo'}
+            className="admin-order-item-image"
+            style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+          />
+        ) : photoId ? (
           <img
             src={photoUrl}
             alt={item.photo?.fileName || 'Photo'}
             className="admin-order-item-image"
-            style={{ width: displayWidth, height: displayHeight, objectFit: 'contain' }}
+            style={{ width: '100%', height: '100%', objectFit: 'contain' }}
           />
         ) : (
           <div className="admin-order-item-image-placeholder">No Image</div>
@@ -1002,8 +1009,42 @@ const AdminOrders: React.FC = () => {
     await ensureOrderDetailsLoaded(orderId);
   };
 
+  const [statusUpdating, setStatusUpdating] = useState(false);
+  const [statusUpdateError, setStatusUpdateError] = useState<string | null>(null);
+  const orderStatusOptions = [
+    { value: 'pending', label: 'Pending' },
+    { value: 'processing', label: 'Processing' },
+    { value: 'shipped', label: 'Shipped' },
+    { value: 'completed', label: 'Completed' },
+    { value: 'cancelled', label: 'Cancelled' },
+  ];
+
+  const handleStatusChange = async (orderId: number, newStatus: string) => {
+    setStatusUpdating(true);
+    setStatusUpdateError(null);
+    try {
+      if (newStatus === 'cancelled') {
+        // Prompt for cancel reason
+        const reason = prompt('Please enter a reason for cancellation:');
+        if (!reason || !reason.trim()) {
+          setStatusUpdateError('Cancel reason is required.');
+          setStatusUpdating(false);
+          return;
+        }
+        await orderService.cancelOrder(orderId, reason, false);
+      } else {
+        await orderService.updateStatus(orderId, newStatus);
+      }
+      await ensureOrderDetailsLoaded(orderId);
+    } catch (err: any) {
+      setStatusUpdateError(err?.response?.data?.error || err?.message || 'Failed to update status');
+    } finally {
+      setStatusUpdating(false);
+    }
+  };
+
   const renderOrderDetails = (order: Order) => (
-      <div className="admin-order-detail-panel">
+    <div className="admin-order-detail-panel">
       {/* Cancel Order Button for Studio Admins and Super Admins */}
       {(user?.role === 'studio_admin' || user?.role === 'super_admin') &&
         ['pending', 'waiting'].includes(String(order.status).toLowerCase()) && (
@@ -1123,14 +1164,33 @@ const AdminOrders: React.FC = () => {
 
         return (
           <>
+
       <div className="admin-order-detail-header">
         <div>
           <h3>Order #{order.id}</h3>
           <p>{new Date(order.orderDate).toLocaleString()}</p>
         </div>
-        <button type="button" className="admin-order-detail-close" onClick={() => updateSelectedOrder(null)}>
-          Close
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <strong>Status:</strong>
+          {(user?.role === 'studio_admin' || user?.role === 'super_admin') ? (
+            <select
+              value={order.status}
+              disabled={statusUpdating}
+              onChange={e => handleStatusChange(order.id, e.target.value)}
+              style={{ fontSize: 15, padding: '2px 8px', borderRadius: 4 }}
+            >
+              {orderStatusOptions.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          ) : (
+            <span style={{ fontSize: 15 }}>{order.status}</span>
+          )}
+          <button type="button" className="admin-order-detail-close" onClick={() => updateSelectedOrder(null)}>
+            Close
+          </button>
+        </div>
+        {statusUpdateError && <div style={{ color: 'red', marginTop: 6 }}>{statusUpdateError}</div>}
       </div>
 
       <div className="admin-order-detail-meta-grid">

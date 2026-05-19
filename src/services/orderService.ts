@@ -175,4 +175,9 @@ export const orderService = {
     const response = await api.post(`/orders/admin/${orderId}/resend-digital-download`);
     return response.data;
   },
+
+  async updateStatus(orderId: number, status: string): Promise<any> {
+    const response = await api.patch(`/orders/admin/${orderId}/status`, { status });
+    return response.data;
+  },
 };
