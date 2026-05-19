@@ -53,7 +53,7 @@ export async function detectFaceBoxesFromImageElement(image: HTMLImageElement): 
     }
 
     const model = await getBlazeFaceModel();
-    const predictions = await model.estimateFaces(image, false);
+    const predictions = await model.estimateFaces(image, { maxFaces: 10, scoreThreshold: 0.7 });
     const mappedFaceBoxes: FaceTagBox[] = (predictions || []).map((prediction: any, index: number): FaceTagBox => {
       const topLeft = Array.isArray(prediction.topLeft)
         ? prediction.topLeft

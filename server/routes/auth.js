@@ -59,6 +59,15 @@ router.post('/register', async (req, res) => {
 
 // Login
 router.post('/login', async (req, res) => {
+    // Debug: log session at start of login
+    console.log('[LOGIN] sessionID at start:', req.sessionID, 'session:', req.session);
+    // Log connect.sid cookie value if present
+    if (req.headers.cookie) {
+      const sidMatch = req.headers.cookie.match(/connect\.sid=([^;]+)/);
+      if (sidMatch) {
+        console.log('[LOGIN] Parsed connect.sid from cookie:', decodeURIComponent(sidMatch[1]));
+      }
+    }
   try {
     const { email, password } = req.body;
 
@@ -82,20 +91,39 @@ router.post('/login', async (req, res) => {
     const parsedFirst = nameParts.shift() || '';
     const parsedLast = nameParts.join(' ').trim();
 
-    // Generate token
+    // Set session userId for session-based auth
+    req.session.userId = user.id;
+    console.log('[LOGIN] sessionID after setting userId:', req.sessionID, 'session:', req.session);
+    // Log connect.sid cookie value again after setting userId
+    if (req.headers.cookie) {
+      const sidMatch = req.headers.cookie.match(/connect\.sid=([^;]+)/);
+      if (sidMatch) {
+        console.log('[LOGIN] Parsed connect.sid from cookie (after userId):', decodeURIComponent(sidMatch[1]));
+      }
+    }
+
+    // Generate token (for legacy/JWT clients)
     const token = jwt.sign({ userId: user.id, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
 
-    res.json({ 
-      user: { 
-        id: user.id, 
-        email: user.email, 
-        firstName: parsedFirst,
-        lastName: parsedLast,
-        role: user.role || 'customer',
-        isActive: user.is_active !== undefined ? !!user.is_active : true,
-        studioId: user.studio_id || undefined,
-      },
-      token 
+    // Ensure session is saved before sending response
+    req.session.save(err => {
+      if (err) {
+        console.error('[LOGIN] Error saving session:', err);
+        return res.status(500).json({ error: 'Session save error' });
+      }
+      console.log('[LOGIN] Session saved successfully:', req.sessionID, req.session);
+      res.json({
+        user: {
+          id: user.id,
+          email: user.email,
+          firstName: parsedFirst,
+          lastName: parsedLast,
+          role: user.role || 'customer',
+          isActive: user.is_active !== undefined ? !!user.is_active : true,
+          studioId: user.studio_id || undefined,
+        },
+        token,
+      });
     });
   } catch (error) {
     res.status(500).json({ error: error.message });

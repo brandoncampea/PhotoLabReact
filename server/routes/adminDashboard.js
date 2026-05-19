@@ -241,6 +241,18 @@ router.post('/studio-payout/:studioId', adminRequired, async (req, res) => {
 });
 
 router.get('/dashboard-stats', adminRequired, async (req, res) => {
+            // Debug logging for session/cookie comparison
+            console.log('[ADMIN DASHBOARD-STATS ROUTE] --- DEBUG START ---');
+            console.log('[ADMIN DASHBOARD-STATS ROUTE] sessionID:', req.sessionID);
+            console.log('[ADMIN DASHBOARD-STATS ROUTE] session:', req.session);
+            if (req.headers.cookie) {
+                console.log('[ADMIN DASHBOARD-STATS ROUTE] req.headers.cookie:', req.headers.cookie);
+                const sidMatch = req.headers.cookie.match(/connect\.sid=([^;]+)/);
+                if (sidMatch) {
+                    console.log('[ADMIN DASHBOARD-STATS ROUTE] Parsed connect.sid from cookie:', decodeURIComponent(sidMatch[1]));
+                }
+            }
+            console.log('[ADMIN DASHBOARD-STATS ROUTE] --- DEBUG END ---');
     try {
         const isSuperAdmin = req.user?.role === 'super_admin';
         const studioId = !isSuperAdmin && req.user?.studio_id ? Number(req.user.studio_id) : null;

@@ -1,5 +1,6 @@
 console.log('[PHOTOS.JS] photos.js loaded');
 import express from 'express';
+import multer from 'multer';
 const router = express.Router();
 
 
@@ -123,7 +124,6 @@ router.post('/batch-update-players', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-import multer from 'multer';
 import path from 'path';
 import mssql from '../mssql.cjs';
 const { queryRow, queryRows, query } = mssql;
@@ -350,7 +350,7 @@ import { signPhotoForResponse } from './photos.utils.js';
 
 const photoUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  limits: { fileSize: 500 * 1024 * 1024 }, // 500MB limit
   fileFilter: (req, file, cb) => {
     const allowedExts = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic', '.heif']);
     const allowedMimePrefixes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/heic', 'image/heif'];
@@ -1520,321 +1520,157 @@ router.get('/:id/detections', async (req, res) => {
 });
 
 // Upload photos
-const upload = multer({ storage: multer.memoryStorage() });
-router.post('/upload', requireActiveSubscription, upload.fields([
-  { name: 'photos', maxCount: 50 },
-  { name: 'csv', maxCount: 1 }
-]), async (req, res) => {
-  try {
-    await ensurePlayerRecognitionSchema();
-    await ensurePhotoUploadColumns();
-    const rawFiles = req.files?.photos || [];
-    const csvFile = req.files?.csv?.[0];
-    if (!rawFiles.length) {
-      return res.status(400).json({ error: 'No photos provided' });
-    }
-
-    const { albumId, descriptions, metadata, duplicateMode } = req.body;
-    const normalizedDuplicateMode = String(duplicateMode || 'allow').trim().toLowerCase();
-    if (!['allow', 'skip', 'overwrite'].includes(normalizedDuplicateMode)) {
-      return res.status(400).json({ error: 'Invalid duplicateMode. Use allow, skip, or overwrite.' });
-    }
-
-    let parsedDescriptions = [];
-    let parsedMetadata = [];
-
+import { authRequired } from '../middleware/auth.js';
+// Use the shared photoUpload instance for uploads
+// Accept JWT or session for upload route, always run authRequired
+router.post(
+  '/upload',
+  authRequired, // This supports both JWT and session, but JWT is required for admin
+  photoUpload.fields([
+    { name: 'photos', maxCount: 50 },
+    { name: 'file', maxCount: 1 },
+    { name: 'csv', maxCount: 1 }
+  ]),
+  async (req, res) => {
+    // Wrap the entire handler in a try/catch for robust error logging
     try {
-      parsedDescriptions = descriptions ? JSON.parse(descriptions) : [];
-    } catch {
-      parsedDescriptions = [];
+    // Require JWT for admin upload (req.user is set by authRequired)
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ error: 'Authentication required (JWT)' });
     }
-
-    try {
-      parsedMetadata = metadata ? JSON.parse(metadata) : [];
-    } catch {
-      parsedMetadata = [];
-    }
-
-    const parsedAlbumId = Number(albumId);
-    if (!parsedAlbumId) {
-      return res.status(400).json({ error: 'albumId is required' });
-    }
-
-    const csvRosterRows = csvFile ? await parseCsvRowsFromBuffer(csvFile.buffer) : [];
-
-    const targetAlbum = await queryRow(
-      `SELECT id,
-              studio_id as studioId,
-              description,
-              category,
-              COALESCE(name, title) as albumName
-       FROM albums
-       WHERE id = $1`,
-      [parsedAlbumId]
-    );
-    if (!targetAlbum) {
-      return res.status(404).json({ error: 'Album not found' });
-    }
-
-    const studioId = Number(targetAlbum.studioId || req.studioId || 0) || null;
-    const rosterName = buildRosterNameFromAlbum(targetAlbum);
-    if (req.studioId && targetAlbum.studioId && Number(targetAlbum.studioId) !== Number(req.studioId)) {
-      return res.status(403).json({ error: 'Cannot upload to an album outside your studio' });
-    }
-
-    let uploadEntries = rawFiles.map((file, index) => ({
-      file,
-      description: parsedDescriptions[index] || '',
-      metadata: parsedMetadata[index] || {},
-    }));
-
-    const incomingNames = Array.from(new Set(uploadEntries.map((entry) => normalizeToken(entry.file.originalname)).filter(Boolean)));
-    let duplicateRows = [];
-
-    if (incomingNames.length > 0) {
-      const namePlaceholders = incomingNames.map((_, i) => `$${i + 2}`).join(', ');
-      duplicateRows = await queryRows(
-        `SELECT id,
-                file_name as fileName,
-                full_image_url as fullImageUrl,
-                thumbnail_url as thumbnailUrl
-         FROM photos
-         WHERE album_id = $1
-           AND LOWER(file_name) IN (${namePlaceholders})`,
-        [parsedAlbumId, ...incomingNames]
-      );
-    }
-
-    const duplicateNameSet = new Set(duplicateRows.map((row) => normalizeToken(row.fileName)));
-
-    if (normalizedDuplicateMode === 'skip') {
-      uploadEntries = uploadEntries.filter((entry) => !duplicateNameSet.has(normalizeToken(entry.file.originalname)));
-    }
-
-    if (normalizedDuplicateMode === 'overwrite' && duplicateRows.length > 0) {
-      const duplicateIds = duplicateRows.map((row) => Number(row.id)).filter((id) => Number.isInteger(id) && id > 0);
-      const blobUrls = new Set();
-      for (const row of duplicateRows) {
-        if (row?.fullImageUrl) blobUrls.add(row.fullImageUrl);
-        if (row?.thumbnailUrl) blobUrls.add(row.thumbnailUrl);
-      }
-
-      await Promise.allSettled(
-        Array.from(blobUrls).map(async (url) => {
-          if (typeof url === 'string' && url.startsWith('http')) {
-            await deleteBlobByUrl(url);
-          }
-        })
-      );
-
-      if (duplicateIds.length > 0) {
-        const idPlaceholders = duplicateIds.map((_, i) => `$${i + 1}`).join(', ');
-        await query(`DELETE FROM order_items WHERE photo_id IN (${idPlaceholders})`, duplicateIds);
-        await query(`DELETE FROM photos WHERE id IN (${idPlaceholders})`, duplicateIds);
-
-        const coverIdPlaceholders = duplicateIds.map((_, i) => `$${i + 2}`).join(', ');
-
-        const coverHit = await queryRow(
-          `SELECT id
-           FROM albums
-           WHERE id = $1
-             AND cover_photo_id IN (${coverIdPlaceholders})`,
-          [parsedAlbumId, ...duplicateIds]
-        );
-
-        if (coverHit?.id) {
-          await query(
-            `UPDATE albums
-             SET cover_photo_id = NULL,
-                 cover_image_url = NULL
-             WHERE id = $1`,
-            [parsedAlbumId]
-          );
-        }
+    console.log('[UPLOAD HANDLER] Top-level handler reached');
+    console.log('[UPLOAD HANDLER] req.files:', req.files);
+    console.log('[UPLOAD HANDLER] req.body:', req.body);
+    // Enhanced debug logging for troubleshooting session/cookie issues
+    console.log('[UPLOAD ROUTE] --- DEBUG START ---');
+    console.log('[UPLOAD ROUTE] sessionID:', req.sessionID);
+    console.log('[UPLOAD ROUTE] session:', req.session);
+    console.log('[UPLOAD ROUTE] req.user:', req.user);
+    console.log('[UPLOAD ROUTE] req.headers:', req.headers);
+    if (req.headers.cookie) {
+      console.log('[UPLOAD ROUTE] req.headers.cookie:', req.headers.cookie);
+      // Extract connect.sid value
+      const sidMatch = req.headers.cookie.match(/connect\.sid=([^;]+)/);
+      if (sidMatch) {
+        console.log('[UPLOAD ROUTE] Parsed connect.sid from cookie:', decodeURIComponent(sidMatch[1]));
       }
     }
 
-    if (studioId) {
-      const additionalBytes = uploadEntries.reduce((sum, entry) => sum + Number(entry.file.size || entry.file.buffer?.length || 0), 0);
-      await enforceStorageQuotaForStudio(studioId, additionalBytes);
-      if (csvRosterRows.length > 0) {
-        await saveRosterPlayers(studioId, csvRosterRows, {
-          rosterName,
-          sourceAlbumId: parsedAlbumId,
-        });
-      }
+    // Parse albumId from body and fetch album
+    const parsedAlbumId = Number(req.body.albumId);
+    if (!parsedAlbumId || isNaN(parsedAlbumId)) {
+      return res.status(400).json({ error: 'Missing or invalid albumId' });
     }
-
-    const studioRoster = studioId ? await fetchStudioRoster(studioId) : [];
-    const knownSignatures = studioId ? await fetchStudioFaceSignatures(studioId) : [];
-    const fileNameTagMap = new Map();
-    for (const row of csvRosterRows) {
-      if (!row.fileName || !row.playerName) continue;
-      fileNameTagMap.set(normalizeToken(row.fileName), {
-        playerName: row.playerName,
-        playerNumber: row.playerNumber || '',
-      });
-    }
-
-    const photos = [];
-    let firstExifCaption = '';
-    for (let index = 0; index < uploadEntries.length; index++) {
-      const entry = uploadEntries[index];
-      const file = entry.file;
-
-      // Generate blob name for full image
-      const blobName = makeBlobName(albumId, file.originalname);
-      const photoUrl = await uploadImageBufferToAzure(file.buffer, blobName, file.mimetype);
-
-      // --- THUMBNAIL GENERATION AND UPLOAD ---
-      // Generate a thumbnail buffer (e.g., 400px wide, preserve aspect)
-      let thumbnailUrl = null;
-      try {
-        const thumbExt = path.extname(file.originalname).toLowerCase() || '.jpg';
-        const thumbBase = path.basename(file.originalname, thumbExt).replace(/[^a-zA-Z0-9-_]/g, '-');
-        const thumbName = `albums/${albumId}/${thumbBase}-thumb-${Date.now()}-${Math.round(Math.random() * 1e9)}${thumbExt}`;
-        const thumbBuffer = await sharp(file.buffer)
-          .resize({ width: 400, withoutEnlargement: true })
-          .jpeg({ quality: 80 })
-          .toBuffer();
-        thumbnailUrl = await uploadImageBufferToAzure(thumbBuffer, thumbName, 'image/jpeg');
-      } catch (err) {
-        console.error(`[Photo Upload] Failed to generate/upload thumbnail for ${file.originalname}:`, err);
-      }
-
-      // Extract comprehensive metadata from EXIF and image properties
-      const extractedMetadata = await extractImageMetadata(file.buffer);
-      const clientMetadata = entry.metadata || {};
-
-      // Merge extracted EXIF metadata with any client-provided metadata (client takes precedence)
-      const mergedMetadata = {
-        ...extractedMetadata,
-        ...clientMetadata,
-      };
-
-      if (!firstExifCaption) {
-        const captionCandidate = String(mergedMetadata.caption || mergedMetadata.headline || '').trim();
-        if (captionCandidate) {
-          firstExifCaption = captionCandidate;
-        }
-      }
-
-      // Always extract dimensions from Sharp independently
-      let width = null;
-      let height = null;
-      try {
-        const sharpMeta = await sharp(file.buffer).metadata();
-        if (sharpMeta.width && sharpMeta.height) {
-          width = sharpMeta.width;
-          height = sharpMeta.height;
-          console.log(`[Photo Upload] Sharp dimensions for ${file.originalname}: width=${width}, height=${height}`);
-        }
-      } catch (err) {
-        console.error(`[Photo Upload] Failed to extract dimensions from Sharp for ${file.originalname}:`, err);
-      }
-      // If EXIF has dimensions, prefer those only if they differ and are valid
-      if (mergedMetadata.width && mergedMetadata.height) {
-        if (mergedMetadata.width !== width || mergedMetadata.height !== height) {
-          console.log(`[Photo Upload] EXIF dimensions for ${file.originalname}: width=${mergedMetadata.width}, height=${mergedMetadata.height}`);
-        }
-        // Optionally, you could compare and decide which to trust more
-      }
-      // Log if dimensions are missing after Sharp
-      if (!width || !height) {
-        console.warn(`[Photo Upload] WARNING: Missing dimensions for ${file.originalname} after Sharp extraction. width=${width}, height=${height}`);
-      }
-
-      const signatureHash = await computeImageSignature(file.buffer);
-      const fileTag = resolvePlayerTagForFile({
-        fileName: file.originalname,
-        rosterRows: studioRoster,
-        fileNameTagMap,
-      });
-      const signatureTag = !fileTag
-        ? resolvePlayerTagBySignature({ signatureHash, signatures: knownSignatures })
-        : null;
-      const player = fileTag || signatureTag;
-
-
-      // Use the correct thumbnail path (album folder)
-      const result = await queryRow(`
-        INSERT INTO photos (album_id, file_name, thumbnail_url, full_image_url, description, metadata, width, height, file_size_bytes, player_names, player_numbers)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-        RETURNING id
-      `, [
-        parsedAlbumId,
-        file.originalname,
-        thumbnailUrl && typeof thumbnailUrl === 'string' ? require('../services/azureStorage.js').getBlobNameFromUrlOrName(thumbnailUrl) : thumbnailUrl,
-        photoUrl && typeof photoUrl === 'string' ? require('../services/azureStorage.js').getBlobNameFromUrlOrName(photoUrl) : photoUrl,
-        entry.description || '',
-        Object.keys(mergedMetadata).length > 0 ? JSON.stringify(mergedMetadata) : null,
-        width,
-        height,
-        Number(file.size || file.buffer?.length || 0),
-        player?.playerName || null,
-        player?.playerNumber || null,
-      ]);
-
-      if (studioId && player?.playerName && signatureHash) {
-        await saveFaceSignature({
-          studioId,
-          playerName: player.playerName,
-          playerNumber: player.playerNumber || null,
-          signatureHash,
-          sourcePhotoId: result.id,
-        });
-      }
-
-      photos.push({
-        id: result.id,
-        albumId: parsedAlbumId,
-        fileName: file.originalname,
-        thumbnailUrl: thumbnailUrl && typeof thumbnailUrl === 'string' ? require('../services/azureStorage.js').getBlobNameFromUrlOrName(thumbnailUrl) : thumbnailUrl,
-        fullImageUrl: photoUrl && typeof photoUrl === 'string' ? require('../services/azureStorage.js').getBlobNameFromUrlOrName(photoUrl) : photoUrl,
-        description: entry.description || '',
-        metadata: Object.keys(mergedMetadata).length > 0 ? mergedMetadata : null,
-        width: width,
-        height: height,
-        playerName: player?.playerName || null,
-        playerNumber: player?.playerNumber || null
-      });
-    }
-
-    // If album description is empty, populate it from the first uploaded photo caption/headline
-    const existingAlbumDescription = String(targetAlbum.description || '').trim();
-    if (!existingAlbumDescription && firstExifCaption) {
-      await query(
-        `UPDATE albums SET description = $1 WHERE id = $2`,
-        [firstExifCaption, parsedAlbumId]
-      );
-    }
-
-    // Update album photo count
-    await query(`
-      UPDATE albums 
-      SET photo_count = (SELECT COUNT(*) FROM photos WHERE album_id = $1)
-      WHERE id = $1
-    `, [parsedAlbumId]);
-
-    // Auto-select cover photo if none is currently selected
     const album = await queryRow(
-      `SELECT cover_photo_id as coverPhotoId, cover_image_url as coverImageUrl FROM albums WHERE id = $1`,
+      `SELECT id, cover_photo_id as coverPhotoId, cover_image_url as coverImageUrl FROM albums WHERE id = $1`,
       [parsedAlbumId]
     );
 
-    if ((!album?.coverPhotoId || !album?.coverImageUrl) && photos.length > 0) {
-      const fallback = photos[0];
+    // --- Begin actual photo upload logic ---
+    const uploadedFiles = (req.files?.photos || req.files?.file ? [].concat(req.files.photos || [], req.files.file || []) : []);
+    const createdPhotos = [];
+    for (const file of uploadedFiles) {
+      try {
+        const fileBuffer = file.buffer;
+        const fileName = file.originalname;
+        // Sanitize file name
+        const safeFileName = fileName.replace(/\s+/g, '_');
+        // Upload full image to Azure
+        const fullBlobName = `albums/${parsedAlbumId}/${safeFileName}`;
+        const fullBlobPath = await uploadImageBufferToAzure(fileBuffer, fullBlobName, file.mimetype || 'image/jpeg');
+
+        // Extract EXIF/metadata
+        let extractedMetadata = {};
+        try {
+          extractedMetadata = await import('../utils/exif.mjs').then(m => m.extractImageMetadata(fileBuffer));
+        } catch (err) {
+          extractedMetadata = {};
+        }
+
+        // Generate thumbnail (400px wide)
+        let thumbBlobPath = null;
+        try {
+          const thumbBuffer = await sharp(fileBuffer)
+            .resize({ width: 400, withoutEnlargement: true })
+            .jpeg({ quality: 80 })
+            .toBuffer();
+          const thumbBlobName = `albums/${parsedAlbumId}/thumb_${safeFileName.replace(/\.[^.]+$/, '.jpg')}`;
+          thumbBlobPath = await uploadImageBufferToAzure(thumbBuffer, thumbBlobName, 'image/jpeg');
+        } catch (err) {
+          thumbBlobPath = fullBlobPath;
+        }
+
+        // Player name/number tagging from filename (centralized logic)
+        let playerName = null;
+        let playerNumber = null;
+        const base = fileName ? fileName.replace(/\.[^.]+$/, '') : '';
+        const match = base.match(/([A-Za-z]+[ _-]?[A-Za-z]+)[ _-]?([0-9]{1,3})?$/);
+        if (match) {
+          playerName = match[1].replace(/[_-]/g, ' ').trim();
+          if (match[2]) playerNumber = match[2];
+        }
+
+        // Insert photo record in DB
+        let result = null;
+        try {
+          result = await queryRow(
+            `INSERT INTO photos (album_id, file_name, thumbnail_url, full_image_url, description, metadata, width, height, file_size_bytes, player_names, player_numbers)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+             RETURNING id`,
+            [
+              parsedAlbumId,
+              safeFileName,
+              thumbBlobPath,
+              fullBlobPath,
+              '',
+              Object.keys(extractedMetadata).length > 0 ? JSON.stringify(extractedMetadata) : null,
+              extractedMetadata.width || null,
+              extractedMetadata.height || null,
+              fileBuffer.length || null,
+              playerName || null,
+              playerNumber || null,
+            ]
+          );
+        } catch (err) {
+          // If duplicate, fetch existing
+          const existing = await queryRow(
+            `SELECT id FROM photos WHERE album_id = $1 AND file_name = $2`,
+            [parsedAlbumId, safeFileName]
+          );
+          if (existing) {
+            result = existing;
+          } else {
+            throw err;
+          }
+        }
+
+        // Fetch full photo record
+        const photoRecord = await queryRow(
+          `SELECT id, album_id as albumId, file_name as fileName, thumbnail_url as thumbnailUrl, full_image_url as fullImageUrl, description, metadata, player_names as playerNames, player_numbers as playerNumbers, width, height, created_at as createdDate FROM photos WHERE id = $1`,
+          [result.id]
+        );
+        createdPhotos.push(signPhotoForResponse(photoRecord));
+      } catch (err) {
+        console.error('[UPLOAD HANDLER] Error processing file:', file?.originalname, err);
+      }
+    }
+
+    // Update album cover if needed
+    if ((!album?.coverPhotoId || !album?.coverImageUrl) && createdPhotos.length > 0) {
+      const fallback = createdPhotos[0];
       await query(
         `UPDATE albums
          SET cover_photo_id = $1,
              cover_image_url = $2
          WHERE id = $3`,
-        [fallback.id, fallback.fullImageUrl, parsedAlbumId]
+        [fallback.id || null, fallback.fullImageUrl || null, parsedAlbumId]
       );
     }
 
-    res.status(201).json(photos.map(signPhotoForResponse));
+    console.log('[UPLOAD HANDLER] Successfully uploaded and saved', createdPhotos.length, 'photos.');
+    res.status(201).json(createdPhotos);
   } catch (error) {
+    console.error('[UPLOAD HANDLER] ERROR CAUGHT:', error && error.stack ? error.stack : error);
     if (error.code === 'STORAGE_QUOTA_EXCEEDED') {
       return res.status(403).json({ error: error.message, quotaExceeded: true });
     }
@@ -1863,24 +1699,7 @@ router.put('/:id', async (req, res) => {
       [req.params.id]
     );
 
-    if (!currentPhoto) {
-      return res.status(404).json({ error: 'Photo not found' });
-    }
-
-    const nextDescription = description !== undefined ? description : currentPhoto.description;
-    const nextMetadata = metadata !== undefined
-      ? (metadata ? JSON.stringify(metadata) : null)
-      : currentPhoto.metadata;
-    const nextPlayerNames = playerNames !== undefined ? toCsvValue(playerNames) : currentPhoto.playerNames;
-    const nextPlayerNumbers = playerNumbers !== undefined ? toCsvValue(playerNumbers) : currentPhoto.playerNumbers;
-
-    await query(`
-      UPDATE photos 
-      SET description = $1, metadata = $2, player_names = $3, player_numbers = $4
-      WHERE id = $5
-    `, [nextDescription, nextMetadata, nextPlayerNames, nextPlayerNumbers, req.params.id]);
-
-    let autoTaggedCount = 0;
+// ...existing code...
     let faceMatchedCount = 0;
     let numberMatchedCount = 0;
     let trainedFaceSamples = 0;

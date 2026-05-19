@@ -5,13 +5,32 @@ const { queryRow } = mssql;
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
 export const authRequired = async (req, res, next) => {
-    console.log('[AUTH REQUIRED] Called for', req.method, req.originalUrl, 'headers:', req.headers);
-  try {
-    const auth = req.headers.authorization || '';
-    const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
-    if (!token) {
-      return res.status(401).json({ error: 'Authentication required' });
+  console.log('[AUTH REQUIRED] Called for', req.method, req.originalUrl, 'headers:', req.headers);
+  console.log('[AUTH REQUIRED] req.session:', req.session);
+  // 1. Check for session-based authentication
+  if (req.session && req.session.userId) {
+    try {
+      const userRow = await queryRow('SELECT id, email, role, studio_id FROM users WHERE id = $1', [req.session.userId]);
+      if (!userRow) return res.status(401).json({ error: 'User not found' });
+      req.user = {
+        id: userRow.id,
+        email: userRow.email,
+        role: userRow.role,
+        studio_id: userRow.studio_id
+      };
+      return next();
+    } catch (err) {
+      return res.status(500).json({ error: 'Failed to load user info' });
     }
+  }
+
+  // 2. Fallback: Check for JWT in Authorization header
+  const auth = req.headers.authorization || '';
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
+  if (!token) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  try {
     const payload = jwt.verify(token, JWT_SECRET);
     const userId = Number(payload.userId);
     if (!userId) {
@@ -45,7 +64,7 @@ export const authRequired = async (req, res, next) => {
     }
 
     req.user = { id: userId, email: payload.email, role, studio_id, acting_studio_id };
-    next();
+    return next();
   } catch (err) {
     return res.status(401).json({ error: 'Invalid token' });
   }

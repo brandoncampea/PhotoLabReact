@@ -5,6 +5,8 @@ const AdminTickets = lazy(() => import('./pages/admin/AdminTickets'));
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { CartProvider } from './contexts/CartContext';
+import { UploadProvider } from './contexts/UploadContext';
+import './components/UploadPanel.css';
 import Layout from './components/Layout/Layout';
 import AdminProtectedRoute from './components/AdminProtectedRoute';
 import StudioAlbumStyles from './pages/admin/StudioAlbumStyles';
@@ -54,71 +56,74 @@ const CustomerAccount = lazy(() => import('./pages/CustomerAccount'));
 
 
 
+
 function App() {
   return (
     <AuthProvider>
       <CartProvider>
-        <Layout>
-          <Suspense fallback={<div className="loader">Loading...</div>}>
-            <Routes>
-              <Route path="/" element={<LandingPage />} />
-              <Route path="/studio-signup" element={<StudioSignup />} />
-              <Route path="/login" element={<Login />} />
-              <Route path="/register" element={<Register />} />
-              <Route path="/albums" element={<Albums />} />
-              <Route path="/deals" element={<Deals />} />
-              <Route path="/studio/:studioSlug/deals" element={<Deals />} />
-              <Route path="/s/:studioSlug/deals" element={<Deals />} />
-              <Route path="/albums/:albumId" element={<AlbumDetails />} />
-              <Route path="/cart" element={<Cart />} />
-              <Route path="/checkout" element={<Checkout />} />
-              <Route path="/orders" element={<Orders />} />
-              <Route path="/account" element={<CustomerAccount />} />
-              <Route path="/search" element={<SearchPage />} />
-              <Route path="/studio/:studioSlug" element={<StudioPublicPage />} />
-              <Route path="/s/:studioSlug/albums/:albumId" element={<AlbumDetails />} />
-              {/* Admin and super admin login routes */}
-              <Route path="/admin/login" element={<Suspense fallback={<div>Loading...</div>}><AdminLogin /></Suspense>} />
-              <Route path="/super-admin/login" element={<Suspense fallback={<div>Loading...</div>}><SuperAdminLogin onLogin={() => {}} /></Suspense>} />
-              {/* Admin and super admin protected routes */}
-              <Route path="/super-admin" element={<AdminProtectedRoute><SuperAdminDashboard /></AdminProtectedRoute>} />
-              <Route path="/super-admin-pricing" element={<AdminProtectedRoute><SuperAdminPricing /></AdminProtectedRoute>} />
-              <Route path="/admin/super-pricing" element={<AdminProtectedRoute><SuperAdminPricing /></AdminProtectedRoute>} />
-              <Route path="/admin/studio-dashboard" element={<AdminProtectedRoute><StudioAdminDashboard /></AdminProtectedRoute>} />
-              <Route path="/admin/dashboard" element={<AdminProtectedRoute><AdminDashboard /></AdminProtectedRoute>} />
-              <Route path="/admin/analytics" element={<Navigate to="/admin/dashboard" replace />} />
-              <Route path="/admin/albums" element={<AdminProtectedRoute><AdminAlbums /></AdminProtectedRoute>} />
-              <Route path="/admin/photos" element={<AdminProtectedRoute><AdminPhotos /></AdminProtectedRoute>} />
-              <Route path="/admin/products" element={<AdminProtectedRoute><AdminProducts /></AdminProtectedRoute>} />
-              <Route path="/admin/orders" element={<AdminProtectedRoute><AdminOrders /></AdminProtectedRoute>} />
-              <Route path="/admin/customers" element={<AdminProtectedRoute><AdminCustomers /></AdminProtectedRoute>} />
-              <Route path="/admin/shipping" element={<AdminProtectedRoute><AdminShipping /></AdminProtectedRoute>} />
-              <Route path="/admin/super-shipping" element={<AdminProtectedRoute><SuperAdminShipping /></AdminProtectedRoute>} />
-              <Route path="/admin/album-styles" element={<AdminProtectedRoute><StudioAlbumStyles /></AdminProtectedRoute>} />
-              <Route path="/admin/discount-codes" element={<AdminProtectedRoute><AdminDiscountCodes /></AdminProtectedRoute>} />
-              <Route path="/admin/watermarks" element={<AdminProtectedRoute><AdminWatermarks /></AdminProtectedRoute>} />
-              <Route path="/admin/profile" element={<AdminProtectedRoute><AdminProfile /></AdminProtectedRoute>} />
-              <Route path="/admin/smugmug" element={<AdminProtectedRoute><AdminSmugMug /></AdminProtectedRoute>} />
-              <Route path="/admin/price-lists" element={<AdminProtectedRoute><AdminPriceLists /></AdminProtectedRoute>} />
-              <Route path="/admin/packages" element={<AdminProtectedRoute><AdminPackagesPage /></AdminProtectedRoute>} />
-              <Route path="/admin/configuration" element={<AdminProtectedRoute><AdminConfiguration /></AdminProtectedRoute>} />
-              <Route path="/admin/vendor-integrations" element={<AdminProtectedRoute><AdminVendorIntegrations /></AdminProtectedRoute>} />
-              <Route path="/admin/users" element={<AdminProtectedRoute><AdminUsers /></AdminProtectedRoute>} />
-              {/* Studio: My Tickets */}
-              <Route path="/admin/studio-tickets" element={<AdminProtectedRoute><StudioTickets /></AdminProtectedRoute>} />
-              {/* Super Admin: All Tickets */}
-              <Route path="/admin/tickets" element={<AdminProtectedRoute><AdminTickets /></AdminProtectedRoute>} />
-              <Route path="/admin/studio-admins" element={<AdminProtectedRoute><AdminStudioAdmins /></AdminProtectedRoute>} />
-              <Route path="/admin/subscription" element={<AdminProtectedRoute><AdminSubscription /></AdminProtectedRoute>} />
-              <Route path="/admin/subscription-gateway" element={<AdminProtectedRoute><AdminSubscriptionGateway /></AdminProtectedRoute>} />
-              <Route path="/admin/stripe" element={<AdminProtectedRoute><AdminStripe /></AdminProtectedRoute>} />
-            {/* Catch-all route to redirect to landing page */}
-            <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </Suspense>
-        </Layout>
+        <UploadProvider>
+          <Layout>
+            <Suspense fallback={<div className="loader">Loading...</div>}>
+              <Routes>
+                <Route path="/" element={<LandingPage />} />
+                <Route path="/studio-signup" element={<StudioSignup />} />
+                <Route path="/login" element={<Login />} />
+                <Route path="/register" element={<Register />} />
+                <Route path="/albums" element={<Albums />} />
+                <Route path="/deals" element={<Deals />} />
+                <Route path="/studio/:studioSlug/deals" element={<Deals />} />
+                <Route path="/s/:studioSlug/deals" element={<Deals />} />
+                <Route path="/albums/:albumId" element={<AlbumDetails />} />
+                <Route path="/cart" element={<Cart />} />
+                <Route path="/checkout" element={<Checkout />} />
+                <Route path="/orders" element={<Orders />} />
+                <Route path="/account" element={<CustomerAccount />} />
+                <Route path="/search" element={<SearchPage />} />
+                <Route path="/studio/:studioSlug" element={<StudioPublicPage />} />
+                <Route path="/s/:studioSlug/albums/:albumId" element={<AlbumDetails />} />
+                {/* Admin and super admin login routes */}
+                <Route path="/admin/login" element={<Suspense fallback={<div>Loading...</div>}><AdminLogin /></Suspense>} />
+                <Route path="/super-admin/login" element={<Suspense fallback={<div>Loading...</div>}><SuperAdminLogin onLogin={() => {}} /></Suspense>} />
+                {/* Admin and super admin protected routes */}
+                <Route path="/super-admin" element={<AdminProtectedRoute><SuperAdminDashboard /></AdminProtectedRoute>} />
+                <Route path="/super-admin-pricing" element={<AdminProtectedRoute><SuperAdminPricing /></AdminProtectedRoute>} />
+                <Route path="/admin/super-pricing" element={<AdminProtectedRoute><SuperAdminPricing /></AdminProtectedRoute>} />
+                <Route path="/admin/studio-dashboard" element={<AdminProtectedRoute><StudioAdminDashboard /></AdminProtectedRoute>} />
+                <Route path="/admin/dashboard" element={<AdminProtectedRoute><AdminDashboard /></AdminProtectedRoute>} />
+                <Route path="/admin/analytics" element={<Navigate to="/admin/dashboard" replace />} />
+                <Route path="/admin/albums" element={<AdminProtectedRoute><AdminAlbums /></AdminProtectedRoute>} />
+                <Route path="/admin/photos" element={<AdminProtectedRoute><AdminPhotos /></AdminProtectedRoute>} />
+                <Route path="/admin/products" element={<AdminProtectedRoute><AdminProducts /></AdminProtectedRoute>} />
+                <Route path="/admin/orders" element={<AdminProtectedRoute><AdminOrders /></AdminProtectedRoute>} />
+                <Route path="/admin/customers" element={<AdminProtectedRoute><AdminCustomers /></AdminProtectedRoute>} />
+                <Route path="/admin/shipping" element={<AdminProtectedRoute><AdminShipping /></AdminProtectedRoute>} />
+                <Route path="/admin/super-shipping" element={<AdminProtectedRoute><SuperAdminShipping /></AdminProtectedRoute>} />
+                <Route path="/admin/album-styles" element={<AdminProtectedRoute><StudioAlbumStyles /></AdminProtectedRoute>} />
+                <Route path="/admin/discount-codes" element={<AdminProtectedRoute><AdminDiscountCodes /></AdminProtectedRoute>} />
+                <Route path="/admin/watermarks" element={<AdminProtectedRoute><AdminWatermarks /></AdminProtectedRoute>} />
+                <Route path="/admin/profile" element={<AdminProtectedRoute><AdminProfile /></AdminProtectedRoute>} />
+                <Route path="/admin/smugmug" element={<AdminProtectedRoute><AdminSmugMug /></AdminProtectedRoute>} />
+                <Route path="/admin/price-lists" element={<AdminProtectedRoute><AdminPriceLists /></AdminProtectedRoute>} />
+                <Route path="/admin/packages" element={<AdminProtectedRoute><AdminPackagesPage /></AdminProtectedRoute>} />
+                <Route path="/admin/configuration" element={<AdminProtectedRoute><AdminConfiguration /></AdminProtectedRoute>} />
+                <Route path="/admin/vendor-integrations" element={<AdminProtectedRoute><AdminVendorIntegrations /></AdminProtectedRoute>} />
+                <Route path="/admin/users" element={<AdminProtectedRoute><AdminUsers /></AdminProtectedRoute>} />
+                {/* Studio: My Tickets */}
+                <Route path="/admin/studio-tickets" element={<AdminProtectedRoute><StudioTickets /></AdminProtectedRoute>} />
+                {/* Super Admin: All Tickets */}
+                <Route path="/admin/tickets" element={<AdminProtectedRoute><AdminTickets /></AdminProtectedRoute>} />
+                <Route path="/admin/studio-admins" element={<AdminProtectedRoute><AdminStudioAdmins /></AdminProtectedRoute>} />
+                <Route path="/admin/subscription" element={<AdminProtectedRoute><AdminSubscription /></AdminProtectedRoute>} />
+                <Route path="/admin/subscription-gateway" element={<AdminProtectedRoute><AdminSubscriptionGateway /></AdminProtectedRoute>} />
+                <Route path="/admin/stripe" element={<AdminProtectedRoute><AdminStripe /></AdminProtectedRoute>} />
+              {/* Catch-all route to redirect to landing page */}
+              <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </Suspense>
+          </Layout>
+        </UploadProvider>
       </CartProvider>
     </AuthProvider>
-	);
+  );
 }
 export default App;

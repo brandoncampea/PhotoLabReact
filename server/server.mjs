@@ -1,5 +1,6 @@
 import { initializeDatabase } from './initializeDatabasePatch.js';
 import cors from 'cors';
+import session from 'express-session';
 import fs from 'fs';
 import express from 'express';
 
@@ -82,20 +83,15 @@ import '../server/startup/ensureOrderItemAttributesColumn.js';
 
 
 const app = express();
-const PORT = process.env.PORT || 3000;
-const clientDistPath = path.resolve(__dirname, '../dist');
-const hasClientBuild = fs.existsSync(path.join(clientDistPath, 'index.html'));
-
-
-// Ensure JSON body parsing is enabled before tax route
-app.use(express.json({ limit: '50mb' }));
-app.use('/api/tax', taxRoutes);
 
 // CORS: allow frontend dev server and production origin
 const allowedOrigins = [
   'http://localhost:3004',
   'http://localhost:3000',
   'http://localhost:5173',
+  'http://localhost:3004',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:3004',
   process.env.FRONTEND_URL,
   process.env.CANONICAL_APP_URL || 'https://labs.campeaphotography.com',
 ].filter(Boolean);
@@ -106,18 +102,39 @@ app.use(cors({
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      callback(null, true); // Permissive: allow all for now; tighten per environment if needed
+      callback(new Error('Not allowed by CORS'), false);
     }
   },
   credentials: true
 }));
 
+// Session middleware (must come after CORS)
+const sessionSecret = process.env.SESSION_SECRET || 'dev-secret';
+console.log('[SESSION] Using session secret:', sessionSecret);
+app.use(session({
+  secret: sessionSecret,
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    httpOnly: true,
+    secure: false, // set to true if using HTTPS
+    sameSite: 'lax', // 'none' if using HTTPS and cross-origin
+    maxAge: 1000 * 60 * 60 * 24 * 7 // 1 week
+    // No domain property for local dev; let browser handle it
+  }
+}));
+const PORT = process.env.PORT || 3000;
+const clientDistPath = path.resolve(__dirname, '../dist');
+const hasClientBuild = fs.existsSync(path.join(clientDistPath, 'index.html'));
+
+
+// Ensure JSON body parsing is enabled before tax route
+app.use(express.json({ limit: '500mb' }));
+app.use('/api/tax', taxRoutes);
+
 // request body is available for signature verification.
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api/info', infoRoutes);
-
-// Middleware
-app.use(express.json({ limit: '50mb' }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Use routes
@@ -256,8 +273,22 @@ startServer();
 // do not crash the worker process during deployment.
 initializeDatabaseWithRetry();
 
+// Global error handler (must be after all routes)
+app.use((err, req, res, next) => {
+  console.error('[GLOBAL ERROR HANDLER]', err);
+  res.status(500).json({ error: 'Internal Server Error', details: err && err.message });
+});
+
 // Graceful shutdown
 process.on('SIGTERM', () => {
   console.log('SIGTERM received, shutting down gracefully');
   process.exit(0);
+});
+
+// Log uncaught exceptions and unhandled promise rejections
+process.on('uncaughtException', (err) => {
+  console.error('[UNCAUGHT EXCEPTION]', err && err.stack ? err.stack : err);
+});
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[UNHANDLED REJECTION]', reason && reason.stack ? reason.stack : reason);
 });

@@ -52,6 +52,8 @@ const detectFaceBoxesInBrowser = async (photo: Photo): Promise<{ faceBoxes: Face
 const setImageRef = (_photoId: number, _el: HTMLImageElement | null) => {};
 import React, { useState, useEffect } from 'react';
 import './AdminPhotos.css';
+import UploadPanel from '../../components/UploadPanel';
+import { useUploadContext } from '../../contexts/UploadContext';
 
 // UploadProgressPanel and related unused props removed
 
@@ -97,12 +99,12 @@ const AdminPhotos: React.FC = () => {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{ completed: number; total: number }>({ completed: 0, total: 0 });
   const [uploadMessage, setUploadMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [showUploadPanel, setShowUploadPanel] = useState(true);
+  // Remove local showUploadPanel, use UploadContext for panel visibility
   const [metadataPhoto, setMetadataPhoto] = useState<Photo | null>(null);
   // Removed unused coverMessage and isDragging
   const [coverLoadingId, setCoverLoadingId] = useState<number | null>(null);
   const [coverSuccessId, setCoverSuccessId] = useState<number | null>(null);
-  const [uploadItems, setUploadItems] = useState<UploadItem[]>([]);
+  // Remove local uploadItems, use UploadContext for upload files
   const [rosterUploading, setRosterUploading] = useState(false);
   const [rosterMessage, setRosterMessage] = useState<string | null>(null);
   const [rosterPlayers, setRosterPlayers] = useState<Array<{ playerName: string; playerNumber?: string }>>([]);
@@ -312,33 +314,10 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
   const performUpload = async (workingFiles: File[], duplicateMode: DuplicateMode, skippedClientSide = 0) => {
     if (!workingFiles.length) return;
 
-    // Clean up previous previews
-    uploadItems.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+    // Clean up previous previews (use UploadContext if needed, or skip if not available)
+    // If you want to clean up previews from previous upload, you can do so here if you have access to them.
 
-    const extractNameFromFilename = (filename: string): string | null => {
-      const base = filename.replace(/\.[^.]+$/, '');
-      const normalized = base.replace(/[-]+/g, '_');
-      let parts = normalized.split('_').filter(Boolean);
-      if (parts.length === 0) return null;
-      if (/^\d+$/.test(parts[parts.length - 1])) parts = parts.slice(0, -1);
-      if (parts.length === 0) return null;
-      const name = parts.map(
-        (part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()
-      ).join(' ');
-      return name.trim() || null;
-    };
-    const items: UploadItem[] = workingFiles.map((file, idx) => ({
-      id: `${Date.now()}-${idx}-${file.name}`,
-      file,
-      previewUrl: URL.createObjectURL(file),
-      progress: 0,
-      status: 'queued',
-      duplicateMode,
-      attempts: 0,
-      taggedPlayer: extractNameFromFilename(file.name),
-    }));
-
-    setUploadItems(items);
+    // UploadContext handles upload state; no setUploadItems or items needed here
     setUploading(true);
     setUploadMessage(null);
     setUploadProgress({ completed: 0, total: workingFiles.length });
@@ -348,7 +327,15 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
     let completed = 0;
     let failed = 0;
 
-    const queue = [...items];
+    const queue = workingFiles.map((file, idx) => ({
+      id: `${Date.now()}-${idx}-${file.name}`,
+      file,
+      progress: 0,
+      status: 'queued',
+      duplicateMode,
+      attempts: 0,
+      taggedPlayer: null,
+    }));
 
     const maxAutoRetries = 2;
     const uploadNext = async () => {
@@ -361,11 +348,7 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
       let attempts = item.attempts || 0;
       let success = false;
       while (attempts <= maxAutoRetries && !success) {
-        setUploadItems((prev) =>
-          prev.map((entry) =>
-            item && entry.id === item.id ? { ...entry, status: 'uploading', progress: 0, attempts } : entry
-          )
-        );
+        // No setUploadItems; update progress in UploadContext if needed
         try {
           // Direct-to-Blob upload
           if (typeof albumId !== 'number') throw new Error('albumId must be a number');
@@ -469,14 +452,21 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
     try {
       await Promise.all(Array(parallelLimit).fill(0).map(uploadNext));
 
-      // After all uploads and tagging, reload photos and albums once
-      await loadPhotos();
+      // --- Post-upload polling to ensure new photos appear ---
+      const expectedCount = photos.length + completed;
+      let pollTries = 0;
+      let foundAll = false;
+      while (pollTries < 5 && !foundAll) {
+        await loadPhotos();
+        const refreshed = await photoService.getPhotosByAlbum(albumId as number);
+        // Check if all uploaded files are present in refreshed list
+        const uploadedNames = items.map(i => i.file.name.replace(/\s+/g, '_'));
+        foundAll = uploadedNames.every(name => refreshed.some(p => p.fileName === name));
+        if (foundAll) break;
+        pollTries++;
+        await new Promise(res => setTimeout(res, 1000));
+      }
       await loadAlbums();
-
-      // Ensure photos state is refreshed before next upload
-      // This is critical for duplicate detection to work on repeated uploads
-      // (Fix for: duplicate prompt not appearing after uploading same file again)
-      // Optionally, you can debounce or throttle this if needed for performance
 
       if (failed === 0) {
         const skipSuffix = skippedClientSide > 0 ? ` Skipped ${skippedClientSide} duplicate photo${skippedClientSide === 1 ? '' : 's'}.` : '';
@@ -501,61 +491,29 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
   };
 
   // Upload files handler
-  const uploadFiles = async (files: File[]) => {
-    if (!files.length) return;
-
-    // Always check for duplicates before uploading
-    const normalizeName = (name: string) => name.trim().toLowerCase();
-    const existingNames = new Set(photos.map((p) => normalizeName(String(p.fileName || ''))));
-    const duplicateCandidates = files.filter((file) => existingNames.has(normalizeName(file.name)));
-
-    // Helper to robustly extract a player name from a filename
-    const extractNameFromFilename = (filename: string): string | null => {
-      const base = filename.replace(/\.[^.]+$/, '');
-      const normalized = base.replace(/[-]+/g, '_');
-      const parts = normalized.split('_').filter(Boolean);
-      if (parts.length === 0) return null;
-      // Helper: is a name part (alphabetic, not all uppercase short code, not a number)
-      const isNamePart = (part: string) => /^[A-Za-z]+$/.test(part) && !(part.length <= 2 && part === part.toUpperCase());
-      const nameParts = parts.filter(isNamePart);
-      if (nameParts.length === 0) return null;
-      const name = nameParts.map(
-        (part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()
-      ).join(' ');
-      return name.trim() || null;
-    };
-
-    // Update uploadItems with detected player name immediately
-    setUploadItems(() => [
-      ...files.map((file, idx): UploadItem => {
-        const detectedPlayer = extractNameFromFilename(file.name);
-        return {
-          id: `${Date.now()}-${idx}-${file.name}`,
-          file,
-          previewUrl: URL.createObjectURL(file),
-          progress: 0,
-          status: 'queued',
-          duplicateMode: 'allow',
-          attempts: 0,
-          taggedPlayer: detectedPlayer || null,
-        };
-      }),
-    ]);
-
-    if (duplicateCandidates.length > 0) {
-      setPendingDuplicateFiles(files);
-      setPendingDuplicateCount(duplicateCandidates.length);
-      setDuplicateModeSelection('skip');
-      return;
+  // Use UploadContext for upload state and addFiles
+  const { files: uploadFilesCtx, addFiles, clearFiles, updateFile } = useUploadContext();
+  // Compute overall progress
+  const overallProgress = uploadFilesCtx.length
+    ? Math.round(
+        uploadFilesCtx.reduce((acc, f) => acc + (f.progress || 0), 0) / uploadFilesCtx.length
+      )
+    : 0;
+  // Show panel if any file is uploading or queued
+  const showUploadPanel = uploadFilesCtx.some(f => f.status !== 'done' && f.status !== 'error');
+  // Hide panel when all are done
+  useEffect(() => {
+    if (uploadFilesCtx.length && uploadFilesCtx.every(f => f.status === 'done' || f.status === 'error')) {
+      // When all uploads finish, reload the photo list so new photos appear automatically
+      loadPhotos();
+      setTimeout(() => clearFiles(), 1200);
     }
-
-    await performUpload(files, 'allow', 0);
-  };
+  }, [uploadFilesCtx, clearFiles]);
 
   const handleConfirmDuplicateMode = async () => {
     if (!pendingDuplicateFiles?.length) return;
 
-    const normalizeName = (name: string) => name.trim().toLowerCase();
+    const normalizeName = (name: string) => name.replace(/\s+/g, '_').toLowerCase();
     const existingNames = new Set(photos.map((p) => normalizeName(String(p.fileName || ''))));
 
     let workingFiles = pendingDuplicateFiles;
@@ -574,7 +532,9 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
 
     setPendingDuplicateFiles(null);
     setPendingDuplicateCount(0);
-    await performUpload(workingFiles, duplicateModeSelection, skippedClientSide);
+    if (workingFiles.length > 0) {
+      addFiles(workingFiles);
+    }
   };
 
   const handleCancelDuplicateMode = () => {
@@ -975,9 +935,22 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
   // inside a render function or conditional, move it here and use state/props to control behavior
 
   // Example: Move useDropzone hook to top level
+  // Duplicate detection on file drop
   const onDrop = React.useCallback((acceptedFiles: File[]) => {
-    if (!uploading) uploadFiles(acceptedFiles);
-  }, [uploading, uploadFiles]);
+    if (uploading) return;
+    if (!acceptedFiles.length) return;
+    // Detect duplicates by sanitized file name
+    const normalize = (name: string) => name.replace(/\s+/g, '_').toLowerCase();
+    const existingNames = new Set(photos.map(p => normalize(p.fileName || '')));
+    const duplicates = acceptedFiles.filter(f => existingNames.has(normalize(f.name)));
+    if (duplicates.length > 0) {
+      setPendingDuplicateFiles(acceptedFiles);
+      setPendingDuplicateCount(duplicates.length);
+      // Do not add files yet; wait for user to choose mode
+      return;
+    }
+    addFiles(acceptedFiles);
+  }, [uploading, addFiles, photos]);
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: { 'image/*': [] },
@@ -1019,60 +992,79 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
         {rosterMessage && <span style={{ marginLeft: 8 }}>{rosterMessage}</span>}
         {notifyResult && <span style={{ marginLeft: 8 }}>{notifyResult}</span>}
       </div>
-      <div className="admin-photos-upload-panel" {...getRootProps()} style={{ padding: 24, margin: '24px 0', background: isDragActive ? '#23234a' : undefined, cursor: uploading ? 'not-allowed' : 'pointer' }}>
-        <input {...getInputProps()} />
-        <p>{uploading ? 'Uploading photos…' : 'Drag and drop photos here, or click to select files.'}</p>
-        {uploadMessage && <div className={`upload-message ${uploadMessage.type}`}>{uploadMessage.text}</div>}
-        {uploadItems && uploadItems.length > 0 && (
-          <div className="upload-progress-list" style={{ marginTop: 16 }}>
-            {uploadItems.map((item) => (
-              <div key={item.id} className="upload-progress-item" style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
-                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 14 }}>{item.file.name}</span>
-                <div style={{ width: 120, margin: '0 12px' }}>
-                  <div style={{ height: 8, background: '#e0e0e0', borderRadius: 4, overflow: 'hidden' }}>
-                    <div style={{ width: `${item.progress}%`, height: 8, background: item.status === 'done' ? '#4caf50' : item.status === 'error' ? '#f44336' : '#7b61ff', transition: 'width 0.3s' }} />
-                  </div>
-                </div>
-                <span style={{ width: 60, textAlign: 'right', fontSize: 13 }}>
-                  {item.status === 'uploading' && `${item.progress}%`}
-                  {item.status === 'done' && 'Done'}
-                  {item.status === 'error' && 'Error'}
-                  {item.status === 'queued' && 'Queued'}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      {showUploadPanel ? (
+        <div className="admin-photos-upload-panel" style={{ padding: 0, margin: '24px 0', background: 'none', boxShadow: 'none' }}>
+          <UploadPanel
+            files={uploadFilesCtx}
+            onCancel={clearFiles}
+            overallProgress={overallProgress}
+            visible={showUploadPanel}
+          />
+        </div>
+      ) : (
+        <div className="admin-photos-upload-panel" {...getRootProps()} style={{ padding: 24, margin: '24px 0', background: isDragActive ? '#23234a' : undefined, cursor: uploading ? 'not-allowed' : 'pointer' }}>
+          <input {...getInputProps()} />
+          <p>{uploading ? 'Uploading photos…' : 'Drag and drop photos here, or click to select files.'}</p>
+        </div>
+      )}
       {/* Photo grid */}
       <div className="admin-photos-grid">
-        {photos.length === 0 ? (
-          <div className="empty-state">No photos in this album.</div>
-        ) : (
-          photos.map((photo) => (
-            <div key={photo.id} className="admin-photo-card">
-              <img src={`/api/photos/${photo.id}/asset?variant=thumbnail`} alt={photo.fileName} className="admin-photo-img" />
-              <div className="admin-photo-meta">
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <strong>{photo.fileName}</strong>
-                  <button
-                    title="Show photo info"
-                    style={{ background: 'none', border: 'none', color: '#7b61ff', cursor: 'pointer', fontSize: 18, marginLeft: 6 }}
-                    onClick={() => openInfoModal(photo)}
-                  >
-                    <span style={{ fontWeight: 700, fontSize: 18, display: 'inline-block', lineHeight: 1 }}>i</span>
-                  </button>
+          {photos.length === 0 ? (
+            <div className="empty-state">No photos in this album.</div>
+          ) : (
+            // Filter out duplicate file names, only show the latest photo for each name
+            Array.from(
+              photos.reduce((map, photo) => {
+                if (!map.has(photo.fileName)) {
+                  map.set(photo.fileName, photo);
+                }
+                return map;
+              }, new Map()),
+              ([, photo]) => photo
+            ).map((photo) => (
+              <div key={photo.id} className="admin-photo-card">
+                <img src={`/api/photos/${photo.id}/asset?variant=thumbnail`} alt={photo.fileName} className="admin-photo-img" />
+                <div className="admin-photo-meta">
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <strong>{photo.fileName}</strong>
+                    <button
+                      title="Show photo info"
+                      style={{ background: 'none', border: 'none', color: '#7b61ff', cursor: 'pointer', fontSize: 18, marginLeft: 6 }}
+                      onClick={() => openInfoModal(photo)}
+                    >
+                      <span style={{ fontWeight: 700, fontSize: 18, display: 'inline-block', lineHeight: 1 }}>i</span>
+                    </button>
+                  </div>
+                  <div>ID: {photo.id}</div>
+                  <div>Players: {photo.playerNames || '—'}</div>
+                  {/* Detection Results */}
+                  {detectionByPhotoId[photo.id] && (
+                    <div style={{ margin: '8px 0', fontSize: 13, color: '#4caf50' }}>
+                      {detectionByPhotoId[photo.id].faceBoxes.length > 0 ? (
+                        <>
+                          <div>Detected Faces: {detectionByPhotoId[photo.id].faceBoxes.length}</div>
+                          {detectionByPhotoId[photo.id].faceBoxes.map((box, i) => (
+                            <div key={box.id}>
+                              {box.playerName ? `Player: ${box.playerName}` : 'Face detected'}
+                              {box.playerNumber ? ` (#${box.playerNumber})` : ''}
+                            </div>
+                          ))}
+                        </>
+                      ) : detectionByPhotoId[photo.id].faceDetectionError ? (
+                        <div style={{ color: '#ff5252' }}>Detection error: {detectionByPhotoId[photo.id].faceDetectionError}</div>
+                      ) : (
+                        <div>No faces detected</div>
+                      )}
+                    </div>
+                  )}
+                  <button className="btn btn-danger" onClick={() => handleDelete(photo.id)}>Delete</button>
+                  <button className="btn btn-secondary" onClick={() => handleSetCover(photo)}>Set as Cover</button>
+                  <button className="btn btn-info" onClick={() => handleDetectPlayers(photo)}>Detect Players/Faces</button>
+                  <button className="btn btn-warning" onClick={() => handleClearPhotoTags(photo)}>Clear Tags</button>
                 </div>
-                <div>ID: {photo.id}</div>
-                <div>Players: {photo.playerNames || '—'}</div>
-                <button className="btn btn-danger" onClick={() => handleDelete(photo.id)}>Delete</button>
-                <button className="btn btn-secondary" onClick={() => handleSetCover(photo)}>Set as Cover</button>
-                <button className="btn btn-info" onClick={() => handleDetectPlayers(photo)}>Detect Players/Faces</button>
-                <button className="btn btn-warning" onClick={() => handleClearPhotoTags(photo)}>Clear Tags</button>
               </div>
-            </div>
-          ))
-        )}
+            ))
+          )}
       </div>
 
       {/* Info Modal */}

@@ -14,6 +14,11 @@ export default defineConfig({
         server.middlewares.use(async (req, res, next) => {
           const url = req.url || ''
 
+          // Bypass custom proxy for file uploads (let Vite's built-in proxy handle it)
+          if (url.startsWith('/api/photos/upload')) {
+            return next()
+          }
+
           if (!url.startsWith('/api') && !url.startsWith('/uploads') && !url.startsWith('/stripe')) {
             return next()
           }
@@ -65,41 +70,15 @@ export default defineConfig({
       },
     },
   ],
-  build: {
-    rollupOptions: {
-      output: {
-        manualChunks(id) {
-          if (id.includes('node_modules')) {
-            if (id.includes('react') || id.includes('react-dom') || id.includes('react-router-dom')) {
-              return 'react-vendor'
-            }
-
-            if (id.includes('axios')) {
-              return 'http-vendor'
-            }
-
-            return 'vendor'
-          }
-        },
-      },
-    },
-  },
   server: {
     port: 3004,
-    strictPort: true,
     proxy: {
-      '/api': {
-        target: 'http://localhost:3000',
-        changeOrigin: true,
-      },
-      '/uploads': {
-        target: 'http://localhost:3000',
-        changeOrigin: true,
-      },
-      '/stripe': {
-        target: 'http://localhost:3000',
-        changeOrigin: true,
-      },
+      '/api/photos/upload': backendOrigin,
+      '/api': backendOrigin,
+      '/uploads': backendOrigin,
+      '/stripe': backendOrigin,
     },
+
   },
-})
+});
+
