@@ -139,16 +139,9 @@ router.post('/record-blob', requireActiveSubscription, async (req, res) => {
   try {
     await ensurePhotoUploadColumns();
     const { albumId, fileName, blobUrl, description, metadata, width, height, fileSizeBytes } = req.body;
-    let playerName = req.body.playerName;
-    let playerNumber = req.body.playerNumber;
-    if (!playerName || !playerNumber) {
-      const base = fileName ? fileName.replace(/\.[^.]+$/, '') : '';
-      const match = base.match(/([A-Za-z]+[ _-]?[A-Za-z]+)[ _-]?([0-9]{1,3})?$/);
-      if (match) {
-        if (!playerName) playerName = match[1].replace(/[_-]/g, ' ').trim();
-        if (!playerNumber && match[2]) playerNumber = match[2];
-      }
-    }
+    const playerName = req.body.playerName;
+    const playerNumber = req.body.playerNumber;
+    // Do not extract playerName or playerNumber from filename. Only use if explicitly provided.
     let studioId = null;
     const album = await queryRow('SELECT studio_id FROM albums WHERE id = $1', [albumId]);
     if (album && album.studio_id && playerName) {
