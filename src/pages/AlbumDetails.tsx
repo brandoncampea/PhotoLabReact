@@ -11,6 +11,7 @@ import { productService } from '../services/productService';
 import { useCart } from '../contexts/CartContext';
 import { Album, Photo, Product, ProductSize } from '../types';
 import './AlbumDetails.css';
+import { Helmet } from 'react-helmet-async';
 
 
 type ProductWithMatch = Product & {
@@ -1528,121 +1529,121 @@ const AlbumDetails: React.FC = () => {
                                           {items.map((product) => {
                                             const sizeGroups = getRowsGroupedBySize(product);
                                             return (
-                                              <div key={product.id} style={{ display: 'grid', gap: 6 }}>
-                                                {sizeGroups.length > 0 ? sizeGroups.map((group) => {
-                                                  const hasChildVariants = group.rows.length > 1 || group.rows.some((row) => !!getVariantLabel(row));
+                                              <div key={product.id}>
+                                                <div style={{ fontWeight: 700, marginBottom: 6 }}>{product.name}</div>
+                                                <div style={{ display: 'grid', gap: 6 }}>
+                                                  {sizeGroups.length > 0 ? sizeGroups.map((group) => {
+                                                    const hasChildVariants = group.rows.length > 1 || group.rows.some((row) => !!getVariantLabel(row));
 
-                                                  if (!hasChildVariants) {
-                                                    const row = group.rows[0];
-                                                    const rowKey = row.key;
+                                                    if (!hasChildVariants) {
+                                                      const row = group.rows[0];
+                                                      const rowKey = row.key;
+                                                      return (
+                                                        <div
+                                                          key={group.key}
+                                                          className="order-product-row"
+                                                          style={{
+                                                            display: 'flex',
+                                                            flexDirection: 'row',
+                                                            alignItems: 'center',
+                                                            border: '1px solid #1f1c33',
+                                                            borderRadius: 6,
+                                                            padding: '6px 8px',
+                                                            background: '#29264a',
+                                                            gap: 10,
+                                                            flexWrap: 'wrap',
+                                                          }}
+                                                        >
+                                                          <div className="order-size-cell" style={{ fontSize: 12, color: '#bbb', flex: '1 1 100%' }}>
+                                                            <div>{group.sizeLabel}</div>
+                                                            {!!product.requiresWhccEditor && (
+                                                              <div style={{ fontSize: 11, color: '#9fb2ea', marginTop: 4 }}>
+                                                                {getWhccSelectionHint(product)}
+                                                              </div>
+                                                            )}
+                                                          </div>
+                                                          <div
+                                                            className="order-price-cell"
+                                                            style={{
+                                                              minWidth: 90,
+                                                              textAlign: 'right',
+                                                              fontWeight: 700,
+                                                              flex: '0 0 auto',
+                                                              width: 'auto',
+                                                            }}
+                                                          >
+                                                            ${Number(row?.price || 0).toFixed(2)}
+                                                          </div>
+                                                          <button
+                                                            className="btn btn-primary btn-sm order-add-cart-btn"
+                                                            disabled={!row.size || addingKey === rowKey}
+                                                            onClick={() => handleAddToCart(product, row.size, row)}
+                                                            style={{
+                                                              fontSize: 'clamp(13px, 3vw, 16px)',
+                                                              padding: 'clamp(7px, 2vw, 12px) clamp(18px, 5vw, 28px)',
+                                                              borderRadius: 24,
+                                                              minWidth: 110,
+                                                              width: 'auto',
+                                                              whiteSpace: 'nowrap',
+                                                              fontWeight: 700,
+                                                              boxShadow: '0 2px 8px 0 rgba(123,97,255,0.10)',
+                                                              marginLeft: 4,
+                                                              letterSpacing: 0.1,
+                                                              flex: '1 1 100%',
+                                                              maxWidth: '100%',
+                                                              marginTop: 8,
+                                                            }}
+                                                          >
+                                                            {addingKey === rowKey ? 'Adding...' : (product.requiresWhccEditor ? 'Select Photos' : 'Add to Cart')}
+                                                          </button>
+                                                        </div>
+                                                      );
+                                                    }
+
                                                     return (
                                                       <div
                                                         key={group.key}
-                                                        className="order-product-row"
+                                                        className="order-product-row order-size-group"
                                                         style={{
-                                                          display: 'flex',
-                                                          flexDirection: 'row',
-                                                          alignItems: 'center',
                                                           border: '1px solid #1f1c33',
                                                           borderRadius: 6,
-                                                          padding: '4px 6px',
+                                                          padding: '6px 8px',
                                                           background: '#29264a',
-                                                          gap: 10,
-                                                          flexWrap: 'wrap',
+                                                          display: 'grid',
+                                                          gap: 6,
                                                         }}
                                                       >
-                                                        <div className="order-size-cell" style={{ fontSize: 12, color: '#aaa', flex: '1 1 100%' }}>
-                                                          <div>{group.sizeLabel}</div>
-                                                          {!!product.requiresWhccEditor && (
-                                                            <div style={{ fontSize: 11, color: '#9fb2ea', marginTop: 4 }}>
-                                                              {getWhccSelectionHint(product)}
-                                                            </div>
-                                                          )}
+                                                        <div className="order-size-group-label" style={{ fontSize: 12, color: '#aaa', fontWeight: 700 }}>{group.sizeLabel}</div>
+                                                        <div className="order-size-group-children" style={{ display: 'grid', gap: 6, paddingLeft: 10, borderLeft: '2px solid #3c3568' }}>
+                                                          {group.rows.map((row) => {
+                                                            const rowKey = row.key;
+                                                            return (
+                                                              <div key={rowKey} className="order-variant-row">
+                                                                <div className="order-variant-name" style={{ fontSize: 12, color: '#c7c1f6' }}>{getVariantLabel(row) || 'Default'}</div>
+                                                                <div className="order-variant-price" style={{ minWidth: 90, textAlign: 'right', fontWeight: 700 }}>${Number(row?.price || 0).toFixed(2)}</div>
+                                                                <button
+                                                                  className="btn btn-primary btn-sm order-variant-add-btn"
+                                                                  disabled={!row.size || addingKey === rowKey}
+                                                                  onClick={() => handleAddToCart(product, row.size, row)}
+                                                                  style={{ minWidth: 110, fontWeight: 700 }}
+                                                                >
+                                                                  {addingKey === rowKey ? 'Adding...' : (product.requiresWhccEditor ? 'Select Photos' : 'Add to Cart')}
+                                                                </button>
+                                                              </div>
+                                                            );
+                                                          })}
                                                         </div>
-                                                        <div
-                                                          className="order-price-cell"
-                                                          style={{
-                                                            minWidth: 90,
-                                                            textAlign: 'right',
-                                                            fontWeight: 700,
-                                                            flex: '0 0 auto',
-                                                            width: 'auto',
-                                                          }}
-                                                        >
-                                                          ${Number(row.price || 0).toFixed(2)}
-                                                        </div>
-                                                        <button
-                                                          className="btn btn-primary btn-sm order-add-cart-btn"
-                                                          disabled={!row.size || addingKey === rowKey}
-                                                          onClick={() => handleAddToCart(product, row.size, row)}
-                                                          style={{
-                                                            fontSize: 'clamp(13px, 3vw, 16px)',
-                                                            padding: 'clamp(7px, 2vw, 12px) clamp(18px, 5vw, 28px)',
-                                                            borderRadius: 24,
-                                                            minWidth: 110,
-                                                            width: 'auto',
-                                                            whiteSpace: 'nowrap',
-                                                            fontWeight: 700,
-                                                            boxShadow: '0 2px 8px 0 rgba(123,97,255,0.10)',
-                                                            marginLeft: 4,
-                                                            letterSpacing: 0.1,
-                                                            flex: '1 1 100%',
-                                                            maxWidth: '100%',
-                                                            marginTop: 8,
-                                                          }}
-                                                        >
-                                                          {addingKey === rowKey ? 'Adding...' : (product.requiresWhccEditor ? 'Select Photos' : 'Add to Cart')}
-                                                        </button>
+                                                        {!!product.requiresWhccEditor && (
+                                                          <div style={{ fontSize: 11, color: '#9fb2ea' }}>
+                                                            {getWhccSelectionHint(product)}
+                                                          </div>
+                                                        )}
                                                       </div>
                                                     );
-                                                  }
-
-                                                  return (
-                                                    <div
-                                                      key={group.key}
-                                                      className="order-product-row order-size-group"
-                                                      style={{
-                                                        border: '1px solid #1f1c33',
-                                                        borderRadius: 6,
-                                                        padding: '6px 8px',
-                                                        background: '#29264a',
-                                                        display: 'grid',
-                                                        gap: 6,
-                                                      }}
-                                                    >
-                                                      <div className="order-size-group-label" style={{ fontSize: 12, color: '#aaa', fontWeight: 700 }}>{group.sizeLabel}</div>
-                                                      <div className="order-size-group-children" style={{ display: 'grid', gap: 6, paddingLeft: 10, borderLeft: '2px solid #3c3568' }}>
-                                                        {group.rows.map((row) => {
-                                                          const rowKey = row.key;
-                                                          return (
-                                                            <div
-                                                              key={rowKey}
-                                                              className="order-variant-row"
-                                                            >
-                                                              <div className="order-variant-name" style={{ fontSize: 12, color: '#bdb7ee' }}>{getVariantLabel(row) || 'Default'}</div>
-                                                              <div className="order-variant-price" style={{ minWidth: 90, textAlign: 'right', fontWeight: 700 }}>${Number(row.price || 0).toFixed(2)}</div>
-                                                              <button
-                                                                className="btn btn-primary btn-sm order-variant-add-btn"
-                                                                disabled={!row.size || addingKey === rowKey}
-                                                                onClick={() => handleAddToCart(product, row.size, row)}
-                                                                style={{ minWidth: 110, fontWeight: 700 }}
-                                                              >
-                                                                {addingKey === rowKey ? 'Adding...' : (product.requiresWhccEditor ? 'Select Photos' : 'Add to Cart')}
-                                                              </button>
-                                                            </div>
-                                                          );
-                                                        })}
-                                                      </div>
-                                                      {!!product.requiresWhccEditor && (
-                                                        <div style={{ fontSize: 11, color: '#9fb2ea' }}>
-                                                          {getWhccSelectionHint(product)}
-                                                        </div>
-                                                      )}
-                                                    </div>
-                                                  );
-                                                }) : (
-                                                  <div style={{ fontSize: 12, color: '#aaa' }}>No size available</div>
-                                                )}
+                                                  }) : (
+                                                    <div style={{ fontSize: 12, color: '#aaa' }}>No size available</div>
+                                                  )}
+                                                </div>
                                               </div>
                                             );
                                           })}
