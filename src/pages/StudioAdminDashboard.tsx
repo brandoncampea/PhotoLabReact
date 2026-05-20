@@ -1,3 +1,26 @@
+  // Backup: verify album photo count on album open
+  async function verifyAndFixAlbumPhotoCount(albumId: number, getAuthHeaders: () => Record<string, string>) {
+    try {
+      // Fetch photos for the album
+      const res = await fetch(`/api/photos/album/${albumId}`, { headers: getAuthHeaders() });
+      if (!res.ok) return;
+      const photos = await res.json();
+      // Fetch album info
+      const albumRes = await fetch(`/api/albums/${albumId}`, { headers: getAuthHeaders() });
+      if (!albumRes.ok) return;
+      const album = await albumRes.json();
+      if (album.photoCount !== photos.length) {
+        // Update album photo_count if mismatch
+        await fetch(`/api/albums/${albumId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+          body: JSON.stringify({ photoCount: photos.length }),
+        });
+      }
+    } catch (err) {
+      // Silent fail
+    }
+  }
   // Customers with Cart state
   const [customersWithCart, setCustomersWithCart] = useState<number | null>(null);
   const [customersWithCartLoading, setCustomersWithCartLoading] = useState(false);
@@ -221,6 +244,10 @@ export default function StudioAdminDashboard() {
       loadAnalytics(timeRange);
     }
   }, [user, effectiveStudioId]);
+
+  // Backup: verify album photo count when opening an album in studio admin
+  // This should be called when an album is opened in the admin UI (e.g., AlbumDetails page or modal)
+  // Example usage: verifyAndFixAlbumPhotoCount(albumId, getAuthHeaders)
 
   useEffect(() => {
     if (effectiveStudioId) {

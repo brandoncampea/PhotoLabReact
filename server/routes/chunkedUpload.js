@@ -128,9 +128,9 @@ router.post('/assemble-chunks', express.json({ limit: '2mb' }), async (req, res)
     } catch {}
 
     // Insert photo into DB with thumbnail
-    const { queryRow } = mssql;
+    const { queryRow, query } = mssql;
     // Ensure only the blob path is stored (not a signed URL)
-    const result = await mssql.queryRow(`
+    const result = await queryRow(`
       INSERT INTO photos (album_id, file_name, thumbnail_url, full_image_url, description, metadata, width, height, file_size_bytes, player_names, player_numbers)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       RETURNING id, album_id as "albumId", file_name as "fileName", thumbnail_url as "thumbnailUrl", full_image_url as "fullImageUrl", description, metadata, width, height
@@ -147,6 +147,12 @@ router.post('/assemble-chunks', express.json({ limit: '2mb' }), async (req, res)
       playerName || null,
       playerNumber || null
     ]);
+
+    // Update album's photo_count after upload
+    await query(
+      'UPDATE albums SET photo_count = (SELECT COUNT(*) FROM photos WHERE album_id = $1) WHERE id = $1',
+      [albumId]
+    );
 
     return res.status(201).json({
       ...result,

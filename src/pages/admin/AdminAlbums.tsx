@@ -1,3 +1,18 @@
+// Backup: verify and fix album photo count
+async function verifyAndFixAlbumPhotoCount(albumId: number) {
+  try {
+    const res = await api.get(`/photos/album/${albumId}`);
+    const photos = Array.isArray(res.data) ? res.data : [];
+    const albumRes = await api.get(`/albums/${albumId}`);
+    const album = albumRes.data;
+    if (album && typeof album.photoCount === 'number' && album.photoCount !== photos.length) {
+      // Always send photoCount in the update payload
+      await albumAdminService.updateAlbum(albumId, { photoCount: photos.length });
+    }
+  } catch (err) {
+    // Silent fail
+  }
+}
 import React, { useEffect, useState } from 'react';
 import { useSasUrl } from '../../hooks/useSasUrl';
 import { useAuth } from '../../contexts/AuthContext';
@@ -80,6 +95,8 @@ const AdminAlbums: React.FC = () => {
       if (Array.isArray(res.data)) {
         const uniqueCategories = Array.from(new Set(res.data.map((album: any) => album.category).filter(Boolean)));
         setCategories(uniqueCategories);
+        // Backup: verify and fix photo count for each album
+        await Promise.all(res.data.map((album: any) => verifyAndFixAlbumPhotoCount(album.id)));
       }
       setLoading(false);
     } catch (error) {

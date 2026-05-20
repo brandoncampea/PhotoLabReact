@@ -513,7 +513,7 @@ router.post('/', requireActiveSubscription, async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     await ensureAlbumSchema();
-    const { title, name, description, coverImageUrl, coverPhotoId, category, priceListId, isPasswordProtected, password, passwordHint, batchShippingActive, schoolTags, albumPurchaseEnabled, published, hidden } = req.body;
+    const { title, name, description, coverImageUrl, coverPhotoId, category, priceListId, isPasswordProtected, password, passwordHint, batchShippingActive, schoolTags, albumPurchaseEnabled, published, hidden, photoCount } = req.body;
 
     // Log incoming payload
     console.log('[PUT /albums/:id] Incoming payload:', req.body);
@@ -565,30 +565,59 @@ router.put('/:id', async (req, res) => {
       newHidden
     });
 
-    await query(
-      `UPDATE albums 
-      SET name = $1, title = $2, description = $3, cover_image_url = $4, cover_photo_id = $5, category = $6, school_tags = $7, price_list_id = $8, 
-          is_password_protected = $9, password = $10, password_hint = $11, batch_shipping_active = $12, album_purchase_enabled = $13, published = $14, hidden = $15
-        WHERE id = $16`,
-      [
-        albumName,
-        albumName,
-        newDescription,
-        newCoverUrl,
-        newCoverPhotoId,
-        newCategory,
-        toSchoolTagsCsv(newSchoolTags),
-        newPriceListId,
-        !!newIsProtected,
-        newPassword,
-        newPasswordHint,
-        newBatchShippingActive,
-        newAlbumPurchaseEnabled,
-        newPublished,
-        newHidden,
-        req.params.id,
-      ]
-    );
+    // Allow updating photo_count if provided
+    if (typeof photoCount === 'number') {
+      await query(
+        `UPDATE albums 
+        SET name = $1, title = $2, description = $3, cover_image_url = $4, cover_photo_id = $5, category = $6, school_tags = $7, price_list_id = $8, 
+            is_password_protected = $9, password = $10, password_hint = $11, batch_shipping_active = $12, album_purchase_enabled = $13, published = $14, hidden = $15, photo_count = $16
+          WHERE id = $17`,
+        [
+          albumName,
+          albumName,
+          newDescription,
+          newCoverUrl,
+          newCoverPhotoId,
+          newCategory,
+          toSchoolTagsCsv(newSchoolTags),
+          newPriceListId,
+          !!newIsProtected,
+          newPassword,
+          newPasswordHint,
+          newBatchShippingActive,
+          newAlbumPurchaseEnabled,
+          newPublished,
+          newHidden,
+          photoCount,
+          req.params.id,
+        ]
+      );
+    } else {
+      await query(
+        `UPDATE albums 
+        SET name = $1, title = $2, description = $3, cover_image_url = $4, cover_photo_id = $5, category = $6, school_tags = $7, price_list_id = $8, 
+            is_password_protected = $9, password = $10, password_hint = $11, batch_shipping_active = $12, album_purchase_enabled = $13, published = $14, hidden = $15
+          WHERE id = $16`,
+        [
+          albumName,
+          albumName,
+          newDescription,
+          newCoverUrl,
+          newCoverPhotoId,
+          newCategory,
+          toSchoolTagsCsv(newSchoolTags),
+          newPriceListId,
+          !!newIsProtected,
+          newPassword,
+          newPasswordHint,
+          newBatchShippingActive,
+          newAlbumPurchaseEnabled,
+          newPublished,
+          newHidden,
+          req.params.id,
+        ]
+      );
+    }
 
     // Log after DB update
     console.log('[PUT /albums/:id] Updated DB for album', req.params.id, 'published:', newPublished, 'hidden:', newHidden);
