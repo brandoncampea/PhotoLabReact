@@ -1344,6 +1344,24 @@ const AlbumDetails: React.FC = () => {
                       ×
                     </button>
                     <h3 style={{ marginTop: 0, marginBottom: 8, fontSize: 20, color: '#fff', textAlign: 'center' }}>Order this photo</h3>
+                    {/* Enlarged photo preview */}
+                    {selectedPhoto && (
+                      <div style={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', marginBottom: 18 }}>
+                        <div style={{ width: 400, height: 267, maxWidth: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', background: '#18162a', borderRadius: 10, boxShadow: '0 2px 12px 0 rgba(123,97,255,0.10)', overflow: 'hidden' }}>
+                          {(() => {
+                            const studioId = (album as any)?.studioId || (album as any)?.studio_id || (photos.length > 0 ? (photos[0] as any)?.studioId || (photos[0] as any)?.studio_id : undefined);
+                            return (
+                              <WatermarkedImage
+                                src={`/api/photos/${selectedPhoto.id}/asset?variant=thumbnail`}
+                                alt={selectedPhoto.fileName}
+                                style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
+                                studioId={studioId}
+                              />
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    )}
                     {addMessage && <div style={{ marginBottom: 8, color: addMessage.includes('Failed') ? '#ff9a9a' : '#79d279', textAlign: 'center' }}>{addMessage}</div>}
                     <div style={{ marginBottom: 12 }}>
                       <input

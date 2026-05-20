@@ -30,7 +30,15 @@ router.post('/admin/batch-update-status', adminRequired, async (req, res) => {
         LEFT JOIN photos ph ON ph.id = oi.photo_id
         WHERE oi.order_id = $1
       `, [orderId]);
-      // Send email using receipt template with custom message
+      // Fetch studio email for Reply-To
+      let studioEmail = null;
+      if (items && items.length > 0) {
+        // Try to get studio email from first item (if available)
+        if (items[0].studioId) {
+          const studio = await queryRow('SELECT email FROM studios WHERE id = $1', [items[0].studioId]);
+          if (studio && studio.email) studioEmail = studio.email;
+        }
+      }
       try {
         await orderReceiptService.sendCustomerReceipt({
           to: order.customerEmail,
@@ -39,6 +47,7 @@ router.post('/admin/batch-update-status', adminRequired, async (req, res) => {
           items,
           customMessage: message,
           isUpdate: true,
+          replyTo: studioEmail,
         });
       } catch (emailErr) {
         // Log but do not fail batch
@@ -250,6 +259,15 @@ router.post('/admin/:orderId/resend-digital-download', adminRequired, async (req
     const recipientEmail = parsedShippingAddress?.email || order.customerEmail;
     const customerName = parsedShippingAddress?.fullName || order.customerName;
 
+    // Fetch studio email for Reply-To
+    let studioEmail = null;
+    if (items && items.length > 0) {
+      // Try to get studio email from first item (if available)
+      if (items[0].studioId) {
+        const studio = await queryRow('SELECT email FROM studios WHERE id = $1', [items[0].studioId]);
+        if (studio && studio.email) studioEmail = studio.email;
+      }
+    }
     // Send the email
     await orderReceiptService.sendCustomerReceipt({
       to: recipientEmail,
@@ -257,6 +275,7 @@ router.post('/admin/:orderId/resend-digital-download', adminRequired, async (req
       order,
       items,
       digitalDownloads,
+      replyTo: studioEmail,
     });
 
     return res.json({ success: true, message: `Resent digital download links to ${recipientEmail}`, digitalItemCount: digitalDownloads.length, recipientEmail });
@@ -2263,12 +2282,21 @@ const sendOrderReceipts = async (orderId) => {
 
   const parsedShippingAddress = safeJsonParse(order.shippingAddress, {});
   const superAdminBcc = await getSuperAdminReceiptBcc();
+  // Fetch studio email for Reply-To
+  let studioEmail = null;
+  if (items && items.length > 0) {
+    if (items[0].studioId) {
+      const studio = await queryRow('SELECT email FROM studios WHERE id = $1', [items[0].studioId]);
+      if (studio && studio.email) studioEmail = studio.email;
+    }
+  }
   const customerSent = await orderReceiptService.sendCustomerReceipt({
     to: parsedShippingAddress?.email || order.customerEmail,
     customerName: parsedShippingAddress?.fullName || order.customerName,
     order,
     items,
     digitalDownloads,
+    replyTo: studioEmail,
   });
 
   // Add delay to avoid Mailtrap rate limiting (free tier: too many emails per second)
@@ -3976,16 +4004,23 @@ router.patch('/admin/:orderId/status', adminRequired, async (req, res) => {
 
       // Send cancellation email to customer
 
+      let studioEmail = null;
       try {
         // Fetch order items for email
         const items = await queryRows(
-          `SELECT oi.id, oi.photo_id as photoId, oi.product_id as productId, oi.product_size_id as productSizeId, oi.quantity, oi.price, oi.crop_data as cropData, p.name as productName, ps.size_name as productSizeName
+          `SELECT oi.id, oi.photo_id as photoId, oi.product_id as productId, oi.product_size_id as productSizeId, oi.quantity, oi.price, oi.crop_data as cropData, p.name as productName, ps.size_name as productSizeName, a.studio_id as studioId
            FROM order_items oi
            LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id
            LEFT JOIN products p ON p.id = COALESCE(oi.product_id, ps.product_id)
+           LEFT JOIN photos ph ON ph.id = oi.photo_id
+           LEFT JOIN albums a ON a.id = ph.album_id
            WHERE oi.order_id = $1`,
           [orderId]
         );
+        if (items && items.length > 0 && items[0].studioId) {
+          const studio = await queryRow('SELECT email FROM studios WHERE id = $1', [items[0].studioId]);
+          if (studio && studio.email) studioEmail = studio.email;
+        }
         const { sendOrderCancellationEmail } = await import('../services/orderReceiptService.js');
         console.log('[CANCEL EMAIL] Attempting to send cancellation email to:', order.email, 'for order:', orderId, 'reason:', cancelReason);
         const emailResult = await sendOrderCancellationEmail({
@@ -3993,7 +4028,8 @@ router.patch('/admin/:orderId/status', adminRequired, async (req, res) => {
           customerName: '',
           order: { ...order, status: 'cancelled' },
           items,
-          cancelReason
+          cancelReason,
+          replyTo: studioEmail
         });
         console.log('[CANCEL EMAIL] sendOrderCancellationEmail result:', emailResult);
       } catch (emailErr) {

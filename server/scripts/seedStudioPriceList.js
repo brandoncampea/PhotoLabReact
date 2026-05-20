@@ -1,5 +1,5 @@
 // Seed a studio price list by copying from super price list
-import Database from 'better-sqlite3';
+// Removed better-sqlite3 import (MSSQL migration)
 import path from 'path';
 import { fileURLToPath } from 'url';
 

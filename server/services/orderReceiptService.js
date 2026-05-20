@@ -7,7 +7,7 @@
  * @param {Array} opts.items - order items
  * @param {string} opts.cancelReason - reason for cancellation
  */
-export async function sendOrderCancellationEmail({ to, customerName, order, items, cancelReason }) {
+export async function sendOrderCancellationEmail({ to, customerName, order, items, cancelReason, replyTo }) {
   if (!isConfigured() || !to) return false;
   const html = renderOrderCancellationHtml({ customerName, order, items, cancelReason });
   await mailtrapClient.send({
@@ -19,7 +19,7 @@ export async function sendOrderCancellationEmail({ to, customerName, order, item
     subject: `Order #${order.id} Cancelled — Photo Lab`,
     html,
     text: `Your order #${order.id} has been cancelled.\nReason: ${cancelReason}\nTotal: ${currency(order.totalAmount)}\nIf you have questions, please contact support.`,
-    reply_to: smtpReplyTo,
+    reply_to: replyTo || smtpReplyTo,
     category: 'Order Cancelled',
   });
   return true;
@@ -453,7 +453,7 @@ export const orderReceiptService = {
         subject: `New ${photoWord} added for ${playerLabel}${albumPart}`,
         html: renderPlayerPhotoNotificationHtml({ customerName, playerName, playerNumber, albumName, albumUrl, studioName, photoCount }),
         text: `Hi ${customerName || 'there'},\n\n${photoCount} new ${photoWord} featuring ${playerLabel}${albumPart} have been added.\n${albumUrl ? `\nView the album: ${albumUrl}` : ''}\n\nManage your watchlist: ${appBaseUrl ? `${appBaseUrl}/account` : '/account'}`,
-        reply_to: smtpReplyTo,
+        reply_to: this._replyTo || smtpReplyTo,
         category: 'Player Photo Notification',
       });
     } catch (emailErr) {
@@ -463,7 +463,7 @@ export const orderReceiptService = {
     return true;
   },
 
-  async sendCustomerReceipt({ to, customerName, order, items, digitalDownloads = [], customMessage, isUpdate }) {
+  async sendCustomerReceipt({ to, customerName, order, items, digitalDownloads = [], customMessage, isUpdate, replyTo }) {
     if (!isConfigured() || !to) return false;
     const html = renderCustomerReceiptHtml({ customerName, order, items, digitalDownloads, customMessage, isUpdate });
     const discount = resolveDiscountDetails(order);
@@ -479,7 +479,7 @@ export const orderReceiptService = {
       subject: `Photo Lab receipt — Order #${order.id}`,
       html,
       text: `Order #${order.id}\nStatus: ${order.status || 'processing'}${customMessage ? `\nMessage: ${customMessage}` : ''}\nTotal charged: ${currency(order.totalAmount ?? order.total ?? 0)}\nSubtotal: ${currency(order.subtotal ?? order.sub_total ?? 0)}\nShipping: ${currency(order.shippingCost ?? order.shipping_cost ?? 0)}\nTax: ${currency(order.taxAmount ?? order.tax_amount ?? 0)}${discountText}${digitalDownloads.length ? `\nDigital downloads:\n${digitalDownloads.map((entry) => `- ${getDigitalDownloadFileName(entry)}: ${entry.url}`).join('\n')}` : ''}`,
-      reply_to: smtpReplyTo,
+      reply_to: replyTo || smtpReplyTo,
       category: 'Order Receipt',
     });
     return true;

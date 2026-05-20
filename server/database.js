@@ -1,6 +1,6 @@
 
 // ...existing code...
-import Database from 'better-sqlite3';
+// Removed better-sqlite3 import (MSSQL migration)
 import bcrypt from 'bcryptjs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -102,6 +102,7 @@ const initDb = () => {
     if (!colNames.includes('is_free_subscription')) db.exec("ALTER TABLE studios ADD COLUMN is_free_subscription BOOLEAN DEFAULT 0");
     if (!colNames.includes('cancellation_requested')) db.exec("ALTER TABLE studios ADD COLUMN cancellation_requested BOOLEAN DEFAULT 0");
     if (!colNames.includes('cancellation_date')) db.exec("ALTER TABLE studios ADD COLUMN cancellation_date DATETIME");
+    if (!colNames.includes('customDomain')) db.exec("ALTER TABLE studios ADD COLUMN customDomain TEXT");
   } catch {}
 
   // Albums table

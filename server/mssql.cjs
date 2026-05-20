@@ -381,6 +381,7 @@ async function initializeDatabase() {
 	// --- Ship From Address columns ---
 	// Add all legacy and new ship_from address columns for compatibility
 	const allShipFromColumns = [
+		{ name: 'customDomain', type: 'NVARCHAR(255)' },
 		{ name: 'address_line1', type: 'NVARCHAR(255)' },
 		{ name: 'address_line2', type: 'NVARCHAR(255)' },
 		{ name: 'address_city', type: 'NVARCHAR(100)' },
