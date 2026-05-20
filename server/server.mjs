@@ -1,6 +1,7 @@
 import { initializeDatabase } from './initializeDatabasePatch.js';
 import cors from 'cors';
 import session from 'express-session';
+console.log('Starting server/server.mjs...');
 import fs from 'fs';
 import express from 'express';
 
