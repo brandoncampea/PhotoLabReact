@@ -57,6 +57,19 @@ import { fetchToken as fetchWhccToken } from './whccProxy.js';
 
 // WHCC Preview: Generate and store WHCC JSON in order's whcc_lab_details for review
 router.get('/admin/:orderId/whcc-preview', adminRequired, async (req, res) => {
+  // Debug logging for session/cookie comparison
+  console.log('[WHCC PREVIEW ROUTE] --- DEBUG START ---');
+  console.log('[WHCC PREVIEW ROUTE] sessionID:', req.sessionID);
+  console.log('[WHCC PREVIEW ROUTE] session:', req.session);
+  console.log('[WHCC PREVIEW ROUTE] user:', req.user);
+  if (req.headers.cookie) {
+    console.log('[WHCC PREVIEW ROUTE] req.headers.cookie:', req.headers.cookie);
+    const sidMatch = req.headers.cookie.match(/connect\.sid=([^;]+)/);
+    if (sidMatch) {
+      console.log('[WHCC PREVIEW ROUTE] Parsed connect.sid from cookie:', decodeURIComponent(sidMatch[1]));
+    }
+  }
+  console.log('[WHCC PREVIEW ROUTE] --- DEBUG END ---');
   try {
     const orderId = Number(req.params.orderId);
     if (!orderId) return res.status(400).json({ error: 'Invalid orderId' });
