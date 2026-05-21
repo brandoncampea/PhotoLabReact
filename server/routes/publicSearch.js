@@ -118,7 +118,7 @@ router.get('/', async (req, res) => {
           : album.coverImageUrl
             ? getProxySourceUrl(album.coverImageUrl)
             : null,
-        url: `/s/${album.studioSlug}/albums/${album.id}`,
+        url: `/albums/${album.id}?studioSlug=${encodeURIComponent(album.studioSlug)}`,
       })),
       photos: photos.map((photo) => ({
         id: photo.id,

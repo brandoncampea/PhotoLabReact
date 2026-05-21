@@ -14,6 +14,7 @@ async function verifyAndFixAlbumPhotoCount(albumId: number) {
   }
 }
 import React, { useEffect, useState } from 'react';
+import { Helmet } from 'react-helmet-async';
 import { useSasUrl } from '../../hooks/useSasUrl';
 import { useAuth } from '../../contexts/AuthContext';
 import api from '../../services/api';
@@ -344,19 +345,49 @@ const AdminAlbums: React.FC = () => {
                 </tr>
               ) : (
                 filteredAlbums.map((album) => {
+                  // Helmet meta tags for each album row (for share preview)
+                  // Only render for the first album in the list for SEO/share
+                  const isFirst = filteredAlbums[0]?.id === album.id;
+                  const studioSlug = (album as any).studioPublicSlug || localStorage.getItem('studioSlug') || '';
+                  const shareUrl = studioSlug
+                    ? `${window.location.origin}/albums/${album.id}?studioSlug=${encodeURIComponent(studioSlug)}`
+                    : `${window.location.origin}/albums/${album.id}`;
+                  const shareTitle = album.name || 'Album Link';
+                  const coverSrc =
+                    album.coverImageUrl && String(album.coverImageUrl).match(/^[0-9]+$/)
+                      ? `/api/photos/${album.coverImageUrl}/asset?variant=thumbnail`
+                      : album.coverImageUrl || '/default-cover.png';
+                  return (
+                    <React.Fragment key={album.id}>
+                      {isFirst && (
+                        <Helmet>
+                          <title>{shareTitle}</title>
+                          <meta property="og:title" content={shareTitle} />
+                          <meta name="twitter:title" content={shareTitle} />
+                          <meta property="og:description" content={album.description || 'View this photo album.'} />
+                          <meta name="twitter:description" content={album.description || 'View this photo album.'} />
+                          <meta property="og:image" content={coverSrc} />
+                          <meta name="twitter:image" content={coverSrc} />
+                          <meta property="og:type" content="website" />
+                          <meta property="og:url" content={shareUrl} />
+                          <meta name="twitter:card" content="summary_large_image" />
+                        </Helmet>
+                      )}
+                      <tr style={{ borderBottom: '1px solid #29294a' }}>
                   // Always link directly to the customer album page
                   // Use the real public_slug from the studio (returned by the API)
                   const studioSlug = (album as any).studioPublicSlug || localStorage.getItem('studioSlug') || '';
                   const shareUrl = studioSlug
                     ? `${window.location.origin}/albums/${album.id}?studioSlug=${encodeURIComponent(studioSlug)}`
                     : `${window.location.origin}/albums/${album.id}`;
+                  const shareTitle = album.name || 'Album Link';
                   // Use the same logic as public albums for cover image
                   const coverSrc =
                     album.coverImageUrl && String(album.coverImageUrl).match(/^\d+$/)
                       ? `/api/photos/${album.coverImageUrl}/asset?variant=thumbnail`
                       : album.coverImageUrl || '/default-cover.png';
                   return (
-                    <tr key={album.id} style={{ borderBottom: '1px solid #29294a' }}>
+                    {/* ...existing code... */}
                       <td style={{ padding: '8px 12px' }}>
                         <div className="action-buttons" style={{ display: 'flex', gap: 8 }}>
                           <button onClick={() => handleEdit(album)} className="btn-icon">✏️</button>
@@ -370,10 +401,10 @@ const AdminAlbums: React.FC = () => {
                           </button>
                           <button
                             className="btn-icon"
-                            title="Copy Share Link"
+                            title={shareTitle}
                             onClick={() => {
                               navigator.clipboard.writeText(shareUrl);
-                              alert('Share link copied to clipboard!');
+                              alert(`Share link for "${shareTitle}" copied to clipboard!`);
                             }}
                           >🔗</button>
                         </div>

@@ -1,3 +1,13 @@
+// StudioWidget must be outside the LandingPage function to avoid hook errors
+function StudioWidget({ icon, title, desc, linkText, linkHref }: { icon: string; title: string; desc: string; linkText: string; linkHref: string }) {
+  const navigate = useNavigate();
+  return (
+    <div className="landing-studio-widget">
+      <div className="landing-studio-widget-title">{icon} {title}</div>
+      <div className="landing-studio-widget-desc">{desc}</div>
+    </div>
+  );
+}
 import React from 'react';
 import './LandingPage.css';
 // import { useSasUrl } from '../hooks/useSasUrl';
@@ -82,147 +92,181 @@ export default function LandingPage() {
         <p className="landing-desc">
           Empower your photography business with a complete client portal, online ordering, and professional lab integration
         </p>
-        <form className="search-filter-bar landing-search-form" onSubmit={handleSearchSubmit} autoComplete="off">
-          <div className="search-box landing-search-box" style={{ position: 'relative' }}>
-            <input
-              type="text"
-              placeholder="Search photos by filename, camera, player, etc..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="search-input landing-search-input"
-              onFocus={() => setShowDropdown((studioSuggestions.length + albumSuggestions.length + photoSuggestions.length) > 0)}
-              onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
-            />
-            {showDropdown && (studioSuggestions.length > 0 || albumSuggestions.length > 0 || photoSuggestions.length > 0) && (
-              <div className="autocomplete-dropdown" style={{
-                position: 'absolute',
-                top: '100%',
-                left: 0,
-                width: '100%',
-                background: '#222',
-                color: '#fff',
-                borderRadius: '0.75rem',
-                boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
-                zIndex: 10,
-                maxHeight: '320px',
-                overflowY: 'auto',
-                marginTop: '0.5rem',
-                border: '1px solid #333',
-              }}>
-                {loadingSuggestions && <div style={{ padding: '1rem', textAlign: 'center', color: '#aaa' }}>Loading...</div>}
-                {!loadingSuggestions && studioSuggestions.length === 0 && albumSuggestions.length === 0 && photoSuggestions.length === 0 && <div style={{ padding: '1rem', textAlign: 'center', color: '#aaa' }}>No results found</div>}
-                {!loadingSuggestions && studioSuggestions.length > 0 && (
-                  <div style={{ padding: '0.5rem 1rem', fontWeight: 700, color: '#fff', fontSize: '1rem' }}>Studios</div>
-                )}
-                {!loadingSuggestions && studioSuggestions.map(studio => (
-                  <div
-                    key={studio.id}
-                    className="autocomplete-item"
-                    style={{ display: 'flex', alignItems: 'center', padding: '0.75rem 1rem', cursor: 'pointer', borderBottom: '1px solid #333' }}
-                    onMouseDown={() => {
-                      setSearchQuery(studio.name);
-                      setShowDropdown(false);
-                      navigate(studio.url);
-                    }}
-                  >
-                    <div style={{ width: 48, height: 48, borderRadius: '50%', background: '#4169E1', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '1.2rem', marginRight: 12 }}>{studio.initials}</div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 600, fontSize: '1rem', color: '#fff' }}>{studio.name}</div>
-                      <div style={{ fontSize: '0.85rem', color: '#aaa' }}>{studio.publicSlug}</div>
-                    </div>
+        <form onSubmit={handleSearchSubmit} style={{ position: 'relative', maxWidth: 520, margin: '1.5rem auto 0 auto', width: '100%' }} autoComplete="off">
+          <input
+            type="text"
+            className="form-control landing-search-input"
+            placeholder="Search studios, albums, players, photos..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            onFocus={() => {
+              if (searchQuery.trim().length >= 2 && (studioSuggestions.length > 0 || albumSuggestions.length > 0 || photoSuggestions.length > 0)) {
+                setShowDropdown(true);
+              }
+            }}
+            style={{ paddingRight: 44 }}
+          />
+          {showDropdown && (studioSuggestions.length > 0 || albumSuggestions.length > 0 || photoSuggestions.length > 0) && (
+            <div className="autocomplete-dropdown" style={{
+              position: 'absolute',
+              top: '100%',
+              left: 0,
+              width: '100%',
+              background: '#222',
+              color: '#fff',
+              borderRadius: '0.75rem',
+              boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
+              zIndex: 10,
+              maxHeight: '320px',
+              overflowY: 'auto',
+              marginTop: '0.5rem',
+              border: '1px solid #333',
+            }}>
+              {loadingSuggestions && <div style={{ padding: '1rem', textAlign: 'center', color: '#aaa' }}>Loading...</div>}
+              {!loadingSuggestions && studioSuggestions.length === 0 && albumSuggestions.length === 0 && photoSuggestions.length === 0 && (
+                <div style={{ padding: '1rem', textAlign: 'center', color: '#aaa' }}>No results found</div>
+              )}
+              {!loadingSuggestions && studioSuggestions.length > 0 && (
+                <div style={{ padding: '0.5rem 1rem', fontWeight: 700, color: '#fff', fontSize: '1rem' }}>Studios</div>
+              )}
+              {!loadingSuggestions && studioSuggestions.map(studio => (
+                <div
+                  key={studio.id}
+                  className="autocomplete-item"
+                  style={{ display: 'flex', alignItems: 'center', padding: '0.75rem 1rem', cursor: 'pointer', borderBottom: '1px solid #333' }}
+                  onMouseDown={() => {
+                    setSearchQuery(studio.name);
+                    setShowDropdown(false);
+                    navigate(studio.url);
+                  }}
+                >
+                  <div style={{ width: 48, height: 48, borderRadius: '50%', background: '#4169E1', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '1.2rem', marginRight: 12 }}>{studio.initials}</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 600, fontSize: '1rem', color: '#fff' }}>{studio.name}</div>
+                    <div style={{ fontSize: '0.85rem', color: '#aaa' }}>{studio.publicSlug}</div>
                   </div>
-                ))}
-                {!loadingSuggestions && albumSuggestions.length > 0 && (
-                  <div style={{ padding: '0.5rem 1rem', fontWeight: 700, color: '#fff', fontSize: '1rem' }}>Albums</div>
-                )}
-                {!loadingSuggestions && albumSuggestions.length > 0 && (
-                  <>
-                    {albumSuggestions.map(album => (
+                </div>
+              ))}
+              {!loadingSuggestions && albumSuggestions.length > 0 && (
+                <div style={{ padding: '0.5rem 1rem', fontWeight: 700, color: '#fff', fontSize: '1rem' }}>Albums</div>
+              )}
+              {!loadingSuggestions && albumSuggestions.length > 0 && (
+                <>
+                  {albumSuggestions.map(album => (
+                    <div
+                      key={`album-${album.id}`}
+                      className="autocomplete-item"
+                      style={{ display: 'flex', alignItems: 'flex-start', padding: '0.75rem 1rem', cursor: 'pointer', borderBottom: '1px solid #333', gap: 12 }}
+                      onMouseDown={() => {
+                        setSearchQuery(album.name);
+                        setShowDropdown(false);
+                        navigate(album.url);
+                      }}
+                    >
                       <div
-                        key={`album-${album.id}`}
-                        className="autocomplete-item"
-                        style={{ display: 'flex', alignItems: 'flex-start', padding: '0.75rem 1rem', cursor: 'pointer', borderBottom: '1px solid #333', gap: 12 }}
-                        onMouseDown={() => {
-                          setSearchQuery(album.name);
-                          setShowDropdown(false);
-                          navigate(album.url);
+                        style={{
+                          width: 48,
+                          height: 48,
+                          borderRadius: 10,
+                          background: album.coverImageUrl ? `center / cover no-repeat url(${album.coverImageUrl})` : '#312e81',
+                          flex: '0 0 48px',
+                          border: '1px solid rgba(255,255,255,0.12)',
                         }}
-                      >
-                        <div
-                          style={{
-                            width: 48,
-                            height: 48,
-                            borderRadius: 10,
-                            background: album.coverImageUrl ? `center / cover no-repeat url(${album.coverImageUrl})` : '#312e81',
-                            flex: '0 0 48px',
-                            border: '1px solid rgba(255,255,255,0.12)',
-                          }}
-                        />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: 600, fontSize: '1rem', color: '#fff' }}>{album.name}</div>
-                          <div style={{ fontSize: '0.85rem', color: '#aaa', marginTop: 2 }}>
-                            {album.studioName}{album.photoCount ? ` • ${album.photoCount} photos` : ''}
-                          </div>
-                          {Array.isArray(album.schoolTags) && album.schoolTags.length > 0 && (
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-                              {album.schoolTags.slice(0, 3).map((school: string) => (
-                                <span
-                                  key={`${album.id}-${school}`}
-                                  style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    padding: '3px 8px',
-                                    borderRadius: 999,
-                                    background: 'rgba(30, 41, 59, 0.92)',
-                                    border: '1px solid rgba(96, 165, 250, 0.35)',
-                                    color: '#dbeafe',
-                                    fontSize: '0.75rem',
-                                    fontWeight: 600,
-                                  }}
-                                >
-                                  {school}
-                                </span>
-                              ))}
-                              {album.schoolTags.length > 3 && (
-                                <span
-                                  style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    padding: '3px 8px',
-                                    borderRadius: 999,
-                                    background: 'rgba(49, 46, 129, 0.9)',
-                                    border: '1px solid rgba(167, 139, 250, 0.35)',
-                                    color: '#ede9fe',
-                                    fontSize: '0.75rem',
-                                    fontWeight: 600,
-                                  }}
-                                >
-                                  +{album.schoolTags.length - 3} more
-                                </span>
-                              )}
-                            </div>
-                          )}
-                          {album.description && (
-                            <div style={{ fontSize: '0.82rem', color: '#c9c9d4', marginTop: 8, lineHeight: 1.35 }}>
-                              {album.description}
-                            </div>
-                          )}
+                      />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: '1rem', color: '#fff' }}>{album.name}</div>
+                        <div style={{ fontSize: '0.85rem', color: '#aaa', marginTop: 2 }}>
+                          {album.studioName}{album.photoCount ? ` • ${album.photoCount} photos` : ''}
                         </div>
+                        {Array.isArray(album.schoolTags) && album.schoolTags.length > 0 && (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                            {album.schoolTags.slice(0, 3).map((school: string) => (
+                              <span
+                                key={`${album.id}-${school}`}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  padding: '3px 8px',
+                                  borderRadius: 999,
+                                  background: 'rgba(30, 41, 59, 0.92)',
+                                  border: '1px solid rgba(96, 165, 250, 0.35)',
+                                  color: '#dbeafe',
+                                  fontSize: '0.75rem',
+                                  fontWeight: 600,
+                                }}
+                              >
+                                {school}
+                              </span>
+                            ))}
+                            {album.schoolTags.length > 3 && (
+                              <span
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  padding: '3px 8px',
+                                  borderRadius: 999,
+                                  background: 'rgba(49, 46, 129, 0.9)',
+                                  border: '1px solid rgba(167, 139, 250, 0.35)',
+                                  color: '#ede9fe',
+                                  fontSize: '0.75rem',
+                                  fontWeight: 600,
+                                }}
+                              >
+                                +{album.schoolTags.length - 3} more
+                              </span>
+                            )}
+                          </div>
+                        )}
+                        {album.description && (
+                          <div style={{ fontSize: '0.82rem', color: '#c9c9d4', marginTop: 8, lineHeight: 1.35 }}>
+                            {album.description}
+                          </div>
+                        )}
                       </div>
-                    ))}
-                  </>
-                )}
-                {!loadingSuggestions && photoSuggestions.length > 0 && (
-                  <div style={{ padding: '0.5rem 1rem', fontWeight: 700, color: '#fff', fontSize: '1rem' }}>Photos</div>
-                )}
-                {!loadingSuggestions && photoSuggestions.length > 0 && (
-                  <></>
-                )}
+                    </div>
+                  ))}
+                </>
+              )}
 
-
-              </div>
-            )}
-          </div>
+              {/* Photos Section */}
+              {!loadingSuggestions && photoSuggestions.length > 0 && (
+                <div style={{ padding: '0.5rem 1rem', fontWeight: 700, color: '#fff', fontSize: '1rem' }}>Photos</div>
+              )}
+              {!loadingSuggestions && photoSuggestions.length > 0 && (
+                <div>
+                  {photoSuggestions.map(photo => (
+                    <div
+                      key={`photo-${photo.id}`}
+                      className="autocomplete-item"
+                      style={{ display: 'flex', alignItems: 'center', padding: '0.75rem 1rem', cursor: 'pointer', borderBottom: '1px solid #333', gap: 12 }}
+                      onMouseDown={() => {
+                        setSearchQuery(photo.fileName);
+                        setShowDropdown(false);
+                        navigate(`/albums/${photo.albumId}?photo=${photo.id}&studioSlug=${encodeURIComponent(photo.studioSlug)}`);
+                      }}
+                    >
+                      <img
+                        src={photo.thumbnailUrl}
+                        alt={photo.fileName}
+                        style={{ width: 48, height: 48, borderRadius: 8, objectFit: 'cover', marginRight: 12, background: '#312e81', border: '1px solid rgba(255,255,255,0.12)' }}
+                      />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: '1rem', color: '#fff', wordBreak: 'break-all' }}>{photo.fileName}</div>
+                        <div style={{ fontSize: '0.85rem', color: '#aaa', marginTop: 2 }}>
+                          {photo.albumName} &bull; {photo.studioName}
+                        </div>
+                        {photo.description && (
+                          <div style={{ fontSize: '0.82rem', color: '#c9c9d4', marginTop: 8, lineHeight: 1.35 }}>
+                            {photo.description}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           <button className="btn btn-primary landing-search-btn" type="submit">Search</button>
         </form>
         <div className="landing-btn-row">
@@ -235,17 +279,38 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Features Section */}
+      {/* Studio Widgets Section */}
       <section className="landing-features-section">
-        <div className="features-row">
-          <FeatureCard icon="📸" title="Client Photo Galleries" description="Upload and organize client photos in beautiful, password-protected albums" />
-          <FeatureCard icon="🛒" title="Online Ordering" description="Let clients order prints, packages, and digital downloads directly from their gallery" />
-          <FeatureCard icon="💰" title="Custom Pricing" description="Set your own prices with flexible pricing lists and package options" />
-          <FeatureCard icon="🏢" title="Professional Labs" description="Integrated with WHCC, Mpix, and other major photo labs for seamless fulfillment" />
-          <FeatureCard icon="💳" title="Secure Payments" description="Built-in Stripe integration for safe and reliable payment processing" />
-          <FeatureCard icon="📊" title="Business Analytics" description="Track sales, popular products, and client engagement with detailed reports" />
-          <FeatureCard icon="📦" title="Batch Shipping" description="Easily ship multiple orders together for efficiency and cost savings." />
-          <FeatureCard icon="🏷️" title="Player Recognition" description="Automatically identify and tag players in photos for fast search and personalized albums." />
+        <div className="landing-studio-widgets">
+          <StudioWidget
+            icon="🚀"
+            title="Launch Your Studio"
+            desc="Create your own branded studio, upload albums, and start selling photos and products online."
+            linkText="Start Free Trial"
+            linkHref="/studio-signup"
+          />
+          <StudioWidget
+            icon="📢"
+            title="Marketing & Sharing Tools"
+            desc="Promote your albums with custom domains, social sharing, and built-in analytics to boost your studio's reach."
+            linkText="Explore Marketing"
+            linkHref="/admin/settings"
+          />
+          <StudioWidget
+            icon="🛒"
+            title="Order Management"
+            desc="Easily manage orders, track fulfillment, and offer a seamless checkout experience for your clients."
+            linkText="View Orders"
+            linkHref="/admin/orders"
+          />
+          <StudioWidget
+            icon="🏷️"
+            title="Player Tagging & Search"
+            desc="Tag players in photos for instant searchability—help parents and athletes find and buy their images fast."
+            linkText="Try Player Tagging"
+            linkHref="/admin/photos"
+          />
+
         </div>
       </section>
 

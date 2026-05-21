@@ -1,3 +1,60 @@
+/* Studio Widgets Section */
+.landing-studio-widgets {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1.5rem;
+  margin: 2.5rem 0 2.5rem 0;
+}
+
+.landing-studio-widget {
+  background: linear-gradient(180deg, rgba(255,255,255,0.07), rgba(124,92,255,0.06));
+  border: 1px solid rgba(124, 92, 255, 0.13);
+  border-radius: 14px;
+  padding: 1.7rem 1.3rem 1.3rem 1.3rem;
+  text-align: left;
+  box-shadow: 0 2px 12px 0 rgba(124,92,255,0.04);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  transition: box-shadow 0.18s, border-color 0.18s, transform 0.18s;
+}
+.landing-studio-widget:hover {
+  box-shadow: 0 4px 24px 0 rgba(124,92,255,0.10);
+  border-color: #a78bfa;
+  transform: translateY(-3px) scale(1.025);
+}
+.landing-studio-widget-title {
+  font-size: 1.18rem;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.landing-studio-widget-desc {
+  color: #bdbdbd;
+  font-size: 1.01rem;
+  margin-bottom: 1.1rem;
+  line-height: 1.6;
+}
+.landing-studio-widget-link {
+  background: #7c5cff;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 0.55rem 1.2rem;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.18s, color 0.18s;
+  margin-top: auto;
+  box-shadow: 0 1px 4px 0 rgba(124,92,255,0.08);
+}
+.landing-studio-widget-link:hover {
+  background: #a78bfa;
+  color: #222;
+}
 .landing-main {
   min-height: 100vh;
   padding: 2rem 1rem 4rem;
@@ -35,6 +92,45 @@
   flex-wrap: wrap;
 }
 
+@media (max-width: 600px) {
+  .landing-hero-section {
+    padding: 0 0.25rem;
+  }
+  .landing-title {
+    font-size: 2rem;
+  }
+  .landing-desc {
+    font-size: 1rem;
+  }
+  .landing-search-form {
+    flex-direction: column;
+    gap: 0.5rem;
+    align-items: stretch;
+  }
+  .landing-search-box {
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+  }
+  .landing-search-btn {
+    width: 100%;
+    min-width: 0;
+    margin-top: 0.5rem;
+    height: 44px;
+  }
+  .landing-btn-row {
+    flex-direction: column;
+    gap: 0.75rem;
+    align-items: stretch;
+  }
+  .features-row {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+  .landing-footer-cta {
+    padding: 1.5rem 0.5rem;
+  }
+}
 .landing-search-box {
   min-width: 250px;
   width: min(680px, 100%);

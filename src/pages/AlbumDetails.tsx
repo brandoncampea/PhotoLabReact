@@ -38,6 +38,18 @@ type ProductOrderRow = {
 };
 
 const AlbumDetails: React.FC = () => {
+    // Helper to get the album cover image URL for Open Graph
+    const getOgImageUrl = () => {
+      // Prefer explicit coverImageUrl, fallback to first photo thumbnail
+      if (album && (album as any).coverImageUrl) {
+        return String((album as any).coverImageUrl);
+      }
+      if (photos && photos.length > 0) {
+        // Use the first photo's thumbnail as fallback
+        return `/api/photos/${photos[0].id}/asset?variant=thumbnail`;
+      }
+      return undefined;
+    };
   // Utility must be defined before use
   const normalizeMetadata = (metadata: unknown): Record<string, any> => {
     if (!metadata) return {};
@@ -1014,12 +1026,59 @@ const AlbumDetails: React.FC = () => {
     }
   };
 
+
   if (loading) return <div className="loading">Loading album...</div>;
   if (error) return <div className="albums-error-message">{error}</div>;
   if (!album) return <div className="albums-error-message">Album not found</div>;
 
+  // Open Graph meta tags for album sharing
+  const ogImageUrl = getOgImageUrl();
+
+  // Album description for meta tag
+  const ogDescription = album?.description || 'View this photo album.';
+
+  // Album title for meta tag
+  const ogTitle = album?.name ? `Photo Album: ${album.name}` : 'Photo Album';
+
   return (
-    <div className="main-content dark-bg albums-full-height">
+    <>
+      {/* Share Button for Customer Albums */}
+      <div
+        style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}
+        onClick={e => e.stopPropagation()}
+        onKeyDown={e => e.stopPropagation()}
+        tabIndex={-1}
+      >
+        <button
+          className="btn btn-outline-primary"
+          style={{ fontSize: 15, padding: '6px 18px', borderRadius: 8 }}
+          title={album?.name || 'Share Album'}
+          type="button"
+          tabIndex={0}
+          onClick={e => {
+            e.preventDefault();
+            e.stopPropagation();
+            const url = window.location.href;
+            navigator.clipboard.writeText(url);
+            alert(`Share link for \"${album?.name || 'Album'}\" copied to clipboard!`);
+          }}
+        >
+          🔗 Share Album
+        </button>
+      </div>
+      <Helmet>
+        <title>{album?.name ? album.name : 'Photo Album'}</title>
+        <meta property="og:title" content={album?.name ? album.name : 'Photo Album'} />
+        <meta name="twitter:title" content={album?.name ? album.name : 'Photo Album'} />
+        <meta property="og:description" content={ogDescription} />
+        <meta name="twitter:description" content={ogDescription} />
+        {ogImageUrl && <meta property="og:image" content={ogImageUrl} />}
+        {ogImageUrl && <meta name="twitter:image" content={ogImageUrl} />}
+        <meta property="og:type" content="website" />
+        <meta property="og:url" content={window.location.href} />
+        <meta name="twitter:card" content="summary_large_image" />
+      </Helmet>
+      <div className="main-content dark-bg albums-full-height">
       <div className="page-header" style={{ marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
           {selectedPhoto ? (
@@ -1964,7 +2023,9 @@ const AlbumDetails: React.FC = () => {
           </div>
         </div>
       )}
+
     </div>
+  </>
   );
 };
 

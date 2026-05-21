@@ -65,6 +65,7 @@ export interface Photo {
   viewCount?: number;
   viewOpenCount?: number;
   viewClickCount?: number;
+  orderCount?: number;
 }
 
 export interface PhotoMetadata {

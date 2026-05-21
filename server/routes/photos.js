@@ -1334,11 +1334,13 @@ router.get('/album/:albumId', async (req, res) => {
     const photos = await queryRows(sql, params);
 
     let viewMap = new Map();
+    let orderCountMap = new Map();
     if (Array.isArray(photos) && photos.length > 0) {
       const photoIds = photos.map((p) => Number(p.id)).filter((id) => Number.isInteger(id) && id > 0);
       if (photoIds.length > 0) {
         const placeholders = photoIds.map((_, i) => `$${i + 1}`).join(',');
         try {
+          // Views aggregation
           const viewRows = await queryRows(`
             SELECT
               TRY_CAST(JSON_VALUE(event_data, '$.photoId') AS INT) as photoId,
@@ -1359,6 +1361,20 @@ router.get('/album/:albumId', async (req, res) => {
           // Analytics table may not exist in all environments.
           console.warn('[GET /photos/album/:albumId] analytics unavailable:', analyticsError?.message || analyticsError);
         }
+        try {
+          // Order count aggregation
+          const orderRows = await queryRows(`
+            SELECT
+              photo_id as photoId,
+              COUNT(DISTINCT order_id) as orderCount
+            FROM order_items
+            WHERE photo_id IN (${placeholders})
+            GROUP BY photo_id
+          `, photoIds);
+          orderCountMap = new Map(orderRows.map((row) => [Number(row.photoId), Number(row.orderCount) || 0]));
+        } catch (orderCountError) {
+          console.warn('[GET /photos/album/:albumId] order count unavailable:', orderCountError?.message || orderCountError);
+        }
       }
     }
 
@@ -1367,6 +1383,7 @@ router.get('/album/:albumId', async (req, res) => {
       viewCount: Number(viewMap.get(Number(photo.id))?.viewCount || 0),
       viewOpenCount: Number(viewMap.get(Number(photo.id))?.viewOpenCount || 0),
       viewClickCount: Number(viewMap.get(Number(photo.id))?.viewClickCount || 0),
+      orderCount: Number(orderCountMap.get(Number(photo.id)) || 0),
     }));
 
     res.json(signed);

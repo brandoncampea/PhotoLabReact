@@ -985,7 +985,7 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
       </div>
       <div className="admin-photos-controls">
         <button className="btn btn-danger" onClick={handleDeleteAll} disabled={photos.length === 0}>Delete All Photos</button>
-        <button className="btn btn-secondary" onClick={handleDetectAll} disabled={photos.length === 0 || loading}>Auto-Tag All</button>
+        <button className="btn btn-secondary" onClick={handleDetectAll} disabled={photos.length === 0 || loading}>Detect All Faces/Players</button>
         <button className="btn btn-info" onClick={handleNotifyWatchers} disabled={notifyLoading || !watchedTaggedPlayers.length}>Notify Watchers</button>
         <input type="file" accept=".csv" onChange={handleRosterCsvUpload} disabled={rosterUploading} style={{ marginLeft: 12 }} />
         {rosterUploading && <span style={{ marginLeft: 8 }}>Uploading roster…</span>}
@@ -1023,7 +1023,99 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
               ([, photo]) => photo
             ).map((photo) => (
               <div key={photo.id} className="admin-photo-card">
-                <img src={`/api/photos/${photo.id}/asset?variant=thumbnail`} alt={photo.fileName} className="admin-photo-img" />
+                <div style={{ position: 'relative', width: '100%', height: 'auto' }}>
+                  <img
+                    src={`/api/photos/${photo.id}/asset?variant=thumbnail`}
+                    alt={photo.fileName}
+                    className="admin-photo-img"
+                    style={{ display: 'block', width: '100%', height: 'auto', borderRadius: 8 }}
+                  />
+                  {/* Face Box Overlays */}
+                  {detectionByPhotoId[photo.id]?.faceBoxes?.length > 0 && (
+                    detectionByPhotoId[photo.id].faceBoxes.map((box, i) => (
+                      <div
+                        key={box.id}
+                        style={{
+                          position: 'absolute',
+                          left: `${box.leftPct}%`,
+                          top: `${box.topPct}%`,
+                          width: `${box.widthPct}%`,
+                          height: `${box.heightPct}%`,
+                          border: '2px solid #7b61ff',
+                          borderRadius: 6,
+                          background: 'rgba(123,97,255,0.10)',
+                          pointerEvents: 'auto',
+                          zIndex: 2,
+                          display: 'flex',
+                          alignItems: 'flex-end',
+                          justifyContent: 'center',
+                        }}
+                        title={box.playerName ? `Tagged: ${box.playerName}` : 'Click to tag face'}
+                        onClick={() => {
+                          const playerName = prompt('Tag this face with a player name:', box.playerName || '');
+                          if (playerName && playerName.trim()) {
+                            setDetectionByPhotoId(prev => ({
+                              ...prev,
+                              [photo.id]: {
+                                ...prev[photo.id],
+                                faceBoxes: prev[photo.id].faceBoxes.map((fb, idx) =>
+                                  idx === i ? { ...fb, playerName: playerName.trim() } : fb
+                                ),
+                              },
+                            }));
+                          }
+                        }}
+                      >
+                        <span
+                          style={{
+                            background: '#7b61ff',
+                            color: '#fff',
+                            fontSize: 12,
+                            padding: '2px 6px',
+                            borderRadius: 4,
+                            marginBottom: 2,
+                            marginTop: 'auto',
+                            cursor: 'pointer',
+                            userSelect: 'none',
+                          }}
+                        >
+                          {box.playerName ? box.playerName : 'Tag'}
+                        </span>
+                      </div>
+                    ))
+                  )}
+                </div>
+                {/* Manual player tagging input/button */}
+                <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <input
+                    type="text"
+                    placeholder="Tag player name"
+                    style={{ flex: 1, minWidth: 0, padding: '2px 6px', borderRadius: 4, border: '1px solid #7b61ff', fontSize: 13 }}
+                    value={photo._manualTagInput || ''}
+                    onChange={e => {
+                      const value = e.target.value;
+                      setPhotos(prev => prev.map(p => p.id === photo.id ? { ...p, _manualTagInput: value } : p));
+                    }}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        const value = (photo as any)._manualTagInput;
+                        if (value && value.trim()) {
+                          handleManualTagPlayer(photo, value.trim());
+                        }
+                      }
+                    }}
+                  />
+                  <button
+                    className="btn btn-primary"
+                    style={{ fontSize: 13, padding: '2px 10px' }}
+                    onClick={() => {
+                      const value = (photo as any)._manualTagInput;
+                      if (value && value.trim()) {
+                        handleManualTagPlayer(photo, value.trim());
+                      }
+                    }}
+                  >Tag</button>
+                </div>
                 <div className="admin-photo-meta">
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <strong>{photo.fileName}</strong>
@@ -1037,6 +1129,8 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
                   </div>
                   <div>ID: {photo.id}</div>
                   <div>Players: {photo.playerNames || '—'}</div>
+                  <div>Views: {typeof photo.viewCount === 'number' ? photo.viewCount : '—'}</div>
+                  <div>Orders: {typeof photo.orderCount === 'number' ? photo.orderCount : '—'}</div>
                   {/* Detection Results */}
                   {detectionByPhotoId[photo.id] && (
                     <div style={{ margin: '8px 0', fontSize: 13, color: '#4caf50' }}>
