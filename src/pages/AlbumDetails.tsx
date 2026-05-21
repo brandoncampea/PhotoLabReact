@@ -1042,41 +1042,14 @@ const AlbumDetails: React.FC = () => {
 
   return (
     <>
-      {/* Share Button for Customer Albums */}
-      <div
-        style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}
-        onClick={e => e.stopPropagation()}
-        onKeyDown={e => e.stopPropagation()}
-        tabIndex={-1}
-      >
-        <button
-          className="btn btn-outline-primary"
-          style={{ fontSize: 15, padding: '6px 18px', borderRadius: 8 }}
-          title={album?.name || 'Share Album'}
-          type="button"
-          tabIndex={0}
-          onClick={e => {
-            e.preventDefault();
-            e.stopPropagation();
-            const url = window.location.href;
-            navigator.clipboard.writeText(url);
-            alert(`Share link for \"${album?.name || 'Album'}\" copied to clipboard!`);
-          }}
-        >
-          🔗 Share Album
-        </button>
-      </div>
       <Helmet>
-        <title>{album?.name ? album.name : 'Photo Album'}</title>
-        <meta property="og:title" content={album?.name ? album.name : 'Photo Album'} />
-        <meta name="twitter:title" content={album?.name ? album.name : 'Photo Album'} />
+        <title>{ogTitle}</title>
+        <meta property="og:title" content={ogTitle} />
         <meta property="og:description" content={ogDescription} />
-        <meta name="twitter:description" content={ogDescription} />
         {ogImageUrl && <meta property="og:image" content={ogImageUrl} />}
         {ogImageUrl && <meta name="twitter:image" content={ogImageUrl} />}
         <meta property="og:type" content="website" />
         <meta property="og:url" content={window.location.href} />
-        <meta name="twitter:card" content="summary_large_image" />
       </Helmet>
       <div className="main-content dark-bg albums-full-height">
       <div className="page-header" style={{ marginBottom: 16 }}>
