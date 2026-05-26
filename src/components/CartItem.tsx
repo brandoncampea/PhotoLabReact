@@ -146,7 +146,7 @@ const CartItem: React.FC<CartItemProps> = ({ item, photo, onEditCrop, onOpenWhcc
                       fill={false}
                       imageRef={imageRef}
                     />
-                    {cropOverlayStyle ? (
+                    {!isDigitalItem && cropOverlayStyle ? (
                       <div style={{
                         ...cropOverlayStyle,
                         background: 'rgba(123, 97, 255, 0.18)',

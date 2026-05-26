@@ -41,6 +41,7 @@ type DetectionResult = {
 // Real face detection using BlazeFace
 
 import { detectFaceBoxes } from '../../utils/faceDetection';
+import { extractPlayerNameFromFilename } from '../../utils/playerTagging';
 
 const detectFaceBoxesInBrowser = async (photo: Photo): Promise<{ faceBoxes: FaceTagBox[]; error?: string | null }> => {
   // Always use the backend asset endpoint for the full-size image (never the thumbnail)
@@ -72,17 +73,56 @@ import notifyWatchersService from '../../services/notifyWatchersService';
 
 const AdminPhotos: React.FC = () => {
   // Batch detect all photos in album (must be inside component for state access)
+  // Progress state for batch detection
+  const [detectAllProgress, setDetectAllProgress] = useState<{ current: number; total: number; running: boolean }>({ current: 0, total: 0, running: false });
+
   const handleDetectAll = async () => {
     if (!photos.length) return;
-    setLoading(true);
+    setDetectAllProgress({ current: 0, total: photos.length, running: true });
+    setLoading(false); // Ensure loading spinner does not hide progress bar
     try {
-      for (const photo of photos) {
-        await handleDetectPlayers(photo, { silent: true });
+      for (let i = 0; i < photos.length; i++) {
+        // eslint-disable-next-line no-await-in-loop
+        await handleDetectPlayers(photos[i], { silent: true });
+        setDetectAllProgress((prev) => ({ ...prev, current: i + 1 }));
       }
       await loadPhotos();
       setUploadMessage({ type: 'success', text: 'Auto-tagged and detected faces for all photos.' });
     } catch (err) {
       setUploadMessage({ type: 'error', text: 'Failed to auto-tag or detect faces for all photos.' });
+    } finally {
+      setDetectAllProgress({ current: 0, total: 0, running: false });
+    }
+  };
+
+  const handleDetectNamesFromFilenames = async () => {
+    if (!albumId) return;
+    if (!photos.length) return;
+    if (!confirm('Auto-detect player names from filenames for this album? Existing tagged photos will be skipped.')) return;
+    setLoading(true);
+    try {
+      const updates: Array<{ id: number; playerNames: string }> = [];
+      for (const p of photos) {
+        // Treat undefined, null, empty string, or whitespace as untagged
+        if (typeof p.playerNames === 'string' && p.playerNames.trim().length > 0) continue;
+        if (!p.fileName) continue;
+        const extracted = extractPlayerNameFromFilename(p.fileName);
+        if (extracted && extracted.name) {
+          updates.push({ id: p.id, playerNames: extracted.name });
+        }
+      }
+      if (updates.length > 0) {
+        await photoService.batchUpdatePhotoPlayers(updates);
+        setUploadMessage({ type: 'success', text: `Tagged ${updates.length} photo(s) from filenames.` });
+        // Always reload photos from backend to reflect new tags
+        await loadPhotos();
+        await loadRoster();
+      } else {
+        setUploadMessage({ type: 'error', text: 'No untagged photos found with detectable player names in filenames.' });
+      }
+    } catch (err) {
+      console.error('Failed to auto-detect names for album:', err);
+      setUploadMessage({ type: 'error', text: 'Failed to auto-detect names for album.' });
     } finally {
       setLoading(false);
     }
@@ -266,6 +306,7 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
 
   const loadPhotos = async () => {
     if (!albumId) return;
+    setLoading(true);
     try {
       const data = await photoService.getPhotosByAlbum(albumId);
       // Only keep the filename-matched player for each photo
@@ -292,6 +333,37 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
           })
         : [];
       setPhotos(cleaned);
+
+      // Only load face tags from metadata for initial page load (no API calls)
+      const detectionResults = cleaned.map((photo) => {
+        const faceTags = getStoredFaceTags(photo);
+        return {
+          photoId: photo.id,
+          detection: null,
+          faceBoxes: Array.isArray(faceTags) ? faceTags : [],
+        };
+      });
+      setDetectionByPhotoId((prev) => {
+        const next = { ...prev };
+        for (const { photoId, faceBoxes } of detectionResults) {
+          if (faceBoxes && faceBoxes.length > 0) {
+            next[photoId] = {
+              detectedNumbers: [],
+              usedCachedDetections: false,
+              detectedNumbersUpdatedAt: null,
+              numberMatchingAvailable: false,
+              rosterPlayersWithNumbersCount: 0,
+              faceMatchingAvailable: false,
+              faceMatches: [],
+              faceBoxes: faceBoxes || [],
+              faceDetectionError: undefined,
+              numberMatches: [],
+              suggestions: [],
+            };
+          }
+        }
+        return next;
+      });
     } catch (error) {
       console.error('Failed to load photos:', error);
       setPhotos([]);
@@ -334,120 +406,7 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
       status: 'queued',
       duplicateMode,
       attempts: 0,
-      taggedPlayer: null,
     }));
-
-    const maxAutoRetries = 2;
-    const uploadNext = async () => {
-      if (queue.length === 0) return;
-      const item = queue.shift();
-      if (!item) {
-        await uploadNext();
-        return;
-      }
-      let attempts = item.attempts || 0;
-      let success = false;
-      while (attempts <= maxAutoRetries && !success) {
-        // No setUploadItems; update progress in UploadContext if needed
-        try {
-          // Direct-to-Blob upload
-          if (typeof albumId !== 'number') throw new Error('albumId must be a number');
-          // Sanitize filename for blob storage (replace spaces with underscores)
-          // item is guaranteed to exist here
-          const safeFileName = item.file.name.replace(/\s+/g, '_');
-          const blobName = `albums/${albumId}/${safeFileName}`;
-          const blobUrl = await uploadFileToAzureBlob({
-            file: item.file,
-            blobName,
-            onProgress: (percent) => {
-              setUploadItems((prev) =>
-                prev.map((entry) =>
-                  item && entry.id === item.id ? { ...entry, progress: percent } : entry
-                )
-              );
-            },
-          });
-          // Notify backend with sanitized fileName and blobUrl
-          const recordResult = await recordPhotoBlob({
-            albumId: albumId as number,
-            fileName: safeFileName,
-            blobUrl,
-            description: item.description,
-            fileSizeBytes: item.file.size,
-            // Optionally add width, height, metadata, playerName, playerNumber if available
-          });
-
-          // Only mark as success if backend returns success: true
-          if (!recordResult || (recordResult as any).success !== true) {
-            setUploadItems((prev) =>
-              prev.map((entry) =>
-                item && entry.id === item.id ? { ...entry, status: 'error', error: 'Upload failed (backend error).' } : entry
-              )
-            );
-            failed += 1;
-            break;
-          }
-
-          // Ensure roster is loaded before auto-tagging
-          if (rosterPlayers.length === 0) {
-            await loadRoster();
-          }
-
-          // Fetch the latest photo object from backend for accurate tagging
-          let latestPhoto = null;
-          try {
-            // Always fetch the latest list to ensure we get the just-uploaded photo
-            const refreshedPhotos = await photoService.getPhotosByAlbum(albumId as number);
-            latestPhoto = refreshedPhotos.find((p: any) => item && p.fileName === item.file.name);
-          } catch {}
-
-          if (recordResult && recordResult.id && latestPhoto) {
-            // Run auto-tagging and capture the detected player(s)
-            let detectedPlayerNames: string[] = [];
-            await autoTagPhotoFromFilenameAndFaces({
-              photo: latestPhoto,
-              rosterPlayers,
-              photoService,
-              handleDetectPlayers: () => {}, // No-op for now
-              detectionByPhotoId,
-              setDetectionByPhotoId,
-              setUploadMessage,
-              onTagged: (players: Array<{ playerName: string }>) => {
-                detectedPlayerNames = players.map(p => p.playerName);
-              }
-            });
-            // Wait for the backend to update before reloading
-            await new Promise(res => setTimeout(res, 300));
-            // Update uploadItems to show tagged players in the upload panel
-            setUploadItems((prev) =>
-              prev.map((entry) =>
-                item && entry.id === item.id ? { ...entry, taggedPlayer: detectedPlayerNames.join(', ') } : entry
-              )
-            );
-          }
-
-          setUploadItems((prev) =>
-            prev.map((entry) =>
-              item && entry.id === item.id ? { ...entry, status: 'done', progress: 100, error: undefined, attempts } : entry
-            )
-          );
-          completed += 1;
-          success = true;
-        } catch (error) {
-          attempts += 1;
-          if (attempts > maxAutoRetries) {
-            setUploadItems((prev) =>
-              prev.map((entry) =>
-                item && entry.id === item.id ? { ...entry, status: 'error', error: `Upload failed after ${attempts} attempts.` } : entry
-              )
-            );
-            failed += 1;
-          }
-        }
-      }
-      setUploadProgress({ completed: completed + failed, total: workingFiles.length });
-      await uploadNext();
-    };
 
     try {
       await Promise.all(Array(parallelLimit).fill(0).map(uploadNext));
@@ -824,8 +783,14 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
           return box;
         });
       }
-      // If photo has a player name from filename and exactly one face detected, assign that name to the face box (fallback)
-      const playerNameFromFilename = (photo as any).playerNames && String((photo as any).playerNames).split(',')[0].trim();
+      // If photo already has a tagged player, we should not override it from filename.
+      // Otherwise, try to extract a player name from the filename and, if exactly one face detected, assign it to that box (fallback).
+      // Always try to extract a player name from the filename if no player is tagged, or if tags were just cleared
+      let playerNameFromFilename: string | null = null;
+      if (photo.fileName) {
+        const extracted = extractPlayerNameFromFilename(photo.fileName);
+        if (extracted && extracted.name) playerNameFromFilename = extracted.name;
+      }
       if (playerNameFromFilename && mergedFaceBoxes.length === 1) {
         mergedFaceBoxes = mergedFaceBoxes.map(box => ({ ...box, playerName: playerNameFromFilename }));
       }
@@ -853,6 +818,36 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
         ...prev,
         [photo.id]: mergedFaceBoxes[0]?.id || null,
       }));
+
+      // If the photo already has tagged player(s), save a face signature for them when possible
+      try {
+        const taggedNames = String(photo.playerNames || '').split(',').map(n => n.trim()).filter(Boolean);
+        if (taggedNames.length > 0 && mergedFaceBoxes.length > 0) {
+          for (const taggedName of taggedNames) {
+            // Prefer a box that already has the player assigned
+            let matchedBox = mergedFaceBoxes.find(b => b.playerName && String(b.playerName).trim().toLowerCase() === taggedName.toLowerCase());
+            // If no box explicitly matched but there's exactly one face and one tagged name, use it
+            if (!matchedBox && mergedFaceBoxes.length === 1 && taggedNames.length === 1) {
+              matchedBox = mergedFaceBoxes[0];
+            }
+            if (matchedBox) {
+              try {
+                await photoService.trainFaceSignature(photo.id, taggedName, {
+                  leftPct: matchedBox.leftPct,
+                  topPct: matchedBox.topPct,
+                  widthPct: matchedBox.widthPct,
+                  heightPct: matchedBox.heightPct,
+                });
+              } catch (err) {
+                // Non-fatal: log and continue
+                console.warn('Failed to train face signature for', taggedName, err);
+              }
+            }
+          }
+        }
+      } catch (e) {
+        // ignore training errors
+      }
     } catch (error) {
       console.error('Failed to detect players:', error);
       if (!options?.silent) {
@@ -985,8 +980,20 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
       </div>
       <div className="admin-photos-controls">
         <button className="btn btn-danger" onClick={handleDeleteAll} disabled={photos.length === 0}>Delete All Photos</button>
-        <button className="btn btn-secondary" onClick={handleDetectAll} disabled={photos.length === 0 || loading}>Detect All Faces/Players</button>
+        <button className="btn btn-secondary" onClick={handleDetectAll} disabled={photos.length === 0 || detectAllProgress.running}>Detect All Faces/Players</button>
+        {(detectAllProgress.running || (detectAllProgress.total > 0 && detectAllProgress.current < detectAllProgress.total)) && (
+          <span style={{ marginLeft: 12, color: '#7b61ff', fontWeight: 500 }}>
+            Detecting faces: {detectAllProgress.current} / {detectAllProgress.total}
+            <span style={{ display: 'inline-block', width: 80, marginLeft: 8, verticalAlign: 'middle' }}>
+              <div style={{ height: 8, background: '#eee', borderRadius: 4, overflow: 'hidden' }}>
+                <div style={{ width: `${(detectAllProgress.current / detectAllProgress.total) * 100}%`, height: '100%', background: '#7b61ff', transition: 'width 0.2s' }} />
+              </div>
+            </span>
+          </span>
+        )}
+        <button className="btn btn-secondary" style={{ marginLeft: 8 }} onClick={handleDetectNamesFromFilenames} disabled={photos.length === 0 || loading}>Detect Names from Filenames</button>
         <button className="btn btn-info" onClick={handleNotifyWatchers} disabled={notifyLoading || !watchedTaggedPlayers.length}>Notify Watchers</button>
+        {/* Test Name Extraction button removed */}
         <input type="file" accept=".csv" onChange={handleRosterCsvUpload} disabled={rosterUploading} style={{ marginLeft: 12 }} />
         {rosterUploading && <span style={{ marginLeft: 8 }}>Uploading roster…</span>}
         {rosterMessage && <span style={{ marginLeft: 8 }}>{rosterMessage}</span>}
@@ -1034,7 +1041,7 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
                   {detectionByPhotoId[photo.id]?.faceBoxes?.length > 0 && (
                     detectionByPhotoId[photo.id].faceBoxes.map((box, i) => (
                       <div
-                        key={box.id}
+                        key={box.id ? `${box.id}-${i}` : `facebox-${photo.id}-${i}`}
                         style={{
                           position: 'absolute',
                           left: `${box.leftPct}%`,
@@ -1085,36 +1092,62 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
                     ))
                   )}
                 </div>
-                {/* Manual player tagging input/button */}
-                <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <input
-                    type="text"
-                    placeholder="Tag player name"
-                    style={{ flex: 1, minWidth: 0, padding: '2px 6px', borderRadius: 4, border: '1px solid #7b61ff', fontSize: 13 }}
-                    value={photo._manualTagInput || ''}
-                    onChange={e => {
-                      const value = e.target.value;
-                      setPhotos(prev => prev.map(p => p.id === photo.id ? { ...p, _manualTagInput: value } : p));
-                    }}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') {
+                {/* Player name pills and tag input stacked */}
+                <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
+                  <div className="admin-photo-player-pills" style={{ marginBottom: '1.1rem', width: '100%', alignItems: 'flex-start', display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+                    {getSelectedPlayerNamesForPhoto(photo).map((playerName) => (
+                      <span
+                        key={playerName}
+                        style={{
+                          background: '#7b61ff',
+                          color: '#fff',
+                          fontSize: 12,
+                          padding: '2px 10px',
+                          borderRadius: 12,
+                          userSelect: 'none',
+                          fontWeight: 500,
+                          letterSpacing: 0.2,
+                          marginRight: 4,
+                          marginBottom: 2,
+                          minHeight: '24px',
+                          alignItems: 'center',
+                          display: 'inline-flex',
+                        }}
+                      >
+                        {playerName}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="admin-photo-tag-input-row" style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
+                    <input
+                      type="text"
+                      placeholder="Tag player name"
+                      style={{ flex: 1, minWidth: 0, padding: '2px 6px', borderRadius: 4, border: '1px solid #7b61ff', fontSize: 13 }}
+                      value={photo._manualTagInput || ''}
+                      onChange={e => {
+                        const value = e.target.value;
+                        setPhotos(prev => prev.map(p => p.id === photo.id ? { ...p, _manualTagInput: value } : p));
+                      }}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          const value = (photo as any)._manualTagInput;
+                          if (value && value.trim()) {
+                            handleManualTagPlayer(photo, value.trim());
+                          }
+                        }
+                      }}
+                    />
+                    <button
+                      className="btn btn-primary"
+                      style={{ fontSize: 13, padding: '2px 10px' }}
+                      onClick={() => {
                         const value = (photo as any)._manualTagInput;
                         if (value && value.trim()) {
                           handleManualTagPlayer(photo, value.trim());
                         }
-                      }
-                    }}
-                  />
-                  <button
-                    className="btn btn-primary"
-                    style={{ fontSize: 13, padding: '2px 10px' }}
-                    onClick={() => {
-                      const value = (photo as any)._manualTagInput;
-                      if (value && value.trim()) {
-                        handleManualTagPlayer(photo, value.trim());
-                      }
-                    }}
-                  >Tag</button>
+                      }}
+                    >Tag</button>
+                  </div>
                 </div>
                 <div className="admin-photo-meta">
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -1138,7 +1171,7 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
                         <>
                           <div>Detected Faces: {detectionByPhotoId[photo.id].faceBoxes.length}</div>
                           {detectionByPhotoId[photo.id].faceBoxes.map((box, i) => (
-                            <div key={box.id}>
+                            <div key={box.id ? `${box.id}-${i}` : `facebox-${photo.id}-${i}`}>
                               {box.playerName ? `Player: ${box.playerName}` : 'Face detected'}
                               {box.playerNumber ? ` (#${box.playerNumber})` : ''}
                             </div>

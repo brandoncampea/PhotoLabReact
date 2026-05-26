@@ -69,7 +69,7 @@ router.post('/:id/items', superAdminRequired, async (req, res) => {
         // ...existing code...
 
         // Insert product if not exists
-        let product = await queryRow('SELECT id FROM products WHERE name = $1', [item.productName]);
+        let product = await queryRow('SELECT p.id FROM products p WHERE p.name = $1', [item.productName]);
         if (!product) {
           const sql = 'INSERT INTO products (name, description, category, price) VALUES ($1, $2, $3, $4) RETURNING id';
           const sqlArgs = [item.productName, item.description || '', item.category || 'Other', price];
@@ -107,7 +107,7 @@ router.post('/:id/items', superAdminRequired, async (req, res) => {
             const safePrice = (typeof size.price === 'number' && !isNaN(size.price)) ? size.price : 0;
             const safeCost = (typeof size.cost === 'number' && !isNaN(size.cost)) ? size.cost : 0;
             // Check if size exists for this product and price list
-            const sizeExists = await queryRow('SELECT 1 FROM product_sizes WHERE product_id = $1 AND price_list_id = $2 AND size_name = $3', [product.id, priceListId, sizeName]);
+            const sizeExists = await queryRow('SELECT 1 FROM product_sizes ps WHERE ps.product_id = $1 AND ps.price_list_id = $2 AND ps.size_name = $3', [product.id, priceListId, sizeName]);
             if (!sizeExists) {
               await query('INSERT INTO product_sizes (product_id, price_list_id, size_name, price, cost) VALUES ($1, $2, $3, $4, $5)', [product.id, priceListId, sizeName, safePrice, safeCost]);
               insertedSizes += 1;

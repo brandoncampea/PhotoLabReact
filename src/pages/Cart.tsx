@@ -567,7 +567,7 @@ const Cart: React.FC = () => {
 
   const getFinalTotal = () => {
     const subtotal = getTotalPrice();
-    const shipping = getShippingCost();
+    const shipping = hasPhysicalProducts() ? getShippingCost() : 0;
     const discount = getDiscountAmount();
     let fees = 0;
     if (studioFees && studioFees.feeValue > 0) {
@@ -802,9 +802,7 @@ const Cart: React.FC = () => {
       }
     }
 
-    console.log('📧 Email receipt sent to:', shippingAddress.email);
-    console.log('Order Number:', orderResult?.id || 'N/A');
-    console.log('Total Amount:', getFinalTotal());
+    // Removed debug logs
 
     clearCart();
     setShowPaymentModal(false);
@@ -832,15 +830,15 @@ const Cart: React.FC = () => {
   };
 
   const handleCheckout = async () => {
-    console.log('[Stripe Checkout] handleCheckout called');
+    // Removed debug log
     if (items.length === 0) {
-      console.warn('[Stripe Checkout] No items in cart');
+      // Removed debug log
       setError('No items in cart.');
       return;
     }
 
     if (!stripeConfig?.isActive) {
-      console.warn('[Stripe Checkout] Stripe is not active', stripeConfig);
+      // Removed debug log
       setError('Payment processing is currently unavailable. Please try again later.');
       return;
     }
@@ -848,7 +846,7 @@ const Cart: React.FC = () => {
     // Validate shipping address
     if (!shippingAddress.fullName || !shippingAddress.addressLine1 || 
         !shippingAddress.city || !shippingAddress.state || !shippingAddress.zipCode || !shippingAddress.email) {
-      console.warn('[Stripe Checkout] Incomplete shipping address', shippingAddress);
+      // Removed debug log
       setError('Please complete all required shipping address fields.');
       return;
     }
@@ -856,20 +854,13 @@ const Cart: React.FC = () => {
     if (shippingOption === 'batch' && !isBatchAvailable()) {
       setShippingOption('direct');
       setError('Batch shipping is no longer available because the deadline has passed. Shipping was switched to direct. Please review totals and continue checkout.');
-      console.warn('[Stripe Checkout] Batch shipping not available');
+      // Removed debug log
       return;
     }
 
     setLoading(true);
     setError('');
-    console.log('[Stripe Checkout] Creating payment intent', {
-      items,
-      shippingOption,
-      shippingCost: getShippingCost(),
-      discountAmount: getDiscountAmount(),
-      taxAmount,
-      studioFee: getStudioFeeAmount(),
-    });
+    // Removed debug log
 
     try {
       // Create payment intent with final total
@@ -897,7 +888,7 @@ const Cart: React.FC = () => {
 
       setActivePaymentIntent(paymentIntent);
       setShowPaymentModal(true);
-      console.log('[Stripe Checkout] Payment modal should now be visible');
+      // Removed debug log
     } catch (err: any) {
       // Show detailed Stripe error if present
       const data = err?.response?.data;
@@ -1113,10 +1104,11 @@ const Cart: React.FC = () => {
             </div>
           </div>
 
+          {/* Shipping Options Section - only show if physical products */}
+          {/* Shipping Options Section - only show if physical products */}
           {shippingConfig && hasPhysicalProducts() && (
             <div className="cart-section-card">
               <h3>Shipping Options</h3>
-              {/* Always show both options if batch is available, otherwise show only direct, but always show the section */}
               {isBatchAvailable() && (
                 <label className={`cart-shipping-option ${shippingOption === 'batch' ? 'selected' : ''}`}>
                   <input
@@ -1136,7 +1128,6 @@ const Cart: React.FC = () => {
                       Included with the next available batch shipment.
                     </p>
                   )}
-                  {/* Show batch shipping note if present and batch is selected */}
                   {shippingOption === 'batch' && shippingConfig?.batchShippingNote && (
                     <div style={{ marginTop: 8, background: '#232336', color: '#bdbdbd', borderRadius: 6, padding: '8px 12px', fontSize: '0.98em' }}>
                       {shippingConfig.batchShippingNote}
@@ -1144,7 +1135,6 @@ const Cart: React.FC = () => {
                   )}
                 </label>
               )}
-              {/* Always show direct shipping option */}
               <label className={`cart-shipping-option ${shippingOption === 'direct' ? 'selected' : ''}`}>
                 <input
                   type="radio"
@@ -1168,61 +1158,7 @@ const Cart: React.FC = () => {
             </div>
           )}
 
-          {/* Shipping Options Section - always show if physical products */}
-          {shippingConfig && (
-            <div className="cart-section-card section-spacing">
-              <h3>Shipping Options</h3>
-              {isBatchAvailable() && (
-                <label className={`cart-shipping-option ${shippingOption === 'batch' ? 'selected' : ''}`}>
-                  <input
-                    type="radio"
-                    name="shipping"
-                    value="batch"
-                    checked={shippingOption === 'batch'}
-                    onChange={() => setShippingOption('batch')}
-                  />
-                  <strong>Batch Shipping - FREE</strong>
-                  {getBatchDeadlineDate() ? (
-                    <p>
-                      Ships in {getDaysUntilDeadline()} days (by {formatDateInStudioTimezone(getBatchDeadlineDate())})
-                    </p>
-                  ) : (
-                    <p>
-                      Included with the next available batch shipment.
-                    </p>
-                  )}
-                  {shippingOption === 'batch' && shippingConfig?.batchShippingNote && (
-                    <div style={{ marginTop: 8, background: '#232336', color: '#bdbdbd', borderRadius: 6, padding: '8px 12px', fontSize: '0.98em' }}>
-                      {shippingConfig.batchShippingNote}
-                    </div>
-                  )}
-                </label>
-              )}
-              <label className={`cart-shipping-option ${shippingOption === 'direct' ? 'selected' : ''}`}>
-                <input
-                  type="radio"
-                  name="shipping"
-                  value="direct"
-                  checked={shippingOption === 'direct'}
-                  onChange={() => setShippingOption('direct')}
-                />
-                <span style={{ fontWeight: 600, fontSize: '1.1em', color: '#fff' }}>
-                  Direct Shipping - ${getShippingCostFor('direct').toFixed(2)}
-                </span>
-                <p style={{ color: '#bdbdbd', margin: 0 }}>
-                  Ships immediately (2-3 business days)
-                </p>
-              </label>
-              {!isBatchAvailable() && shippingOption === 'batch' && (
-                <p className="cart-deadline-warning">
-                  Batch shipping deadline has passed
-                </p>
-              )}
-              {!isBatchAvailable() && shippingOption !== 'direct' && (
-                <p style={{ color: '#ff6b6b', marginTop: 12 }}>No shipping options are currently available. Please contact support.</p>
-              )}
-            </div>
-          )}
+          {/* Removed duplicate always-visible Shipping Options section. Only render above if !hasOnlyDigitalProducts() */}
 
           {/* Discount Code Section */}
           <div className="cart-section-card section-spacing">
@@ -1298,10 +1234,12 @@ const Cart: React.FC = () => {
             )}
           </div>
 
-          <div className="summary-row cart-summary-row">
-            <span>Shipping</span>
-            <span>${getShippingCost().toFixed(2)}</span>
-          </div>
+          {hasPhysicalProducts() && (
+            <div className="summary-row cart-summary-row">
+              <span>Shipping</span>
+              <span>${getShippingCost().toFixed(2)}</span>
+            </div>
+          )}
           
           {appliedDiscount && (
             <>

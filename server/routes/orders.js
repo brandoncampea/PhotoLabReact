@@ -24,7 +24,7 @@ router.post('/admin/batch-update-status', adminRequired, async (req, res) => {
       const order = await queryRow('SELECT o.*, u.email as customerEmail, u.name as customerName FROM orders o LEFT JOIN users u ON u.id = o.user_id WHERE o.id = $1', [orderId]);
       // Join products and photos for correct productName and photoFileName
       const items = await queryRows(`
-        SELECT oi.*, p.name as productName, ph.file_name as photoFileName
+        SELECT oi.id as id, oi.photo_id as photoId, oi.photo_ids as photoIds, oi.product_id as productId, oi.product_size_id as productSizeId, oi.quantity, oi.price as price, oi.crop_data as cropData, oi.digital_download_scope as digitalDownloadScope, oi.studio_revenue_amount as studioRevenueAmount, oi.base_revenue_amount as baseRevenueAmount, oi.production_cost_amount as productionCostAmount, oi.studio_payout_amount as studioPayoutAmount, oi.super_admin_share_amount as superAdminShareAmount, oi.stripe_fee_allocated_amount as stripeFeeAllocatedAmount, oi.studio_net_payout_amount as studioNetPayoutAmount, p.name as productName, ph.file_name as photoFileName
         FROM order_items oi
         LEFT JOIN products p ON p.id = oi.product_id
         LEFT JOIN photos ph ON ph.id = oi.photo_id
@@ -125,7 +125,7 @@ router.post('/admin/:orderId/whcc-approval', adminRequired, async (req, res) => 
     if (!orderId || !['approve', 'reject'].includes(action)) {
       return res.status(400).json({ error: 'Invalid orderId or action' });
     }
-    const order = await queryRow('SELECT id, approval_status FROM orders WHERE id = $1', [orderId]);
+    const order = await queryRow('SELECT o.id, o.approval_status FROM orders o WHERE o.id = $1', [orderId]);
     if (!order) return res.status(404).json({ error: 'Order not found' });
     if (order.approval_status === 'approved' && action === 'approve') {
       return res.json({ success: true, message: 'Order already approved' });
@@ -190,13 +190,13 @@ router.post('/admin/:orderId/resend-digital-download', adminRequired, async (req
     if (!order) return res.status(404).json({ success: false, message: 'Order not found', digitalItemCount: 0 });
 
     const items = await queryRows(
-      `SELECT oi.id, oi.photo_id as photoId, oi.photo_ids as photoIds, oi.source_album_id as sourceAlbumId, oi.digital_download_scope as digitalDownloadScope, oi.quantity, oi.price as unitPrice, ph.file_name as photoFileName, ph.album_id as photoAlbumId, COALESCE(oi.product_options_snapshot, p.options) as productOptions, p.category as productCategory, p.name as productName
-         FROM order_items oi
-         INNER JOIN photos ph ON ph.id = oi.photo_id
-         LEFT JOIN products p ON p.id = oi.product_id
-         WHERE oi.order_id = $1`,
+      `SELECT oi.id as id, oi.photo_id as photoId, oi.photo_ids as photoIds, oi.source_album_id as sourceAlbumId, oi.digital_download_scope as digitalDownloadScope, oi.quantity, oi.price as unitPrice, ph.file_name as photoFileName, ph.album_id as photoAlbumId, COALESCE(oi.product_options_snapshot, p.options) as productOptions, p.category as productCategory, p.name as productName
+        FROM order_items oi
+        INNER JOIN photos ph ON ph.id = oi.photo_id
+        LEFT JOIN products p ON p.id = oi.product_id
+        WHERE oi.order_id = $1`,
       [orderId]
-    );
+     );
 
     // Patch: Ensure every item includes 'attributes' extracted from productOptions, matching CartItem logic
     for (const item of items) {
@@ -930,32 +930,32 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
     if (isAggregateSubmission) {
       const orderPlaceholders = targetOrderIds.map((_, index) => `$${index + 1}`).join(',');
       orders = await queryRows(
-        `SELECT id,
-                studio_id,
-                is_batch,
-                shipping_address as shippingAddress,
-                batch_shipping_address as batchShippingAddress,
-                created_at as createdAt
-         FROM orders
-         WHERE id IN (${orderPlaceholders})`,
-        targetOrderIds
+        `SELECT oi.id as id,
+                oi.photo_id as photoId,
+                oi.photo_ids as photoIds,
+                oi.product_id as productId,
+                oi.product_size_id as productSizeId,
+                oi.quantity,
+                oi.price as price,
+                oi.crop_data as cropData,
+                oi.digital_download_scope as digitalDownloadScope,
+                oi.studio_revenue_amount as studioRevenueAmount,
+                oi.base_revenue_amount as baseRevenueAmount,
+                oi.production_cost_amount as productionCostAmount,
+                oi.studio_payout_amount as studioPayoutAmount,
+                oi.super_admin_share_amount as superAdminShareAmount,
+                oi.stripe_fee_allocated_amount as stripeFeeAllocatedAmount,
+                oi.studio_net_payout_amount as studioNetPayoutAmount,
+                p.name as productName,
+                ps.size_name as productSizeName,
+                COALESCE(ps.price, p.price, 0) as basePrice,
+                COALESCE(ps.cost, p.cost, 0) as labCost
+         FROM order_items oi
+         LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id
+         LEFT JOIN products p ON p.id = COALESCE(oi.product_id, ps.product_id)
+         WHERE oi.order_id = $1`,
+        [order.id]
       );
-    } else {
-      const singleOrder = await queryRow(
-        `SELECT id,
-                studio_id,
-                is_batch,
-                shipping_address as shippingAddress,
-                batch_shipping_address as batchShippingAddress,
-                created_at as createdAt
-         FROM orders
-         WHERE id = $1`,
-        [orderId]
-      );
-      if (singleOrder) orders = [singleOrder];
-    }
-
-    if (!orders.length) {
       return;
     }
 
@@ -980,13 +980,13 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
 
     const itemPlaceholders = targetOrderIds.map((_, index) => `$${index + 1}`).join(',');
     const items = await queryRows(
-      `SELECT oi.id,
+      `SELECT oi.id as id,
               oi.order_id as orderId,
-              oi.photo_id,
-              oi.product_id,
-              oi.product_size_id,
+              oi.photo_id as photoId,
+              oi.product_id as productId,
+              oi.product_size_id as productSizeId,
               oi.quantity,
-              oi.crop_data,
+              oi.crop_data as cropData,
               p.name as productName,
               p.category as productCategory,
               ps.size_name as sizeName,
@@ -2201,7 +2201,7 @@ const sendOrderReceipts = async (orderId) => {
       // --- PATCH: Update per-item allocated Stripe fee ---
       // Fetch all order items for this order
       const orderItems = await queryRows(
-        `SELECT id, quantity FROM order_items WHERE order_id = $1`,
+        `SELECT oi.id, oi.quantity FROM order_items oi WHERE oi.order_id = $1`,
         [order.id]
       );
       if (orderItems && orderItems.length > 0) {
@@ -2228,24 +2228,24 @@ const sendOrderReceipts = async (orderId) => {
   const items = await queryRows(
     `SELECT oi.id,
             oi.photo_id as photoId,
-          oi.photo_ids as photoIds,
-          oi.source_album_id as sourceAlbumId,
-          oi.digital_download_scope as digitalDownloadScope,
+            oi.photo_ids as photoIds,
+            oi.source_album_id as sourceAlbumId,
+            oi.digital_download_scope as digitalDownloadScope,
             oi.quantity,
             oi.price as unitPrice,
             ph.file_name as photoFileName,
-          COALESCE(oi.product_options_snapshot, p.options) as productOptions,
+            COALESCE(oi.product_options_snapshot, p.options) as productOptions,
             p.category as productCategory,
             p.name as productName,
             a.studio_id as studioId,
             s.name as studioName,
             s.email as studioEmail,
-          COALESCE(oi.base_revenue_amount / NULLIF(oi.quantity, 0), COALESCE(ps.price, p.price, 0)) as basePrice,
-          COALESCE(oi.production_cost_amount / NULLIF(oi.quantity, 0), COALESCE(ps.cost, p.cost, 0)) as cost,
-          oi.studio_payout_amount as studioPayoutAmount,
-          oi.super_admin_share_amount as superAdminShareAmount,
-          oi.stripe_fee_allocated_amount as stripeFeeAllocatedAmount,
-          oi.studio_net_payout_amount as studioNetPayoutAmount
+            COALESCE(oi.base_revenue_amount / NULLIF(oi.quantity, 0), COALESCE(ps.price, p.price, 0)) as basePrice,
+            COALESCE(oi.production_cost_amount / NULLIF(oi.quantity, 0), COALESCE(ps.cost, p.cost, 0)) as cost,
+            oi.studio_payout_amount as studioPayoutAmount,
+            oi.super_admin_share_amount as superAdminShareAmount,
+            oi.stripe_fee_allocated_amount as stripeFeeAllocatedAmount,
+            oi.studio_net_payout_amount as studioNetPayoutAmount
      FROM order_items oi
      INNER JOIN photos ph ON ph.id = oi.photo_id
      INNER JOIN albums a ON a.id = ph.album_id
@@ -2549,9 +2549,9 @@ router.get('/user/:userId', async (req, res) => {
     const parsedOrders = [];
     for (const order of orders) {
       const items = await queryRows(
-        `SELECT id, photo_id as photoId, photo_ids as photoIds, product_id as productId,
-                quantity, price, crop_data as cropData
-         FROM order_items WHERE order_id = $1`,
+        `SELECT oi.id, oi.photo_id as photoId, oi.photo_ids as photoIds, oi.product_id as productId,
+                oi.quantity, oi.price, oi.crop_data as cropData
+         FROM order_items oi WHERE oi.order_id = $1`,
         [order.id]
       );
       parsedOrders.push({
@@ -2592,18 +2592,46 @@ router.post('/', requireActiveSubscription, async (req, res) => {
       batchLabVendor,
     } = req.body;
 
-    // Calculate total to always include subtotal + shipping + tax
+    // Determine if all items are digital-only
+    const allDigital = Array.isArray(items) && items.length > 0 && items.every((item) => {
+      // Use the same logic as isDigitalProductRow
+      const options = (() => {
+        try {
+          return typeof item.productOptions === 'string' ? JSON.parse(item.productOptions) : (item.productOptions || {});
+        } catch { return {}; }
+      })();
+      const category = String(item.productCategory || '').toLowerCase();
+      const name = String(item.productName || '').toLowerCase();
+      return options?.isDigital === true || options?.is_digital_only === true || options?.digitalOnly === true || category.includes('digital') || name.includes('digital');
+    });
+
+    // If all items are digital, force shipping to 0
     const computedSubtotal = Number(subtotal) || 0;
-    const computedShipping = Number(shippingCost) || 0;
+    const computedShipping = allDigital ? 0 : (Number(shippingCost) || 0);
     const computedTax = Number(taxAmount) || 0;
     const total = +(computedSubtotal + computedShipping + computedTax).toFixed(2);
+
+    // --- PATCH: If all items are digital, update Stripe payment intent to correct amount (no shipping) ---
+    if (allDigital && paymentIntentId) {
+      try {
+        const stripe = await getConfiguredStripeClient();
+        if (stripe) {
+          await stripe.paymentIntents.update(paymentIntentId, {
+            amount: Math.round(total * 100),
+          });
+        }
+      } catch (err) {
+        console.error('[Stripe] Failed to update payment intent for digital-only order:', err?.message || err);
+      }
+    }
 
     const paymentAccounting = await fetchPaymentIntentAccounting(paymentIntentId);
 
     const requestedShippingOption = String(shippingOption || '').toLowerCase();
     const batchOrder = !!isBatch || requestedShippingOption === 'batch';
     const directOrder = !batchOrder;
-    const normalizedShippingOption = batchOrder ? 'batch' : 'direct';
+    // If all digital, shipping option is forced to 'none'
+    const normalizedShippingOption = allDigital ? 'none' : (batchOrder ? 'batch' : 'direct');
     const orderStudioId = await getOrderStudioIdFromItems(items);
     if (!orderStudioId) {
       return res.status(400).json({ error: 'Unable to determine studio for this order' });
@@ -2676,7 +2704,7 @@ router.post('/', requireActiveSubscription, async (req, res) => {
       taxRate || 0,
       JSON.stringify(shippingAddress),
       normalizedShippingOption,
-      shippingCost || 0,
+      allDigital ? 0 : (shippingCost || 0),
       studioShippingCost,
       shippingMargin,
       discountCode || null,
@@ -3012,7 +3040,7 @@ router.post('/', requireActiveSubscription, async (req, res) => {
         if (!photo?.album_id) continue;
 
         const album = await queryRow(
-          'SELECT studio_id, price_list_id FROM albums WHERE id = $1',
+          'SELECT a.studio_id, a.price_list_id FROM albums a WHERE a.id = $1',
           [photo.album_id]
         );
         if (!album?.studio_id) continue;
@@ -3141,6 +3169,8 @@ router.post('/', requireActiveSubscription, async (req, res) => {
 // Get current user's orders (customer view)
 router.get('/', async (req, res) => {
   try {
+    console.log('[GET /api/orders] Query params:', req.query);
+    console.log('[GET /api/orders] User:', req.user);
     const userId = req.user.id;
     const actingStudioId = req.headers['x-acting-studio-id'];
     const includeItems = String(req.query.includeItems || '').toLowerCase() === '1' || String(req.query.includeItems || '').toLowerCase() === 'true';
@@ -3211,86 +3241,102 @@ router.get('/', async (req, res) => {
     
     const parsedOrders = [];
     for (const order of orders) {
-      const itemsWithPhotos = [];
-      if (includeItems) {
-        const items = await queryRows(
-          `SELECT id, photo_id as photoId, photo_ids as photoIds, product_id as productId,
-                  product_size_id as productSizeId, quantity, price, crop_data as cropData,
-                  digital_download_scope as digitalDownloadScope,
-                  studio_revenue_amount as studioRevenueAmount,
-                  base_revenue_amount as baseRevenueAmount,
-                  production_cost_amount as productionCostAmount,
-                  studio_payout_amount as studioPayoutAmount,
-                  super_admin_share_amount as superAdminShareAmount,
-                  stripe_fee_allocated_amount as stripeFeeAllocatedAmount,
-                  studio_net_payout_amount as studioNetPayoutAmount
-           FROM order_items WHERE order_id = $1`,
-          [order.id]
-        );
 
-        for (const item of items) {
-          const photo = await queryRow(
-            `SELECT id, album_id as albumId, file_name as fileName, thumbnail_url as thumbnailUrl, full_image_url as fullImageUrl, width, height
-             FROM photos WHERE id = $1`,
-            [item.photoId]
+      // Always fetch items for digital-only recalculation
+      const items = await queryRows(
+        `SELECT oi.id, oi.photo_id as photoId, oi.photo_ids as photoIds, oi.product_id as productId,
+                oi.product_size_id as productSizeId, oi.quantity, oi.price, oi.crop_data as cropData,
+                oi.digital_download_scope as digitalDownloadScope,
+                oi.studio_revenue_amount as studioRevenueAmount,
+                oi.base_revenue_amount as baseRevenueAmount,
+                oi.production_cost_amount as productionCostAmount,
+                oi.studio_payout_amount as studioPayoutAmount,
+                oi.super_admin_share_amount as superAdminShareAmount,
+                oi.stripe_fee_allocated_amount as stripeFeeAllocatedAmount,
+                oi.studio_net_payout_amount as studioNetPayoutAmount,
+                COALESCE(oi.product_options_snapshot, '{}') as productOptions,
+                p.category as productCategory,
+                p.name as productName
+         FROM order_items oi
+         LEFT JOIN products p ON p.id = oi.product_id
+         WHERE oi.order_id = $1`,
+        [order.id]
+      );
+
+      const itemsWithPhotos = [];
+      for (const item of items) {
+        const photo = await queryRow(
+          `SELECT p.id, p.album_id as albumId, p.file_name as fileName, p.thumbnail_url as thumbnailUrl, p.full_image_url as fullImageUrl, p.width, p.height
+           FROM photos p WHERE p.id = $1`,
+          [item.photoId]
+        );
+        let unitCost = 0;
+        let productName = item.productName || null;
+        let productSizeName = null;
+        if (item.productSizeId) {
+          const size = await queryRow(
+            `SELECT ps.price, ps.size_name as sizeName, p.name as productName
+             FROM product_sizes ps
+             LEFT JOIN products p ON p.id = ps.product_id
+             WHERE ps.id = $1`,
+            [item.productSizeId]
           );
-          let unitCost = 0;
-          let productName = null;
-          let productSizeName = null;
-          if (item.productSizeId) {
-            const size = await queryRow(
-              `SELECT ps.price, ps.size_name as sizeName, p.name as productName
-               FROM product_sizes ps
-               LEFT JOIN products p ON p.id = ps.product_id
-               WHERE ps.id = $1`,
-              [item.productSizeId]
-            );
-            unitCost = Number(size?.price) || 0;
-            productSizeName = size?.sizeName || null;
-            productName = size?.productName || null;
-          } else if (item.productId) {
-            const product = await queryRow(
-              `SELECT price, name FROM products WHERE id = $1`,
-              [item.productId]
-            );
-            unitCost = Number(product?.price) || 0;
-            productName = product?.name || null;
-          }
-          itemsWithPhotos.push({
-            ...item,
-            price: item.price || 0,
-            cost: unitCost,
-            digitalDownloadScope: item.digitalDownloadScope || null,
-            studioRevenueAmount: Number(item.studioRevenueAmount) || 0,
-            baseRevenueAmount: Number(item.baseRevenueAmount) || 0,
-            productionCostAmount: Number(item.productionCostAmount) || 0,
-            studioPayoutAmount: Number(item.studioPayoutAmount) || 0,
-            superAdminShareAmount: Number(item.superAdminShareAmount) || 0,
-            stripeFeeAllocatedAmount: Number(item.stripeFeeAllocatedAmount) || 0,
-            studioNetPayoutAmount: Number(item.studioNetPayoutAmount) || 0,
-            productName,
-            productSizeName,
-            cropData: safeJsonParse(item.cropData),
-            photoIds: safeJsonParse(item.photoIds, item.photoId ? [item.photoId] : []),
-            photo: photo ? {
-              id: photo.id,
-              albumId: photo.albumId,
-              fileName: photo.filename ?? photo.fileName,
-              width: photo.width || null,
-              height: photo.height || null,
-              thumbnailUrl: `/api/photos/${photo.id}/asset?variant=thumbnail`,
-              url: `/api/photos/${photo.id}/asset?variant=full`,
-            } : {
-              id: item.photoId,
-              albumId: 0,
-              fileName: `Photo #${item.photoId}`,
-              thumbnailUrl: `https://picsum.photos/seed/photo${item.photoId}/300/300`,
-              url: `https://picsum.photos/seed/photo${item.photoId}/1200/900`,
-            },
-          });
+          unitCost = Number(size?.price) || 0;
+          productSizeName = size?.sizeName || null;
+          if (!productName) productName = size?.productName || null;
+        } else if (item.productId && !productName) {
+          const product = await queryRow(
+            `SELECT p.price, p.name FROM products p WHERE p.id = $1`,
+            [item.productId]
+          );
+          unitCost = Number(product?.price) || 0;
+          productName = product?.name || null;
         }
+        itemsWithPhotos.push({
+          ...item,
+          price: item.price || 0,
+          cost: unitCost,
+          digitalDownloadScope: item.digitalDownloadScope || null,
+          studioRevenueAmount: Number(item.studioRevenueAmount) || 0,
+          baseRevenueAmount: Number(item.baseRevenueAmount) || 0,
+          productionCostAmount: Number(item.productionCostAmount) || 0,
+          studioPayoutAmount: Number(item.studioPayoutAmount) || 0,
+          superAdminShareAmount: Number(item.superAdminShareAmount) || 0,
+          stripeFeeAllocatedAmount: Number(item.stripeFeeAllocatedAmount) || 0,
+          studioNetPayoutAmount: Number(item.studioNetPayoutAmount) || 0,
+          productName,
+          productSizeName,
+          cropData: safeJsonParse(item.cropData),
+          photoIds: safeJsonParse(item.photoIds, item.photoId ? [item.photoId] : []),
+          photo: photo ? {
+            id: photo.id,
+            albumId: photo.albumId,
+            fileName: photo.filename ?? photo.fileName,
+            width: photo.width || null,
+            height: photo.height || null,
+            thumbnailUrl: `/api/photos/${photo.id}/asset?variant=thumbnail`,
+            url: `/api/photos/${photo.id}/asset?variant=full`,
+          } : {
+            id: item.photoId,
+            albumId: 0,
+            fileName: `Photo #${item.photoId}`,
+            thumbnailUrl: `https://picsum.photos/seed/photo${item.photoId}/300/300`,
+            url: `https://picsum.photos/seed/photo${item.photoId}/1200/900`,
+          },
+        });
       }
 
+      // If all items are digital, recalculate all amounts using robust digital detection
+      let shippingCostOut = order.shippingCost;
+      let subtotalOut = order.subtotal;
+      let totalAmountOut = order.totalAmount;
+      let taxAmountOut = order.taxAmount;
+      if (itemsWithPhotos.length > 0 && itemsWithPhotos.every((item) => isDigitalDownloadItem(item))) {
+        shippingCostOut = 0;
+        subtotalOut = itemsWithPhotos.reduce((sum, item) => sum + ((Number(item.price) || 0) * (Number(item.quantity) || 0)), 0);
+        taxAmountOut = Number(order.taxAmount) || 0;
+        totalAmountOut = +(subtotalOut + shippingCostOut + taxAmountOut).toFixed(2);
+      }
       parsedOrders.push({
         ...order,
         status: order.status || 'Pending',
@@ -3303,11 +3349,16 @@ router.get('/', async (req, res) => {
         batchLabVendor: order.batchLabVendor,
         labSubmittedAt: order.labSubmittedAt,
         items: itemsWithPhotos,
+        shippingCost: shippingCostOut,
+        subtotal: subtotalOut,
+        totalAmount: totalAmountOut,
+        taxAmount: taxAmountOut,
       });
     }
     res.json(parsedOrders);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('[GET /api/orders] Error:', error);
+    res.status(500).json({ error: error.message, stack: error.stack });
   }
 });
 
@@ -3425,10 +3476,10 @@ router.get('/details/:orderId', async (req, res) => {
         productName = size?.productName || null;
         item.productId = size?.productId || item.productId;
       } else if (item.productId) {
-        const product = await queryRow(
-          `SELECT price, name FROM products WHERE id = $1`,
-          [item.productId]
-        );
+          const product = await queryRow(
+            `SELECT p.price, p.name FROM products p WHERE p.id = $1`,
+            [item.productId]
+          );
         unitCost = Number(product?.price) || 0;
         productName = product?.name || null;
       }
@@ -3518,6 +3569,26 @@ router.get('/details/:orderId', async (req, res) => {
 
     // Add digital item flags for admin UI
     const digitalItems = itemsWithPhotos.filter((item) => isDigitalDownloadItem(item));
+    // If all items are digital, recalculate all amounts
+    let shippingCostOut = order.shippingCost;
+    let subtotalOut = order.subtotal;
+    let totalAmountOut = order.totalAmount;
+    let taxAmountOut = order.taxAmount;
+    if (itemsWithPhotos.length > 0 && itemsWithPhotos.every((item) => {
+      const options = (() => {
+        try {
+          return typeof item.productOptions === 'string' ? JSON.parse(item.productOptions) : (item.productOptions || {});
+        } catch { return {}; }
+      })();
+      const category = String(item.productCategory || '').toLowerCase();
+      const name = String(item.productName || '').toLowerCase();
+      return options?.isDigital === true || options?.is_digital_only === true || options?.digitalOnly === true || category.includes('digital') || name.includes('digital');
+    })) {
+      shippingCostOut = 0;
+      subtotalOut = itemsWithPhotos.reduce((sum, item) => sum + ((Number(item.price) || 0) * (Number(item.quantity) || 0)), 0);
+      taxAmountOut = Number(order.taxAmount) || 0;
+      totalAmountOut = +(subtotalOut + shippingCostOut + taxAmountOut).toFixed(2);
+    }
     return res.json({
       ...order,
       status: order.status || 'Pending',
@@ -3532,6 +3603,10 @@ router.get('/details/:orderId', async (req, res) => {
       items: itemsWithPhotos,
       hasDigitalItems: digitalItems.length > 0,
       digitalItemCount: digitalItems.length,
+      shippingCost: shippingCostOut,
+      subtotal: subtotalOut,
+      totalAmount: totalAmountOut,
+      taxAmount: taxAmountOut,
     });
   } catch (error) {
     return res.status(500).json({ error: error.message });
@@ -3605,30 +3680,30 @@ router.get('/admin/all-orders', adminRequired, async (req, res) => {
 
       if (includeItems) {
         const items = await queryRows(
-          `SELECT oi.id,
-                  oi.photo_id as photoId,
-                  oi.photo_ids as photoIds,
-                  oi.product_id as productId,
-                  oi.product_size_id as productSizeId,
-                  oi.quantity,
-                  oi.price,
-                  oi.crop_data as cropData,
-            oi.digital_download_scope as digitalDownloadScope,
-            oi.studio_revenue_amount as studioRevenueAmount,
-            oi.base_revenue_amount as baseRevenueAmount,
-            oi.production_cost_amount as productionCostAmount,
-            oi.studio_payout_amount as studioPayoutAmount,
-            oi.super_admin_share_amount as superAdminShareAmount,
-            oi.stripe_fee_allocated_amount as stripeFeeAllocatedAmount,
-            oi.studio_net_payout_amount as studioNetPayoutAmount,
-                  p.name as productName,
-            ps.size_name as productSizeName,
-            COALESCE(ps.price, p.price, 0) as basePrice,
-          COALESCE(ps.cost, p.cost, 0) as labCost
-           FROM order_items oi
-           LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id
-           LEFT JOIN products p ON p.id = COALESCE(oi.product_id, ps.product_id)
-           WHERE oi.order_id = $1`,
+              `SELECT oi.id as id,
+              oi.photo_id as photoId,
+              oi.photo_ids as photoIds,
+              oi.product_id as productId,
+              oi.product_size_id as productSizeId,
+              oi.quantity,
+              oi.price as price,
+              oi.crop_data as cropData,
+              oi.digital_download_scope as digitalDownloadScope,
+              oi.studio_revenue_amount as studioRevenueAmount,
+              oi.base_revenue_amount as baseRevenueAmount,
+              oi.production_cost_amount as productionCostAmount,
+              oi.studio_payout_amount as studioPayoutAmount,
+              oi.super_admin_share_amount as superAdminShareAmount,
+              oi.stripe_fee_allocated_amount as stripeFeeAllocatedAmount,
+              oi.studio_net_payout_amount as studioNetPayoutAmount,
+              p.name as productName,
+              ps.size_name as productSizeName,
+              COALESCE(ps.price, p.price, 0) as basePrice,
+              COALESCE(ps.cost, p.cost, 0) as labCost
+               FROM order_items oi
+               LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id
+               LEFT JOIN products p ON p.id = COALESCE(oi.product_id, ps.product_id)
+               WHERE oi.order_id = $1`,
           [order.id]
         );
 
@@ -3681,6 +3756,26 @@ router.get('/admin/all-orders', adminRequired, async (req, res) => {
         }
       }
 
+      // If all items are digital, recalculate all amounts
+      let shippingCostOut = order.shippingCost;
+      let subtotalOut = order.subtotal;
+      let totalAmountOut = order.totalAmount;
+      let taxAmountOut = order.taxAmount;
+      if (itemsWithPhotos.length > 0 && itemsWithPhotos.every((item) => {
+        const options = (() => {
+          try {
+            return typeof item.productOptions === 'string' ? JSON.parse(item.productOptions) : (item.productOptions || {});
+          } catch { return {}; }
+        })();
+        const category = String(item.productCategory || '').toLowerCase();
+        const name = String(item.productName || '').toLowerCase();
+        return options?.isDigital === true || options?.is_digital_only === true || options?.digitalOnly === true || category.includes('digital') || name.includes('digital');
+      })) {
+        shippingCostOut = 0;
+        subtotalOut = itemsWithPhotos.reduce((sum, item) => sum + ((Number(item.price) || 0) * (Number(item.quantity) || 0)), 0);
+        taxAmountOut = Number(order.taxAmount) || 0;
+        totalAmountOut = +(subtotalOut + shippingCostOut + taxAmountOut).toFixed(2);
+      }
       parsedOrders.push({
         ...order,
         status: order.status || 'Pending',
@@ -3705,6 +3800,10 @@ router.get('/admin/all-orders', adminRequired, async (req, res) => {
         trackingUrl: canViewWhccFields ? order.trackingUrl : undefined,
         shippedAt: canViewWhccFields ? order.shippedAt : undefined,
         items: itemsWithPhotos,
+        shippingCost: shippingCostOut,
+        subtotal: subtotalOut,
+        totalAmount: totalAmountOut,
+        taxAmount: taxAmountOut,
         excludedItemsNote: includeItems && excludedCount > 0 ? `${excludedCount} product(s) with amount were excluded from profit calculations because they are not linked to a valid product.` : undefined,
       });
     }
@@ -3791,7 +3890,7 @@ router.get('/admin/order-details/:orderId', adminRequired, async (req, res) => {
               oi.digital_download_scope as digitalDownloadScope,
               oi.source_album_id as sourceAlbumId,
               oi.quantity,
-              oi.price,
+              oi.price as price,
               oi.crop_data as cropData,
               oi.product_options_snapshot as productOptionsSnapshot,
               p.name as productName,
@@ -3862,6 +3961,18 @@ router.get('/admin/order-details/:orderId', adminRequired, async (req, res) => {
 
     const digitalItems = itemsWithPhotos.filter((item) => item.isDigital || Boolean(item.digitalDownloadScope));
 
+    // If all items are digital, recalculate all amounts
+    let shippingCostOut = order.shippingCost;
+    let subtotalOut = order.subtotal;
+    let totalAmountOut = order.totalAmount;
+    let taxAmountOut = order.taxAmount;
+    if (itemsWithPhotos.length > 0 && itemsWithPhotos.every((item) => item.isDigital)) {
+      shippingCostOut = 0;
+      subtotalOut = itemsWithPhotos.reduce((sum, item) => sum + ((Number(item.price) || 0) * (Number(item.quantity) || 0)), 0);
+      taxAmountOut = Number(order.taxAmount) || 0;
+      totalAmountOut = +(subtotalOut + shippingCostOut + taxAmountOut).toFixed(2);
+    }
+
     res.json({
       ...order,
       status: order.status || 'Pending',
@@ -3888,6 +3999,10 @@ router.get('/admin/order-details/:orderId', adminRequired, async (req, res) => {
       hasDigitalItems: digitalItems.length > 0,
       digitalItemCount: digitalItems.length,
       items: itemsWithPhotos,
+      shippingCost: shippingCostOut,
+      subtotal: subtotalOut,
+      totalAmount: totalAmountOut,
+      taxAmount: taxAmountOut,
       // excludedItemsNote removed to fix ReferenceError
     });
   } catch (error) {
@@ -4008,7 +4123,7 @@ router.patch('/admin/:orderId/status', adminRequired, async (req, res) => {
       try {
         // Fetch order items for email
         const items = await queryRows(
-          `SELECT oi.id, oi.photo_id as photoId, oi.product_id as productId, oi.product_size_id as productSizeId, oi.quantity, oi.price, oi.crop_data as cropData, p.name as productName, ps.size_name as productSizeName, a.studio_id as studioId
+          `SELECT oi.id, oi.photo_id as photoId, oi.product_id as productId, oi.product_size_id as productSizeId, oi.quantity, oi.price as price, oi.crop_data as cropData, p.name as productName, ps.size_name as productSizeName, a.studio_id as studioId
            FROM order_items oi
            LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id
            LEFT JOIN products p ON p.id = COALESCE(oi.product_id, ps.product_id)

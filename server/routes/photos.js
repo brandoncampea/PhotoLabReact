@@ -1,7 +1,100 @@
+
 console.log('[PHOTOS.JS] photos.js loaded');
 import express from 'express';
 import multer from 'multer';
 const router = express.Router();
+
+// Train face signature for a player on a photo (used by face tagging UI)
+router.post('/:id/train-face', async (req, res) => {
+  try {
+    await ensurePlayerRecognitionSchema();
+    await ensurePhotoUploadColumns();
+    const photoId = Number(req.params.id);
+    const { playerName, playerNumber } = req.body;
+    if (!photoId || !playerName) {
+      console.error('[TRAIN-FACE] Missing photoId or playerName', { photoId, playerName });
+      return res.status(400).json({ error: 'Missing photoId or playerName', photoId, playerName });
+    }
+    // Fetch photo and album/studio
+    const photo = await queryRow(
+      `SELECT id, album_id as albumId, full_image_url as fullImageUrl FROM photos WHERE id = $1`,
+      [photoId]
+    );
+    if (!photo) {
+      console.error('[TRAIN-FACE] Photo not found', { photoId });
+      return res.status(404).json({ error: 'Photo not found', photoId });
+    }
+    const album = await queryRow('SELECT studio_id FROM albums WHERE id = $1', [photo.albumId]);
+    if (!album || !album.studio_id) {
+      console.error('[TRAIN-FACE] Studio not found for album', { albumId: photo.albumId });
+      return res.status(404).json({ error: 'Studio not found for album', albumId: photo.albumId });
+    }
+    const studioId = album.studio_id;
+    // Download image buffer
+    const imageBuffer = await downloadImageBufferFromSource(photo.fullImageUrl);
+    if (!imageBuffer) {
+      console.error('[TRAIN-FACE] Failed to download image for signature', { fullImageUrl: photo.fullImageUrl });
+      return res.status(500).json({ error: 'Failed to download image for signature', fullImageUrl: photo.fullImageUrl });
+    }
+    // Compute face signature(s)
+    const signatures = await computeImageCandidateSignatures(imageBuffer);
+    let saved = 0;
+    for (const signatureHash of signatures) {
+      await saveFaceSignature({
+        studioId,
+        playerName,
+        playerNumber: playerNumber || null,
+        signatureHash,
+        sourcePhotoId: photoId,
+      });
+      saved += 1;
+    }
+
+    // --- PATCH: Update photo metadata with new face tag ---
+    // Fetch current metadata
+    const photoMetaRow = await queryRow(
+      `SELECT metadata FROM photos WHERE id = $1`,
+      [photoId]
+    );
+    let metadataObj = {};
+    try {
+      metadataObj = photoMetaRow && photoMetaRow.metadata ? JSON.parse(photoMetaRow.metadata) : {};
+    } catch {
+      metadataObj = {};
+    }
+    // Ensure faceTags is an array
+    if (!Array.isArray(metadataObj.faceTags)) metadataObj.faceTags = [];
+    // Add or update the face tag for this player
+    let updated = false;
+    for (let tag of metadataObj.faceTags) {
+      if (
+        tag.playerName === playerName &&
+        (playerNumber ? tag.playerNumber === playerNumber : true)
+      ) {
+        // Already exists, skip
+        updated = true;
+        break;
+      }
+    }
+    if (!updated) {
+      // Add a minimal faceTag (UI may update with box later)
+      metadataObj.faceTags.push({
+        playerName,
+        playerNumber: playerNumber || null
+      });
+    }
+    await query(
+      `UPDATE photos SET metadata = $1 WHERE id = $2`,
+      [JSON.stringify(metadataObj), photoId]
+    );
+
+    res.json({ success: true, saved });
+  } catch (error) {
+    console.error('[TRAIN-FACE] Error:', error && error.stack ? error.stack : error);
+    res.status(500).json({ error: error.message, stack: error.stack });
+  }
+});
+
 
 
 // Clear all player tags and face signatures for all photos in an album
@@ -54,11 +147,11 @@ router.post('/batch-update-players', async (req, res) => {
     }
     let updatedCount = 0;
     for (const { id, playerNames } of updates) {
-      if (!id || !playerNames) {
+      if (!id || typeof playerNames !== 'string') {
         console.log(`[BATCH UPDATE] Skipping update: id=${id}, playerNames=${playerNames}`);
         continue;
       }
-      // Update photo player_names
+      // Update photo player_names (allow empty or whitespace strings)
       await query(
         `UPDATE photos SET player_names = $1 WHERE id = $2`,
         [Array.isArray(playerNames) ? playerNames.join(',') : playerNames, id]
@@ -1162,24 +1255,32 @@ const downloadImageBufferFromSource = async (source) => {
   if (!source) return null;
 
   try {
+    // Always treat non-HTTP(S) sources as blob paths
     if (String(source).startsWith('http')) {
       const upstream = await fetch(source);
       if (!upstream.ok) return null;
       return Buffer.from(await upstream.arrayBuffer());
     }
 
+    // For blob paths (e.g. albums/68/KAIDEN_POTTER_10.jpg), always use downloadBlob
     const blob = await downloadBlob(source);
-    if (!blob?.readableStreamBody) return null;
-
-    const chunks = [];
-    await new Promise((resolve, reject) => {
-      blob.readableStreamBody.on('data', (chunk) => chunks.push(chunk));
-      blob.readableStreamBody.on('end', resolve);
-      blob.readableStreamBody.on('error', reject);
-    });
-
-    return Buffer.concat(chunks);
-  } catch {
+    if (blob?.buffer) {
+      // If downloadBlob returns a buffer directly (local mode)
+      return blob.buffer;
+    }
+    if (blob?.readableStreamBody) {
+      // Azure SDK returns a readable stream
+      const chunks = [];
+      await new Promise((resolve, reject) => {
+        blob.readableStreamBody.on('data', (chunk) => chunks.push(chunk));
+        blob.readableStreamBody.on('end', resolve);
+        blob.readableStreamBody.on('error', reject);
+      });
+      return Buffer.concat(chunks);
+    }
+    return null;
+  } catch (err) {
+    console.error('[downloadImageBufferFromSource] Failed to download', source, err);
     return null;
   }
 };

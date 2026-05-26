@@ -88,7 +88,7 @@ router.get('/', adminRequired, async (req, res) => {
       LEFT JOIN price_list_products plp ON pl.id = plp.price_list_id
       ${whereClause}
       GROUP BY pl.id, pl.name, pl.description, pl.is_default, pl.created_at, pl.studio_id
-      ORDER BY name ASC
+      ORDER BY pl.name ASC
     `, params);
     res.json(priceLists);
   } catch (error) {
@@ -105,9 +105,9 @@ router.get('/:id', adminRequired, async (req, res) => {
     const effectiveCostSelect = isStudioPricingView ? 'ps.price' : 'ps.cost';
 
     const priceList = await queryRow(`
-      SELECT id, name, description, is_default as isDefault, created_at as createdDate, studio_id as studioId
-      FROM price_lists
-      WHERE id = $1
+      SELECT pl.id, pl.name, pl.description, pl.is_default as isDefault, pl.created_at as createdDate, pl.studio_id as studioId
+      FROM price_lists pl
+      WHERE pl.id = $1
     `, [req.params.id]);
 
     if (!priceList) {
@@ -192,15 +192,15 @@ router.get('/:id', adminRequired, async (req, res) => {
 
     // Get packages for this price list
     const packages = await queryRows(`
-      SELECT id, name, description, package_price as packagePrice, is_active as isActive, created_at as createdDate
-      FROM packages
-      WHERE price_list_id = $1
+      SELECT p.id, p.name, p.description, p.package_price as packagePrice, p.is_active as isActive, p.created_at as createdDate
+      FROM packages p
+      WHERE p.price_list_id = $1
     `, [req.params.id]);
 
     // Get package items
     const packageItems = await queryRows(`
-      SELECT id, package_id as packageId, product_id as productId, product_size_id as productSizeId, quantity
-      FROM package_items
+      SELECT pi.id, pi.package_id as packageId, pi.product_id as productId, pi.product_size_id as productSizeId, pi.quantity
+      FROM package_items pi
     `);
 
     priceList.products = productsWithSizes;
@@ -325,8 +325,8 @@ router.put('/:id/studio-products/:productId/sizes/:sizeId/price', adminRequired,
     }
 
     const size = await queryRow(
-      `SELECT id, price FROM product_sizes
-       WHERE id = $1 AND price_list_id = $2 AND product_id = $3`,
+      `SELECT ps.id, ps.price FROM product_sizes ps
+       WHERE ps.id = $1 AND ps.price_list_id = $2 AND ps.product_id = $3`,
       [sizeId, priceListId, productId]
     );
 
@@ -336,8 +336,8 @@ router.put('/:id/studio-products/:productId/sizes/:sizeId/price', adminRequired,
 
     // Get existing override (if any) to preserve fields not being updated
     const existing = await queryRow(
-      `SELECT price, is_offered FROM studio_price_list_size_overrides
-       WHERE studio_id = $1 AND price_list_id = $2 AND product_size_id = $3`,
+      `SELECT spsso.price, spsso.is_offered FROM studio_price_list_size_overrides spsso
+       WHERE spsso.studio_id = $1 AND spsso.price_list_id = $2 AND spsso.product_size_id = $3`,
       [studioId, priceListId, sizeId]
     );
 
@@ -520,7 +520,7 @@ router.post('/:id/products', adminRequired, async (req, res) => {
         );
       }
       // Return the product info
-      const product = await queryRow('SELECT id, name, description, category, price, cost, options FROM products WHERE id = $1', [productId]);
+      const product = await queryRow('SELECT p.id, p.name, p.description, p.category, p.price, p.cost, p.options FROM products p WHERE p.id = $1', [productId]);
       if (!product) return res.status(404).json({ error: 'Product not found' });
       const productOptions = parseProductOptions(product.options);
       return res.status(201).json({
@@ -571,7 +571,7 @@ router.post('/:id/products', adminRequired, async (req, res) => {
       [priceListId, result.id]
     );
 
-    const product = await queryRow('SELECT id, name, description, category, price, cost, options FROM products WHERE id = $1', [result.id]);
+    const product = await queryRow('SELECT p.id, p.name, p.description, p.category, p.price, p.cost, p.options FROM products p WHERE p.id = $1', [result.id]);
     const productOptions = parseProductOptions(product.options);
     res.status(201).json({
       id: product.id,
@@ -594,7 +594,7 @@ router.post('/:id/products', adminRequired, async (req, res) => {
 router.put('/:id/products/:productId', superAdminRequired, async (req, res) => {
   try {
     const { name, description, isDigital, category, basePrice, cost, isActive, popularity } = req.body;
-    const existing = await queryRow('SELECT id, options FROM products WHERE id = $1', [req.params.productId]);
+    const existing = await queryRow('SELECT p.id, p.options FROM products p WHERE p.id = $1', [req.params.productId]);
     if (!existing) {
       return res.status(404).json({ error: 'Product not found' });
     }

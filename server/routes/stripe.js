@@ -136,7 +136,18 @@ router.post('/create-payment-intent', authRequired, async (req, res) => {
 
     // Calculate total amount from items
     const itemsTotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-    const shipping = shippingCost || 0;
+    // If all items are digital, force shipping to 0
+    const allDigital = Array.isArray(items) && items.length > 0 && items.every((item) => {
+      const options = (() => {
+        try {
+          return typeof item.productOptions === 'string' ? JSON.parse(item.productOptions) : (item.productOptions || {});
+        } catch { return {}; }
+      })();
+      const category = String(item.productCategory || '').toLowerCase();
+      const name = String(item.productName || '').toLowerCase();
+      return options?.isDigital === true || options?.is_digital_only === true || options?.digitalOnly === true || category.includes('digital') || name.includes('digital');
+    });
+    const shipping = allDigital ? 0 : (shippingCost || 0);
     const discount = discountAmount || 0;
     const tax = taxAmount || 0;
     const fee = feeAmount || 0;

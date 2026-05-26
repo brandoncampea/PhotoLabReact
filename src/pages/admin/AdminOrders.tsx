@@ -608,7 +608,7 @@ const AdminOrders: React.FC = () => {
     if (!trackedOrderIds.length) return;
 
     try {
-      const latestOrdersResponse = await orderService.getAdminOrders({ includeItems: false, pageSize: 500 });
+      const latestOrdersResponse = await orderService.getAdminOrders({ includeItems: true, pageSize: 500 });
       const latestOrders = latestOrdersResponse.orders;
       const trackedSet = new Set(trackedOrderIds);
       const trackedOrders = latestOrders.filter((order) => trackedSet.has(order.id));
@@ -681,7 +681,7 @@ const AdminOrders: React.FC = () => {
     setLoading(true);
     try {
       const [ordersData, queueData, config] = await Promise.all([
-        orderService.getAdminOrders({ includeItems: false, pageSize: 200 }),
+        orderService.getAdminOrders({ includeItems: true, pageSize: 200 }),
         orderService.getBatchQueue(),
         shippingService.getConfig(),
       ]);
@@ -956,7 +956,7 @@ const AdminOrders: React.FC = () => {
     setSelectedOrderId(null);
   }, [location.search]);
 
-  const updateSelectedOrder = (orderId: number | null) => {
+  const updateSelectedOrder = async (orderId: number | null) => {
     const params = new URLSearchParams(location.search);
     if (orderId) {
       params.set('orderId', String(orderId));
@@ -964,6 +964,8 @@ const AdminOrders: React.FC = () => {
     } else {
       params.delete('orderId');
       setSelectedOrderId(null);
+      // Always reload orders list after closing details to ensure correct totals
+      await loadData();
     }
     navigate({ pathname: location.pathname, search: params.toString() ? `?${params.toString()}` : '' }, { replace: true });
   };
@@ -1002,12 +1004,12 @@ const AdminOrders: React.FC = () => {
 
   const handleRowSelect = async (orderId: number) => {
     if (selectedOrderId === orderId) {
-      updateSelectedOrder(null);
+      await updateSelectedOrder(null);
       return;
     }
     // Always reload orders before selecting
     await loadData();
-    updateSelectedOrder(orderId);
+    await updateSelectedOrder(orderId);
     await ensureOrderDetailsLoaded(orderId);
   };
 
@@ -1229,25 +1231,34 @@ const AdminOrders: React.FC = () => {
         </div>
         <div className="admin-order-detail-box">
           <strong>Shipping</strong>
-          <span>{order.shippingOption || 'direct'}</span>
-          {order.shippingCarrier ? (
-            <span><strong>Carrier:</strong> {order.shippingCarrier}</span>
-          ) : (
-            <span className="whcc-meta">Carrier pending</span>
-          )}
-          {order.trackingNumber ? (
-            <span><strong>Tracking:</strong> {order.trackingNumber}</span>
-          ) : (
-            <span className="whcc-meta">Tracking pending</span>
-          )}
-          {order.shippedAt ? (
-            <span><strong>Shipped:</strong> {new Date(order.shippedAt).toLocaleString()}</span>
-          ) : null}
-          {order.trackingUrl ? (
-            <a className="whcc-link" href={order.trackingUrl} target="_blank" rel="noopener noreferrer">
-              Track package ↗
-            </a>
-          ) : null}
+          <span>{
+            (order.items && order.items.length > 0 && order.items.every(item => item.isDigital || String(item.digitalDownloadScope || '').trim().length > 0))
+              ? 'digital'
+              : (order.shippingOption || 'direct')
+          }</span>
+          {order.items && order.items.length > 0 && order.items.every(item => item.isDigital || String(item.digitalDownloadScope || '').trim().length > 0)
+            ? null
+            : <>
+                {order.shippingCarrier ? (
+                  <span><strong>Carrier:</strong> {order.shippingCarrier}</span>
+                ) : (
+                  <span className="whcc-meta">Carrier pending</span>
+                )}
+                {order.trackingNumber ? (
+                  <span><strong>Tracking:</strong> {order.trackingNumber}</span>
+                ) : (
+                  <span className="whcc-meta">Tracking pending</span>
+                )}
+                {order.shippedAt ? (
+                  <span><strong>Shipped:</strong> {new Date(order.shippedAt).toLocaleString()}</span>
+                ) : null}
+                {order.trackingUrl ? (
+                  <a className="whcc-link" href={order.trackingUrl} target="_blank" rel="noopener noreferrer">
+                    Track package ↗
+                  </a>
+                ) : null}
+              </>
+          }
         </div>
       </div>
 

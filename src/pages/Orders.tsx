@@ -10,7 +10,8 @@ function OrderItemWithSas({ item }: { item: any }) {
   const photoW = item.photo?.width;
   const photoH = item.photo?.height;
   let cropStyle: React.CSSProperties | null = null;
-  if (cropData && photoW && photoH) {
+  const isDigital = item.isDigital === true || String(item.digitalDownloadScope || '').trim().length > 0;
+  if (!isDigital && cropData && photoW && photoH) {
     cropStyle = {
       left:   `${(cropData.x / photoW) * 100}%`,
       top:    `${(cropData.y / photoH) * 100}%`,
@@ -34,8 +35,8 @@ function OrderItemWithSas({ item }: { item: any }) {
         ) : (
           <div className="item-image-placeholder">No Image</div>
         )}
-        {cropStyle && <div className="crop-box-overlay" style={cropStyle} />}
-        {cropData && <div className="crop-indicator">Cropped</div>}
+        {!isDigital && cropStyle && <div className="crop-box-overlay" style={cropStyle} />}
+        {!isDigital && cropData && <div className="crop-indicator">Cropped</div>}
       </div>
       <div className="item-details">
         <h4 className="item-product-name" title={item.productName}>

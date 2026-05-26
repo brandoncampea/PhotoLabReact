@@ -165,6 +165,34 @@ const renderCustomerReceiptHtml = ({ customerName, order, items, digitalDownload
       </div>`
     : '';
 
+  // If all items are digital, recalculate all amounts from items only
+  const allDigital = Array.isArray(items) && items.length > 0 && items.every((item) => {
+    const options = (() => {
+      try {
+        return typeof item.productOptions === 'string' ? JSON.parse(item.productOptions) : (item.productOptions || {});
+      } catch { return {}; }
+    })();
+    const category = String(item.productCategory || '').toLowerCase();
+    const name = String(item.productName || '').toLowerCase();
+    return options?.isDigital === true || options?.is_digital_only === true || options?.digitalOnly === true || category.includes('digital') || name.includes('digital');
+  });
+
+  let computedSubtotal = 0;
+  let computedShipping = 0;
+  let computedTax = 0;
+  let computedTotal = 0;
+  if (allDigital) {
+    computedSubtotal = items.reduce((sum, item) => sum + (Number(item.unitPrice ?? item.price ?? 0) * Number(item.quantity || 0)), 0);
+    computedShipping = 0;
+    computedTax = Number(order.taxAmount ?? order.tax_amount ?? 0);
+    computedTotal = +(computedSubtotal + computedShipping + computedTax).toFixed(2);
+  } else {
+    computedSubtotal = Number(order.subtotal ?? order.sub_total ?? 0);
+    computedShipping = Number(order.shippingCost ?? order.shipping_cost ?? 0);
+    computedTax = Number(order.taxAmount ?? order.tax_amount ?? 0);
+    computedTotal = Number(order.totalAmount ?? order.total ?? 0);
+  }
+
   return `
     <div style="font-family:Arial,sans-serif;background:#0f131a;color:#eaf1fb;max-width:760px;margin:0 auto;padding:20px;border:1px solid #2e3642;border-radius:12px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
@@ -205,12 +233,12 @@ const renderCustomerReceiptHtml = ({ customerName, order, items, digitalDownload
 
       <div style="margin-top:18px;display:flex;justify-content:flex-end;">
         <table style="width:300px;border-collapse:collapse;color:#d3dceb;">
-          <tr><td style="padding:4px 0;">Item(s) Subtotal:</td><td style="padding:4px 0;text-align:right;">${currency(order.subtotal ?? order.sub_total ?? 0)}</td></tr>
-          <tr><td style="padding:4px 0;">Shipping:</td><td style="padding:4px 0;text-align:right;">${currency(order.shippingCost ?? order.shipping_cost ?? 0)}</td></tr>
-          <tr><td style="padding:4px 0;">Sales Tax:</td><td style="padding:4px 0;text-align:right;">${currency(order.taxAmount ?? order.tax_amount ?? 0)}</td></tr>
+          <tr><td style="padding:4px 0;">Item(s) Subtotal:</td><td style="padding:4px 0;text-align:right;">${currency(computedSubtotal)}</td></tr>
+          <tr><td style="padding:4px 0;">Shipping:</td><td style="padding:4px 0;text-align:right;">${currency(computedShipping)}</td></tr>
+          <tr><td style="padding:4px 0;">Sales Tax:</td><td style="padding:4px 0;text-align:right;">${currency(computedTax)}</td></tr>
           ${discountCodeRow}
           ${discountAmountRow}
-          <tr><td style="padding:8px 0 0 0;font-weight:700;color:#fff;">Grand Total:</td><td style="padding:8px 0 0 0;text-align:right;font-weight:700;color:#fff;">${currency(order.totalAmount ?? order.total ?? 0)}</td></tr>
+          <tr><td style="padding:8px 0 0 0;font-weight:700;color:#fff;">Grand Total:</td><td style="padding:8px 0 0 0;text-align:right;font-weight:700;color:#fff;">${currency(computedTotal)}</td></tr>
         </table>
       </div>
 
@@ -220,6 +248,33 @@ const renderCustomerReceiptHtml = ({ customerName, order, items, digitalDownload
 };
 
 const renderStudioSaleHtml = ({ order, items, customerEmail, studioName }) => {
+  // If all items are digital, recalculate all amounts from items only
+  const allDigital = Array.isArray(items) && items.length > 0 && items.every((item) => {
+    const options = (() => {
+      try {
+        return typeof item.productOptions === 'string' ? JSON.parse(item.productOptions) : (item.productOptions || {});
+      } catch { return {}; }
+    })();
+    const category = String(item.productCategory || '').toLowerCase();
+    const name = String(item.productName || '').toLowerCase();
+    return options?.isDigital === true || options?.is_digital_only === true || options?.digitalOnly === true || category.includes('digital') || name.includes('digital');
+  });
+  let computedSubtotal = 0;
+  let computedShipping = 0;
+  let computedTax = 0;
+  let computedTotal = 0;
+  if (allDigital) {
+    computedSubtotal = items.reduce((sum, item) => sum + (Number(item.unitPrice ?? item.price ?? 0) * Number(item.quantity || 0)), 0);
+    computedShipping = 0;
+    computedTax = Number(order.taxAmount ?? order.tax_amount ?? 0);
+    computedTotal = +(computedSubtotal + computedShipping + computedTax).toFixed(2);
+  } else {
+    computedSubtotal = Number(order.subtotal ?? order.sub_total ?? 0);
+    computedShipping = Number(order.shippingCost ?? order.shipping_cost ?? 0);
+    computedTax = Number(order.taxAmount ?? order.tax_amount ?? 0);
+    computedTotal = Number(order.totalAmount ?? order.total ?? 0);
+  }
+
   const discount = resolveDiscountDetails(order);
   const discountCodeRow = discount.code
     ? `<tr><td style="padding:4px 0;">Discount code:</td><td style="padding:4px 0;text-align:right;">${esc(discount.code)}</td></tr>`
@@ -280,11 +335,11 @@ const renderStudioSaleHtml = ({ order, items, customerEmail, studioName }) => {
 
       <div style="margin-top:16px;display:flex;justify-content:flex-end;">
         <table style="width:300px;border-collapse:collapse;color:#d3dceb;">
-          <tr><td style="padding:4px 0;">Order Subtotal:</td><td style="padding:4px 0;text-align:right;">${currency(order.subtotal)}</td></tr>
-          <tr><td style="padding:4px 0;">Taxes:</td><td style="padding:4px 0;text-align:right;">${currency(order.taxAmount)}</td></tr>
+          <tr><td style="padding:4px 0;">Order Subtotal:</td><td style="padding:4px 0;text-align:right;">${currency(computedSubtotal)}</td></tr>
+          <tr><td style="padding:4px 0;">Taxes:</td><td style="padding:4px 0;text-align:right;">${currency(computedTax)}</td></tr>
           ${discountCodeRow}
           ${discountAmountRow}
-          <tr><td style="padding:8px 0 0 0;font-weight:700;color:#fff;">Total:</td><td style="padding:8px 0 0 0;text-align:right;font-weight:700;color:#fff;">${currency(order.totalAmount)}</td></tr>
+          <tr><td style="padding:8px 0 0 0;font-weight:700;color:#fff;">Total:</td><td style="padding:8px 0 0 0;text-align:right;font-weight:700;color:#fff;">${currency(computedTotal)}</td></tr>
         </table>
       </div>
     </div>
@@ -342,12 +397,60 @@ const summaryBlock = (order, { includeInternal = false, studioName } = {}) => {
     : '';
   const studioRow = studioName ? `<p style="margin:0 0 12px 0;color:#666;">Studio: ${esc(studioName)}</p>` : '';
 
+  // If all items are digital, recalculate all amounts from items only
+  let computedSubtotal = 0;
+  let computedShipping = 0;
+  let computedTax = 0;
+  let computedTotal = 0;
+  let computedStripeFee = 0;
+  let computedStudioRevenue = 0;
+  let computedGrossStudioMarkup = 0;
+  let computedStudioProfit = 0;
+  let computedSuperAdminProfit = 0;
+  if (order.items && order.items.length > 0 && order.items.every((item) => {
+    const options = (() => {
+      try {
+        return typeof item.productOptions === 'string' ? JSON.parse(item.productOptions) : (item.productOptions || {});
+      } catch { return {}; }
+    })();
+    const category = String(item.productCategory || '').toLowerCase();
+    const name = String(item.productName || '').toLowerCase();
+    return options?.isDigital === true || options?.is_digital_only === true || options?.digitalOnly === true || category.includes('digital') || name.includes('digital');
+  })) {
+    computedSubtotal = order.items.reduce((sum, item) => sum + (Number(item.unitPrice ?? item.price ?? 0) * Number(item.quantity || 0)), 0);
+    computedShipping = 0;
+    computedTax = Number(order.taxAmount ?? order.tax_amount ?? 0);
+    computedTotal = +(computedSubtotal + computedShipping + computedTax).toFixed(2);
+    // Internal accounting for digital-only
+    computedStripeFee = Number(order.stripeFeeAmount ?? 0);
+    computedStudioRevenue = computedSubtotal;
+    // For digital, markup = subtotal - total cost (should be 0 cost for digital, but if cost exists, subtract it)
+    const totalCost = order.items.reduce((sum, item) => sum + (Number(item.productionCostAmount ?? 0) * Number(item.quantity || 0)), 0);
+    computedGrossStudioMarkup = +(computedSubtotal - totalCost).toFixed(2);
+    computedStudioProfit = +(computedGrossStudioMarkup - computedStripeFee).toFixed(2);
+    computedSuperAdminProfit = 0;
+  } else {
+    computedSubtotal = Number(order.subtotal ?? order.sub_total ?? 0);
+    computedShipping = Number(order.shippingCost ?? order.shipping_cost ?? 0);
+    computedTax = Number(order.taxAmount ?? order.tax_amount ?? 0);
+    computedTotal = Number(order.totalAmount ?? order.total ?? 0);
+    computedStripeFee = Number(order.stripeFeeAmount ?? 0);
+    computedStudioRevenue = Number(order.studioRevenue ?? 0);
+    computedGrossStudioMarkup = Number(order.grossStudioMarkup ?? 0);
+    computedStudioProfit = Number(order.studioProfitNet ?? 0);
+    computedSuperAdminProfit = Number(order.superAdminProfit ?? 0);
+  }
   return `${studioRow}
     <table style="width:100%;max-width:420px;border-collapse:collapse;margin-top:16px;">
-      <tr><td style="padding:4px 0;">Subtotal</td><td style="padding:4px 0;text-align:right;">${currency(order.subtotal)}</td></tr>
-      <tr><td style="padding:4px 0;">Shipping</td><td style="padding:4px 0;text-align:right;">${currency(order.shippingCost)}</td></tr>
-      <tr><td style="padding:4px 0;">Tax</td><td style="padding:4px 0;text-align:right;">${currency(order.taxAmount)}</td></tr>
-      <tr><td style="padding:4px 0;">Total charged</td><td style="padding:4px 0;text-align:right;">${currency(order.totalAmount)}</td></tr>
+      <tr><td style="padding:4px 0;">Subtotal</td><td style="padding:4px 0;text-align:right;">${currency(computedSubtotal)}</td></tr>
+      <tr><td style="padding:4px 0;">Shipping</td><td style="padding:4px 0;text-align:right;">${currency(computedShipping)}</td></tr>
+      <tr><td style="padding:4px 0;">Tax</td><td style="padding:4px 0;text-align:right;">${currency(computedTax)}</td></tr>
+      <tr><td style="padding:4px 0;">Total charged</td><td style="padding:4px 0;text-align:right;">${currency(computedTotal)}</td></tr>
+      <tr><td style="padding:4px 0;">Studio revenue</td><td style="padding:4px 0;text-align:right;">${currency(computedStudioRevenue)}</td></tr>
+      <tr><td style="padding:4px 0;">Gross studio markup</td><td style="padding:4px 0;text-align:right;">${currency(computedGrossStudioMarkup)}</td></tr>
+      <tr><td style="padding:4px 0;">Stripe fee</td><td style="padding:4px 0;text-align:right;">${currency(computedStripeFee)}</td></tr>
+      <tr><td style="padding:4px 0;">Estimated studio profit</td><td style="padding:4px 0;text-align:right;">${currency(computedStudioProfit)}</td></tr>
+      <tr><td style="padding:4px 0;">Super admin profit</td><td style="padding:4px 0;text-align:right;">${currency(computedSuperAdminProfit)}</td></tr>
       ${stripeFeeRow}
       ${studioProfitRow}
       ${superAdminRow}
@@ -470,6 +573,11 @@ export const orderReceiptService = {
     const discountText = discount.hasDiscount
       ? `\nDiscount code: ${discount.code || 'N/A'}${discount.amount > 0 ? `\nDiscount amount: -${currency(discount.amount)}` : ''}`
       : '';
+    let replyToObj = undefined;
+    const replyToEmail = replyTo || smtpReplyTo;
+    if (replyToEmail) {
+      replyToObj = { email: replyToEmail };
+    }
     await mailtrapClient.send({
       from: {
         email: mailtrapSenderEmail,
@@ -479,7 +587,7 @@ export const orderReceiptService = {
       subject: `Photo Lab receipt — Order #${order.id}`,
       html,
       text: `Order #${order.id}\nStatus: ${order.status || 'processing'}${customMessage ? `\nMessage: ${customMessage}` : ''}\nTotal charged: ${currency(order.totalAmount ?? order.total ?? 0)}\nSubtotal: ${currency(order.subtotal ?? order.sub_total ?? 0)}\nShipping: ${currency(order.shippingCost ?? order.shipping_cost ?? 0)}\nTax: ${currency(order.taxAmount ?? order.tax_amount ?? 0)}${discountText}${digitalDownloads.length ? `\nDigital downloads:\n${digitalDownloads.map((entry) => `- ${getDigitalDownloadFileName(entry)}: ${entry.url}`).join('\n')}` : ''}`,
-      reply_to: replyTo || smtpReplyTo,
+      ...(replyToObj ? { reply_to: replyToObj } : {}),
       category: 'Order Receipt',
     });
     return true;
@@ -493,6 +601,10 @@ export const orderReceiptService = {
     const discountText = discount.hasDiscount
       ? `\nDiscount code: ${discount.code || 'N/A'}${discount.amount > 0 ? `\nDiscount amount: -${currency(discount.amount)}` : ''}`
       : '';
+    let replyToObj = undefined;
+    if (smtpReplyTo) {
+      replyToObj = { email: smtpReplyTo };
+    }
     await mailtrapClient.send({
       from: {
         email: mailtrapSenderEmail,
@@ -503,7 +615,7 @@ export const orderReceiptService = {
       subject: `Studio receipt — Order #${order.id}`,
       html,
       text: `Order #${order.id}\nStudio: ${studioName || 'Unknown'}\nCustomer: ${customerEmail || 'Unknown'}\nTotal charged: ${currency(order.totalAmount)}\nStudio revenue: ${currency(order.studioRevenue)}\nGross studio markup: ${currency(order.grossStudioMarkup)}\nStripe fee: ${currency(order.stripeFeeAmount)}\nEstimated studio profit: ${currency(order.studioProfitNet)}${discountText}${order.orderUrl ? `\nOrder link: ${order.orderUrl}` : ''}`,
-      reply_to: smtpReplyTo,
+      ...(replyToObj ? { reply_to: replyToObj } : {}),
       category: 'Studio Receipt',
     });
     return true;

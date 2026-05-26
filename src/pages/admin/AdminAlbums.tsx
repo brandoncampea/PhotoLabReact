@@ -376,6 +376,7 @@ const AdminAlbums: React.FC = () => {
                               alert('Share link copied to clipboard!');
                             }}
                           >🔗</button>
+ 
                         </div>
                       </td>
                       <td style={{ padding: '8px 12px' }}>

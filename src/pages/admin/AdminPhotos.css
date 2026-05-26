@@ -1,3 +1,16 @@
+.admin-photo-player-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.5rem;
+}
+
+.admin-photo-tag-input-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
 /* Upload panel styling with always-visible border */
 .admin-photos-upload-panel {
   border: 2.5px dashed #7b61ff;

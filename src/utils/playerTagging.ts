@@ -37,6 +37,8 @@ export function extractPlayerNamesFromFilename(filename: string): string[] {
   while (parts.length > 1 && NON_NAME_CODES.includes(parts[parts.length - 1].toUpperCase())) {
     parts = parts.slice(0, -1);
   }
+  // If after removing codes, the last part is a number, remove it too
+  if (parts.length > 1 && /^\d+$/.test(parts[parts.length - 1])) parts = parts.slice(0, -1);
   // Join all as name, capitalize
   const name = parts
     .map(
@@ -109,28 +111,30 @@ export function extractPlayerNameFromFilename(filename: string): { name: string;
   let parts = normalized.split('_').filter(Boolean);
   if (parts.length === 0) return null;
 
-  // Try to extract number from last part, or from the end of the name
+  // Remove all trailing non-name codes and numbers, regardless of order
+  const NON_NAME_CODES = ['MM', 'GK', 'FWD', 'DEF', 'MID', 'POS', 'G', 'D', 'M', 'F', 'C', 'W', 'S', 'A'];
   let number: string | undefined = undefined;
-  let nameParts = parts;
-  // If last part is a number, pop it
-  if (/^\d+$/.test(parts[parts.length - 1])) {
-    number = parts.pop();
-    nameParts = parts;
-  } else {
-    // If last part ends with digits, split them off
-    const match = parts[parts.length - 1].match(/^(.*?)(\d{1,3})$/);
-    if (match) {
-      nameParts = [...parts.slice(0, -1), match[1]];
-      number = match[2];
+  // Remove trailing codes/numbers repeatedly
+  while (parts.length > 1) {
+    const last = parts[parts.length - 1];
+    if (/^\d+$/.test(last)) {
+      // If number, pop and store as number if not already set
+      if (!number) number = parts.pop(); else parts.pop();
+    } else if (NON_NAME_CODES.includes(last.toUpperCase())) {
+      parts.pop();
+    } else {
+      // If last part ends with digits, split them off
+      const match = last.match(/^(.*?)(\d{1,3})$/);
+      if (match && match[1]) {
+        if (!number) number = match[2];
+        parts[parts.length - 1] = match[1];
+      } else {
+        break;
+      }
     }
   }
-  // Remove trailing non-name codes (positions, etc.)
-  const NON_NAME_CODES = ['MM', 'GK', 'FWD', 'DEF', 'MID', 'POS', 'G', 'D', 'M', 'F', 'C', 'W', 'S', 'A'];
-  while (nameParts.length > 1 && NON_NAME_CODES.includes(nameParts[nameParts.length - 1].toUpperCase())) {
-    nameParts = nameParts.slice(0, -1);
-  }
   // Join remaining as name, capitalize
-  const name = nameParts
+  const name = parts
     .filter(Boolean)
     .map(
       (part) =>

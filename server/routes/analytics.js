@@ -388,30 +388,28 @@ router.get('/details', async (req, res) => {
     `, params);
 
     // Top photos for this studio
-    const photoViewRows = await queryRows(`
-      SELECT
-        JSON_VALUE(an.event_data, '$.photoId') AS photoId,
-        JSON_VALUE(an.event_data, '$.photoFileName') AS photoFileName,
-        JSON_VALUE(an.event_data, '$.albumId') AS albumId,
-        JSON_VALUE(an.event_data, '$.albumName') AS albumName,
-        p.thumbnail_url as thumbnailUrl,
-        p.full_image_url as fullImageUrl,
-        COUNT(*) AS views,
-        MAX(an.created_at) AS lastViewed
-      FROM analytics an
-      LEFT JOIN photos p
-        ON p.id = TRY_CAST(JSON_VALUE(an.event_data, '$.photoId') AS INT)
-      WHERE an.event_type = 'photo_view' AND an.event_data IS NOT NULL ${studioFilter} ${dateFilter}
-        ${req.user?.role === 'studio_admin' ? 'AND p.studio_id = $1' : ''}
-      GROUP BY
-        JSON_VALUE(an.event_data, '$.photoId'),
-        JSON_VALUE(an.event_data, '$.photoFileName'),
-        JSON_VALUE(an.event_data, '$.albumId'),
-        JSON_VALUE(an.event_data, '$.albumName')
-        , p.thumbnail_url
-        , p.full_image_url
-      ORDER BY views DESC
-    `, params);
+    const photoBreakdown = await queryRows(
+      `SELECT
+         a.id as albumId,
+         COALESCE(a.title, a.name, CONCAT('Album #', a.id)) as albumName,
+         ph.id as photoId,
+         ph.file_name as fileName,
+         COALESCE(SUM(oi.price * oi.quantity), 0) as revenue,
+         COALESCE(SUM(COALESCE(ps.price, p.price, 0) * oi.quantity), 0) as cost,
+         COALESCE(SUM(oi.quantity), 0) as quantity,
+         COUNT(DISTINCT o.id) as orderCount
+       FROM orders o
+       INNER JOIN users u ON u.id = o.user_id
+       INNER JOIN order_items oi ON oi.order_id = o.id
+       INNER JOIN photos ph ON ph.id = oi.photo_id
+       INNER JOIN albums a ON a.id = ph.album_id
+       LEFT JOIN products p ON p.id = oi.product_id
+       LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id
+       ${baseWhere}
+       GROUP BY a.id, a.title, a.name, ph.id, ph.file_name
+      ORDER BY revenue DESC`,
+      params
+    );
 
     // Recent activity for this studio
     let recentActivityRows;

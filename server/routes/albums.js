@@ -116,13 +116,13 @@ const syncStudioSchoolRoster = async (studioId, schoolTags = [], sourceAlbumId =
   if (!normalized.length) return;
 
   for (const schoolName of normalized) {
-    const existing = await queryRow(
-      `SELECT TOP 1 id
-       FROM studio_school_roster
-       WHERE studio_id = $1
-         AND LOWER(school_name) = LOWER($2)`,
-      [studioId, schoolName]
-    );
+      const existing = await queryRow(
+        `SELECT TOP 1 ssr.id
+         FROM studio_school_roster ssr
+         WHERE ssr.studio_id = $1
+           AND LOWER(ssr.school_name) = LOWER($2)`,
+        [studioId, schoolName]
+      );
 
     if (existing?.id) {
       await query(
@@ -152,7 +152,7 @@ router.get('/public', async (req, res) => {
       return res.status(400).json({ error: 'studioSlug is required' });
     }
     // Find studio by public_slug
-    const studio = await queryRow('SELECT id FROM studios WHERE public_slug = $1', [studioSlug]);
+    const studio = await queryRow('SELECT s.id FROM studios s WHERE s.public_slug = $1', [studioSlug]);
     if (!studio) {
       return res.status(404).json({ error: 'Studio not found' });
     }
@@ -213,16 +213,16 @@ const addAlbumPreviewImages = async (albums) => {
   const previewRows = await queryRows(`
     WITH ranked_photos AS (
       SELECT
-        id,
-        album_id as albumId,
-        ROW_NUMBER() OVER (PARTITION BY album_id ORDER BY created_at DESC) as rowNumber
-      FROM photos
-      WHERE album_id IN (${placeholders})
+        p.id,
+        p.album_id as albumId,
+        ROW_NUMBER() OVER (PARTITION BY p.album_id ORDER BY p.created_at DESC) as rowNumber
+      FROM photos p
+      WHERE p.album_id IN (${placeholders})
     )
-    SELECT id, albumId
-    FROM ranked_photos
-    WHERE rowNumber <= 5
-    ORDER BY albumId, rowNumber
+    SELECT rp.id, rp.albumId
+    FROM ranked_photos rp
+    WHERE rp.rowNumber <= 5
+    ORDER BY rp.albumId, rp.rowNumber
   `, albumIds);
 
   const previewMap = new Map();
@@ -683,7 +683,7 @@ router.delete('/:id', async (req, res) => {
     );
 
     // Delete order_items referencing photos in this album
-    await query(`DELETE FROM order_items WHERE photo_id IN (SELECT id FROM photos WHERE album_id = $1)`, [albumId]);
+    await query(`DELETE FROM order_items WHERE photo_id IN (SELECT p.id FROM photos p WHERE p.album_id = $1)`, [albumId]);
     // Delete photos in this album
     await query(`DELETE FROM photos WHERE album_id = $1`, [albumId]);
     // Delete SmugMug import records for this album

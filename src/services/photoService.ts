@@ -163,6 +163,11 @@ export const photoService = {
     return response.data;
   },
 
+  async trainFaceSignature(photoId: number, playerName: string, box?: { leftPct: number; topPct: number; widthPct: number; heightPct: number }): Promise<{ trained: number }> {
+    const response = await api.post<{ trained: number }>(`/photos/${photoId}/train-face`, { playerName, box });
+    return response.data;
+  },
+
   async updatePhotoTag(id: number, playerName: string | null, playerNumber?: string | null): Promise<Photo> {
     const response = await api.put<Photo>(`/photos/${id}`, {
       playerNames: playerName,
