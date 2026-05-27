@@ -1441,17 +1441,17 @@ router.get('/album/:albumId', async (req, res) => {
       if (photoIds.length > 0) {
         const placeholders = photoIds.map((_, i) => `$${i + 1}`).join(',');
         try {
-          // Views aggregation
+          // Views aggregation (optimized: use computed column)
           const viewRows = await queryRows(`
             SELECT
-              TRY_CAST(JSON_VALUE(event_data, '$.photoId') AS INT) as photoId,
+              photoId,
               SUM(CASE WHEN event_type = 'photo_view' THEN 1 ELSE 0 END) as viewOpenCount,
               SUM(CASE WHEN event_type = 'photo_thumbnail_click' THEN 1 ELSE 0 END) as viewClickCount,
               COUNT(*) as viewCount
             FROM analytics
             WHERE event_type IN ('photo_view', 'photo_thumbnail_click')
-              AND TRY_CAST(JSON_VALUE(event_data, '$.photoId') AS INT) IN (${placeholders})
-            GROUP BY TRY_CAST(JSON_VALUE(event_data, '$.photoId') AS INT)
+              AND photoId IN (${placeholders})
+            GROUP BY photoId
           `, photoIds);
           viewMap = new Map(viewRows.map((row) => [Number(row.photoId), {
             viewCount: Number(row.viewCount) || 0,

@@ -327,14 +327,14 @@ router.get('/', authRequired, async (req, res) => {
       try {
         const viewRows = await queryRows(`
           SELECT
-            TRY_CAST(JSON_VALUE(event_data, '$.albumId') AS INT) as albumId,
+            albumId,
             SUM(CASE WHEN event_type = 'album_view' THEN 1 ELSE 0 END) as viewOpenCount,
             SUM(CASE WHEN event_type = 'album_card_click' THEN 1 ELSE 0 END) as viewClickCount,
             COUNT(*) as viewCount
           FROM analytics
           WHERE event_type IN ('album_view', 'album_card_click')
-            AND TRY_CAST(JSON_VALUE(event_data, '$.albumId') AS INT) IN (${placeholders})
-          GROUP BY TRY_CAST(JSON_VALUE(event_data, '$.albumId') AS INT)
+            AND albumId IN (${placeholders})
+          GROUP BY albumId
         `, albumIds);
         viewsMap = new Map(viewRows.map(row => [Number(row.albumId), {
           viewCount: Number(row.viewCount) || 0,
