@@ -3,11 +3,15 @@ import UploadPhotoItem from './UploadPhotoItem';
 
 const UploadPanel = ({ files, onCancel, overallProgress, visible }) => {
   if (!visible) return null;
+  const total = files.length;
+  const done = files.filter(f => f.status === 'done').length;
+  const failed = files.filter(f => f.status === 'error').length;
+  const uploading = files.filter(f => f.status === 'uploading').length;
   return (
     <div className="upload-panel">
       <div className="upload-header">
         <button className="upload-cancel-btn" onClick={onCancel}>Cancel</button>
-        <span>Uploading {files.length} file{files.length > 1 ? 's' : ''}</span>
+        <span>Uploading {total} file{total > 1 ? 's' : ''}</span>
       </div>
       <div className="upload-grid">
         {files.map(file => (
@@ -17,7 +21,9 @@ const UploadPanel = ({ files, onCancel, overallProgress, visible }) => {
       <div className="upload-progress-bar">
         <div className="upload-progress-bar-inner" style={{ width: `${overallProgress}%` }} />
         <span>
-          Uploading: {files.filter(f => f.status === 'done').length} of {files.length} files uploaded
+          Uploaded: {done} / {total} &nbsp;
+          {failed > 0 && <span style={{ color: '#f44336' }}>Failed: {failed}</span>}
+          {uploading > 0 && <span style={{ color: '#ffc107' }}> Uploading: {uploading}</span>}
         </span>
       </div>
     </div>

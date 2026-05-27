@@ -27,7 +27,15 @@ export default function AlbumUpload() {
   const handleImageDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
-    setImages(prev => [...prev, ...files.map(file => ({ file }))]);
+    setImages(prev => {
+      // Deduplicate by name, size, lastModified
+      const existingKeys = new Set(prev.map(img => `${img.file.name}-${img.file.size}-${img.file.lastModified}`));
+      const deduped = files.filter(file => {
+        const key = `${file.name}-${file.size}-${file.lastModified}`;
+        return !existingKeys.has(key);
+      });
+      return [...prev, ...deduped.map(file => ({ file }))];
+    });
   };
 
   // Handle CSV upload

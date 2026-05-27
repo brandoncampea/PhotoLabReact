@@ -453,10 +453,9 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
   // Use UploadContext for upload state and addFiles
   const { files: uploadFilesCtx, addFiles, clearFiles, updateFile } = useUploadContext();
   // Compute overall progress
-  const overallProgress = uploadFilesCtx.length
-    ? Math.round(
-        uploadFilesCtx.reduce((acc, f) => acc + (f.progress || 0), 0) / uploadFilesCtx.length
-      )
+  const uploadingFiles = uploadFilesCtx.filter(f => f.status !== 'error' && f.status !== 'paused');
+  const overallProgress = uploadingFiles.length
+    ? Math.round(uploadingFiles.reduce((acc, f) => acc + (f.progress || 0), 0) / uploadingFiles.length)
     : 0;
   // Show panel if any file is uploading or queued
   const showUploadPanel = uploadFilesCtx.some(f => f.status !== 'done' && f.status !== 'error');

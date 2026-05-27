@@ -1412,26 +1412,26 @@ function makeBlobName(albumId, originalName) {
 router.get('/album/:albumId', async (req, res) => {
   try {
     const { playerName } = req.query;
+    // Deduplicate by fileName: only the most recent photo for each fileName
     let sql = `
-      SELECT 
-        id, album_id as albumId, file_name as fileName, 
-        thumbnail_url as thumbnailUrl, full_image_url as fullImageUrl,
-        description, metadata, player_names as playerNames, player_numbers as playerNumbers,
-        width, height, created_at as createdDate
-      FROM photos 
-      WHERE album_id = $1
+      SELECT * FROM (
+        SELECT 
+          id, album_id as albumId, file_name as fileName, 
+          thumbnail_url as thumbnailUrl, full_image_url as fullImageUrl,
+          description, metadata, player_names as playerNames, player_numbers as playerNumbers,
+          width, height, created_at as createdDate,
+          ROW_NUMBER() OVER (PARTITION BY file_name ORDER BY created_at DESC, id DESC) as rn
+        FROM photos 
+        WHERE album_id = $1
+      ) t
+      WHERE rn = 1
     `;
-    
     const params = [req.params.albumId];
-    
-    // Filter by player name if provided
     if (playerName) {
-      sql += ` AND player_names LIKE $2`;
+      sql = sql.replace('WHERE album_id = $1', 'WHERE album_id = $1 AND player_names LIKE $2');
       params.push(`%${playerName}%`);
     }
-    
-    sql += ` ORDER BY created_at DESC`;
-    
+    sql += ' ORDER BY createdDate DESC';
     const photos = await queryRows(sql, params);
 
     let viewMap = new Map();

@@ -35,16 +35,24 @@ export const UploadProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const { user } = useAuth();
 
   const addFiles = useCallback((newFiles: File[]) => {
-    setFiles(prev => [
-      ...prev,
-      ...newFiles.map(file => ({
-        id: `${file.name}-${file.size}-${file.lastModified}-${Math.random()}`,
-        file,
-        previewUrl: URL.createObjectURL(file),
-        progress: 0,
-        status: 'queued' as UploadFileStatus,
-      }))
-    ]);
+    setFiles(prev => {
+      // Deduplicate by name, size, lastModified
+      const existingKeys = new Set(prev.map(f => `${f.file.name}-${f.file.size}-${f.file.lastModified}`));
+      const deduped = newFiles.filter(file => {
+        const key = `${file.name}-${file.size}-${file.lastModified}`;
+        return !existingKeys.has(key);
+      });
+      return [
+        ...prev,
+        ...deduped.map(file => ({
+          id: `${file.name}-${file.size}-${file.lastModified}-${Math.random()}`,
+          file,
+          previewUrl: URL.createObjectURL(file),
+          progress: 0,
+          status: 'queued' as UploadFileStatus,
+        }))
+      ];
+    });
   }, []);
 
   const updateFile = useCallback((id: string, updates: Partial<UploadFile>) => {
@@ -76,36 +84,51 @@ export const UploadProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             }
             // Add Authorization header with JWT for upload
             const token = localStorage.getItem('authToken');
-            const response = await fetch('/api/photos/upload', {
-              method: 'POST',
-              body: formData,
-              credentials: 'include',
-              headers: token ? { 'Authorization': `Bearer ${token}` } : {},
-            });
-            if (response.ok) {
-              updateFile(fileObj.id, { progress: 100, status: 'done' });
-            } else {
-              updateFile(fileObj.id, { status: 'error', error: response.statusText });
-              throw new Error(response.statusText);
-            }
-
-            // After upload, fetch the photo and run tagging/EXIF extraction
-            if (albumId) {
-              const refreshedPhotos = await photoService.getPhotosByAlbum(Number(albumId));
-              const latestPhoto = refreshedPhotos.find((p) => p.fileName === fileObj.file.name);
-              if (latestPhoto) {
-                await autoTagPhotoFromFilenameAndFaces({
-                  photo: latestPhoto,
-                  rosterPlayers: [],
-                  photoService,
-                  handleDetectPlayers: () => {},
-                  detectionByPhotoId: {},
-                  setDetectionByPhotoId: () => {},
-                  setUploadMessage: () => {},
-                  onTagged: () => {},
-                });
+            await new Promise<void>((resolve, reject) => {
+              const xhr = new XMLHttpRequest();
+              xhr.open('POST', '/api/photos/upload');
+              xhr.withCredentials = true;
+              if (token) {
+                xhr.setRequestHeader('Authorization', `Bearer ${token}`);
               }
-            }
+              xhr.upload.onprogress = (event) => {
+                if (event.lengthComputable) {
+                  const percent = Math.round((event.loaded / event.total) * 100);
+                  updateFile(fileObj.id, { progress: percent });
+                }
+              };
+              xhr.onload = async () => {
+                if (xhr.status >= 200 && xhr.status < 300) {
+                  updateFile(fileObj.id, { progress: 100, status: 'done' });
+                  // After upload, fetch the photo and run tagging/EXIF extraction
+                  if (albumId) {
+                    const refreshedPhotos = await photoService.getPhotosByAlbum(Number(albumId));
+                    const latestPhoto = refreshedPhotos.find((p) => p.fileName === fileObj.file.name);
+                    if (latestPhoto) {
+                      await autoTagPhotoFromFilenameAndFaces({
+                        photo: latestPhoto,
+                        rosterPlayers: [],
+                        photoService,
+                        handleDetectPlayers: () => {},
+                        detectionByPhotoId: {},
+                        setDetectionByPhotoId: () => {},
+                        setUploadMessage: () => {},
+                        onTagged: () => {},
+                      });
+                    }
+                  }
+                  resolve();
+                } else {
+                  updateFile(fileObj.id, { status: 'error', error: xhr.statusText });
+                  reject(new Error(xhr.statusText));
+                }
+              };
+              xhr.onerror = () => {
+                updateFile(fileObj.id, { status: 'error', error: xhr.statusText });
+                reject(new Error(xhr.statusText));
+              };
+              xhr.send(formData);
+            });
           } catch (err) {
             updateFile(fileObj.id, { status: 'error', error: (err as Error).message });
           }
