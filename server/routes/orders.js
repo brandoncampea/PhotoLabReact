@@ -2670,8 +2670,9 @@ router.post('/', requireActiveSubscription, async (req, res) => {
     const studioShippingCost = 0;
     const shippingMargin = 0;
 
-    const nextStatus = directOrder ? 'processing' : 'pending';
-    const shouldMarkLabSubmitted = directOrder ? false : !!labSubmitted;
+    // Set all new orders to 'pending' and do not auto-submit direct shipping orders to WHCC
+    const nextStatus = 'pending';
+    const shouldMarkLabSubmitted = !!labSubmitted;
 
     // Insert order and get the returned id
 
@@ -3134,14 +3135,8 @@ router.post('/', requireActiveSubscription, async (req, res) => {
       console.error('Invoice generation error (non-fatal):', invoiceErr);
     }
 
-    // Automatically submit direct shipping orders to WHCC
-    if (directOrder) {
-      try {
-        await submitOrderToWhcc(orderId);
-      } catch (whccErr) {
-        console.error('WHCC submission failed (non-fatal):', whccErr);
-      }
-    }
+    // Do not auto-submit direct shipping orders to WHCC; submission must be manual/approved
+    // ...existing code...
 
     // Return the created order
     try {

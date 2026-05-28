@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { formatCropData } from '../utils/formatCropData';
 import { useNavigate } from 'react-router-dom';
@@ -30,6 +31,14 @@ import { useAuth } from '../contexts/AuthContext';
 
 
 const Cart: React.FC = () => {
+    const { items, getTotalPrice, getTotalItems, clearCart, updateCropData } = useCart();
+    const { user } = useAuth();
+
+    // Always load products when cart items change
+    useEffect(() => {
+      loadProducts();
+    }, [items]);
+
     // Stripe config state must be defined before using in useMemo
     const [stripeConfig, setStripeConfig] = useState<any>(null);
     // Memoized Stripe promise instance
@@ -44,28 +53,33 @@ const Cart: React.FC = () => {
       loadShippingConfig();
     }, []);
 
+    // Functions that depend on 'items' and 'products' must be declared after both are initialized
+
     // Stripe payment intent state
     const [activePaymentIntent, setActivePaymentIntent] = useState<any>(null);
-  const [shippingQuote, setShippingQuote] = useState<ShippingQuote | null>(null);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [appliedDiscount, setAppliedDiscount] = useState<any>(null);
+    const [shippingQuote, setShippingQuote] = useState<ShippingQuote | null>(null);
+    const [products, setProducts] = useState<Product[]>([]);
+    const [appliedDiscount, setAppliedDiscount] = useState<any>(null);
     const [editingItem, setEditingItem] = useState(null);
     const [editingDrawnSize, setEditingDrawnSize] = useState<{ width: number; height: number } | null>(null);
     const [showPaymentModal, setShowPaymentModal] = useState(false);
     const autoLaunchEditorRef = useRef(null);
     // State for product images
     const [productImages, setProductImages] = useState<Record<string, string>>({});
-  // State for best discount search loading
-  const [bestDiscountSearchLoading, setBestDiscountSearchLoading] = useState(false);
-  const [discountCode, setDiscountCode] = useState<string>('');
-  const [discountValidation, setDiscountValidation] = useState<any>(null);
-  const [studioFees, setStudioFees] = useState<any>(null);
-  // Place this after all state/hooks
-  useEffect(() => {
-    if (!stripeConfig) {
-      loadStripeConfig();
-    }
-  }, [stripeConfig]);
+    // State for category images (fix ReferenceError)
+    const [categoryImages, setCategoryImages] = useState<Record<string, string>>({});
+    // TODO: Load category images from API if needed and setCategoryImages
+    // State for best discount search loading
+    const [bestDiscountSearchLoading, setBestDiscountSearchLoading] = useState(false);
+    const [discountCode, setDiscountCode] = useState<string>('');
+    const [discountValidation, setDiscountValidation] = useState<any>(null);
+    const [studioFees, setStudioFees] = useState<any>(null);
+    // Place this after all state/hooks
+    useEffect(() => {
+      if (!stripeConfig) {
+        loadStripeConfig();
+      }
+    }, [stripeConfig]);
 
     // Ensure Stripe config is loaded if missing
     useEffect(() => {
@@ -73,18 +87,22 @@ const Cart: React.FC = () => {
         loadStripeConfig();
       }
     }, [stripeConfig]);
-  const [error, setError] = useState<string | null>(null);
-  // State for discount error
-  const [discountError, setDiscountError] = useState<string | null>(null);
-  // State for discount info
-  const [discountInfo, setDiscountInfo] = useState<string>('');
-  // State for payment processing
-  const [processingPayment, setProcessingPayment] = useState(false);
-  // State for generic loading
-  const [loading, setLoading] = useState(false);
-  const { items, getTotalPrice, getTotalItems, clearCart, updateCropData } = useCart();
-
-  const { user } = useAuth();
+    const [error, setError] = useState<string | null>(null);
+    // State for discount error
+    const [discountError, setDiscountError] = useState<string | null>(null);
+    // State for discount info
+    const [discountInfo, setDiscountInfo] = useState<string>('');
+    // State for payment processing
+    const [processingPayment, setProcessingPayment] = useState(false);
+    // State for generic loading
+    const [loading, setLoading] = useState(false);
+    // Returns true if any product in the cart is non-digital (eligible for direct shipping)
+    const hasDirectShipProducts = () => {
+      return items.some(item => {
+        const product = products.find(p => p.id === item.productId);
+        return product && product.isDigital === false;
+      });
+    };
   const [shippingConfig, setShippingConfig] = useState<ShippingConfig | null>(null);
   const [albumDetailsById, setAlbumDetailsById] = useState<{ [albumId: number]: any }>({});
   const [shippingOption, setShippingOption] = useState<any>(null);
@@ -213,15 +231,20 @@ const Cart: React.FC = () => {
         )
       );
 
+      // ...existing code...
+
       if (albumIds.length === 0) {
         const data = await productService.getActiveProducts();
+        // ...existing code...
         setProducts(Array.isArray(data) ? data : []);
+        // ...existing code...
         return;
       }
 
       const productsByAlbum = await Promise.all(
         albumIds.map((albumId) => productService.getActiveProducts(albumId))
       );
+      // ...existing code...
 
       const merged = new Map<number, Product>();
       productsByAlbum.flat().forEach((product) => {
@@ -238,7 +261,9 @@ const Cart: React.FC = () => {
         existing.sizes = Array.from(sizeMap.values());
       });
 
-      setProducts(Array.from(merged.values()));
+      const mergedProducts = Array.from(merged.values());
+      // ...existing code...
+      setProducts(mergedProducts);
     } catch (error) {
       console.error('Failed to load products:', error);
     }
@@ -1104,11 +1129,12 @@ const Cart: React.FC = () => {
             </div>
           </div>
 
-          {/* Shipping Options Section - only show if physical products */}
+          {/* ...existing code... */}
           {/* Shipping Options Section - only show if physical products */}
           {shippingConfig && hasPhysicalProducts() && (
             <div className="cart-section-card">
               <h3>Shipping Options</h3>
+              {/* Show batch shipping if active and before deadline */}
               {isBatchAvailable() && (
                 <label className={`cart-shipping-option ${shippingOption === 'batch' ? 'selected' : ''}`}>
                   <input
@@ -1135,21 +1161,24 @@ const Cart: React.FC = () => {
                   )}
                 </label>
               )}
-              <label className={`cart-shipping-option ${shippingOption === 'direct' ? 'selected' : ''}`}>
-                <input
-                  type="radio"
-                  name="shipping"
-                  value="direct"
-                  checked={shippingOption === 'direct'}
-                  onChange={() => setShippingOption('direct')}
-                />
-                <span style={{ fontWeight: 600, fontSize: '1.1em', color: '#fff' }}>
-                  Direct Shipping - ${getShippingCostFor('direct').toFixed(2)}
-                </span>
-                <p style={{ color: '#bdbdbd', margin: 0 }}>
-                  Ships immediately (2-3 business days)
-                </p>
-              </label>
+              {/* Show direct shipping if any non-digital product is present */}
+              {hasDirectShipProducts() && (
+                <label className={`cart-shipping-option ${shippingOption === 'direct' ? 'selected' : ''}`}>
+                  <input
+                    type="radio"
+                    name="shipping"
+                    value="direct"
+                    checked={shippingOption === 'direct'}
+                    onChange={() => setShippingOption('direct')}
+                  />
+                  <span style={{ fontWeight: 600, fontSize: '1.1em', color: '#fff' }}>
+                    Direct Shipping - ${getShippingCostFor('direct').toFixed(2)}
+                  </span>
+                  <p style={{ color: '#bdbdbd', margin: 0 }}>
+                    Ships immediately (2-3 business days)
+                  </p>
+                </label>
+              )}
               {!isBatchAvailable() && shippingOption === 'batch' && (
                 <p className="cart-deadline-warning">
                   Batch shipping deadline has passed

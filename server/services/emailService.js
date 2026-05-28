@@ -1,30 +1,28 @@
 // server/services/emailService.js
 // Simple email sending service using Mailtrap
-import nodemailer from 'nodemailer';
 
-const SMTP_HOST = process.env.SMTP_HOST || 'smtp.mailtrap.io';
-const SMTP_PORT = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT) : 2525;
-const SMTP_USER = process.env.SMTP_USER;
-const SMTP_PASS = process.env.SMTP_PASSWORD;
-const SENDER = process.env.MAILTRAP_SENDER_EMAIL || 'no-reply@labs.campeaphotography.com';
-const SENDER_NAME = process.env.MAILTRAP_SENDER_NAME || 'PhotoLab Support';
+import { MailtrapClient } from 'mailtrap';
 
-const transporter = nodemailer.createTransport({
-  host: SMTP_HOST,
-  port: SMTP_PORT,
-  auth: {
-    user: SMTP_USER,
-    pass: SMTP_PASS,
-  },
-});
+const mailtrapToken = String(process.env.MAILTRAP_API_KEY || '').trim();
+const mailtrapSenderEmail = String(process.env.MAILTRAP_SENDER_EMAIL || '').trim() || 'no-reply@labs.campeaphotography.com';
+const mailtrapSenderName = String(process.env.MAILTRAP_SENDER_NAME || '').trim() || 'PhotoLab Support';
+const mailtrapClient = mailtrapToken ? new MailtrapClient({ token: mailtrapToken }) : null;
+
+function isConfigured() {
+  return Boolean(mailtrapClient && mailtrapSenderEmail);
+}
 
 export async function sendEmail({ to, subject, text, html }) {
-  const recipients = Array.isArray(to) ? to.join(',') : to;
-  return transporter.sendMail({
-    from: `${SENDER_NAME} <${SENDER}>`,
-    to: recipients,
+  if (!isConfigured() || !to) return false;
+  await mailtrapClient.send({
+    from: {
+      email: mailtrapSenderEmail,
+      name: mailtrapSenderName,
+    },
+    to: Array.isArray(to) ? to.map(email => ({ email })) : [{ email: to }],
     subject,
-    text,
     html,
+    text,
   });
+  return true;
 }
