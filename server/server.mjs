@@ -1,3 +1,4 @@
+import frontendErrorRoutes from './routes/frontendError.js';
 import { initializeDatabase } from './initializeDatabasePatch.js';
 import cors from 'cors';
 import session from 'express-session';
@@ -35,6 +36,7 @@ import studioPriceListsRouter from './routes/studioPriceLists.js';
 import albumProductsRouter from './routes/albumProducts.js';
 import photoRoutes from './routes/photos.js';
 import '../server/startup/ensureOrderItemAttributesColumn.js';
+import { logAndNotifyError } from './services/errorLogger.js';
 
 
 
@@ -86,7 +88,10 @@ import '../server/startup/ensureOrderItemAttributesColumn.js';
 
 
 
+
 const app = express();
+// Register frontend error reporting route after app is initialized
+app.use('/api/log-frontend-error', frontendErrorRoutes);
 
 // CORS: allow frontend dev server and production origin
 const allowedOrigins = [
@@ -281,8 +286,16 @@ startServer();
 initializeDatabaseWithRetry();
 
 // Global error handler (must be after all routes)
-app.use((err, req, res, next) => {
+app.use(async (err, req, res, next) => {
   console.error('[GLOBAL ERROR HANDLER]', err);
+  if (process.env.NODE_ENV === 'production') {
+    await logAndNotifyError({
+      error: err,
+      req,
+      customerId: req?.user?.id || null,
+      customerEmail: req?.user?.email || null,
+    });
+  }
   res.status(500).json({ error: 'Internal Server Error', details: err && err.message });
 });
 
