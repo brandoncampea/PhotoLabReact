@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import AlbumCoverCarousel from '../components/AlbumCoverCarousel';
 import { analyticsService } from '../services/analyticsService';
@@ -49,11 +49,14 @@ const formatDealHeadline = (deal: PublicDeal) => {
 
 
 const Albums: React.FC = () => {
+    const [searchPlayerNames, setSearchPlayerNames] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const [studios, setStudios] = useState<PublicStudio[]>([]);
   const [selectedStudio, setSelectedStudio] = useState<PublicStudio | null>(null);
   const [albums, setAlbums] = useState<PublicAlbum[]>([]);
   const [albumQuery, setAlbumQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState(albumQuery);
+  const debounceTimeout = useRef<NodeJS.Timeout | null>(null);
   const [albumSort, setAlbumSort] = useState<'recent' | 'oldest'>('recent');
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [loading, setLoading] = useState(true);
@@ -109,9 +112,37 @@ const Albums: React.FC = () => {
     }
   };
 
+  // Debounce albumQuery
+  useEffect(() => {
+    if (debounceTimeout.current) clearTimeout(debounceTimeout.current);
+    debounceTimeout.current = setTimeout(() => {
+      setDebouncedQuery(albumQuery);
+    }, 400);
+    return () => {
+      if (debounceTimeout.current) clearTimeout(debounceTimeout.current);
+    };
+  }, [albumQuery]);
+
   useEffect(() => {
     if (selectedStudio) {
-      fetchAlbums(selectedStudio.publicSlug);
+      const query = debouncedQuery.trim().toLowerCase();
+      let localFiltered: PublicAlbum[] = albums;
+      if (query.length > 0) {
+        localFiltered = albums.filter(album =>
+          album.name.toLowerCase().includes(query) ||
+          (album.description || '').toLowerCase().includes(query) ||
+          (Array.isArray(album.schoolTags) ? album.schoolTags.join(' ').toLowerCase().includes(query) : false)
+        );
+      }
+      if (query.length > 0 && searchPlayerNames) {
+        fetchAlbums(selectedStudio.publicSlug, debouncedQuery.trim(), localFiltered);
+      } else if (query.length > 0) {
+        // Only local filter
+        setAlbums(localFiltered);
+      } else {
+        // On initial load or when query is empty, fetch all albums for the studio
+        fetchAlbums(selectedStudio.publicSlug);
+      }
       fetchDeals(selectedStudio.publicSlug);
       fetch(`/api/studios/public/${encodeURIComponent(selectedStudio.publicSlug)}`)
         .then((res) => (res.ok ? res.json() : null))
@@ -124,16 +155,30 @@ const Albums: React.FC = () => {
     } else {
       setDeals([]);
     }
-  }, [selectedStudio]);
+  }, [selectedStudio, debouncedQuery, searchPlayerNames]);
 
-  const fetchAlbums = async (studioSlug: string) => {
+  // Fetch backend player search and merge with local filter
+  const fetchAlbums = async (studioSlug: string, player?: string, localFiltered?: PublicAlbum[]) => {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`/api/albums/public?studioSlug=${encodeURIComponent(studioSlug)}`);
+      let url = `/api/albums/public?studioSlug=${encodeURIComponent(studioSlug)}`;
+      if (player && player.trim().length > 0) {
+        url += `&player=${encodeURIComponent(player.trim())}`;
+      }
+      const res = await fetch(url);
       if (!res.ok) throw new Error('Failed to load albums');
-      const data = await res.json();
-      setAlbums(data);
+      const backendAlbums = await res.json();
+      let merged = backendAlbums;
+      if (localFiltered) {
+        // Merge and dedupe by album id
+        const map = new Map();
+        for (const a of [...localFiltered, ...backendAlbums]) {
+          map.set(a.id, a);
+        }
+        merged = Array.from(map.values());
+      }
+      setAlbums(merged);
     } catch (err: any) {
       setError(err.message || 'Failed to load albums');
     } finally {
@@ -304,9 +349,19 @@ const Albums: React.FC = () => {
               type="text"
               value={albumQuery}
               onChange={e => setAlbumQuery(e.target.value)}
-              placeholder="Filter albums by name, description, or school..."
+              placeholder="Filter albums by name, description, school, or player..."
               style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #3a3656', background: '#141320', color: '#fff', minWidth: 220 }}
+              autoComplete="off"
             />
+            <label style={{ color: '#fff', fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <input
+                type="checkbox"
+                checked={searchPlayerNames}
+                onChange={e => setSearchPlayerNames(e.target.checked)}
+                style={{ marginRight: 4 }}
+              />
+              Search player names
+            </label>
             <select
               value={selectedCategory}
               onChange={e => setSelectedCategory(e.target.value)}

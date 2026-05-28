@@ -51,7 +51,13 @@ export function extractPlayerNamesFromFilename(filename: string): string[] {
     .join(' ')
     .replace(/\s+/g, ' ')
     .trim();
-  return name ? [name] : [];
+  // Filter out names that are likely just initials or too short (e.g., 'F A', 'A B', etc.)
+  if (!name) return [];
+  const nameParts = name.split(' ').filter(Boolean);
+  // Exclude if all parts are single letters or if name is less than 4 characters
+  const allInitials = nameParts.length > 1 && nameParts.every((p) => p.length === 1);
+  if (allInitials || name.length < 4) return [];
+  return [name];
 }
 
 /**
@@ -147,6 +153,10 @@ export function extractPlayerNameFromFilename(filename: string): { name: string;
     .replace(/\s+/g, ' ')
     .trim();
   if (!name) return null;
+  const nameParts = name.split(' ').filter(Boolean);
+  // Exclude if all parts are single letters or if name is less than 4 characters
+  const allInitials = nameParts.length > 1 && nameParts.every((p) => p.length === 1);
+  if (allInitials || name.length < 4) return null;
   return { name, number };
 }
 

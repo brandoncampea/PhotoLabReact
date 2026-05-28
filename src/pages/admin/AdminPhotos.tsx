@@ -72,6 +72,20 @@ import playerWatchlistService from '../../services/playerWatchlistService';
 import notifyWatchersService from '../../services/notifyWatchersService';
 
 const AdminPhotos: React.FC = () => {
+    // Manually tag a player by name input
+    const handleManualTagPlayer = async (photo: Photo, playerName: string) => {
+      if (!playerName || !photo) return;
+      const selectedPlayers = [{ playerName: playerName.trim() }];
+      try {
+        await photoService.updatePhotoPlayers(photo.id, selectedPlayers);
+        await loadPhotos();
+        setUploadMessage({ type: 'success', text: `Tagged photo with player: ${playerName}` });
+      } catch (error: any) {
+        console.error('Failed to manually tag player:', error);
+        const msg = error?.response?.data?.error || 'Failed to tag player.';
+        setUploadMessage({ type: 'error', text: msg });
+      }
+    };
   // Batch detect all photos in album (must be inside component for state access)
   // Progress state for batch detection
   const [detectAllProgress, setDetectAllProgress] = useState<{ current: number; total: number; running: boolean }>({ current: 0, total: 0, running: false });
@@ -309,33 +323,11 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
     setLoading(true);
     try {
       const data = await photoService.getPhotosByAlbum(albumId);
-      // Only keep the filename-matched player for each photo
-      const cleaned = Array.isArray(data)
-        ? data.map(photo => {
-            const filename = photo.fileName || '';
-            const base = filename.replace(/\.[^.]+$/, '');
-            const normalized = base.replace(/[-]+/g, '_');
-            let parts = normalized.split('_').filter(Boolean);
-            if (parts.length === 0) return { ...photo, playerNames: undefined, playerNumbers: undefined };
-            if (/^\d+$/.test(parts[parts.length - 1])) parts = parts.slice(0, -1);
-            if (parts.length === 0) return { ...photo, playerNames: undefined, playerNumbers: undefined };
-            const name = parts.map(
-              (part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()
-            ).join(' ').trim();
-            // Only keep this player if present
-            const allNames = String(photo.playerNames || '').split(',').map(n => n.trim()).filter(Boolean);
-            const keep = allNames.find(n => n.toLowerCase() === name.toLowerCase());
-            return {
-              ...photo,
-              playerNames: keep ? keep : undefined,
-              playerNumbers: keep ? photo.playerNumbers : undefined,
-            };
-          })
-        : [];
-      setPhotos(cleaned);
+      // Show all saved player names for each photo
+      setPhotos(Array.isArray(data) ? data : []);
 
       // Only load face tags from metadata for initial page load (no API calls)
-      const detectionResults = cleaned.map((photo) => {
+      const detectionResults = (Array.isArray(data) ? data : []).map((photo) => {
         const faceTags = getStoredFaceTags(photo);
         return {
           photoId: photo.id,
@@ -818,6 +810,38 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
         [photo.id]: mergedFaceBoxes[0]?.id || null,
       }));
 
+      // --- Persist detected player names to backend ---
+      // Collect all unique detected player names from faceMatches and/or mergedFaceBoxes
+      const detectedNames = new Set<string>();
+      if (result.faceMatches && Array.isArray(result.faceMatches)) {
+        result.faceMatches.forEach(fm => {
+          if (fm.playerName && typeof fm.playerName === 'string' && fm.playerName.trim().length > 0) {
+            detectedNames.add(fm.playerName.trim());
+          }
+        });
+      }
+      mergedFaceBoxes.forEach(box => {
+        if (box.playerName && typeof box.playerName === 'string' && box.playerName.trim().length > 0) {
+          detectedNames.add(box.playerName.trim());
+        }
+      });
+      // If we have detected player names, persist them
+      if (detectedNames.size > 0) {
+        const playerArr = Array.from(detectedNames).map(playerName => ({ playerName }));
+        try {
+          await photoService.updatePhotoPlayers(photo.id, playerArr);
+          if (!options?.silent) {
+            setUploadMessage({ type: 'success', text: `Tagged photo with: ${playerArr.map(p => p.playerName).join(', ')}` });
+          }
+          console.log('Successfully saved detected player names:', playerArr);
+        } catch (err) {
+          setUploadMessage({ type: 'error', text: 'Failed to save detected player names.' });
+          console.error('Failed to save detected player names:', err);
+        }
+        // Optionally reload photos to reflect new tags
+        await loadPhotos();
+      }
+
       // If the photo already has tagged player(s), save a face signature for them when possible
       try {
         const taggedNames = String(photo.playerNames || '').split(',').map(n => n.trim()).filter(Boolean);
@@ -1160,7 +1184,14 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
                     </button>
                   </div>
                   <div>ID: {photo.id}</div>
-                  <div>Players: {photo.playerNames || '—'}</div>
+                  <div>
+                    Players:{' '}
+                    {photo.playerNames && photo.playerNames.trim() ? (
+                      photo.playerNames.split(',').map((n, i) => (
+                        <span key={i} style={{ display: 'inline-block', marginRight: 4 }}>{n.trim()}</span>
+                      ))
+                    ) : '—'}
+                  </div>
                   <div>Views: {typeof photo.viewCount === 'number' ? photo.viewCount : '—'}</div>
                   <div>Orders: {typeof photo.orderCount === 'number' ? photo.orderCount : '—'}</div>
                   {/* Detection Results */}

@@ -2323,7 +2323,21 @@ const sendOrderReceipts = async (orderId) => {
     const baseRevenue = studioGroup.items.reduce((sum, item) => sum + ((Number(item.basePrice) || 0) * (Number(item.quantity) || 0)), 0);
     const productionCost = studioGroup.items.reduce((sum, item) => sum + ((Number(item.cost) || 0) * (Number(item.quantity) || 0)), 0);
     const superAdminProfit = studioGroup.items.reduce((sum, item) => sum + (Number(item.superAdminShareAmount) || 0), 0);
-    const stripeFeeAmount = studioGroup.items.reduce((sum, item) => sum + (Number(item.stripeFeeAllocatedAmount) || 0), 0);
+    let stripeFeeAmount = studioGroup.items.reduce((sum, item) => sum + (Number(item.stripeFeeAllocatedAmount) || 0), 0);
+    // Fallback: if all items are digital and allocated fee is zero but order-level fee exists, use it
+    const allDigital = studioGroup.items.length > 0 && studioGroup.items.every(item => {
+      const options = (() => {
+        try {
+          return typeof item.productOptions === 'string' ? JSON.parse(item.productOptions) : (item.productOptions || {});
+        } catch { return {}; }
+      })();
+      const category = String(item.productCategory || '').toLowerCase();
+      const name = String(item.productName || '').toLowerCase();
+      return options?.isDigital === true || options?.is_digital_only === true || options?.digitalOnly === true || category.includes('digital') || name.includes('digital');
+    });
+    if (allDigital && stripeFeeAmount === 0 && Number(order.stripeFeeAmount) > 0) {
+      stripeFeeAmount = Number(order.stripeFeeAmount);
+    }
     const orderUrl = String(process.env.APP_BASE_URL || '').trim()
       ? `${String(process.env.APP_BASE_URL || '').trim().replace(/\/$/, '')}/admin/orders?orderId=${order.id}`
       : null;

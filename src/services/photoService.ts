@@ -177,12 +177,14 @@ export const photoService = {
   },
 
   async updatePhotoPlayers(id: number, players: Array<{ playerName: string; playerNumber?: string | null }>): Promise<Photo> {
-    const names = players.map((p) => p.playerName).filter(Boolean);
-    const numbers = players.map((p) => p.playerNumber || '').filter(Boolean);
-    const response = await api.put<Photo>(`/photos/${id}`, {
-      playerNames: names,
-      playerNumbers: numbers,
-    });
+    const names = players.map((p) => p.playerName).filter(Boolean).join(', ');
+    const numbers = players.map((p) => p.playerNumber || '').filter(Boolean).join(', ');
+    // Always send as strings, never undefined/null
+    const payload = {
+      playerNames: typeof names === 'string' ? names : '',
+      playerNumbers: typeof numbers === 'string' ? numbers : '',
+    };
+    const response = await api.put<Photo>(`/photos/${id}`, payload);
     return response.data;
   },
 

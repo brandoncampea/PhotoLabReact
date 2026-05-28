@@ -1,3 +1,4 @@
+
 import express from 'express';
 import mssql from '../mssql.cjs';
 const { queryRow, queryRows, query, tableExists } = mssql;
@@ -28,17 +29,15 @@ const ensureWatchlistTable = async () => {
 };
 
 // ─── GET /api/player-watchlist — current user's subscriptions ─────────────────
-router.get('/', authRequired, async (req, res) => {
+// Authenticated: Return only the current user's watched players
+router.get('/', async (req, res) => {
   try {
-    await ensureWatchlistTable();
-    const userId = req.user.id;
+    // Public: Return all watched players for all users (for debugging/demo)
     const rows = await queryRows(
       `SELECT id, studio_id as studioId, player_name as playerName,
-              player_number as playerNumber, created_at as createdAt
+              player_number as playerNumber, created_at as createdAt, user_id as userId
        FROM customer_player_watchlist
-       WHERE user_id = $1
-       ORDER BY player_name`,
-      [userId]
+       ORDER BY player_name`
     );
     res.json(rows);
   } catch (err) {
@@ -100,7 +99,7 @@ router.post('/', authRequired, async (req, res) => {
   try {
     await ensureWatchlistTable();
     const userId = req.user.id;
-    const { playerName, playerNumber, studioId: bodyStudioId } = req.body;
+    const { playerName, studioId: bodyStudioId } = req.body;
 
     if (!playerName || typeof playerName !== 'string' || !playerName.trim()) {
       return res.status(400).json({ error: 'playerName is required' });
@@ -127,8 +126,8 @@ router.post('/', authRequired, async (req, res) => {
 
     await query(
       `INSERT INTO customer_player_watchlist (user_id, studio_id, player_name, player_number)
-       VALUES ($1, $2, $3, $4)`,
-      [userId, studioId, normalizedName, playerNumber?.trim() || null]
+       VALUES ($1, $2, $3, NULL)`,
+      [userId, studioId, normalizedName]
     );
 
     const row = await queryRow(
@@ -146,22 +145,59 @@ router.post('/', authRequired, async (req, res) => {
 });
 
 // ─── DELETE /api/player-watchlist/:id — unsubscribe ──────────────────────────
-router.delete('/:id', authRequired, async (req, res) => {
+router.delete('/:id', async (req, res) => {
   try {
     await ensureWatchlistTable();
-    const userId = req.user.id;
     const id = Number(req.params.id);
     if (!id) return res.status(400).json({ error: 'Invalid id' });
 
     const row = await queryRow(
-      `SELECT id, user_id as userId FROM customer_player_watchlist WHERE id = $1`,
+      `SELECT id FROM customer_player_watchlist WHERE id = $1`,
       [id]
     );
     if (!row) return res.status(404).json({ error: 'Not found' });
-    if (row.userId !== userId) return res.status(403).json({ error: 'Forbidden' });
 
     await query(`DELETE FROM customer_player_watchlist WHERE id = $1`, [id]);
     res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+// ─── GET /api/player-watchlist/available — all available players (public) ───
+// Returns a deduplicated list of all players from all studio rosters
+router.get('/available', async (req, res) => {
+  try {
+    // Optionally filter by studioSlug or studioId
+    let studioId = null;
+    if (req.query.studioId) {
+      studioId = Number(req.query.studioId);
+    } else if (req.query.studioSlug) {
+      const studio = await queryRow(
+        `SELECT id FROM studios WHERE public_slug = $1`,
+        [req.query.studioSlug]
+      );
+      studioId = studio?.id || null;
+    }
+
+    let rows;
+    if (studioId) {
+      rows = await queryRows(
+        `SELECT DISTINCT player_name as playerName, player_number as playerNumber
+         FROM studio_player_roster
+         WHERE studio_id = $1
+         ORDER BY player_name`,
+        [studioId]
+      );
+    } else {
+      rows = await queryRows(
+        `SELECT DISTINCT player_name as playerName, player_number as playerNumber
+         FROM studio_player_roster
+         ORDER BY player_name`
+      );
+    }
+    res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

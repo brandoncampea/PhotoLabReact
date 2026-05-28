@@ -147,7 +147,7 @@ const syncStudioSchoolRoster = async (studioId, schoolTags = [], sourceAlbumId =
 router.get('/public', async (req, res) => {
   try {
     await ensureAlbumSchema();
-    const { studioSlug } = req.query;
+    const { studioSlug, player } = req.query;
     if (!studioSlug) {
       return res.status(400).json({ error: 'studioSlug is required' });
     }
@@ -156,31 +156,65 @@ router.get('/public', async (req, res) => {
     if (!studio) {
       return res.status(404).json({ error: 'Studio not found' });
     }
-    // Only return albums that are published, not hidden, and not deleted
-    const albums = await queryRows(`
-      SELECT 
-        a.id,
-        COALESCE(a.name, a.title) as name,
-        a.description,
-        a.cover_image_url as coverImageUrl,
-        a.cover_photo_id as coverPhotoId,
-        a.photo_count as photoCount,
-        a.category,
-        a.school_tags as schoolTags,
-        a.price_list_id as priceListId,
-        a.is_password_protected as isPasswordProtected,
-        a.password,
-        a.password_hint as passwordHint,
-        COALESCE(a.batch_shipping_active, 0) as batchShippingActive,
-        COALESCE(a.album_purchase_enabled, 1) as albumPurchaseEnabled,
-        COALESCE(sc.is_active, 0) as studioBatchShippingActive,
-        sc.batch_deadline as batchDeadline,
-        a.created_at as createdDate
-      FROM albums a
-      LEFT JOIN shipping_config sc ON sc.id = a.studio_id
-      WHERE a.studio_id = $1 AND a.published = 1 AND a.hidden = 0
-      ORDER BY a.created_at DESC
-    `, [studio.id]);
+    let albums = [];
+    if (player && String(player).trim().length > 0) {
+      // Improved: Search for albums that have at least one photo tagged with the player (case-insensitive, whole name match)
+      // Normalize both stored and searched names by trimming, lowering, and splitting on comma
+      albums = await queryRows(`
+        SELECT DISTINCT
+          a.id,
+          COALESCE(a.name, a.title) as name,
+          a.description,
+          a.cover_image_url as coverImageUrl,
+          a.cover_photo_id as coverPhotoId,
+          a.photo_count as photoCount,
+          a.category,
+          a.school_tags as schoolTags,
+          a.price_list_id as priceListId,
+          a.is_password_protected as isPasswordProtected,
+          a.password,
+          a.password_hint as passwordHint,
+          COALESCE(a.batch_shipping_active, 0) as batchShippingActive,
+          COALESCE(a.album_purchase_enabled, 1) as albumPurchaseEnabled,
+          COALESCE(sc.is_active, 0) as studioBatchShippingActive,
+          sc.batch_deadline as batchDeadline,
+          a.created_at as createdDate
+        FROM albums a
+        LEFT JOIN shipping_config sc ON sc.id = a.studio_id
+        INNER JOIN photos p ON p.album_id = a.id
+        WHERE a.studio_id = $1 AND a.published = 1 AND a.hidden = 0
+          AND (
+            ',' + LOWER(REPLACE(REPLACE(REPLACE(p.player_names, ', ', ','), ';', ','), ',,', ',')) + ',' LIKE '%,' + LOWER(LTRIM(RTRIM($2))) + ',%'
+          )
+        ORDER BY a.created_at DESC
+      `, [studio.id, player.trim().toLowerCase()]);
+    } else {
+      // Only return albums that are published, not hidden, and not deleted
+      albums = await queryRows(`
+        SELECT 
+          a.id,
+          COALESCE(a.name, a.title) as name,
+          a.description,
+          a.cover_image_url as coverImageUrl,
+          a.cover_photo_id as coverPhotoId,
+          a.photo_count as photoCount,
+          a.category,
+          a.school_tags as schoolTags,
+          a.price_list_id as priceListId,
+          a.is_password_protected as isPasswordProtected,
+          a.password,
+          a.password_hint as passwordHint,
+          COALESCE(a.batch_shipping_active, 0) as batchShippingActive,
+          COALESCE(a.album_purchase_enabled, 1) as albumPurchaseEnabled,
+          COALESCE(sc.is_active, 0) as studioBatchShippingActive,
+          sc.batch_deadline as batchDeadline,
+          a.created_at as createdDate
+        FROM albums a
+        LEFT JOIN shipping_config sc ON sc.id = a.studio_id
+        WHERE a.studio_id = $1 AND a.published = 1 AND a.hidden = 0
+        ORDER BY a.created_at DESC
+      `, [studio.id]);
+    }
     const albumsWithPreviews = await addAlbumPreviewImages(albums);
     res.json(albumsWithPreviews.map(signAlbumForResponse));
   } catch (error) {

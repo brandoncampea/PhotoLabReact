@@ -34,15 +34,21 @@ export const playerWatchlistService = {
     return res.data;
   },
 
-  /** Subscribe to a player */
-  async addPlayer(playerName: string, playerNumber?: string | null, studioId?: number): Promise<WatchlistEntry> {
-    const res = await api.post<WatchlistEntry>('/player-watchlist/', { playerName, playerNumber, studioId });
+  /** Subscribe to a player (only store playerName) */
+  async addPlayer(playerName: string, _playerNumber?: string | null, studioId?: number): Promise<WatchlistEntry> {
+    const res = await api.post<WatchlistEntry>('/player-watchlist/', { playerName, studioId });
     return res.data;
   },
 
   /** Unsubscribe from a player */
   async removePlayer(id: number): Promise<void> {
     await api.delete(`/player-watchlist/${id}`);
+  },
+
+  /** Get all available unique players for selection */
+  async getAvailablePlayers(): Promise<RosterPlayer[]> {
+    const res = await api.get<RosterPlayer[]>('/player-watchlist/available');
+    return res.data;
   },
 };
 

@@ -444,8 +444,23 @@ async function initializeDatabase() {
 				url NVARCHAR(MAX) NOT NULL,
 				filename NVARCHAR(255),
 				uploaded_at DATETIME2 DEFAULT GETDATE(),
-				metadata NVARCHAR(MAX)
+				metadata NVARCHAR(MAX),
+				school_id INT NULL,
+				category NVARCHAR(100) NULL
 			)
+		END
+	`);
+	// Add school_id and category columns if missing (for existing DBs)
+	await query(`
+		IF COL_LENGTH('photos', 'school_id') IS NULL
+		BEGIN
+			ALTER TABLE photos ADD school_id INT NULL
+		END
+	`);
+	await query(`
+		IF COL_LENGTH('photos', 'category') IS NULL
+		BEGIN
+			ALTER TABLE photos ADD category NVARCHAR(100) NULL
 		END
 	`);
 	await query(`
@@ -723,6 +738,28 @@ async function initializeDatabase() {
 
 
 // --- Ensure these functions are defined before exporting ---
+
+async function ensureSchoolsTable() {
+	await query(`
+		IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'schools')
+		BEGIN
+			CREATE TABLE schools (
+				id INT IDENTITY(1,1) PRIMARY KEY,
+				name NVARCHAR(255) NOT NULL,
+				is_tagged BIT NOT NULL DEFAULT 0,
+				created_at DATETIME2 DEFAULT GETDATE()
+			)
+		END
+	`);
+	await query(`
+		IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name = N'is_tagged' AND Object_ID = Object_ID(N'schools'))
+		BEGIN
+			ALTER TABLE schools ADD is_tagged BIT NOT NULL DEFAULT 0
+		END
+	`);
+
+	// (Removed: auto-populate schools from photos/albums. School data now comes only from albums.school_tags and categories.)
+}
 async function getWhccShippingRubric() {
 	// ...existing code...
 }
@@ -739,6 +776,7 @@ const mssqlExports = {
 	columnExists,
 	transaction,
 	initializeDatabase,
+	ensureSchoolsTable,
 	poolPromise: getPoolPromise(),
 	getWhccShippingRubric,
 	setWhccShippingRubric,

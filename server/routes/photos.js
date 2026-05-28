@@ -1795,7 +1795,19 @@ router.put('/:id', async (req, res) => {
     await ensurePlayerRecognitionSchema();
     await ensurePhotoUploadColumns();
 
-    const { description, metadata, playerNames, playerNumbers } = req.body;
+    let { description, metadata, playerNames, playerNumbers } = req.body;
+    // Robustly handle playerNames as array or string
+    if (Array.isArray(playerNames)) {
+      playerNames = playerNames.map(n => (typeof n === 'string' ? n.trim() : '')).filter(Boolean).join(', ');
+    } else if (typeof playerNames !== 'string') {
+      playerNames = '';
+    }
+    if (Array.isArray(playerNumbers)) {
+      playerNumbers = playerNumbers.map(n => (typeof n === 'string' ? n.trim() : '')).filter(Boolean).join(', ');
+    } else if (typeof playerNumbers !== 'string') {
+      playerNumbers = '';
+    }
+    console.log('[PHOTO PUT] Received playerNames:', playerNames, 'playerNumbers:', playerNumbers);
     const currentPhoto = await queryRow(
       `SELECT id,
               album_id as albumId,
@@ -1814,13 +1826,35 @@ router.put('/:id', async (req, res) => {
     let faceMatchedCount = 0;
     let numberMatchedCount = 0;
     let trainedFaceSamples = 0;
+    let autoTaggedCount = 0;
     let album = null; // hoisted so notification block can reference it
 
-    const taggedNames = csvToList(nextPlayerNames);
-    const taggedNumbers = csvToList(nextPlayerNumbers);
+    // Use playerNames/playerNumbers for tagging
+    let taggedNames = csvToList(playerNames);
+    let taggedNumbers = csvToList(playerNumbers);
+    // Filter out non-names: only allow names with at least 3 letters (not just initials)
+    taggedNames = taggedNames.filter(n => n && n.replace(/[^a-zA-Z]/g, '').length > 2);
+    taggedNumbers = taggedNumbers.filter(n => n && n.replace(/[^a-zA-Z0-9]/g, '').length > 0);
     const hasAnyTag = taggedNames.length > 0 || taggedNumbers.length > 0;
+    console.log('[PHOTO PUT]', {
+      id: req.params.id,
+      incoming: { playerNames, playerNumbers },
+      taggedNames,
+      taggedNumbers,
+      hasAnyTag
+    });
+
+    // Fix: ensure nextMetadata is defined
+    const nextMetadata = metadata || currentPhoto.metadata;
 
     if (hasAnyTag) {
+      // Log before update
+      console.log('[PHOTO PUT] Updating photo:', req.params.id, 'Saving playerNames:', taggedNames.join(', '), 'playerNumbers:', taggedNumbers.join(', '));
+      await query(
+        `UPDATE photos SET player_names = $1, player_numbers = $2 WHERE id = $3`,
+        [taggedNames.join(', '), taggedNumbers.join(', '), req.params.id]
+      );
+      console.log('[PHOTO PUT] Update query executed for photo:', req.params.id);
       try {
         album = await queryRow(
           `SELECT id, name, title, studio_id as studioId
@@ -1921,72 +1955,27 @@ router.put('/:id', async (req, res) => {
       } catch (recognitionError) {
         console.error('Photo tag recognition follow-up failed:', recognitionError);
       }
+    } else {
+      // Log when no tags are present
+      console.log('[PHOTO PUT] No valid tags to save for photo:', req.params.id, 'playerNames:', playerNames, 'playerNumbers:', playerNumbers);
+      // No tags: just return the updated photo, skip all recognition logic
+      const photo = await queryRow(`
+        SELECT 
+          id, album_id as albumId, file_name as fileName, 
+          thumbnail_url as thumbnailUrl, full_image_url as fullImageUrl,
+          description, metadata, player_names as playerNames, player_numbers as playerNumbers, created_at as createdDate
+        FROM photos 
+        WHERE id = $1
+      `, [req.params.id]);
+      return res.json({
+        ...signPhotoForResponse(photo),
+        autoTaggedCount: 0,
+        trainedFaceSamples: 0,
+        autoTagMatches: { face: 0, number: 0 },
+      });
     }
 
-    // ── Player watchlist notifications ────────────────────────────────────────
-    // Send emails to customers who are watching any of the newly-tagged players.
-    // We only notify for players that were NOT already on this photo before this update.
-    try {
-      const previousNames = csvToList(currentPhoto.playerNames);
-      const previousSet = new Set(previousNames.map((n) => n.toLowerCase()));
-      const newlyTaggedNames = taggedNames.filter((n) => !previousSet.has(n.toLowerCase()));
-
-      if (newlyTaggedNames.length > 0 && album?.studioId) {
-        const studioId = Number(album.studioId);
-
-        // album is already loaded above; use it directly
-        const albumName = album?.title || album?.name || null;
-
-        // Get studio slug for a friendly URL
-        const studioRow = await queryRow(
-          `SELECT public_slug as publicSlug, name FROM studios WHERE id = $1`,
-          [studioId]
-        ).catch(() => null);
-        const studioSlug = studioRow?.publicSlug || null;
-        const studioName = studioRow?.name || 'Photo Lab';
-
-        const appBase = String(process.env.APP_BASE_URL || '').replace(/\/$/, '');
-        const albumUrl = appBase
-          ? (studioSlug
-              ? `${appBase}/s/${encodeURIComponent(studioSlug)}/albums/${album?.id}`
-              : `${appBase}/albums/${album?.id}`)
-          : null;
-
-        for (const playerName of newlyTaggedNames) {
-          try {
-            // Find customers watching this player in this studio
-            const subscribers = await queryRows(
-              `SELECT w.id, w.player_number as playerNumber, u.email, u.name as customerName
-               FROM customer_player_watchlist w
-               JOIN users u ON u.id = w.user_id
-               WHERE w.studio_id = $1
-                 AND LOWER(w.player_name) = LOWER($2)
-                 AND u.email IS NOT NULL
-                 AND u.is_active = 1`,
-              [studioId, playerName]
-            );
-
-            for (const sub of subscribers) {
-              orderReceiptService.sendPlayerPhotoNotification({
-                to: sub.email,
-                customerName: sub.customerName || null,
-                playerName,
-                playerNumber: sub.playerNumber || null,
-                albumName,
-                albumUrl,
-                studioName,
-                photoCount: 1,
-              }).catch((e) => console.error('[watchlist notify] email error:', e?.message));
-            }
-          } catch (notifyErr) {
-            console.error('[watchlist notify] lookup error for player', playerName, notifyErr?.message);
-          }
-        }
-      }
-    } catch (notifyTopErr) {
-      console.error('[watchlist notify] top-level error:', notifyTopErr?.message);
-    }
-    // ── End watchlist notifications ───────────────────────────────────────────
+    // (Watcher notification removed: now only triggered by explicit Notify Watchers action)
 
     const photo = await queryRow(`
       SELECT 
