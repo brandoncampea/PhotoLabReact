@@ -134,23 +134,37 @@ router.get('/admin/:orderId/whcc-preview', adminRequired, async (req, res) => {
 router.post('/admin/:orderId/whcc-approval', adminRequired, async (req, res) => {
   try {
     const orderId = Number(req.params.orderId);
-    const { action } = req.body;
+    const { action, specialInstructions } = req.body;
+    const trimmedSpecialInstructions = String(specialInstructions || '').trim();
     if (!orderId || !['approve', 'reject'].includes(action)) {
       return res.status(400).json({ error: 'Invalid orderId or action' });
     }
     const order = await queryRow('SELECT o.id, o.approval_status FROM orders o WHERE o.id = $1', [orderId]);
     if (!order) return res.status(404).json({ error: 'Order not found' });
-    if (order.approval_status === 'approved' && action === 'approve') {
-      return res.json({ success: true, message: 'Order already approved' });
-    }
     const newStatus = action === 'approve' ? 'approved' : 'rejected';
-    await query('UPDATE orders SET approval_status = $1, approved_at = CASE WHEN $1 = \'approved\' THEN CURRENT_TIMESTAMP ELSE NULL END WHERE id = $2', [newStatus, orderId]);
+    if (!(order.approval_status === 'approved' && action === 'approve')) {
+      await query('UPDATE orders SET approval_status = $1, approved_at = CASE WHEN $1 = \'approved\' THEN CURRENT_TIMESTAMP ELSE NULL END WHERE id = $2', [newStatus, orderId]);
+    }
     // If approved, trigger WHCC submission (forceSubmit)
     if (action === 'approve') {
       try {
-        await submitOrderToWhcc(orderId, { forceSubmit: true });
+        const submitResult = await submitOrderToWhcc(orderId, {
+          forceSubmit: true,
+          specialInstructions: trimmedSpecialInstructions || null,
+          throwOnError: true,
+        });
+        return res.json({
+          success: true,
+          approvalStatus: 'approved',
+          status: 'submitted',
+          message: order.approval_status === 'approved' ? 'Order already approved and re-submitted to WHCC' : 'Order approved and submitted to WHCC',
+          confirmationId: submitResult?.confirmationId || null,
+        });
       } catch (err) {
-        return res.status(500).json({ error: 'Order approved but WHCC submission failed', details: err?.message || err });
+        return res.status(500).json({
+          error: 'Order approved but WHCC submission failed',
+          details: err?.details || err?.message || err,
+        });
       }
     }
     return res.json({ success: true, approvalStatus: newStatus });
@@ -795,6 +809,7 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
   // Only submit to WHCC if approval_status is 'approved' or options.forceSubmit === true.
   const forceSubmit = options?.forceSubmit === true;
   const previewOnly = options?.previewOnly === true;
+  const throwOnError = options?.throwOnError === true;
 
   // Declare webhookId at function scope for use in both webhook registration and order request building
   let webhookId = null;
@@ -1898,16 +1913,76 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
           return [];
         })();
 
+        const dbItemAttributeUIDsWithParents = (() => {
+          if (!dbItemAttributeUIDs.length) return [];
+
+          const attributeCategories = Array.isArray(effectiveCatalogMatch?.AttributeCategories)
+            ? effectiveCatalogMatch.AttributeCategories
+            : Array.isArray(effectiveCatalogMatch?.attributeCategories)
+            ? effectiveCatalogMatch.attributeCategories
+            : [];
+
+          if (!attributeCategories.length) {
+            return dbItemAttributeUIDs;
+          }
+
+          const getOptions = (category) =>
+            Array.isArray(category?.Attributes)
+              ? category.Attributes
+              : Array.isArray(category?.attributes)
+              ? category.attributes
+              : [];
+
+          const getAttrUid = (attr) => Number(attr?.Id ?? attr?.AttributeUID ?? attr?.attributeUID ?? attr?.id ?? 0) || null;
+          const getParentUid = (attr) => Number(attr?.ParentAttributeUID ?? attr?.parentAttributeUID ?? 0) || null;
+          const getRequiredLevel = (attr) => Number(attr?.RequiredLevel ?? attr?.requiredLevel ?? 0) || null;
+
+          const uidToParent = new Map();
+          const uidToRequiredLevel = new Map();
+          const categoryRequiredLevels = new Set();
+          
+          for (const category of attributeCategories) {
+            const categoryRequiredLevel = Number(category?.RequiredLevel ?? category?.requiredLevel ?? 0);
+            if (categoryRequiredLevel === 0) {
+              categoryRequiredLevels.add(0);  // Mark as top-level category
+            }
+            
+            for (const attr of getOptions(category)) {
+              const uid = getAttrUid(attr);
+              if (uid && uid > 0) {
+                uidToParent.set(uid, getParentUid(attr));
+                uidToRequiredLevel.set(uid, getRequiredLevel(attr) || categoryRequiredLevel);
+              }
+            }
+          }
+
+          const selected = new Set(dbItemAttributeUIDs);
+          let changed = true;
+          while (changed) {
+            changed = false;
+            for (const uid of Array.from(selected)) {
+              const parentUid = uidToParent.get(uid);
+              // Only walk to REQUIRED parents (top-level categories with RequiredLevel = 0),
+              // not intermediate option-level parents (which would create duplicate Paper Type conflicts)
+              const parentRequiredLevel = uidToRequiredLevel.get(parentUid) ?? null;
+              if (Number.isInteger(parentUid) && parentUid > 0 && !selected.has(parentUid) && parentRequiredLevel === 0) {
+                selected.add(parentUid);
+                changed = true;
+              }
+            }
+          }
+
+          return Array.from(selected)
+            .map((value) => Number(value))
+            .filter((value) => Number.isInteger(value) && value > 0);
+        })();
+
         // Preview should show DB-stored attributes exactly as selected by user.
-        // WHCC submission must also include required catalog/parent attributes to satisfy business rules.
+        // WHCC submission should preserve DB-selected attributes, adding only required parent chain.
+        // Fall back to resolved catalog attributes only when DB has no attribute selection.
         const itemAttributeUIDs = options.previewOnly
           ? dbItemAttributeUIDs
-          : Array.from(new Set([
-              ...dbItemAttributeUIDs,
-              ...finalAttributeUIDs,
-            ]))
-              .map((value) => Number(value))
-              .filter((value) => Number.isInteger(value) && value > 0);
+          : (dbItemAttributeUIDs.length ? dbItemAttributeUIDsWithParents : finalAttributeUIDs);
 
         // Debug log for attribute flow
         console.log(
@@ -1916,6 +1991,8 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
           'previewOnly:', Boolean(options.previewOnly),
           'dbItemAttributeUIDs:',
           JSON.stringify(dbItemAttributeUIDs),
+          'dbItemAttributeUIDsWithParents:',
+          JSON.stringify(dbItemAttributeUIDsWithParents),
           'finalAttributeUIDs (catalog/parents):',
           JSON.stringify(finalAttributeUIDs),
           'itemAttributeUIDs (effective):',
@@ -2211,6 +2288,13 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
     );
 
     console.log(`[WHCC] Order(s) ${targetOrderIds.join(', ')} submitted successfully`);
+    return {
+      submitted: true,
+      confirmationId,
+      importResponse: importResponseData,
+      submitResponse: submitResponseData,
+      requestLog,
+    };
   } catch (error) {
     const errorPayload = {
       stage: currentStage,
@@ -2273,7 +2357,21 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
         console.error('[WHCC] Error config:', error.config);
       }
     }
+    if (throwOnError) {
+      const submitError = new Error(errorPayload.message || 'WHCC submission failed');
+      submitError.details = errorPayload;
+      throw submitError;
+    }
+
     // Non-blocking error — don't fail the order creation
+    return {
+      submitted: false,
+      confirmationId,
+      error: errorPayload,
+      importResponse: importResponseData,
+      submitResponse: submitResponseData,
+      requestLog,
+    };
   }
 };
 

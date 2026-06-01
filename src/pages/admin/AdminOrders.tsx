@@ -70,7 +70,15 @@ export async function submitWhccOrder(orderId: number, specialInstructions?: str
       let message = 'Failed to submit order to WHCC';
       try {
         const data = await res.json();
-        if (data?.error) message = data.error;
+        if (data?.error) {
+          message = data.error;
+          if (data?.details) {
+            const detailsText = typeof data.details === 'string'
+              ? data.details
+              : JSON.stringify(data.details);
+            message = `${message}: ${detailsText}`;
+          }
+        }
       } catch {
         // ignore json parse errors
       }
@@ -90,7 +98,15 @@ export async function submitWhccOrder(orderId: number, specialInstructions?: str
 
 // --- WHCC Preview Modal ---
 // (MUST be at top-level, not inside any other function or component)
-function WhccPreviewModal({ orderId, onClose }: { orderId: number; onClose: () => void }) {
+function WhccPreviewModal({
+  orderId,
+  onClose,
+  onSubmitted,
+}: {
+  orderId: number;
+  onClose: () => void;
+  onSubmitted?: (orderId: number, result: any) => Promise<void> | void;
+}) {
     const loadPreview = React.useCallback(async (instructions?: string) => {
       setLoading(true);
       setError(null);
@@ -111,6 +127,9 @@ function WhccPreviewModal({ orderId, onClose }: { orderId: number; onClose: () =
       setSubmitError(null);
       try {
         const result = await submitWhccOrder(orderId, specialInstructions);
+        if (onSubmitted) {
+          await onSubmitted(orderId, result);
+        }
         setApprovalStatus(result.status || 'submitted');
         setSubmitting(false);
         onClose();
@@ -389,12 +408,6 @@ const AdminOrders: React.FC = () => {
   const [whccPreviewByOrder, setWhccPreviewByOrder] = useState<Record<number, { approvalStatus?: string; preview?: any }>>({});
   const [whccApprovalLoading, setWhccApprovalLoading] = useState<Record<number, boolean>>({});
   const [whccApprovalError, setWhccApprovalError] = useState<Record<number, string | null>>({});
-  const whccPreviewModalPortal = whccPreviewOrderId
-    ? ReactDOM.createPortal(
-        <WhccPreviewModal orderId={whccPreviewOrderId} onClose={() => setWhccPreviewOrderId(null)} />,
-        document.body
-      )
-    : null;
   const [batchStatusUpdate, setBatchStatusUpdate] = useState({ status: '', message: '', loading: false, result: '' });
 
 
@@ -1544,6 +1557,21 @@ const AdminOrders: React.FC = () => {
       ? { className: 'status-eligible', label: 'Eligible' }
       : { className: 'status-waiting', label: 'Waiting' };
   };
+
+  const whccPreviewModalPortal = whccPreviewOrderId
+    ? ReactDOM.createPortal(
+        <WhccPreviewModal
+          orderId={whccPreviewOrderId}
+          onClose={() => setWhccPreviewOrderId(null)}
+          onSubmitted={async (submittedOrderId) => {
+            await ensureOrderDetailsLoaded(submittedOrderId);
+            await loadData();
+            setMessage(`Order #${submittedOrderId} submitted to WHCC. Order details refreshed.`);
+          }}
+        />,
+        document.body
+      )
+    : null;
 
   return (
     <AdminLayout>
