@@ -102,6 +102,7 @@ const Checkout: React.FC = () => {
 
       const shippingMode = getShippingMode();
 
+      // Always send attribute UIDs (not names) for each item
       const checkoutRequest = {
         customer: {
           firstName: user.firstName,
@@ -117,7 +118,24 @@ const Checkout: React.FC = () => {
             country: shippingInfo.country || 'US',
           },
         },
-        cartItems: cart,
+        items: cart.map(item => {
+          let attributeUIDs = [];
+          // Always parse productOptionsSnapshot for attribute UIDs
+          if (item.productOptionsSnapshot) {
+            let snapshot = item.productOptionsSnapshot;
+            if (typeof snapshot === 'string') {
+              try { snapshot = JSON.parse(snapshot); } catch { snapshot = {}; }
+            }
+            if (snapshot && Array.isArray(snapshot.whccItemAttributeUIDs)) {
+              attributeUIDs = snapshot.whccItemAttributeUIDs.filter((x: any) => typeof x === 'number');
+            }
+          }
+          return {
+            ...item,
+            attributes: attributeUIDs.length ? attributeUIDs : item.attributes,
+            productOptionsSnapshot: item.productOptions ? (typeof item.productOptions === 'string' ? item.productOptions : JSON.stringify(item.productOptions)) : null,
+          };
+        }),
         shippingAddress: shippingInfo,
         shippingMode,
       };

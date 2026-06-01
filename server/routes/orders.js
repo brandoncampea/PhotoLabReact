@@ -1,4 +1,3 @@
-
 import express from 'express';
 import jwt from 'jsonwebtoken';
 import mssql from '../mssql.cjs';
@@ -82,29 +81,43 @@ router.get('/admin/:orderId/whcc-preview', adminRequired, async (req, res) => {
   try {
     const orderId = Number(req.params.orderId);
     if (!orderId) return res.status(400).json({ error: 'Invalid orderId' });
+    // Accept optional specialInstructions query param to regenerate preview
+    const specialInstructions = req.query.specialInstructions ? String(req.query.specialInstructions).trim() : undefined;
     // Use the same centralized code as batch submission, but do not submit
-    const result = await submitOrderToWhcc(orderId, { previewOnly: true });
+    const result = await submitOrderToWhcc(orderId, { previewOnly: true, specialInstructions });
     if (!result || !result.whccPayload) return res.status(404).json({ error: 'Order not found or not eligible for WHCC' });
 
-    // Patch: Ensure every item in the payload includes 'attributes' extracted from productOptions
-    if (Array.isArray(result.whccPayload?.items)) {
-      for (const item of result.whccPayload.items) {
-        let attrs = null;
-        // Try to extract from productOptions
-        let options = item.productOptions;
-        if (typeof options === 'string') {
-          try { options = JSON.parse(options); } catch { options = {}; }
+    // Normalize ItemAttributes in preview response for WHCC order items
+    if (Array.isArray(result.whccPayload?.whccOrderItems)) {
+      for (const item of result.whccPayload.whccOrderItems) {
+        let attrs = [];
+        if (item.ItemAttributes) {
+          if (Array.isArray(item.ItemAttributes)) {
+            // If already [{AttributeUID:...}], keep as is, else map
+            if (item.ItemAttributes.length && typeof item.ItemAttributes[0] === 'object' && item.ItemAttributes[0].AttributeUID) {
+              attrs = item.ItemAttributes;
+            } else {
+              attrs = item.ItemAttributes
+                .map(uid => Number(uid?.AttributeUID ?? uid))
+                .filter(uid => Number.isInteger(uid) && uid > 0)
+                .map(uid => ({ AttributeUID: uid }));
+            }
+          } else if (typeof item.ItemAttributes === 'string') {
+            try { attrs = JSON.parse(item.ItemAttributes); } catch { attrs = [item.ItemAttributes]; }
+            attrs = attrs
+              .map(uid => Number(uid?.AttributeUID ?? uid))
+              .filter(uid => Number.isInteger(uid) && uid > 0)
+              .map(uid => ({ AttributeUID: uid }));
+          }
         }
-        if (options && typeof options === 'object') {
-          if (Array.isArray(options.attributes)) attrs = options.attributes;
-          else if (typeof options.attributes === 'string') attrs = [options.attributes];
+        // Always set ItemAttributes for WHCC if any
+        if (attrs.length) {
+          item.ItemAttributes = attrs;
+        } else {
+          delete item.ItemAttributes;
         }
-        // Fallback: if item.attributes already exists, use it
-        if (!attrs && item.attributes) {
-          attrs = Array.isArray(item.attributes) ? item.attributes : [item.attributes];
-        }
-        // Attach to item
-        item.attributes = attrs && attrs.length ? attrs : undefined;
+        // Debug log for ItemAttributes
+        console.log('[WHCC][DEBUG] ItemAttributes for order item', item.id, ':', JSON.stringify(item.ItemAttributes));
       }
     }
 
@@ -190,7 +203,7 @@ router.post('/admin/:orderId/resend-digital-download', adminRequired, async (req
     if (!order) return res.status(404).json({ success: false, message: 'Order not found', digitalItemCount: 0 });
 
     const items = await queryRows(
-      `SELECT oi.id as id, oi.photo_id as photoId, oi.photo_ids as photoIds, oi.source_album_id as sourceAlbumId, oi.digital_download_scope as digitalDownloadScope, oi.quantity, oi.price as unitPrice, ph.file_name as photoFileName, ph.album_id as photoAlbumId, COALESCE(oi.product_options_snapshot, p.options) as productOptions, p.category as productCategory, p.name as productName
+      `SELECT oi.id as id, oi.photo_id as photoId, oi.photo_ids as photoIds, oi.source_album_id as sourceAlbumId, oi.digital_download_scope as digitalDownloadScope, oi.quantity, oi.price as unitPrice, ph.file_name as photoFileName, ph.album_id as photoAlbumId, COALESCE(oi.product_options_snapshot, p.options) as productOptions, oi.attributes as attributes, p.category as productCategory, p.name as productName
         FROM order_items oi
         INNER JOIN photos ph ON ph.id = oi.photo_id
         LEFT JOIN products p ON p.id = oi.product_id
@@ -198,32 +211,28 @@ router.post('/admin/:orderId/resend-digital-download', adminRequired, async (req
       [orderId]
      );
 
-    // Patch: Ensure every item includes 'attributes' extracted from productOptions, matching CartItem logic
-    for (const item of items) {
-      let attrs = null;
-      let options = item.productOptions;
-      if (typeof options === 'string') {
-        try { options = JSON.parse(options); } catch { options = {}; }
-      }
-      if (options && typeof options === 'object') {
-        // Prefer attributes array or string
-        if (Array.isArray(options.attributes)) attrs = options.attributes;
-        else if (typeof options.attributes === 'string') attrs = [options.attributes];
-        // Also check for common alternate keys (finish, surface, paper, etc.)
-        const altKeys = ['finish', 'surface', 'paper', 'coating', 'material'];
-        for (const key of altKeys) {
-          if (!attrs && options[key]) {
-            if (Array.isArray(options[key])) attrs = options[key];
-            else if (typeof options[key] === 'string') attrs = [options[key]];
-          }
+    // Only use item.attributes from DB (order_items.attributes), no fallback to productOptions or productOptionsSnapshot
+    // Also, return both the parsed items and the original for reuse
+    const parsedItems = items.map(item => {
+      let attrs = [];
+      if (item.attributes) {
+        if (typeof item.attributes === 'string') {
+          try { attrs = JSON.parse(item.attributes); } catch { attrs = [item.attributes]; }
+        } else if (Array.isArray(item.attributes)) {
+          attrs = item.attributes;
+        }
+        // Ensure attrs is an array of numbers
+        if (Array.isArray(attrs)) {
+          attrs = attrs.map(x => typeof x === 'string' && /^\d+$/.test(x) ? Number(x) : x).filter(x => typeof x === 'number' && x > 0);
         }
       }
-      if (!attrs && item.attributes) {
-        attrs = Array.isArray(item.attributes) ? item.attributes : [item.attributes];
-      }
-      item.attributes = attrs && attrs.length ? attrs : undefined;
-    }
-
+      // Always wrap as [{ AttributeUID: ... }]
+      return {
+        ...item,
+        attributes: attrs.length ? attrs.map(uid => ({ AttributeUID: uid })) : [],
+      };
+    });
+    // Use parsedItems for both digital and WHCC payloads
     // Build digital download links
     const appBase = String(process.env.APP_BASE_URL || process.env.CANONICAL_APP_URL || 'https://labs.campeaphotography.com').trim().replace(/\/$/, '');
     const digitalDownloads = items
@@ -785,6 +794,10 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
   // Approval/preview logic: if not forced, only generate preview and set approval_status to 'pending'.
   // Only submit to WHCC if approval_status is 'approved' or options.forceSubmit === true.
   const forceSubmit = options?.forceSubmit === true;
+  const previewOnly = options?.previewOnly === true;
+
+  // Declare webhookId at function scope for use in both webhook registration and order request building
+  let webhookId = null;
 
   // --- GUARD: Prevent WHCC submission for digital-only orders ---
   // Fetch all order items for this order
@@ -803,103 +816,111 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
     }
   }
 
-    // Ensure axios is loaded before first use
-    const axios = (await import('axios')).default;
-    // Ensure isSandbox is defined before first use
-    const isSandbox = process.env.WHCC_SANDBOX === 'true';
-    // Get WHCC credentials from environment (support both naming conventions)
-    const consumerKey = process.env.WHCC_CONSUMER_KEY || process.env.WHCC_API_KEY;
-    const consumerSecret = process.env.WHCC_CONSUMER_SECRET || process.env.WHCC_API_SECRET;
-    if (!consumerKey || !consumerSecret) {
-      console.warn('[WHCC] WHCC credentials not configured (set WHCC_API_KEY/WHCC_API_SECRET or WHCC_CONSUMER_KEY/WHCC_CONSUMER_SECRET); skipping WHCC webhook registration');
-      return;
-    }
-    // Fetch WHCC OAuth token for webhook registration
-    const { fetchToken: fetchWhccToken } = await import('./whccProxy.js');
-    let token;
-    try {
-      token = await fetchWhccToken(consumerKey, consumerSecret, isSandbox);
-    } catch (tokenErr) {
-      console.error('[WHCC][ERROR] Failed to fetch WHCC OAuth token for webhook registration:', tokenErr?.message || tokenErr);
-      return;
-    }
-    // Register webhook with WHCC and get webhookId
-    let webhookId = null;
-    // Prepare webhook registration URL
-    const webhookUrl = process.env.WHCC_WEBHOOK_URL || `${process.env.APP_BASE_URL || 'http://localhost:3000'}/api/whcc-webhook`;
-    // Register webhook with WHCC
-    try {
-      const webhookRegisterResponse = await axios.post(
-        `${isSandbox ? 'https://sandbox.apps.whcc.com' : 'https://apps.whcc.com'}/api/callback/create`,
-        {
-          callbackUri: webhookUrl
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
-      webhookId = webhookRegisterResponse?.data?.WebhookId || webhookRegisterResponse?.data?.webhookId || null;
-      if (!webhookId) {
-        console.error('[WHCC][ERROR] Webhook registration did not return a webhookId. Response:', webhookRegisterResponse?.data);
-        // Proceed without webhook, do not abort submission
+    if (!previewOnly) {
+      // Ensure axios is loaded before first use
+      const axios = (await import('axios')).default;
+      // Ensure isSandbox is defined before first use
+      const isSandbox = process.env.WHCC_SANDBOX === 'true';
+      // Get WHCC credentials from environment (support both naming conventions)
+      const consumerKey = process.env.WHCC_CONSUMER_KEY || process.env.WHCC_API_KEY;
+      const consumerSecret = process.env.WHCC_CONSUMER_SECRET || process.env.WHCC_API_SECRET;
+      if (!consumerKey || !consumerSecret) {
+        console.warn('[WHCC] WHCC credentials not configured (set WHCC_API_KEY/WHCC_API_SECRET or WHCC_CONSUMER_KEY/WHCC_CONSUMER_SECRET); skipping WHCC webhook registration');
       } else {
-        console.log('[WHCC] Registered webhook with ID:', webhookId);
-        // Store webhookId in all orders in the batch (or single order)
-        for (const oid of targetOrderIds) {
+        // Fetch WHCC OAuth token for webhook registration
+        const { fetchToken: fetchWhccToken } = await import('./whccProxy.js');
+        let token;
+        try {
+          token = await fetchWhccToken(consumerKey, consumerSecret, isSandbox);
+        } catch (tokenErr) {
+          console.error('[WHCC][ERROR] Failed to fetch WHCC OAuth token for webhook registration:', tokenErr?.message || tokenErr);
+          token = null;
+        }
+
+        // Register webhook with WHCC and get webhookId
+        if (token) {
+          webhookId = null;
+          // Prepare webhook registration URL
+          const webhookUrl = process.env.WHCC_WEBHOOK_URL || `${process.env.APP_BASE_URL || 'http://localhost:3000'}/api/whcc-webhook`;
+          // Register webhook with WHCC
           try {
-            await query(
-              `UPDATE orders SET whcc_webhook_id = $1 WHERE id = $2`,
-              [webhookId, oid]
+            const webhookRegisterResponse = await axios.post(
+              `${isSandbox ? 'https://sandbox.apps.whcc.com' : 'https://apps.whcc.com'}/api/callback/create`,
+              {
+                callbackUri: webhookUrl
+              },
+              {
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                  'Content-Type': 'application/json',
+                },
+              }
             );
-            // Insert or update whcc_webhook_status
-            await query(
-              `MERGE whcc_webhook_status AS target
-               USING (SELECT $1 AS order_id, $2 AS webhook_id) AS src
-               ON (target.order_id = src.order_id)
-               WHEN MATCHED THEN
-                 UPDATE SET webhook_id = src.webhook_id, updated_at = CURRENT_TIMESTAMP
-               WHEN NOT MATCHED THEN
-                 INSERT (order_id, webhook_id, created_at, updated_at) VALUES (src.order_id, src.webhook_id, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);`,
-              [oid, webhookId]
-            );
-            // Insert or update whcc_webhook_event
-            await query(
-              `MERGE whcc_webhook_event AS target
-               USING (SELECT $1 AS order_id, $2 AS webhook_id) AS src
-               ON (target.order_id = src.order_id)
-               WHEN MATCHED THEN
-                 UPDATE SET webhook_id = src.webhook_id, updated_at = CURRENT_TIMESTAMP
-               WHEN NOT MATCHED THEN
-                 INSERT (order_id, webhook_id, created_at, updated_at) VALUES (src.order_id, src.webhook_id, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);`,
-              [oid, webhookId]
-            );
-            // Insert or update whcc_webhook_payload
-            await query(
-              `MERGE whcc_webhook_payload AS target
-               USING (SELECT $1 AS order_id, $2 AS webhook_id) AS src
-               ON (target.order_id = src.order_id)
-               WHEN MATCHED THEN
-                 UPDATE SET webhook_id = src.webhook_id, updated_at = CURRENT_TIMESTAMP
-               WHEN NOT MATCHED THEN
-                 INSERT (order_id, webhook_id, created_at, updated_at) VALUES (src.order_id, src.webhook_id, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);`,
-              [oid, webhookId]
-            );
-            console.log(`[WHCC] Webhook fields persisted for order ${oid}`);
-          } catch (persistErr) {
-            console.error(`[WHCC][ERROR] Failed to persist webhook fields for order ${oid}:`, persistErr?.message || persistErr);
+            webhookId = webhookRegisterResponse?.data?.WebhookId || webhookRegisterResponse?.data?.webhookId || null;
+            if (!webhookId) {
+              console.error('[WHCC][ERROR] Webhook registration did not return a webhookId. Response:', webhookRegisterResponse?.data);
+              // Proceed without webhook, do not abort submission
+            } else {
+              console.log('[WHCC] Registered webhook with ID:', webhookId);
+              // Store webhookId in all orders in the batch (or single order)
+              const webhookOrderIds = (typeof targetOrderIds !== 'undefined' && Array.isArray(targetOrderIds))
+                ? targetOrderIds
+                : [orderId];
+              for (const oid of webhookOrderIds) {
+                try {
+                  await query(
+                    `UPDATE orders SET whcc_webhook_id = $1 WHERE id = $2`,
+                    [webhookId, oid]
+                  );
+                  // Insert or update whcc_webhook_status
+                  await query(
+                    `MERGE whcc_webhook_status AS target
+                     USING (SELECT $1 AS order_id, $2 AS webhook_id) AS src
+                     ON (target.order_id = src.order_id)
+                     WHEN MATCHED THEN
+                       UPDATE SET webhook_id = src.webhook_id, updated_at = CURRENT_TIMESTAMP
+                     WHEN NOT MATCHED THEN
+                       INSERT (order_id, webhook_id, created_at, updated_at) VALUES (src.order_id, src.webhook_id, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);`,
+                    [oid, webhookId]
+                  );
+                  // Insert or update whcc_webhook_event
+                  await query(
+                    `MERGE whcc_webhook_event AS target
+                     USING (SELECT $1 AS order_id, $2 AS webhook_id) AS src
+                     ON (target.order_id = src.order_id)
+                     WHEN MATCHED THEN
+                       UPDATE SET webhook_id = src.webhook_id, updated_at = CURRENT_TIMESTAMP
+                     WHEN NOT MATCHED THEN
+                       INSERT (order_id, webhook_id, created_at, updated_at) VALUES (src.order_id, src.webhook_id, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);`,
+                    [oid, webhookId]
+                  );
+                  // Insert or update whcc_webhook_payload
+                  await query(
+                    `MERGE whcc_webhook_payload AS target
+                     USING (SELECT $1 AS order_id, $2 AS webhook_id) AS src
+                     ON (target.order_id = src.order_id)
+                     WHEN MATCHED THEN
+                       UPDATE SET webhook_id = src.webhook_id, updated_at = CURRENT_TIMESTAMP
+                     WHEN NOT MATCHED THEN
+                       INSERT (order_id, webhook_id, created_at, updated_at) VALUES (src.order_id, src.webhook_id, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);`,
+                    [oid, webhookId]
+                  );
+                  console.log(`[WHCC] Webhook fields persisted for order ${oid}`);
+                } catch (persistErr) {
+                  console.error(`[WHCC][ERROR] Failed to persist webhook fields for order ${oid}:`, persistErr?.message || persistErr);
+                }
+              }
+            }
+          } catch (err) {
+            console.error('[WHCC][ERROR] Failed to register webhook:', err?.message || err);
+            // Proceed without webhook, do not abort submission
           }
         }
       }
-    } catch (err) {
-      console.error('[WHCC][ERROR] Failed to register webhook:', err?.message || err);
-      // Proceed without webhook, do not abort submission
     }
   const allowBatch = Boolean(options?.allowBatch);
   const shippingAddressOverride = options?.shippingAddressOverride || null;
-  const specialInstructions = String(options?.specialInstructions || '').trim() || null;
+  let specialInstructions = String(options?.specialInstructions || '').trim() || null;
   const aggregateOrderIds = Array.isArray(options?.aggregateOrderIds)
     ? options.aggregateOrderIds.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)
     : [];
@@ -913,6 +934,27 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
   let requestLog = null;
   const nowIso = () => new Date().toISOString();
 
+  const extractWhccResponseDetails = (...sources) => {
+    const pickFirst = (keys) => {
+      for (const source of sources) {
+        if (!source || typeof source !== 'object') continue;
+        for (const key of keys) {
+          const value = source[key];
+          if (value != null && String(value).trim() !== '') {
+            return String(value).trim();
+          }
+        }
+      }
+      return null;
+    };
+
+    return {
+      orderNumber: pickFirst(['whccOrderNumber', 'WhccOrderNumber', 'orderNumber', 'OrderNumber', 'orderNum', 'OrderNum', 'order_id', 'OrderId']),
+      webhookStatus: pickFirst(['whccWebhookStatus', 'WebhookStatus', 'webhookStatus', 'status', 'Status']),
+      webhookEvent: pickFirst(['whccWebhookEvent', 'WebhookEvent', 'webhookEvent', 'event', 'Event']),
+    };
+  };
+
 
   const targetOrderIds = isAggregateSubmission ? aggregateOrderIds : [orderId];
 
@@ -923,6 +965,7 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
   );
   const anyPending = approvalRows.some(row => row.approval_status === 'pending');
   const allApproved = approvalRows.every(row => row.approval_status === 'approved');
+
 
 
   try {
@@ -938,14 +981,6 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
                 oi.quantity,
                 oi.price as price,
                 oi.crop_data as cropData,
-                oi.digital_download_scope as digitalDownloadScope,
-                oi.studio_revenue_amount as studioRevenueAmount,
-                oi.base_revenue_amount as baseRevenueAmount,
-                oi.production_cost_amount as productionCostAmount,
-                oi.studio_payout_amount as studioPayoutAmount,
-                oi.super_admin_share_amount as superAdminShareAmount,
-                oi.stripe_fee_allocated_amount as stripeFeeAllocatedAmount,
-                oi.studio_net_payout_amount as studioNetPayoutAmount,
                 p.name as productName,
                 ps.size_name as productSizeName,
                 COALESCE(ps.price, p.price, 0) as basePrice,
@@ -957,13 +992,34 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
         [order.id]
       );
       return;
+    } else {
+      // Non-aggregate: fetch the order from the orders table
+      orders = await queryRows(
+        `SELECT * FROM orders WHERE id = $1`,
+        [orderId]
+      );
+      // Map snake_case DB fields to camelCase for downstream code
+      if (orders[0]) {
+        orders[0].shippingAddress = orders[0].shipping_address;
+        orders[0].batchShippingAddress = orders[0].batch_shipping_address;
+      }
     }
 
     const order = orders[0];
-    if (orders.some((entry) => entry.is_batch) && !allowBatch) {
+    if (!order) {
+      throw new Error('Order not found or undefined in submitOrderToWhcc');
+    }
+    if (order.is_batch && !allowBatch) {
       return; // Don't submit batch orders to WHCC unless explicitly allowed
     }
 
+    // Defensive: If shippingAddress is missing, throw a clear error
+    if (typeof order.shippingAddress === 'undefined') {
+      throw new Error('Order is missing shippingAddress field. Cannot submit to WHCC.');
+    }
+    if (typeof order.batchShippingAddress === 'undefined') {
+      throw new Error('Order is missing batchShippingAddress field. Cannot submit to WHCC.');
+    }
     const parsedOrderShippingAddress = safeJsonParse(order.shippingAddress, {}) || {};
     const parsedBatchShippingAddress = safeJsonParse(order.batchShippingAddress, {}) || {};
     const shippingAddress = shippingAddressOverride || (order.is_batch ? parsedBatchShippingAddress : parsedOrderShippingAddress);
@@ -987,10 +1043,11 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
               oi.product_size_id as productSizeId,
               oi.quantity,
               oi.crop_data as cropData,
+              oi.attributes as attributes,
               p.name as productName,
               p.category as productCategory,
               ps.size_name as sizeName,
-              p.options as productOptions,
+              COALESCE(oi.product_options_snapshot, p.options) as productOptions,
               p.image_url as productImageUrl,
               ph.file_name as fileName,
               ph.album_id as photoAlbumId,
@@ -1363,7 +1420,7 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
       const selected = [];
       const requiredParents = new Set(
         attributeCategories
-          .map((c) => Number(c?.RequiredLevel ?? c?.requiredLevel ?? 0))
+          .map((c) => c?.RequiredLevel)
           .filter((v) => Number.isInteger(v) && v > 0)
       );
 
@@ -1822,6 +1879,48 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
             }
           : {};
 
+        const dbItemAttributeUIDs = (() => {
+          if (Array.isArray(item.attributes)) {
+            return item.attributes
+              .map((value) => Number(value?.AttributeUID ?? value))
+              .filter((value) => Number.isInteger(value) && value > 0);
+          }
+          if (typeof item.attributes === 'string') {
+            const parsed = safeJsonParse(item.attributes, []);
+            if (Array.isArray(parsed)) {
+              return parsed
+                .map((value) => Number(value?.AttributeUID ?? value))
+                .filter((value) => Number.isInteger(value) && value > 0);
+            }
+            const single = Number(parsed?.AttributeUID ?? parsed);
+            return Number.isInteger(single) && single > 0 ? [single] : [];
+          }
+          return [];
+        })();
+
+        // Preview should show DB-stored attributes exactly as selected by user.
+        // WHCC submission must also include required catalog/parent attributes to satisfy business rules.
+        const itemAttributeUIDs = options.previewOnly
+          ? dbItemAttributeUIDs
+          : Array.from(new Set([
+              ...dbItemAttributeUIDs,
+              ...finalAttributeUIDs,
+            ]))
+              .map((value) => Number(value))
+              .filter((value) => Number.isInteger(value) && value > 0);
+
+        // Debug log for attribute flow
+        console.log(
+          '[WHCC][DEBUG][resolvedWhccItems] item.id:',
+          item.id,
+          'previewOnly:', Boolean(options.previewOnly),
+          'dbItemAttributeUIDs:',
+          JSON.stringify(dbItemAttributeUIDs),
+          'finalAttributeUIDs (catalog/parents):',
+          JSON.stringify(finalAttributeUIDs),
+          'itemAttributeUIDs (effective):',
+          JSON.stringify(itemAttributeUIDs)
+        );
         return {
           localItemId: Number(item.id || index + 1),
           localProductId: Number(item.product_id || item.productId || 0) || null,
@@ -1852,8 +1951,9 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
               AutoRotate: true,
               ...cropOverrides,
             })),
-            ...(finalAttributeUIDs.length
-              ? { ItemAttributes: finalAttributeUIDs.map((uid) => ({ AttributeUID: uid })) }
+            // Include ItemAttributes from order_items.attributes (DB only)
+            ...(itemAttributeUIDs.length > 0
+              ? { ItemAttributes: itemAttributeUIDs.map((uid) => ({ AttributeUID: uid })) }
               : {}),
           },
         };
@@ -1891,7 +1991,7 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
       orderId,
       targetOrderIds,
       shippingAddress,
-      specialInstructions,
+      ...(options.specialInstructions ? { specialInstructions: options.specialInstructions } : {}),
       generatedAt: nowIso(),
     };
 
@@ -1911,12 +2011,13 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
         `UPDATE orders SET preview_payload = $1, approval_status = COALESCE(approval_status, 'pending') WHERE id IN (${targetOrderIds.map((_, i) => `$${i + 2}`).join(',')})`,
         [stringifyForDb(previewPayload), ...targetOrderIds]
       );
+      if (options.previewOnly) {
+        console.log(`[WHCC][PREVIEW] Preview payload persisted for order(s) ${targetOrderIds.join(', ')}.`);
+        return { whccPayload: previewPayload };
+      }
       // If not forceSubmit and not all approved, do NOT submit to WHCC yet
       if (!forceSubmit && !allApproved) {
         console.log(`[WHCC][PREVIEW] Preview payload persisted for order(s) ${targetOrderIds.join(', ')}. Awaiting approval.`);
-        if (options.previewOnly) {
-          return { whccPayload: previewPayload };
-        }
         return;
       }
     }
@@ -2007,6 +2108,7 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
     );
 
     importResponseData = importResponse.data || null;
+    const importResponseDetails = extractWhccResponseDetails(importResponseData);
     requestLog = {
       ...requestLog,
       importResponseMeta: {
@@ -2019,16 +2121,27 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
       throw new Error('WHCC import succeeded but no confirmation ID was returned');
     }
 
-    const updateImportPlaceholders = targetOrderIds.map((_, index) => `$${index + 4}`).join(',');
+    const updateImportPlaceholders = targetOrderIds.map((_, index) => `$${index + 7}`).join(',');
     await query(
       `UPDATE orders
        SET whcc_confirmation_id = $1,
            whcc_order_id = $1,
            whcc_import_response = $2,
            whcc_request_log = $3,
+           whcc_order_number = COALESCE($4, whcc_order_number),
+           whcc_webhook_status = COALESCE($5, whcc_webhook_status),
+           whcc_webhook_event = COALESCE($6, whcc_webhook_event),
            whcc_last_error = NULL
        WHERE id IN (${updateImportPlaceholders})`,
-      [confirmationId, stringifyForDb(importResponseData), stringifyForDb(requestLog), ...targetOrderIds]
+      [
+        confirmationId,
+        stringifyForDb(importResponseData),
+        stringifyForDb(requestLog),
+        importResponseDetails.orderNumber,
+        importResponseDetails.webhookStatus,
+        importResponseDetails.webhookEvent,
+        ...targetOrderIds,
+      ]
     );
 
     console.log(`[WHCC] Order(s) ${targetOrderIds.join(', ')} imported with confirmationId: ${confirmationId}`);
@@ -2057,6 +2170,7 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
     );
 
     submitResponseData = submitResponse.data || null;
+    const submitResponseDetails = extractWhccResponseDetails(submitResponseData);
     requestLog = {
       ...requestLog,
       submitResponseMeta: {
@@ -2065,19 +2179,22 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
       },
     };
 
-    const updateSubmitPlaceholders = targetOrderIds.map((_, index) => `$${index + 6}`).join(',');
+    const updateSubmitPlaceholders = targetOrderIds.map((_, index) => `$${index + 9}`).join(',');
     await query(
       `UPDATE orders
        SET lab_submitted = 1,
            lab_submitted_at = CURRENT_TIMESTAMP,
            batch_lab_vendor = CASE WHEN is_batch = 1 THEN 'whcc' ELSE batch_lab_vendor END,
            batch_queue_status = CASE WHEN is_batch = 1 THEN 'submitted' ELSE batch_queue_status END,
-           batch_shipping_address = CASE WHEN is_batch = 1 THEN COALESCE($5, batch_shipping_address) ELSE batch_shipping_address END,
+           batch_shipping_address = CASE WHEN is_batch = 1 THEN COALESCE($8, batch_shipping_address) ELSE batch_shipping_address END,
            status = CASE WHEN status = 'pending' THEN 'processing' ELSE status END,
            whcc_confirmation_id = $1,
            whcc_import_response = $2,
            whcc_submit_response = $3,
            whcc_request_log = $4,
+           whcc_order_number = COALESCE($5, whcc_order_number),
+           whcc_webhook_status = COALESCE($6, whcc_webhook_status),
+           whcc_webhook_event = COALESCE($7, whcc_webhook_event),
            whcc_last_error = NULL
        WHERE id IN (${updateSubmitPlaceholders})`,
       [
@@ -2085,6 +2202,9 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
         stringifyForDb(importResponseData),
         stringifyForDb(submitResponseData),
         stringifyForDb(requestLog),
+        submitResponseDetails.orderNumber,
+        submitResponseDetails.webhookStatus,
+        submitResponseDetails.webhookEvent,
         shippingAddressOverride ? stringifyForDb(shippingAddressOverride) : null,
         ...targetOrderIds,
       ]
@@ -2112,14 +2232,19 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
       },
     };
 
-    const updateErrorPlaceholders = targetOrderIds.map((_, index) => `$${index + 6}`).join(',');
+    const errorResponseDetails = extractWhccResponseDetails(errorPayload.responseData, importResponseData, submitResponseData);
+
+    const updateErrorPlaceholders = targetOrderIds.map((_, index) => `$${index + 9}`).join(',');
     await query(
       `UPDATE orders
        SET whcc_confirmation_id = COALESCE($1, whcc_confirmation_id),
            whcc_import_response = COALESCE($2, whcc_import_response),
            whcc_submit_response = COALESCE($3, whcc_submit_response),
            whcc_request_log = COALESCE($4, whcc_request_log),
-           whcc_last_error = $5,
+           whcc_order_number = COALESCE($5, whcc_order_number),
+           whcc_webhook_status = COALESCE($6, whcc_webhook_status),
+           whcc_webhook_event = COALESCE($7, whcc_webhook_event),
+           whcc_last_error = $8,
            batch_queue_status = CASE WHEN is_batch = 1 THEN 'failed' ELSE batch_queue_status END
        WHERE id IN (${updateErrorPlaceholders})`,
       [
@@ -2127,6 +2252,9 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
         stringifyForDb(importResponseData),
         stringifyForDb(submitResponseData),
         stringifyForDb(requestLog),
+        errorResponseDetails.orderNumber,
+        errorResponseDetails.webhookStatus,
+        errorResponseDetails.webhookEvent,
         stringifyForDb(errorPayload),
         ...targetOrderIds,
       ]
@@ -2247,11 +2375,11 @@ const sendOrderReceipts = async (orderId) => {
             oi.stripe_fee_allocated_amount as stripeFeeAllocatedAmount,
             oi.studio_net_payout_amount as studioNetPayoutAmount
      FROM order_items oi
+     INNER JOIN products p ON p.id = oi.product_id
+     INNER JOIN product_sizes ps ON ps.id = oi.product_size_id
      INNER JOIN photos ph ON ph.id = oi.photo_id
      INNER JOIN albums a ON a.id = ph.album_id
      INNER JOIN studios s ON s.id = a.studio_id
-     LEFT JOIN products p ON p.id = oi.product_id
-     LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id
      WHERE oi.order_id = $1`,
     [orderId]
   );
@@ -2747,6 +2875,8 @@ router.post('/', requireActiveSubscription, async (req, res) => {
     }
 
     const whccVariantSnapshotCache = new Map();
+    // DEBUG: Log before itemsWithAccounting construction
+    console.debug('[ORDER ITEM ACCOUNTING DEBUG] About to build itemsWithAccounting for order', { itemsLength: Array.isArray(items) ? items.length : 0, items });
     const hydrateProductOptionsWithWhccVariants = async (productSizeId, productOptions) => {
       const normalizedSizeId = Number(productSizeId || 0);
       if (!Number.isInteger(normalizedSizeId) || normalizedSizeId <= 0) {
@@ -2881,7 +3011,8 @@ router.post('/', requireActiveSubscription, async (req, res) => {
     };
 
     const itemsWithAccounting = [];
-    for (const item of items) {
+    try {
+      for (const item of items) {
       const photoIds = Array.isArray(item.photoIds)
         ? item.photoIds
         : item.photoId
@@ -2938,6 +3069,72 @@ router.post('/', requireActiveSubscription, async (req, res) => {
         ...baseProductOptions,
         ...incomingProductOptions,
       };
+      // Always assign productOptionsSnapshot before extraction
+      item.productOptionsSnapshot = item.productOptionsSnapshot || stringifyForDb(mergedProductOptions);
+      // ...
+      // Robustly resolve attributes from all possible sources and merge
+      let attributes = [];
+      // Always extract whccItemAttributeUIDs from productOptionsSnapshot if present
+      let parsedSnapshot = item.productOptionsSnapshot;
+      if (typeof parsedSnapshot === 'string') {
+        try { parsedSnapshot = JSON.parse(parsedSnapshot); } catch { parsedSnapshot = {}; }
+      } else if (typeof parsedSnapshot === 'object' && parsedSnapshot !== null) {
+        // Use as-is
+      } else {
+        parsedSnapshot = {};
+      }
+      // Debug: log parsed snapshot
+      // ...
+      if (parsedSnapshot && typeof parsedSnapshot === 'object') {
+        if (Array.isArray(parsedSnapshot.whccItemAttributeUIDs) && parsedSnapshot.whccItemAttributeUIDs.length > 0) {
+          attributes = attributes.concat(parsedSnapshot.whccItemAttributeUIDs);
+        }
+        if (Array.isArray(parsedSnapshot.attributes) && parsedSnapshot.attributes.length > 0) {
+          attributes = attributes.concat(parsedSnapshot.attributes);
+        } else if (typeof parsedSnapshot.attributes === 'string') {
+          attributes.push(parsedSnapshot.attributes);
+        }
+      }
+      // 1. Top-level item.attributes
+      if (Array.isArray(item.attributes) && item.attributes.length > 0) {
+        attributes = attributes.concat(item.attributes);
+      } else if (item.attributes && typeof item.attributes === 'string') {
+        attributes.push(item.attributes);
+      }
+      // 3. productOptions
+      if (item.productOptions) {
+        let options = item.productOptions;
+        if (typeof options === 'string') {
+          try { options = JSON.parse(options); } catch { options = {}; }
+        }
+        if (options && typeof options === 'object') {
+          if (Array.isArray(options.whccItemAttributeUIDs) && options.whccItemAttributeUIDs.length > 0) {
+            attributes = attributes.concat(options.whccItemAttributeUIDs);
+          }
+          if (Array.isArray(options.attributes) && options.attributes.length > 0) {
+            attributes = attributes.concat(options.attributes);
+          } else if (typeof options.attributes === 'string') {
+            attributes.push(options.attributes);
+          }
+        }
+      }
+      // 4. Remove falsy and deduplicate
+      // Debug: log raw attributes before filtering
+      // ...
+      // Allow both numbers and non-empty strings (for future-proofing)
+      attributes = attributes.filter(x => x !== undefined && x !== null && x !== '').map(x => {
+        if (typeof x === 'string' && /^\d+$/.test(x)) return Number(x);
+        return x;
+      });
+      // Remove duplicates
+      attributes = Array.from(new Set(attributes));
+      // Debug: log filtered attributes
+      // ...
+      // Assign extracted attributes to item.attributes for downstream use
+      item.attributes = attributes.length ? attributes : undefined;
+      // Debug: log assignment
+      // ...
+      // For downstream accounting, hydrate with backend logic
       const productOptions = await hydrateProductOptionsWithWhccVariants(item.productSizeId, mergedProductOptions);
       const isDigital = isDigitalProductRow({
         productOptions,
@@ -2958,10 +3155,19 @@ router.post('/', requireActiveSubscription, async (req, res) => {
         photoIds,
         primaryPhotoId,
         sourceAlbumId: Number(item.albumId || photoRow?.albumId || 0) || null,
-        productOptionsSnapshot: stringifyForDb(productOptions),
+        productOptionsSnapshot: item.productOptionsSnapshot,
+        attributes,
         accounting,
       });
+      }
+      // DEBUG: Log after itemsWithAccounting construction
+      // ...
+    } catch (err) {
+      // ...
+      throw err;
     }
+// Global error handlers for this module
+
 
     const totalItemRevenue = itemsWithAccounting.reduce(
       (sum, item) => sum + (Number(item.accounting?.studioRevenueAmount) || 0),
@@ -2969,74 +3175,102 @@ router.post('/', requireActiveSubscription, async (req, res) => {
     );
 
     // Insert order items
+    console.log('[ORDER ITEM LOOP DEBUG] About to insert order items', { itemsWithAccountingCount: itemsWithAccounting.length, itemsWithAccounting });
     for (const item of itemsWithAccounting) {
       const stripeFeeAllocatedAmount = totalItemRevenue > 0
         ? (Number(paymentAccounting.stripeFeeAmount) || 0) * ((Number(item.accounting?.studioRevenueAmount) || 0) / totalItemRevenue)
         : 0;
       const studioNetPayoutAmount = (Number(item.accounting?.studioPayoutAmount) || 0) - stripeFeeAllocatedAmount;
 
-      // Extract attributes for this item (match CartItem logic)
-      let attrs = null;
+      // Use attribute UIDs from item.attributes (array of numbers or strings)
+      let attrs = Array.isArray(item.attributes)
+        ? item.attributes
+            .map(x => typeof x === 'string' ? Number(x) : x)
+            .filter(x => typeof x === 'number' && !isNaN(x))
+        : [];
+      // PATCH: Filter out default attribute UID (5) if another is present
+      if (attrs.length > 1 && attrs.includes(5)) {
+        attrs = attrs.filter(x => x !== 5);
+      }
+      const attributesJson = attrs && attrs.length ? JSON.stringify(attrs) : null;
+      // Debug logging for attribute extraction and what will be saved
+      console.log('[ORDER ITEM ATTR DEBUG]', {
+        productOptionsSnapshot: item.productOptionsSnapshot,
+        itemAttributes: item.attributes,
+        resolvedAttrs: attrs,
+        attributesJsonToSave: attributesJson
+      });
+      // Extra debug: log full item payload before insert
+      console.log('[ORDER ITEM INSERT PAYLOAD]', {
+        orderId,
+        primaryPhotoId: item.primaryPhotoId,
+        photoIds: item.photoIds,
+        productId: item.productId,
+        productSizeId: item.productSizeId,
+        quantity: item.quantity,
+        price: item.price,
+        cropData: item.cropData,
+        productOptionsSnapshot: item.productOptionsSnapshot,
+        accounting: item.accounting,
+        sourceAlbumId: item.sourceAlbumId,
+        attributesJson
+      });
+      // Patch: always save the resolved attribute UIDs array in both columns
       let options = item.productOptionsSnapshot;
       if (typeof options === 'string') {
         try { options = JSON.parse(options); } catch { options = {}; }
       }
-      if (options && typeof options === 'object') {
-        if (Array.isArray(options.attributes)) attrs = options.attributes;
-        else if (typeof options.attributes === 'string') attrs = [options.attributes];
-        // Also check for common alternate keys (finish, surface, paper, etc.)
-        const altKeys = ['finish', 'surface', 'paper', 'coating', 'material'];
-        for (const key of altKeys) {
-          if (!attrs && options[key]) {
-            if (Array.isArray(options[key])) attrs = options[key];
-            else if (typeof options[key] === 'string') attrs = [options[key]];
-          }
-        }
-      }
-      if (!attrs && item.attributes) {
-        attrs = Array.isArray(item.attributes) ? item.attributes : [item.attributes];
-      }
-      const attributesJson = attrs && attrs.length ? JSON.stringify(attrs) : null;
+      let productOptionsSnapshotPatched = options && typeof options === 'object'
+        ? JSON.stringify({ ...options, attributes: attrs })
+        : item.productOptionsSnapshot;
 
-      await query(`
-        INSERT INTO order_items (
-          order_id, photo_id, photo_ids, product_id, product_size_id, quantity, price, crop_data,
-          product_options_snapshot, fulfillment_type, digital_download_scope, source_album_id, pricing_snapshot,
-          studio_revenue_amount, base_revenue_amount, production_cost_amount, gross_studio_markup_amount,
-          studio_payout_amount, super_admin_share_amount, stripe_fee_allocated_amount, studio_net_payout_amount,
-          attributes
-        )
-        VALUES (
-          $1, $2, $3, $4, $5, $6, $7, $8,
-          $9, $10, $11, $12, $13,
-          $14, $15, $16, $17,
-          $18, $19, $20, $21,
-          $22
-        )
-      `, [
-        orderId,
-        item.primaryPhotoId,
-        JSON.stringify(item.photoIds),
-        item.productId,
-        item.productSizeId || null,
-        item.quantity,
-        item.price,
-        item.cropData ? JSON.stringify(item.cropData) : null,
-        item.productOptionsSnapshot,
-        item.accounting?.fulfillmentType || null,
-        item.accounting?.digitalDownloadScope || null,
-        item.sourceAlbumId,
-        stringifyForDb(item.accounting?.pricingSnapshot || null),
-        Number(item.accounting?.studioRevenueAmount) || 0,
-        Number(item.accounting?.baseRevenueAmount) || 0,
-        Number(item.accounting?.productionCostAmount) || 0,
-        Number(item.accounting?.grossStudioMarkupAmount) || 0,
-        Number(item.accounting?.studioPayoutAmount) || 0,
-        Number(item.accounting?.superAdminShareAmount) || 0,
-        stripeFeeAllocatedAmount,
-        studioNetPayoutAmount,
-        attributesJson,
-      ]);
+      try {
+        const sql = `
+          INSERT INTO order_items (
+            order_id, photo_id, photo_ids, product_id, product_size_id, quantity, price, crop_data,
+            product_options_snapshot, fulfillment_type, digital_download_scope, source_album_id, pricing_snapshot,
+            studio_revenue_amount, base_revenue_amount, production_cost_amount, gross_studio_markup_amount,
+            studio_payout_amount, super_admin_share_amount, stripe_fee_allocated_amount, studio_net_payout_amount,
+            attributes
+          )
+          VALUES (
+            $1, $2, $3, $4, $5, $6, $7, $8,
+            $9, $10, $11, $12, $13,
+            $14, $15, $16, $17,
+            $18, $19, $20, $21,
+            $22
+          )
+        `;
+        const params = [
+          orderId,
+          item.primaryPhotoId,
+          JSON.stringify(item.photoIds),
+          item.productId,
+          item.productSizeId || null,
+          item.quantity,
+          item.price,
+          item.cropData ? JSON.stringify(item.cropData) : null,
+          productOptionsSnapshotPatched,
+          item.accounting?.fulfillmentType || null,
+          item.accounting?.digitalDownloadScope || null,
+          item.sourceAlbumId,
+          stringifyForDb(item.accounting?.pricingSnapshot || null),
+          Number(item.accounting?.studioRevenueAmount) || 0,
+          Number(item.accounting?.baseRevenueAmount) || 0,
+          Number(item.accounting?.productionCostAmount) || 0,
+          Number(item.accounting?.grossStudioMarkupAmount) || 0,
+          Number(item.accounting?.studioPayoutAmount) || 0,
+          Number(item.accounting?.superAdminShareAmount) || 0,
+          stripeFeeAllocatedAmount,
+          studioNetPayoutAmount,
+          attributesJson,
+        ];
+        console.log('[ORDER ITEM SQL DEBUG]', { sql, params });
+        await query(sql, params);
+      } catch (err) {
+        console.error('[ORDER ITEM INSERT ERROR]', err && err.message, err && err.stack);
+        throw err;
+      }
     }
 
     // Generate studio invoice line items for each order item
@@ -3139,10 +3373,16 @@ router.post('/', requireActiveSubscription, async (req, res) => {
     // ...existing code...
 
     // Return the created order
-    try {
-      await sendOrderReceipts(orderId);
-    } catch (receiptError) {
-      console.error('Order receipt send failed (non-fatal):', receiptError);
+    // PATCH: Suppress email receipts for test orders
+    const suppressEmail = req.body.suppressEmail === true;
+    if (!suppressEmail) {
+      try {
+        await sendOrderReceipts(orderId);
+      } catch (receiptError) {
+        console.error('Order receipt send failed (non-fatal):', receiptError);
+      }
+    } else {
+      console.log('[ORDER][DEBUG] Email receipts suppressed for test order:', orderId);
     }
 
     const createdOrder = await queryRow('SELECT * FROM orders WHERE id = $1', [orderId]);
@@ -3263,9 +3503,7 @@ router.get('/', async (req, res) => {
                 oi.super_admin_share_amount as superAdminShareAmount,
                 oi.stripe_fee_allocated_amount as stripeFeeAllocatedAmount,
                 oi.studio_net_payout_amount as studioNetPayoutAmount,
-                COALESCE(oi.product_options_snapshot, '{}') as productOptions,
-                p.category as productCategory,
-                p.name as productName
+                attributes
          FROM order_items oi
          LEFT JOIN products p ON p.id = oi.product_id
          WHERE oi.order_id = $1`,
@@ -3275,16 +3513,16 @@ router.get('/', async (req, res) => {
       const itemsWithPhotos = [];
       for (const item of items) {
         const photo = await queryRow(
-          `SELECT p.id, p.album_id as albumId, p.file_name as fileName, p.thumbnail_url as thumbnailUrl, p.full_image_url as fullImageUrl, p.width, p.height
-           FROM photos p WHERE p.id = $1`,
+          `SELECT id, album_id as albumId, file_name as fileName, thumbnail_url as thumbnailUrl, full_image_url as fullImageUrl, width, height
+           FROM photos WHERE id = $1`,
           [item.photoId]
         );
         let unitCost = 0;
-        let productName = item.productName || null;
+        let productName = null;
         let productSizeName = null;
         if (item.productSizeId) {
           const size = await queryRow(
-            `SELECT ps.price, ps.size_name as sizeName, p.name as productName
+            `SELECT ps.price, ps.size_name as sizeName, p.name as productName, p.id as productId
              FROM product_sizes ps
              LEFT JOIN products p ON p.id = ps.product_id
              WHERE ps.id = $1`,
@@ -3293,7 +3531,7 @@ router.get('/', async (req, res) => {
           unitCost = Number(size?.price) || 0;
           productSizeName = size?.sizeName || null;
           if (!productName) productName = size?.productName || null;
-        } else if (item.productId && !productName) {
+        } else if (item.productId) {
           const product = await queryRow(
             `SELECT p.price, p.name FROM products p WHERE p.id = $1`,
             [item.productId]
@@ -3301,6 +3539,55 @@ router.get('/', async (req, res) => {
           unitCost = Number(product?.price) || 0;
           productName = product?.name || null;
         }
+
+        // --- Attribute UID to Name Mapping ---
+        // 1. Get album for this photo
+        let album = null;
+        if (item.photoId) {
+          const photoRow = await queryRow('SELECT album_id FROM photos WHERE id = $1', [item.photoId]);
+          if (photoRow?.album_id) {
+            album = await queryRow('SELECT price_list_id FROM albums WHERE id = $1', [photoRow.album_id]);
+          }
+        }
+        let priceListId = album?.price_list_id || null;
+        let attributeIdToName = {};
+        if (priceListId && item.productSizeId) {
+          // Load whccAttributeCategories for this product/size from the price list
+          const priceListItems = await queryRows(
+            `SELECT spi.product_size_id, sspi.whcc_attribute_categories
+             FROM studio_price_list_items spi
+             JOIN super_price_list_items sspi ON sspi.product_size_id = spi.product_size_id AND sspi.super_price_list_id = (SELECT super_price_list_id FROM studio_price_lists WHERE id = $1)
+             WHERE spi.studio_price_list_id = $1 AND spi.product_size_id = $2`,
+            [priceListId, item.productSizeId]
+          );
+          for (const pli of priceListItems) {
+            let categories = [];
+            try {
+              categories = JSON.parse(pli.whcc_attribute_categories || '[]');
+            } catch { categories = []; }
+            for (const cat of categories) {
+              if (Array.isArray(cat.attributes)) {
+                for (const attr of cat.attributes) {
+                  if (attr.uid && attr.name) attributeIdToName[attr.uid] = attr.name;
+                }
+              }
+            }
+          }
+        }
+        // Parse attributes and map UIDs to names
+        let parsedAttributes = safeJsonParse(item.attributes);
+        if (parsedAttributes == null) {
+          parsedAttributes = [];
+        } else if (typeof parsedAttributes === 'string' && parsedAttributes.trim() !== '') {
+          parsedAttributes = [parsedAttributes];
+        } else if (Array.isArray(parsedAttributes)) {
+          parsedAttributes = parsedAttributes.filter((a) => typeof a === 'string' || typeof a === 'number');
+        } else {
+          parsedAttributes = [];
+        }
+        // Map UIDs to names, fallback to UID if no name found
+        const mappedAttributes = parsedAttributes.map((uid) => attributeIdToName[uid] || String(uid));
+
         itemsWithPhotos.push({
           ...item,
           price: item.price || 0,
@@ -3317,6 +3604,7 @@ router.get('/', async (req, res) => {
           productSizeName,
           cropData: safeJsonParse(item.cropData),
           photoIds: safeJsonParse(item.photoIds, item.photoId ? [item.photoId] : []),
+          attributes: mappedAttributes,
           photo: photo ? {
             id: photo.id,
             albumId: photo.albumId,
@@ -3329,6 +3617,8 @@ router.get('/', async (req, res) => {
             id: item.photoId,
             albumId: 0,
             fileName: `Photo #${item.photoId}`,
+            width: null,
+            height: null,
             thumbnailUrl: `https://picsum.photos/seed/photo${item.photoId}/300/300`,
             url: `https://picsum.photos/seed/photo${item.photoId}/1200/900`,
           },
@@ -3357,11 +3647,24 @@ router.get('/', async (req, res) => {
         batchQueueStatus: order.batchQueueStatus,
         batchLabVendor: order.batchLabVendor,
         labSubmittedAt: order.labSubmittedAt,
+        whccConfirmationId: canViewWhccFields ? order.whccConfirmationId : undefined,
+        whccImportResponse: canViewWhccFields ? safeJsonParse(order.whccImportResponse) : undefined,
+        whccSubmitResponse: canViewWhccFields ? safeJsonParse(order.whccSubmitResponse) : undefined,
+        whccRequestLog: canViewWhccFields ? safeJsonParse(order.whccRequestLog) : undefined,
+        whccLastError: canViewWhccFields ? safeJsonParse(order.whccLastError) : undefined,
+        whccOrderNumber: canViewWhccFields ? order.whccOrderNumber : undefined,
+        whccWebhookStatus: canViewWhccFields ? order.whccWebhookStatus : undefined,
+        whccWebhookEvent: canViewWhccFields ? order.whccWebhookEvent : undefined,
+        shippingCarrier: canViewWhccFields ? order.shippingCarrier : undefined,
+        trackingNumber: canViewWhccFields ? order.trackingNumber : undefined,
+        trackingUrl: canViewWhccFields ? order.trackingUrl : undefined,
+        shippedAt: canViewWhccFields ? order.shippedAt : undefined,
         items: itemsWithPhotos,
         shippingCost: shippingCostOut,
         subtotal: subtotalOut,
         totalAmount: totalAmountOut,
         taxAmount: taxAmountOut,
+        // excludedItemsNote removed to fix ReferenceError
       });
     }
     res.json(parsedOrders);
@@ -3570,6 +3873,8 @@ router.get('/details/:orderId', async (req, res) => {
           id: item.photoId,
           albumId: 0,
           fileName: `Photo #${item.photoId}`,
+          width: null,
+          height: null,
           thumbnailUrl: `https://picsum.photos/seed/photo${item.photoId}/300/300`,
           url: `https://picsum.photos/seed/photo${item.photoId}/1200/900`,
         },
@@ -3609,13 +3914,26 @@ router.get('/details/:orderId', async (req, res) => {
       batchQueueStatus: order.batchQueueStatus,
       batchLabVendor: order.batchLabVendor,
       labSubmittedAt: order.labSubmittedAt,
-      items: itemsWithPhotos,
+      whccConfirmationId: canViewWhccFields ? order.whccConfirmationId : undefined,
+      whccImportResponse: canViewWhccFields ? safeJsonParse(order.whccImportResponse) : undefined,
+      whccSubmitResponse: canViewWhccFields ? safeJsonParse(order.whccSubmitResponse) : undefined,
+      whccRequestLog: canViewWhccFields ? safeJsonParse(order.whccRequestLog) : undefined,
+      whccLastError: canViewWhccFields ? safeJsonParse(order.whccLastError) : undefined,
+      whccOrderNumber: canViewWhccFields ? order.whccOrderNumber : undefined,
+      whccWebhookStatus: canViewWhccFields ? order.whccWebhookStatus : undefined,
+      whccWebhookEvent: canViewWhccFields ? order.whccWebhookEvent : undefined,
+      shippingCarrier: canViewWhccFields ? order.shippingCarrier : undefined,
+      trackingNumber: canViewWhccFields ? order.trackingNumber : undefined,
+      trackingUrl: canViewWhccFields ? order.trackingUrl : undefined,
+      shippedAt: canViewWhccFields ? order.shippedAt : undefined,
       hasDigitalItems: digitalItems.length > 0,
       digitalItemCount: digitalItems.length,
+      items: itemsWithPhotos,
       shippingCost: shippingCostOut,
       subtotal: subtotalOut,
       totalAmount: totalAmountOut,
       taxAmount: taxAmountOut,
+      // excludedItemsNote removed to fix ReferenceError
     });
   } catch (error) {
     return res.status(500).json({ error: error.message });
@@ -3694,25 +4012,28 @@ router.get('/admin/all-orders', adminRequired, async (req, res) => {
               oi.photo_ids as photoIds,
               oi.product_id as productId,
               oi.product_size_id as productSizeId,
+              oi.digital_download_scope as digitalDownloadScope,
+              oi.source_album_id as sourceAlbumId,
               oi.quantity,
               oi.price as price,
               oi.crop_data as cropData,
-              oi.digital_download_scope as digitalDownloadScope,
-              oi.studio_revenue_amount as studioRevenueAmount,
-              oi.base_revenue_amount as baseRevenueAmount,
-              oi.production_cost_amount as productionCostAmount,
+              oi.product_options_snapshot as productOptionsSnapshot,
+              p.name as productName,
+              p.category as productCategory,
+              p.options as productOptions,
+              ps.size_name as productSizeName,
+              COALESCE(ps.price, p.price, 0) as basePrice,
+              COALESCE(ps.cost, p.cost, 0) as cost,
               oi.studio_payout_amount as studioPayoutAmount,
               oi.super_admin_share_amount as superAdminShareAmount,
               oi.stripe_fee_allocated_amount as stripeFeeAllocatedAmount,
               oi.studio_net_payout_amount as studioNetPayoutAmount,
-              p.name as productName,
-              ps.size_name as productSizeName,
-              COALESCE(ps.price, p.price, 0) as basePrice,
-              COALESCE(ps.cost, p.cost, 0) as labCost
-               FROM order_items oi
-               LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id
-               LEFT JOIN products p ON p.id = COALESCE(oi.product_id, ps.product_id)
-               WHERE oi.order_id = $1`,
+              attributes
+       FROM order_items oi
+       LEFT JOIN products p ON p.id = oi.product_id
+       LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id
+       LEFT JOIN photos ph ON ph.id = oi.photo_id
+       WHERE oi.order_id = $1`,
           [order.id]
         );
 
@@ -3907,10 +4228,16 @@ router.get('/admin/order-details/:orderId', adminRequired, async (req, res) => {
               p.options as productOptions,
               ps.size_name as productSizeName,
               COALESCE(ps.price, p.price, 0) as basePrice,
-              COALESCE(ps.cost, p.cost, 0) as labCost
+              COALESCE(ps.cost, p.cost, 0) as cost,
+              oi.studio_payout_amount as studioPayoutAmount,
+              oi.super_admin_share_amount as superAdminShareAmount,
+              oi.stripe_fee_allocated_amount as stripeFeeAllocatedAmount,
+              oi.studio_net_payout_amount as studioNetPayoutAmount,
+              attributes
        FROM order_items oi
+       LEFT JOIN products p ON p.id = oi.product_id
        LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id
-       LEFT JOIN products p ON p.id = COALESCE(oi.product_id, ps.product_id)
+       LEFT JOIN photos ph ON ph.id = oi.photo_id
        WHERE oi.order_id = $1`,
       [order.id]
     );
@@ -3920,7 +4247,7 @@ router.get('/admin/order-details/:orderId', adminRequired, async (req, res) => {
     const photoIds = [...new Set(items.map((item) => Number(item.photoId)).filter(Boolean))];
     let photosById = new Map();
     if (photoIds.length > 0) {
-      const placeholders = photoIds.map((_, index) => `$${index + 1}`).join(', ');
+      const placeholders = photoIds.map((_, index) => `$${index + 1}`).join(',');
       const photos = await queryRows(
         `SELECT id, album_id as albumId, file_name as fileName, thumbnail_url as thumbnailUrl, full_image_url as fullImageUrl, width, height
          FROM photos
@@ -4012,7 +4339,6 @@ router.get('/admin/order-details/:orderId', adminRequired, async (req, res) => {
       subtotal: subtotalOut,
       totalAmount: totalAmountOut,
       taxAmount: taxAmountOut,
-      // excludedItemsNote removed to fix ReferenceError
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -4375,7 +4701,11 @@ router.get('/admin/batch-queue', adminRequired, async (req, res) => {
       }
       // Use isDigitalProductRow logic from above
       const allDigital = items.every((item) => {
-        const options = (() => { try { return JSON.parse(item.productOptions || '{}'); } catch { return {}; } })();
+        const options = (() => {
+          try {
+            return typeof item.productOptions === 'string' ? JSON.parse(item.productOptions) : (item.productOptions || {});
+          } catch { return {}; }
+        })();
         const category = String(item.productCategory || '').toLowerCase();
         const name = String(item.productName || '').toLowerCase();
         return options.isDigital === true || options.is_digital_only === true || options.digitalOnly === true || category.includes('digital') || name.includes('digital');
@@ -4439,3 +4769,40 @@ router.get('/admin/batch-queue', adminRequired, async (req, res) => {
 });
 
 export default router;
+
+// Extract attributes from an order item (for unit testing and backend logic)
+function extractAttributesFromOrderItem(item) {
+  let attrs = null;
+  let options = item.productOptions;
+  if (typeof options === 'string') {
+    try { options = JSON.parse(options); } catch { options = {}; }
+  }
+  if (options && typeof options === 'object') {
+    if (Array.isArray(options.attributes) && options.attributes.length > 0) {
+      attrs = options.attributes;
+    } else if (typeof options.attributes === 'string') {
+      attrs = [options.attributes];
+    } else if (Array.isArray(options.whccItemAttributeUIDs) && options.whccItemAttributeUIDs.length > 0) {
+      attrs = options.whccItemAttributeUIDs;
+    }
+  }
+  if ((!attrs || (Array.isArray(attrs) && attrs.length === 0)) && item.productOptionsSnapshot) {
+    let snapshot = item.productOptionsSnapshot;
+    if (typeof snapshot === 'string') {
+      try { snapshot = JSON.parse(snapshot); } catch { snapshot = {}; }
+    }
+    if (snapshot && typeof snapshot === 'object') {
+      if (Array.isArray(snapshot.attributes) && snapshot.attributes.length > 0) {
+        attrs = snapshot.attributes;
+      } else if (typeof snapshot.attributes === 'string') {
+        attrs = [snapshot.attributes];
+      } else if (Array.isArray(snapshot.whccItemAttributeUIDs) && snapshot.whccItemAttributeUIDs.length > 0) {
+        attrs = snapshot.whccItemAttributeUIDs;
+      }
+    }
+  }
+  if ((!attrs || (Array.isArray(attrs) && attrs.length === 0)) && item.attributes) {
+    attrs = Array.isArray(item.attributes) ? item.attributes : [item.attributes];
+  }
+  return attrs && attrs.length ? attrs : undefined;
+}

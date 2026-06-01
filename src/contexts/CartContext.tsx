@@ -184,31 +184,62 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const newItemVariantKey = `${selectedVariantId}|${selectedVariantLocalId}`;
 
 
+    // Patch: ensure whccSelectedVariantItemAttributeUIDs is always copied to whccItemAttributeUIDs for backend compatibility
+    let patchedProductOptions = options?.productOptions ? { ...options.productOptions } : undefined;
+    if (patchedProductOptions && Array.isArray(patchedProductOptions.whccSelectedVariantItemAttributeUIDs)) {
+      patchedProductOptions.whccItemAttributeUIDs = patchedProductOptions.whccSelectedVariantItemAttributeUIDs;
+    }
+
     // Extract attributes from productOptions (e.g., surface, finish, display name, etc.)
-    const extractAttributes = (opts?: Record<string, any>): string[] => {
+    // Extract selected attribute UIDs from productOptions (for WHCC)
+    const extractAttributeUIDs = (opts?: Record<string, any>): number[] => {
       if (!opts) return [];
+      // Look for whccItemAttributeUIDs (array of selected UIDs)
+      if (Array.isArray(opts.whccItemAttributeUIDs) && opts.whccItemAttributeUIDs.length > 0) {
+        // Coerce all UIDs to numbers
+        const coerced = opts.whccItemAttributeUIDs.map((x: any) => Number(x)).filter((x: any) => !isNaN(x));
+        console.log('[CartContext][DEBUG] Extracted whccItemAttributeUIDs:', opts.whccItemAttributeUIDs, 'Coerced:', coerced);
+        return coerced;
+      }
+      // Fallback: try to infer from selected option keys (for legacy/other products)
+      const possibleUIDs: number[] = [];
       const keys = Object.keys(opts);
-      const attrs: string[] = [];
-      // Heuristic: include any string value for keys like surface, finish, paper, coating, etc.
       for (const k of keys) {
-        if (/surface|finish|paper|coating|type|material|attribute|option/i.test(k) && typeof opts[k] === 'string') {
-          attrs.push(opts[k]);
+        if (/uid$/i.test(k) && (typeof opts[k] === 'number' || (typeof opts[k] === 'string' && !isNaN(Number(opts[k]))))) {
+          possibleUIDs.push(Number(opts[k]));
+        }
+        // If value is object with uid
+        if (opts[k] && typeof opts[k] === 'object' && (typeof opts[k].uid === 'number' || (typeof opts[k].uid === 'string' && !isNaN(Number(opts[k].uid))))) {
+          possibleUIDs.push(Number(opts[k].uid));
         }
       }
-      // Also include WHCC display name fields if present
-      if (typeof opts.whccSelectedVariantDisplayName === 'string' && opts.whccSelectedVariantDisplayName.trim()) {
-        attrs.push(opts.whccSelectedVariantDisplayName.trim());
-      }
-      if (typeof opts.displayName === 'string' && opts.displayName.trim()) {
-        attrs.push(opts.displayName.trim());
-      }
-      // Remove duplicates
-      return Array.from(new Set(attrs));
+      console.log('[CartContext][DEBUG] Fallback attributeUIDs:', possibleUIDs, 'from opts:', opts);
+      return possibleUIDs;
     };
-    const attributes = extractAttributes(options?.productOptions);
+    const attributeUIDs = extractAttributeUIDs(patchedProductOptions);
+    // Patch: fallback to whccFinish or whccSelectedVariantItemAttributeUIDs if attributeUIDs is empty
+    let finalAttributeUIDs = attributeUIDs;
+    if ((!finalAttributeUIDs || finalAttributeUIDs.length === 0) && patchedProductOptions) {
+      if (Array.isArray(patchedProductOptions.whccSelectedVariantItemAttributeUIDs) && patchedProductOptions.whccSelectedVariantItemAttributeUIDs.length > 0) {
+        finalAttributeUIDs = patchedProductOptions.whccSelectedVariantItemAttributeUIDs.map(Number).filter(x => !isNaN(x));
+      } else if (patchedProductOptions.whccFinish) {
+        const finishNum = Number(patchedProductOptions.whccFinish);
+        if (!isNaN(finishNum)) finalAttributeUIDs = [finishNum];
+      }
+    }
 
     const isDigital = !!(product.isDigital || options?.digitalDownloadScope || product.editorProvider === 'digital');
     setItems((prevItems) => {
+      // Debug: log cart item attributes and productOptions before updating cart
+      console.log('[CartContext][DEBUG] Adding to cart:', {
+        photoId: photo.id,
+        productId: product.id,
+        productSizeId: size.id,
+        attributeUIDs,
+        finalAttributeUIDs,
+        productOptions: patchedProductOptions,
+        allOptions: options
+      });
       const existingItem = prevItems.find((item) => (
         item.photoId === photo.id
         && item.productId === product.id
@@ -241,8 +272,8 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   requiresWhccEditor: product.requiresWhccEditor ?? item.requiresWhccEditor,
                   whccEditorProductId: product.whccEditorProductId ?? item.whccEditorProductId,
                   whccEditorDesignId: product.whccEditorDesignId ?? item.whccEditorDesignId,
-                  productOptions: options?.productOptions ?? item.productOptions,
-                  attributes: attributes.length ? attributes : item.attributes,
+                  productOptions: patchedProductOptions ?? item.productOptions,
+                  attributes: finalAttributeUIDs.length ? finalAttributeUIDs : item.attributes,
                 }
               : item
           );
@@ -267,8 +298,8 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
           whccEditorProductId: product.whccEditorProductId,
           whccEditorDesignId: product.whccEditorDesignId,
           digitalDownloadScope: options?.digitalDownloadScope,
-          productOptions: options?.productOptions,
-          attributes,
+          productOptions: patchedProductOptions,
+          attributes: finalAttributeUIDs,
           price
         }];
       }
@@ -296,8 +327,8 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 requiresWhccEditor: product.requiresWhccEditor ?? item.requiresWhccEditor,
                 whccEditorProductId: product.whccEditorProductId ?? item.whccEditorProductId,
                 whccEditorDesignId: product.whccEditorDesignId ?? item.whccEditorDesignId,
-                productOptions: options?.productOptions ?? item.productOptions,
-                attributes: attributes.length ? attributes : item.attributes,
+                productOptions: patchedProductOptions ?? item.productOptions,
+                attributes: attributeUIDs.length ? attributeUIDs : item.attributes,
               }
             : item
         );
@@ -321,8 +352,8 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         whccEditorProductId: product.whccEditorProductId,
         whccEditorDesignId: product.whccEditorDesignId,
         digitalDownloadScope: options?.digitalDownloadScope,
-        productOptions: options?.productOptions,
-        attributes,
+        productOptions: patchedProductOptions,
+        attributes: attributeUIDs,
         price 
       }];
     });

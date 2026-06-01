@@ -92,6 +92,11 @@ const SharedCropper: React.FC<SharedCropperProps> = ({
         autoCropArea={1}
         checkOrientation={false}
         restore={false}
+        dragMode="crop"
+        zoomable={false}
+        scalable={false}
+        movable={false}
+        rotatable={false}
         style={{ width, height, maxWidth: width, maxHeight: height, display: 'block' }}
         ready={handleCropperReady}
       />

@@ -212,7 +212,17 @@ const CartItem: React.FC<CartItemProps> = ({ item, photo, onEditCrop, onOpenWhcc
             <div style={{ marginBottom: 12, paddingBottom: 12, borderBottom: '1px solid #2a2740' }}>
               <div style={{ fontWeight: 700, marginBottom: 4 }}>{item.productName || 'Selected Product'}</div>
               <div style={{ fontSize: 12, color: '#aaa' }}>{item.productSizeName || 'Selected Size'}</div>
-              <ProductAttributes attributes={item.attributes} />
+              <ProductAttributes 
+                attributes={item.attributes as any} 
+                productOptionsSnapshot={(() => {
+                  if ((item as any).productOptionsSnapshot) return (item as any).productOptionsSnapshot;
+                  if (item.productOptions) {
+                    if (typeof item.productOptions === 'string') return item.productOptions;
+                    try { return JSON.stringify(item.productOptions); } catch { return undefined; }
+                  }
+                  return undefined;
+                })()}
+              />
             </div>
 
             {/* Pricing and Quantity */}

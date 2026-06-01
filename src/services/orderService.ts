@@ -32,7 +32,8 @@ export const orderService = {
       taxRate: number;
       total: number;
       subtotalBeforeDiscount?: number;
-    }
+    },
+    suppressEmail?: boolean
   ): Promise<Order> {
     // Calculate subtotal with studio fees applied to each item
     let itemsTotal = items.reduce((sum, item) => {
@@ -59,7 +60,6 @@ export const orderService = {
     const response = await api.post<Order>('/orders', {
       items: items.map(item => {
         let price = item.price;
-        
         // Apply studio fees
         if (studioFeeType && studioFeeValue !== undefined) {
           if (studioFeeType === 'percentage') {
@@ -69,7 +69,6 @@ export const orderService = {
             price += studioFeeValue;
           }
         }
-        
         return {
           photoId: item.photoId,
           photoIds: item.photoIds,
@@ -93,7 +92,8 @@ export const orderService = {
       discountCode,
       paymentIntentId,
       isBatch: shippingOption === 'batch',
-      labSubmitted: false
+      labSubmitted: false,
+      ...(suppressEmail ? { suppressEmail: true } : {})
     });
     return response.data;
   },

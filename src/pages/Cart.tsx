@@ -1,4 +1,6 @@
 
+// ...existing code...
+
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { formatCropData } from '../utils/formatCropData';
@@ -31,7 +33,13 @@ import { useAuth } from '../contexts/AuthContext';
 
 
 const Cart: React.FC = () => {
+        // ...existing code...
+        // ...
+        // ...existing code...
     const { items, getTotalPrice, getTotalItems, clearCart, updateCropData } = useCart();
+
+    // Debug log: show cart items and their attributeUIDs/productOptions on every render
+    // ...
     const { user } = useAuth();
 
     // Always load products when cart items change
@@ -1331,12 +1339,22 @@ const Cart: React.FC = () => {
               {loading ? 'Processing Payment...' : '🔒 Pay with Stripe'}
             </button>
             <button
+              onClick={handleTestOrder}
+              className="btn btn-secondary cart-action-button"
+              disabled={loading}
+              style={{ marginLeft: 8 }}
+            >
+              🧪 Test Order (No Payment)
+            </button>
+            <button
               onClick={() => navigate('/albums')}
               className="btn btn-secondary cart-action-button"
             >
               Continue Shopping
             </button>
           </div>
+
+
         </div>
       </div>
 

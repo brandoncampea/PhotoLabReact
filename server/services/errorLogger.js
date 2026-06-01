@@ -39,22 +39,7 @@ export async function logAndNotifyError({
         customerEmail,
       ]
     );
-    // Email super admins
-    const subject = `[PhotoLab ERROR] ${errorMessage}`;
-    const html = `<pre style="color:#b00;font-size:15px"><b>Error:</b> ${errorMessage}
-<b>Stack:</b> ${errorStack}
-<b>URL:</b> ${requestUrl}
-<b>Method:</b> ${requestMethod}
-<b>User Agent:</b> ${userAgent}
-<b>Customer ID:</b> ${customerId || ''}
-<b>Customer Email:</b> ${customerEmail || ''}
-</pre>`;
-    await sendEmail({
-      to: SUPER_ADMIN_EMAILS,
-      subject,
-      html,
-      text: `${errorMessage}\n${errorStack}\nURL: ${requestUrl}\nMethod: ${requestMethod}\nUser Agent: ${userAgent}\nCustomer ID: ${customerId}\nCustomer Email: ${customerEmail}`,
-    });
+    // No longer email super admins; errors are only stored in the database.
   } catch (err) {
     console.error('[ERROR LOGGER FAILED]', err);
   }

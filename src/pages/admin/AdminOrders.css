@@ -1,3 +1,99 @@
+/* WHCC Preview Modal Styles */
+.modal-content.whcc-preview-modal-shell,
+.dark-modal-content.whcc-preview-modal-shell {
+  width: min(1100px, 96vw) !important;
+  max-width: min(1100px, 96vw) !important;
+  padding: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  border: 0 !important;
+  overflow: visible !important;
+}
+
+.whcc-preview-modal {
+  background: #131827;
+  color: #e6ebff;
+  border: 1px solid rgba(131, 146, 214, 0.32);
+  border-radius: 16px;
+  box-shadow: 0 18px 44px rgba(8, 12, 28, 0.6), 0 1.5px 6px rgba(60, 60, 120, 0.18);
+  padding: 2rem 1.5rem 1.5rem 1.5rem;
+  width: 100%;
+  max-width: none;
+  position: relative;
+  z-index: 1;
+  overflow: visible;
+  min-height: 320px;
+}
+
+.whcc-preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 0 0.9rem 0;
+  margin-bottom: 0.7rem;
+  border-bottom: 1px solid rgba(131, 146, 214, 0.28);
+}
+
+.whcc-preview-header h2 {
+  margin: 0;
+  font-size: 2rem;
+  color: #f3f6ff;
+}
+
+.whcc-preview-body {
+  padding: 0;
+  background: transparent;
+}
+
+.whcc-preview-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.whcc-preview-json {
+  background: #0c1120;
+  color: #d8e0ff;
+  border-radius: 8px;
+  font-size: 0.98rem;
+  padding: 1.2rem 1rem 1rem 1rem;
+  margin: 0;
+  max-height: 340px;
+  overflow: auto;
+  font-family: 'Fira Mono', 'Consolas', 'Menlo', monospace;
+  box-shadow: 0 1.5px 6px rgba(60, 60, 120, 0.07);
+  border: 1.5px solid #e6e8f0;
+}
+
+.whcc-preview-loading {
+  text-align: center;
+  color: #7a7aff;
+  font-size: 1.1rem;
+  padding: 2rem 0;
+}
+
+.whcc-preview-empty {
+  text-align: center;
+  color: #b8bfd6;
+  font-size: 1.05rem;
+  padding: 2rem 0;
+}
+
+.whcc-preview-modal textarea {
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid rgba(131, 146, 214, 0.42);
+  background: #0d1324;
+  color: #e6ebff;
+  padding: 0.75rem 0.85rem;
+}
+
+.whcc-preview-modal textarea:focus {
+  outline: none;
+  border-color: #6666cc;
+  box-shadow: 0 0 0 2px rgba(102, 102, 204, 0.22);
+}
 /* Modern Modal Styles for Cancel Order Dialog */
 .modal-overlay {
   position: fixed;
