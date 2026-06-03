@@ -52,7 +52,7 @@ export const orderService = {
       return sum + itemPrice;
     }, 0);
 
-    const subtotal = pricing?.subtotalBeforeDiscount ?? (itemsTotal + shippingCost);
+    const subtotal = pricing?.subtotalBeforeDiscount ?? itemsTotal;
     const taxAmount = pricing?.taxAmount ?? 0;
     const taxRate = pricing?.taxRate ?? 0;
     const total = pricing?.total ?? subtotal + taxAmount;

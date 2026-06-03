@@ -862,11 +862,33 @@ const AdminOrders: React.FC = () => {
     () => filteredRecentOrders.reduce(
       (acc, order) => {
         const customerShipping = Number(order.shippingCost || 0);
-        const studioShipping = Number(order.studioShippingCost ?? 0);
-        const shippingMargin = Number(order.shippingMargin ?? (customerShipping - studioShipping));
+        const explicitStudioShipping = Number(order.studioShippingCost);
+        // Use explicit studio shipping cost if available, otherwise 0 (no data)
+        const studioShipping = Number.isFinite(explicitStudioShipping)
+          ? explicitStudioShipping
+          : 0;
+        const explicitShippingMargin = Number(order.shippingMargin);
+        const shippingMargin = Number.isFinite(explicitShippingMargin)
+          ? explicitShippingMargin
+          : (customerShipping - studioShipping);
+        
+        // Calculate studio profit (gross margin) for this order
+        const studioRevenue = (order.items || []).reduce(
+          (sum, item) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 0),
+          0
+        );
+        const baseRevenue = (order.items || []).reduce(
+          (sum, item) => sum + (Number(item.basePrice) || 0) * (Number(item.quantity) || 0),
+          0
+        );
+        const stripeFeeAmount = Number(order.stripeFeeAmount) || 0;
+        const uncoveredShippingCost = Math.max(0, studioShipping - customerShipping);
+        const grossMargin = studioRevenue - baseRevenue - uncoveredShippingCost - stripeFeeAmount;
+        
         acc.customerShippingTotal += customerShipping;
         acc.studioShippingTotal += studioShipping;
         acc.shippingMarginTotal += shippingMargin;
+        acc.studioProfitTotal += grossMargin;
         acc.ordersWithShipping += customerShipping > 0 || studioShipping > 0 ? 1 : 0;
         return acc;
       },
@@ -874,6 +896,7 @@ const AdminOrders: React.FC = () => {
         customerShippingTotal: 0,
         studioShippingTotal: 0,
         shippingMarginTotal: 0,
+        studioProfitTotal: 0,
         ordersWithShipping: 0,
       }
     ),
@@ -1122,8 +1145,15 @@ const AdminOrders: React.FC = () => {
           0
         );
         const shippingCost = Number(order.shippingCost) || 0;
-        const studioShippingCost = Number(order.studioShippingCost ?? 0);
-        const shippingMargin = Number(order.shippingMargin ?? (shippingCost - studioShippingCost));
+        const explicitStudioShippingCost = Number(order.studioShippingCost);
+        // Use explicit studio shipping cost if available, otherwise leave as provided (0 means no data yet)
+        const studioShippingCost = Number.isFinite(explicitStudioShippingCost)
+          ? explicitStudioShippingCost
+          : 0;
+        const explicitShippingMargin = Number(order.shippingMargin);
+        const shippingMargin = Number.isFinite(explicitShippingMargin)
+          ? explicitShippingMargin
+          : (shippingCost - studioShippingCost);
         const shippingRuleLabel = order.isBatch
           ? 'Batch order: customer $0, studio pays rubric cost'
           : order.directPricingModeUsed === 'pass_through'
@@ -1139,8 +1169,8 @@ const AdminOrders: React.FC = () => {
         // Only include uncovered shipping cost (not tax or stripe fees)
         const uncoveredShippingCost = Math.max(0, studioShippingCost - shippingCost);
         const otherOrderCosts = uncoveredShippingCost;
-        // Gross Margin = Studio Price Total - Base Cost Total + Shipping Margin - Stripe Fees
-        const grossMargin = studioRevenue - baseRevenue + shippingMargin - stripeFeeAmount;
+        // Gross Margin = Studio Price Total - Base Cost Total - Other Order Costs - Stripe Fees
+        const grossMargin = studioRevenue - baseRevenue - otherOrderCosts - stripeFeeAmount;
         const importRunAt =
           order.whccRequestLog?.importResponseMeta?.runAt ||
           order.whccImportResponse?.Received ||
@@ -1851,8 +1881,8 @@ const AdminOrders: React.FC = () => {
               <div>${shippingReport.studioShippingTotal.toFixed(2)}</div>
             </div>
             <div className="batch-stat-card">
-              <strong>Shipping Margin</strong>
-              <div>${shippingReport.shippingMarginTotal.toFixed(2)}</div>
+              <strong>Studio Profit</strong>
+              <div>${shippingReport.studioProfitTotal.toFixed(2)}</div>
             </div>
             <div className="batch-stat-card">
               <strong>Orders with Shipping</strong>

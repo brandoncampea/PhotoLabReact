@@ -138,6 +138,62 @@ const renderItemsRows = (items) => items.map((item) => {
   </tr>`;
 }).join('');
 
+const isDigitalLikeItem = (item) => {
+  const options = (() => {
+    try {
+      return typeof item?.productOptions === 'string' ? JSON.parse(item.productOptions) : (item?.productOptions || {});
+    } catch {
+      return {};
+    }
+  })();
+  const category = String(item?.productCategory || '').toLowerCase();
+  const name = String(item?.productName || '').toLowerCase();
+  return options?.isDigital === true || options?.is_digital_only === true || options?.digitalOnly === true || category.includes('digital') || name.includes('digital');
+};
+
+const normalizeReceiptAmounts = (order = {}, items = []) => {
+  const storedSubtotal = Number(order?.subtotal ?? order?.sub_total ?? 0) || 0;
+  const storedShipping = Number(order?.shippingCost ?? order?.shipping_cost ?? 0) || 0;
+  const storedTax = Number(order?.taxAmount ?? order?.tax_amount ?? 0) || 0;
+  const storedTotal = Number(order?.totalAmount ?? order?.total ?? 0) || 0;
+
+  const hasItems = Array.isArray(items) && items.length > 0;
+  const itemSubtotal = hasItems
+    ? Number(items.reduce((sum, item) => sum + ((Number(item?.unitPrice ?? item?.price ?? 0) || 0) * (Number(item?.quantity || 0) || 0)), 0) || 0)
+    : null;
+
+  let subtotal = storedSubtotal;
+  let shipping = storedShipping;
+  const tax = storedTax;
+  let total = storedTotal;
+
+  if (Number.isFinite(Number(itemSubtotal))) {
+    const expectedSubtotal = Number(itemSubtotal.toFixed(2));
+    const looksDoubleShipping =
+      Math.abs(storedSubtotal - Number((expectedSubtotal + storedShipping).toFixed(2))) < 0.01 &&
+      Math.abs(storedTotal - Number((storedSubtotal + storedShipping + storedTax).toFixed(2))) < 0.01;
+    const subtotalMismatch = Math.abs(storedSubtotal - expectedSubtotal) >= 0.01;
+
+    if (looksDoubleShipping || subtotalMismatch) {
+      subtotal = expectedSubtotal;
+      total = Number((subtotal + shipping + tax).toFixed(2));
+    }
+  }
+
+  if (hasItems && items.every((item) => isDigitalLikeItem(item))) {
+    shipping = 0;
+    subtotal = Number((itemSubtotal || 0).toFixed(2));
+    total = Number((subtotal + tax).toFixed(2));
+  }
+
+  return {
+    subtotal: Number(subtotal.toFixed(2)),
+    shipping: Number(shipping.toFixed(2)),
+    tax: Number(tax.toFixed(2)),
+    total: Number(total.toFixed(2)),
+  };
+};
+
 function getDigitalDownloadFileName(entry) {
   // Prefer actual filename, fallback to productName or a generic label
   return entry.photoFileName || entry.fileName || entry.filename || entry.productName || 'Digital Product';
@@ -165,33 +221,11 @@ const renderCustomerReceiptHtml = ({ customerName, order, items, digitalDownload
       </div>`
     : '';
 
-  // If all items are digital, recalculate all amounts from items only
-  const allDigital = Array.isArray(items) && items.length > 0 && items.every((item) => {
-    const options = (() => {
-      try {
-        return typeof item.productOptions === 'string' ? JSON.parse(item.productOptions) : (item.productOptions || {});
-      } catch { return {}; }
-    })();
-    const category = String(item.productCategory || '').toLowerCase();
-    const name = String(item.productName || '').toLowerCase();
-    return options?.isDigital === true || options?.is_digital_only === true || options?.digitalOnly === true || category.includes('digital') || name.includes('digital');
-  });
-
-  let computedSubtotal = 0;
-  let computedShipping = 0;
-  let computedTax = 0;
-  let computedTotal = 0;
-  if (allDigital) {
-    computedSubtotal = items.reduce((sum, item) => sum + (Number(item.unitPrice ?? item.price ?? 0) * Number(item.quantity || 0)), 0);
-    computedShipping = 0;
-    computedTax = Number(order.taxAmount ?? order.tax_amount ?? 0);
-    computedTotal = +(computedSubtotal + computedShipping + computedTax).toFixed(2);
-  } else {
-    computedSubtotal = Number(order.subtotal ?? order.sub_total ?? 0);
-    computedShipping = Number(order.shippingCost ?? order.shipping_cost ?? 0);
-    computedTax = Number(order.taxAmount ?? order.tax_amount ?? 0);
-    computedTotal = Number(order.totalAmount ?? order.total ?? 0);
-  }
+  const normalizedAmounts = normalizeReceiptAmounts(order, items);
+  const computedSubtotal = normalizedAmounts.subtotal;
+  const computedShipping = normalizedAmounts.shipping;
+  const computedTax = normalizedAmounts.tax;
+  const computedTotal = normalizedAmounts.total;
 
   return `
     <div style="font-family:Arial,sans-serif;background:#0f131a;color:#eaf1fb;max-width:760px;margin:0 auto;padding:20px;border:1px solid #2e3642;border-radius:12px;">
@@ -248,32 +282,11 @@ const renderCustomerReceiptHtml = ({ customerName, order, items, digitalDownload
 };
 
 const renderStudioSaleHtml = ({ order, items, customerEmail, studioName }) => {
-  // If all items are digital, recalculate all amounts from items only
-  const allDigital = Array.isArray(items) && items.length > 0 && items.every((item) => {
-    const options = (() => {
-      try {
-        return typeof item.productOptions === 'string' ? JSON.parse(item.productOptions) : (item.productOptions || {});
-      } catch { return {}; }
-    })();
-    const category = String(item.productCategory || '').toLowerCase();
-    const name = String(item.productName || '').toLowerCase();
-    return options?.isDigital === true || options?.is_digital_only === true || options?.digitalOnly === true || category.includes('digital') || name.includes('digital');
-  });
-  let computedSubtotal = 0;
-  let computedShipping = 0;
-  let computedTax = 0;
-  let computedTotal = 0;
-  if (allDigital) {
-    computedSubtotal = items.reduce((sum, item) => sum + (Number(item.unitPrice ?? item.price ?? 0) * Number(item.quantity || 0)), 0);
-    computedShipping = 0;
-    computedTax = Number(order.taxAmount ?? order.tax_amount ?? 0);
-    computedTotal = +(computedSubtotal + computedShipping + computedTax).toFixed(2);
-  } else {
-    computedSubtotal = Number(order.subtotal ?? order.sub_total ?? 0);
-    computedShipping = Number(order.shippingCost ?? order.shipping_cost ?? 0);
-    computedTax = Number(order.taxAmount ?? order.tax_amount ?? 0);
-    computedTotal = Number(order.totalAmount ?? order.total ?? 0);
-  }
+  const normalizedAmounts = normalizeReceiptAmounts(order, items);
+  const computedSubtotal = normalizedAmounts.subtotal;
+  const computedShipping = normalizedAmounts.shipping;
+  const computedTax = normalizedAmounts.tax;
+  const computedTotal = normalizedAmounts.total;
 
   const discount = resolveDiscountDetails(order);
   const discountCodeRow = discount.code
@@ -407,20 +420,12 @@ const summaryBlock = (order, { includeInternal = false, studioName } = {}) => {
   let computedGrossStudioMarkup = 0;
   let computedStudioProfit = 0;
   let computedSuperAdminProfit = 0;
-  if (order.items && order.items.length > 0 && order.items.every((item) => {
-    const options = (() => {
-      try {
-        return typeof item.productOptions === 'string' ? JSON.parse(item.productOptions) : (item.productOptions || {});
-      } catch { return {}; }
-    })();
-    const category = String(item.productCategory || '').toLowerCase();
-    const name = String(item.productName || '').toLowerCase();
-    return options?.isDigital === true || options?.is_digital_only === true || options?.digitalOnly === true || category.includes('digital') || name.includes('digital');
-  })) {
-    computedSubtotal = order.items.reduce((sum, item) => sum + (Number(item.unitPrice ?? item.price ?? 0) * Number(item.quantity || 0)), 0);
-    computedShipping = 0;
-    computedTax = Number(order.taxAmount ?? order.tax_amount ?? 0);
-    computedTotal = +(computedSubtotal + computedShipping + computedTax).toFixed(2);
+  const normalizedAmounts = normalizeReceiptAmounts(order, order.items || []);
+  if (order.items && order.items.length > 0 && order.items.every((item) => isDigitalLikeItem(item))) {
+    computedSubtotal = normalizedAmounts.subtotal;
+    computedShipping = normalizedAmounts.shipping;
+    computedTax = normalizedAmounts.tax;
+    computedTotal = normalizedAmounts.total;
     // Internal accounting for digital-only
     computedStripeFee = Number(order.stripeFeeAmount ?? 0);
     computedStudioRevenue = computedSubtotal;
@@ -430,10 +435,10 @@ const summaryBlock = (order, { includeInternal = false, studioName } = {}) => {
     computedStudioProfit = +(computedGrossStudioMarkup - computedStripeFee).toFixed(2);
     computedSuperAdminProfit = 0;
   } else {
-    computedSubtotal = Number(order.subtotal ?? order.sub_total ?? 0);
-    computedShipping = Number(order.shippingCost ?? order.shipping_cost ?? 0);
-    computedTax = Number(order.taxAmount ?? order.tax_amount ?? 0);
-    computedTotal = Number(order.totalAmount ?? order.total ?? 0);
+    computedSubtotal = normalizedAmounts.subtotal;
+    computedShipping = normalizedAmounts.shipping;
+    computedTax = normalizedAmounts.tax;
+    computedTotal = normalizedAmounts.total;
     computedStripeFee = Number(order.stripeFeeAmount ?? 0);
     computedStudioRevenue = Number(order.studioRevenue ?? 0);
     computedGrossStudioMarkup = Number(order.grossStudioMarkup ?? 0);
@@ -466,24 +471,48 @@ const wrapHtml = (title, intro, content) => `
   </div>`;
 
 const renderInternalAccounting = (order) => {
-  // Calculate discount using the same logic as resolveDiscountDetails
-  const subtotal = Number(order?.subtotal || 0);
-  const taxAmount = Number(order?.taxAmount || 0);
-  const shippingCost = Number(order?.shippingCost || 0);
-  const totalAmount = Number(order?.totalAmount || order?.total || 0);
-  const discount = (subtotal + taxAmount) - totalAmount;
-  // Adjusted values
-  const studioRevenue = Math.max(0, Number(order.studioRevenue) - discount);
-  const grossStudioMarkup = Math.max(0, Number(order.grossStudioMarkup) - discount);
-  const studioProfitNet = Math.max(0, Number(order.studioProfitNet) - discount);
+  const items = Array.isArray(order?.items) ? order.items : [];
+  const normalized = normalizeReceiptAmounts(order, items);
+  const discount = (normalized.subtotal + normalized.tax) - normalized.total;
+
+  const itemStudioRevenue = items.reduce(
+    (sum, item) => sum + ((Number(item?.unitPrice ?? item?.price ?? 0) || 0) * (Number(item?.quantity || 0) || 0)),
+    0
+  );
+  const itemBaseCost = items.reduce(
+    (sum, item) => sum + ((Number(item?.productionCostAmount ?? item?.baseCost ?? item?.cost ?? 0) || 0) * (Number(item?.quantity || 0) || 0)),
+    0
+  );
+
+  const studioRevenue = itemStudioRevenue > 0
+    ? Number(itemStudioRevenue.toFixed(2))
+    : Math.max(0, Number(order.studioRevenue) - discount);
+  const baseCostTotal = Number(itemBaseCost.toFixed(2));
+  const explicitStudioShippingCost = Number(order?.studioShippingCost ?? order?.studio_shipping_cost);
+  // Use explicit studio shipping cost if available, otherwise 0 (no data yet)
+  const studioShippingCost = Number.isFinite(explicitStudioShippingCost)
+    ? Number(explicitStudioShippingCost.toFixed(2))
+    : Number(0);
+  const explicitShippingMargin = Number(order?.shippingMargin ?? order?.shipping_margin);
+  const shippingMargin = Number.isFinite(explicitShippingMargin)
+    ? Number(explicitShippingMargin.toFixed(2))
+    : Number((normalized.shipping - studioShippingCost).toFixed(2));
+  const otherOrderCosts = Number(Math.max(0, studioShippingCost - normalized.shipping).toFixed(2));
+  const stripeFeeAmount = Number((Number(order.stripeFeeAmount || 0)).toFixed(2));
+  const grossMargin = Number((studioRevenue - baseCostTotal - otherOrderCosts - stripeFeeAmount).toFixed(2));
+
   return `
     <div style="margin-top:20px;padding:16px;border:1px solid #eee;border-radius:8px;background:#fafafa;">
       <h2 style="margin:0 0 12px 0;font-size:18px;">Internal accounting</h2>
       <table style="width:100%;max-width:480px;border-collapse:collapse;">
-        <tr><td style="padding:4px 0;">Studio revenue</td><td style="padding:4px 0;text-align:right;">${currency(studioRevenue)}</td></tr>
-        <tr><td style="padding:4px 0;">Gross studio markup</td><td style="padding:4px 0;text-align:right;">${currency(grossStudioMarkup)}</td></tr>
-        <tr><td style="padding:4px 0;">Stripe fee</td><td style="padding:4px 0;text-align:right;">${currency(order.stripeFeeAmount)}</td></tr>
-        <tr><td style="padding:4px 0;font-weight:bold;">Estimated studio profit</td><td style="padding:4px 0;text-align:right;font-weight:bold;">${currency(studioProfitNet)}</td></tr>
+        <tr><td style="padding:4px 0;">Studio price total</td><td style="padding:4px 0;text-align:right;">${currency(studioRevenue)}</td></tr>
+        <tr><td style="padding:4px 0;">Base cost total</td><td style="padding:4px 0;text-align:right;">${currency(baseCostTotal)}</td></tr>
+        <tr><td style="padding:4px 0;">Customer shipping charged</td><td style="padding:4px 0;text-align:right;">${currency(normalized.shipping)}</td></tr>
+        <tr><td style="padding:4px 0;">Studio shipping cost</td><td style="padding:4px 0;text-align:right;">${currency(studioShippingCost)}</td></tr>
+        <tr><td style="padding:4px 0;">Shipping margin</td><td style="padding:4px 0;text-align:right;">${currency(shippingMargin)}</td></tr>
+        <tr><td style="padding:4px 0;">Other order costs</td><td style="padding:4px 0;text-align:right;">${currency(otherOrderCosts)}</td></tr>
+        <tr><td style="padding:4px 0;">Stripe fee</td><td style="padding:4px 0;text-align:right;">${currency(stripeFeeAmount)}</td></tr>
+        <tr><td style="padding:4px 0;font-weight:bold;">Gross margin</td><td style="padding:4px 0;text-align:right;font-weight:bold;">${currency(grossMargin)}</td></tr>
       </table>
       ${order.orderUrl ? `<p style="margin:12px 0 0 0;"><a href="${esc(order.orderUrl)}">View this order in Photo Lab</a></p>` : ''}
     </div>`;
@@ -614,7 +643,7 @@ export const orderReceiptService = {
       bcc: Array.isArray(bcc) && bcc.length > 0 ? bcc.map(email => ({ email })) : undefined,
       subject: `Studio receipt — Order #${order.id}`,
       html,
-      text: `Order #${order.id}\nStudio: ${studioName || 'Unknown'}\nCustomer: ${customerEmail || 'Unknown'}\nTotal charged: ${currency(order.totalAmount)}\nStudio revenue: ${currency(order.studioRevenue)}\nGross studio markup: ${currency(order.grossStudioMarkup)}\nStripe fee: ${currency(order.stripeFeeAmount)}\nEstimated studio profit: ${currency(order.studioProfitNet)}${discountText}${order.orderUrl ? `\nOrder link: ${order.orderUrl}` : ''}`,
+      text: `Order #${order.id}\nStudio: ${studioName || 'Unknown'}\nCustomer: ${customerEmail || 'Unknown'}\nTotal charged: ${currency(order.totalAmount)}\nStudio price total: ${currency(order.studioRevenue)}\nBase cost total: ${currency(order.baseRevenue ?? order.productionCost)}\nCustomer shipping charged: ${currency(order.shippingCost)}\nStudio shipping cost: ${currency(order.studioShippingCost ?? order.shippingCost)}\nOther order costs: ${currency(Math.max(0, Number(order.studioShippingCost ?? order.shippingCost ?? 0) - Number(order.shippingCost ?? 0)))}\nStripe fee: ${currency(order.stripeFeeAmount)}\nGross margin: ${currency((Number(order.studioRevenue || 0) - Number(order.baseRevenue ?? order.productionCost ?? 0) - Math.max(0, Number(order.studioShippingCost ?? order.shippingCost ?? 0) - Number(order.shippingCost ?? 0)) - Number(order.stripeFeeAmount || 0)))}${discountText}${order.orderUrl ? `\nOrder link: ${order.orderUrl}` : ''}`,
       ...(replyToObj ? { reply_to: replyToObj } : {}),
       category: 'Studio Receipt',
     });

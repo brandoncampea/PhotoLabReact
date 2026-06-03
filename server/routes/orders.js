@@ -303,6 +303,47 @@ const safeJsonParse = (value, fallback = null) => {
   }
 };
 
+const roundCurrency = (value) => Number((Number(value) || 0).toFixed(2));
+
+const normalizeOrderAmounts = ({ subtotal, shippingCost, taxAmount, totalAmount, itemSubtotal = null }) => {
+  const storedSubtotal = roundCurrency(subtotal);
+  const storedShipping = roundCurrency(shippingCost);
+  const storedTax = roundCurrency(taxAmount);
+  const storedTotal = roundCurrency(totalAmount);
+
+  if (!Number.isFinite(Number(itemSubtotal))) {
+    return {
+      subtotal: storedSubtotal,
+      shippingCost: storedShipping,
+      taxAmount: storedTax,
+      totalAmount: storedTotal,
+    };
+  }
+
+  const expectedSubtotal = roundCurrency(itemSubtotal);
+  const expectedTotal = roundCurrency(expectedSubtotal + storedShipping + storedTax);
+  const looksDoubleShipping =
+    Math.abs(storedSubtotal - roundCurrency(expectedSubtotal + storedShipping)) < 0.01 &&
+    Math.abs(storedTotal - roundCurrency(storedSubtotal + storedShipping + storedTax)) < 0.01;
+  const subtotalMismatch = Math.abs(storedSubtotal - expectedSubtotal) >= 0.01;
+
+  if (looksDoubleShipping || subtotalMismatch) {
+    return {
+      subtotal: expectedSubtotal,
+      shippingCost: storedShipping,
+      taxAmount: storedTax,
+      totalAmount: expectedTotal,
+    };
+  }
+
+  return {
+    subtotal: storedSubtotal,
+    shippingCost: storedShipping,
+    taxAmount: storedTax,
+    totalAmount: storedTotal,
+  };
+};
+
 const parseNullableNumber = (value) => {
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
@@ -2761,6 +2802,12 @@ const sendOrderReceipts = async (orderId) => {
             o.subtotal,
             o.tax_amount as taxAmount,
             o.shipping_cost as shippingCost,
+            o.studio_shipping_cost as studioShippingCost,
+            o.shipping_margin as shippingMargin,
+            o.shipping_destination as shippingDestination,
+            o.shipping_product_group as shippingProductGroup,
+            o.direct_pricing_mode_used as directPricingModeUsed,
+            o.shipping_rubric_source as shippingRubricSource,
           o.discount_code as discountCode,
             o.stripe_fee_amount as stripeFeeAmount,
             o.payment_intent_id as paymentIntentId,
@@ -3218,8 +3265,10 @@ router.post('/', requireActiveSubscription, async (req, res) => {
       return options?.isDigital === true || options?.is_digital_only === true || options?.digitalOnly === true || category.includes('digital') || name.includes('digital');
     });
 
-    // If all items are digital, force shipping to 0
-    const computedSubtotal = Number(subtotal) || 0;
+    // Use item totals as source of truth for subtotal (prevents shipping from being included in subtotal).
+    const computedSubtotal = Array.isArray(items)
+      ? roundCurrency(items.reduce((sum, item) => sum + ((Number(item?.price) || 0) * (Number(item?.quantity) || 0)), 0))
+      : (Number(subtotal) || 0);
     const computedShipping = allDigital ? 0 : (Number(shippingCost) || 0);
     const computedTax = Number(taxAmount) || 0;
     const total = +(computedSubtotal + computedShipping + computedTax).toFixed(2);
@@ -3313,7 +3362,7 @@ router.post('/', requireActiveSubscription, async (req, res) => {
       nextStatus,
       'pending', // approval_status
       total,
-      subtotal || 0, 
+      computedSubtotal,
       taxAmount || 0,
       taxRate || 0,
       JSON.stringify(shippingAddress),
@@ -3891,6 +3940,7 @@ router.get('/', async (req, res) => {
   try {
     console.log('[GET /api/orders] Query params:', req.query);
     console.log('[GET /api/orders] User:', req.user);
+    const canViewWhccFields = req.user?.role === 'super_admin' || req.user?.role === 'studio_admin' || req.user?.role === 'admin';
     const userId = req.user.id;
     const actingStudioId = req.headers['x-acting-studio-id'];
     const includeItems = String(req.query.includeItems || '').toLowerCase() === '1' || String(req.query.includeItems || '').toLowerCase() === 'true';
@@ -3923,7 +3973,8 @@ router.get('/', async (req, res) => {
           o.payment_intent_id as paymentIntentId,
           o.customer_receipt_sent_at as customerReceiptSentAt,
           o.studio_receipt_sent_at as studioReceiptSentAt,
-          o.created_at as orderDate
+          o.created_at as orderDate,
+          ISNULL((SELECT SUM(ISNULL(oi.price,0) * ISNULL(oi.quantity,0)) FROM order_items oi WHERE oi.order_id = o.id), 0) as itemSubtotal
         FROM orders o
         WHERE o.studio_id = $1
         ORDER BY o.created_at DESC
@@ -3952,7 +4003,8 @@ router.get('/', async (req, res) => {
           o.payment_intent_id as paymentIntentId,
           o.customer_receipt_sent_at as customerReceiptSentAt,
           o.studio_receipt_sent_at as studioReceiptSentAt,
-          o.created_at as orderDate
+          o.created_at as orderDate,
+          ISNULL((SELECT SUM(ISNULL(oi.price,0) * ISNULL(oi.quantity,0)) FROM order_items oi WHERE oi.order_id = o.id), 0) as itemSubtotal
         FROM orders o
         WHERE o.user_id = $1
         ORDER BY o.created_at DESC
@@ -3961,6 +4013,33 @@ router.get('/', async (req, res) => {
     
     const parsedOrders = [];
     for (const order of orders) {
+      if (!includeItems) {
+        const normalizedAmounts = normalizeOrderAmounts({
+          subtotal: order.subtotal,
+          shippingCost: order.shippingCost,
+          taxAmount: order.taxAmount,
+          totalAmount: order.totalAmount,
+          itemSubtotal: order.itemSubtotal,
+        });
+        parsedOrders.push({
+          ...order,
+          status: order.status || 'Pending',
+          isBatch: Boolean(order.isBatch),
+          labSubmitted: Boolean(order.labSubmitted),
+          shippingAddress: safeJsonParse(order.shippingAddress),
+          batchShippingAddress: safeJsonParse(order.batchShippingAddress),
+          batchReadyDate: order.batchReadyDate,
+          batchQueueStatus: order.batchQueueStatus,
+          batchLabVendor: order.batchLabVendor,
+          labSubmittedAt: order.labSubmittedAt,
+          items: [],
+          shippingCost: normalizedAmounts.shippingCost,
+          subtotal: normalizedAmounts.subtotal,
+          totalAmount: normalizedAmounts.totalAmount,
+          taxAmount: normalizedAmounts.taxAmount,
+        });
+        continue;
+      }
 
       // Always fetch items for digital-only recalculation
       const items = await queryRows(
@@ -4096,14 +4175,26 @@ router.get('/', async (req, res) => {
         });
       }
 
-      // If all items are digital, recalculate all amounts using robust digital detection
+      // Normalize displayed amounts from item totals to correct legacy subtotal math.
       let shippingCostOut = order.shippingCost;
       let subtotalOut = order.subtotal;
       let totalAmountOut = order.totalAmount;
       let taxAmountOut = order.taxAmount;
+      const itemSubtotal = roundCurrency(itemsWithPhotos.reduce((sum, item) => sum + ((Number(item.price) || 0) * (Number(item.quantity) || 0)), 0));
+      const normalizedAmounts = normalizeOrderAmounts({
+        subtotal: subtotalOut,
+        shippingCost: shippingCostOut,
+        taxAmount: taxAmountOut,
+        totalAmount: totalAmountOut,
+        itemSubtotal,
+      });
+      shippingCostOut = normalizedAmounts.shippingCost;
+      subtotalOut = normalizedAmounts.subtotal;
+      totalAmountOut = normalizedAmounts.totalAmount;
+      taxAmountOut = normalizedAmounts.taxAmount;
       if (itemsWithPhotos.length > 0 && itemsWithPhotos.every((item) => isDigitalDownloadItem(item))) {
         shippingCostOut = 0;
-        subtotalOut = itemsWithPhotos.reduce((sum, item) => sum + ((Number(item.price) || 0) * (Number(item.quantity) || 0)), 0);
+        subtotalOut = itemSubtotal;
         taxAmountOut = Number(order.taxAmount) || 0;
         totalAmountOut = +(subtotalOut + shippingCostOut + taxAmountOut).toFixed(2);
       }
@@ -4166,6 +4257,7 @@ router.get('/details/:orderId', async (req, res) => {
     }
 
     const userId = req.user.id;
+  const canViewWhccFields = req.user?.role === 'super_admin' || req.user?.role === 'studio_admin' || req.user?.role === 'admin';
     const actingStudioId = req.headers['x-acting-studio-id'];
     let order;
 
@@ -4367,11 +4459,23 @@ router.get('/details/:orderId', async (req, res) => {
 
     // Add digital item flags for admin UI
     const digitalItems = itemsWithPhotos.filter((item) => isDigitalDownloadItem(item));
-    // If all items are digital, recalculate all amounts
+    // Normalize displayed amounts from item totals to correct legacy subtotal math.
     let shippingCostOut = order.shippingCost;
     let subtotalOut = order.subtotal;
     let totalAmountOut = order.totalAmount;
     let taxAmountOut = order.taxAmount;
+    const itemSubtotal = roundCurrency(itemsWithPhotos.reduce((sum, item) => sum + ((Number(item.price) || 0) * (Number(item.quantity) || 0)), 0));
+    const normalizedAmounts = normalizeOrderAmounts({
+      subtotal: subtotalOut,
+      shippingCost: shippingCostOut,
+      taxAmount: taxAmountOut,
+      totalAmount: totalAmountOut,
+      itemSubtotal,
+    });
+    shippingCostOut = normalizedAmounts.shippingCost;
+    subtotalOut = normalizedAmounts.subtotal;
+    totalAmountOut = normalizedAmounts.totalAmount;
+    taxAmountOut = normalizedAmounts.taxAmount;
     if (itemsWithPhotos.length > 0 && itemsWithPhotos.every((item) => {
       const options = (() => {
         try {
@@ -4383,7 +4487,7 @@ router.get('/details/:orderId', async (req, res) => {
       return options?.isDigital === true || options?.is_digital_only === true || options?.digitalOnly === true || category.includes('digital') || name.includes('digital');
     })) {
       shippingCostOut = 0;
-      subtotalOut = itemsWithPhotos.reduce((sum, item) => sum + ((Number(item.price) || 0) * (Number(item.quantity) || 0)), 0);
+      subtotalOut = itemSubtotal;
       taxAmountOut = Number(order.taxAmount) || 0;
       totalAmountOut = +(subtotalOut + shippingCostOut + taxAmountOut).toFixed(2);
     }
@@ -4459,6 +4563,12 @@ router.get('/admin/all-orders', adminRequired, async (req, res) => {
         o.shipping_address as shippingAddress,
         o.shipping_option as shippingOption,
         o.shipping_cost as shippingCost,
+        o.studio_shipping_cost as studioShippingCost,
+        o.shipping_margin as shippingMargin,
+        o.shipping_destination as shippingDestination,
+        o.shipping_product_group as shippingProductGroup,
+        o.direct_pricing_mode_used as directPricingModeUsed,
+        o.shipping_rubric_source as shippingRubricSource,
         o.is_batch as isBatch,
         o.batch_shipping_address as batchShippingAddress,
         o.batch_ready_date as batchReadyDate,
@@ -4583,11 +4693,23 @@ router.get('/admin/all-orders', adminRequired, async (req, res) => {
         }
       }
 
-      // If all items are digital, recalculate all amounts
+      // Normalize displayed amounts from item totals to correct legacy subtotal math.
       let shippingCostOut = order.shippingCost;
       let subtotalOut = order.subtotal;
       let totalAmountOut = order.totalAmount;
       let taxAmountOut = order.taxAmount;
+      const itemSubtotal = roundCurrency(itemsWithPhotos.reduce((sum, item) => sum + ((Number(item.price) || 0) * (Number(item.quantity) || 0)), 0));
+      const normalizedAmounts = normalizeOrderAmounts({
+        subtotal: subtotalOut,
+        shippingCost: shippingCostOut,
+        taxAmount: taxAmountOut,
+        totalAmount: totalAmountOut,
+        itemSubtotal,
+      });
+      shippingCostOut = normalizedAmounts.shippingCost;
+      subtotalOut = normalizedAmounts.subtotal;
+      totalAmountOut = normalizedAmounts.totalAmount;
+      taxAmountOut = normalizedAmounts.taxAmount;
       if (itemsWithPhotos.length > 0 && itemsWithPhotos.every((item) => {
         const options = (() => {
           try {
@@ -4599,7 +4721,7 @@ router.get('/admin/all-orders', adminRequired, async (req, res) => {
         return options?.isDigital === true || options?.is_digital_only === true || options?.digitalOnly === true || category.includes('digital') || name.includes('digital');
       })) {
         shippingCostOut = 0;
-        subtotalOut = itemsWithPhotos.reduce((sum, item) => sum + ((Number(item.price) || 0) * (Number(item.quantity) || 0)), 0);
+        subtotalOut = itemSubtotal;
         taxAmountOut = Number(order.taxAmount) || 0;
         totalAmountOut = +(subtotalOut + shippingCostOut + taxAmountOut).toFixed(2);
       }
@@ -4676,6 +4798,12 @@ router.get('/admin/order-details/:orderId', adminRequired, async (req, res) => {
         o.shipping_address as shippingAddress,
         o.shipping_option as shippingOption,
         o.shipping_cost as shippingCost,
+        o.studio_shipping_cost as studioShippingCost,
+        o.shipping_margin as shippingMargin,
+        o.shipping_destination as shippingDestination,
+        o.shipping_product_group as shippingProductGroup,
+        o.direct_pricing_mode_used as directPricingModeUsed,
+        o.shipping_rubric_source as shippingRubricSource,
         o.is_batch as isBatch,
         o.batch_shipping_address as batchShippingAddress,
         o.batch_ready_date as batchReadyDate,
@@ -4807,14 +4935,26 @@ router.get('/admin/order-details/:orderId', adminRequired, async (req, res) => {
 
     const digitalItems = itemsWithPhotos.filter((item) => item.isDigital || Boolean(item.digitalDownloadScope));
 
-    // If all items are digital, recalculate all amounts
+    // Normalize displayed amounts from item totals to correct legacy subtotal math.
     let shippingCostOut = order.shippingCost;
     let subtotalOut = order.subtotal;
     let totalAmountOut = order.totalAmount;
     let taxAmountOut = order.taxAmount;
+    const itemSubtotal = roundCurrency(itemsWithPhotos.reduce((sum, item) => sum + ((Number(item.price) || 0) * (Number(item.quantity) || 0)), 0));
+    const normalizedAmounts = normalizeOrderAmounts({
+      subtotal: subtotalOut,
+      shippingCost: shippingCostOut,
+      taxAmount: taxAmountOut,
+      totalAmount: totalAmountOut,
+      itemSubtotal,
+    });
+    shippingCostOut = normalizedAmounts.shippingCost;
+    subtotalOut = normalizedAmounts.subtotal;
+    totalAmountOut = normalizedAmounts.totalAmount;
+    taxAmountOut = normalizedAmounts.taxAmount;
     if (itemsWithPhotos.length > 0 && itemsWithPhotos.every((item) => item.isDigital)) {
       shippingCostOut = 0;
-      subtotalOut = itemsWithPhotos.reduce((sum, item) => sum + ((Number(item.price) || 0) * (Number(item.quantity) || 0)), 0);
+      subtotalOut = itemSubtotal;
       taxAmountOut = Number(order.taxAmount) || 0;
       totalAmountOut = +(subtotalOut + shippingCostOut + taxAmountOut).toFixed(2);
     }
