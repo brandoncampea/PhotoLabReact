@@ -196,6 +196,13 @@ const AdminAlbums: React.FC = () => {
     });
     setShowModal(true);
   };
+  const getHiddenAlbumUrl = (albumId: number) => {
+    const studioSlug = (editingAlbum as any)?.studioPublicSlug || localStorage.getItem('studioSlug') || '';
+    return studioSlug
+      ? `${window.location.origin}/albums/${albumId}?studioSlug=${encodeURIComponent(studioSlug)}&hidden=1`
+      : `${window.location.origin}/albums/${albumId}?hidden=1`;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const payload = {
@@ -212,13 +219,6 @@ const AdminAlbums: React.FC = () => {
       published: !!formData.published,
       hidden: !!formData.hidden,
     };
-      // Helper for unique hidden album URL
-      const getHiddenAlbumUrl = (albumId: number) => {
-        const studioSlug = (editingAlbum as any)?.studioPublicSlug || localStorage.getItem('studioSlug') || '';
-        return studioSlug
-          ? `${window.location.origin}/albums/${albumId}?studioSlug=${encodeURIComponent(studioSlug)}&hidden=1`
-          : `${window.location.origin}/albums/${albumId}?hidden=1`;
-      };
     if (!payload.name) {
       alert('Album name is required.');
       return;

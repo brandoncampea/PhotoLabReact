@@ -1,55 +1,3 @@
-  // Backup: verify album photo count on album open
-  async function verifyAndFixAlbumPhotoCount(albumId: number, getAuthHeaders: () => Record<string, string>) {
-    try {
-      // Fetch photos for the album
-      const res = await fetch(`/api/photos/album/${albumId}`, { headers: getAuthHeaders() });
-      if (!res.ok) return;
-      const photos = await res.json();
-      // Fetch album info
-      const albumRes = await fetch(`/api/albums/${albumId}`, { headers: getAuthHeaders() });
-      if (!albumRes.ok) return;
-      const album = await albumRes.json();
-      if (album.photoCount !== photos.length) {
-        // Update album photo_count if mismatch
-        await fetch(`/api/albums/${albumId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-          body: JSON.stringify({ photoCount: photos.length }),
-        });
-      }
-    } catch (err) {
-      // Silent fail
-    }
-  }
-  // Customers with Cart state
-  const [customersWithCart, setCustomersWithCart] = useState<number | null>(null);
-  const [customersWithCartLoading, setCustomersWithCartLoading] = useState(false);
-  const [customersWithCartError, setCustomersWithCartError] = useState('');
-
-  useEffect(() => {
-    if (effectiveStudioId) {
-      const fetchCustomersWithCart = async () => {
-        setCustomersWithCartLoading(true);
-        setCustomersWithCartError('');
-        try {
-          const res = await fetch('/api/studio-dashboard/customers-with-cart', {
-            headers: getAuthHeaders(),
-          });
-          if (res.ok) {
-            const data = await res.json();
-            setCustomersWithCart(data.count ?? 0);
-          } else {
-            setCustomersWithCartError('Failed to load cart data');
-          }
-        } catch (err) {
-          setCustomersWithCartError('Failed to load cart data');
-        } finally {
-          setCustomersWithCartLoading(false);
-        }
-      };
-      fetchCustomersWithCart();
-    }
-  }, [effectiveStudioId]);
 import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { analyticsService } from '../services/analyticsService';
@@ -69,6 +17,13 @@ interface SubscriptionInfo {
     is_free_subscription?: boolean;
     cancellation_requested?: boolean;
     cancellation_date?: string;
+    ship_from_name?: string;
+    ship_from_address1?: string;
+    ship_from_address2?: string;
+    ship_from_city?: string;
+    ship_from_state?: string;
+    ship_from_zip?: string;
+    ship_from_country?: string;
   };
   plan: {
     id: string;
@@ -134,6 +89,8 @@ interface StudioProfitSummary {
   totalStudioProfitGross: number;
   totalStudioProfit: number;
   totalPayouts: number;
+  totalShippingMargin?: number;
+  totalDiscounts?: number;
   payoutThreshold: number;
   isPayoutEligible: boolean;
   amountToNextPayout: number;
@@ -150,7 +107,10 @@ interface StudioPayoutHistoryItem {
 
 export default function StudioAdminDashboard() {
   const location = useLocation();
-    // Editable shipping address state
+  const { user } = useAuth();
+  const effectiveStudioId = studioFeatureService.getEffectiveStudioId(user);
+  const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null);
+  // Editable shipping address state
   // Analytics dashboard state
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
@@ -211,9 +171,6 @@ export default function StudioAdminDashboard() {
         setShipFromLoading(false);
       }
     };
-  const { user } = useAuth();
-  const effectiveStudioId = studioFeatureService.getEffectiveStudioId(user);
-  const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null);
   const [availablePlans, setAvailablePlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -228,6 +185,9 @@ export default function StudioAdminDashboard() {
   const [showPayoutHistory, setShowPayoutHistory] = useState(false);
   const [publicStudioLink, setPublicStudioLink] = useState('');
   const [shareLinkNotice, setShareLinkNotice] = useState('');
+  const [customersWithCart, setCustomersWithCart] = useState<number | null>(null);
+  const [customersWithCartLoading, setCustomersWithCartLoading] = useState(false);
+  const [customersWithCartError, setCustomersWithCartError] = useState('');
 
   useEffect(() => {
     // Track site visit and page view for analytics
@@ -657,7 +617,7 @@ export default function StudioAdminDashboard() {
                         {thumbUrl && (
                           <img
                             src={thumbUrl}
-                            alt={photo.photoTitle || 'Photo'}
+                            alt={photo.photoFileName || 'Photo'}
                             style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 6, marginRight: 12, border: '1px solid #222' }}
                           />
                         )}

@@ -10,21 +10,6 @@ import api from '../../services/api';
 type SeriesByRange = { [key: string]: number[] };
 type LabelsByRange = { [key: string]: string[] };
 
-const subtractSeriesByLabel = (
-  labelsByRange: LabelsByRange,
-  revenueByRange: SeriesByRange,
-  taxByRange: SeriesByRange
-): SeriesByRange => {
-  const result: SeriesByRange = { day: [], week: [], month: [] };
-  (['day', 'week', 'month'] as const).forEach((range) => {
-    const labels = labelsByRange[range] || [];
-    const revenueData = revenueByRange[range] || [];
-    const taxData = taxByRange[range] || [];
-    result[range] = labels.map((_, idx) => Math.max(0, Number(revenueData[idx] || 0) - Number(taxData[idx] || 0)));
-  });
-  return result;
-};
-
 const SuperAdminDashboard: React.FC = () => {
   // Studio revenue/cost drill-down
   const [studioDetails, setStudioDetails] = useState<any[]>([]);

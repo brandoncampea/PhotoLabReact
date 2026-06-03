@@ -144,6 +144,10 @@ const ensureSuperPriceListItemWhccMetadataColumns = async () => {
       BEGIN
         ALTER TABLE super_price_list_items ADD whcc_attribute_categories NVARCHAR(MAX) NULL
       END
+      IF COL_LENGTH('super_price_list_items', 'crop_shape') IS NULL
+      BEGIN
+        ALTER TABLE super_price_list_items ADD crop_shape NVARCHAR(20) NULL
+      END
     `);
   } catch (_) { /* columns may already exist */ }
 };
@@ -170,6 +174,56 @@ const normalizeNullableMoney = (value) => {
   if (value === undefined || value === null || value === '') return null;
   const num = Number(value);
   return Number.isFinite(num) ? Number(num.toFixed(2)) : null;
+};
+
+const firstPositiveInt = (...values) => {
+  for (const raw of values) {
+    if (raw === null || raw === undefined) continue;
+    if (typeof raw === 'string' && raw.trim() === '') continue;
+    const n = Number(raw);
+    if (Number.isInteger(n) && n > 0) return n;
+  }
+  return null;
+};
+
+const getCatalogProductUID = (product) => firstPositiveInt(
+  product?.ProductCode,
+  product?.ProductUID,
+  product?.productUID,
+  product?.ProductId,
+  product?.productId,
+  product?.Id,
+  product?.id
+);
+
+const getCatalogProductNodeID = (product) => {
+  const directNode = firstPositiveInt(
+    product?.ProductNodeId,
+    product?.ProductNodeID,
+    product?.productNodeID,
+    product?.DefaultProductNodeID,
+    product?.defaultProductNodeID
+  );
+  if (directNode) return directNode;
+
+  const nodes = [
+    ...(Array.isArray(product?.ProductNodes) ? product.ProductNodes : []),
+    ...(Array.isArray(product?.productNodes) ? product.productNodes : []),
+  ];
+
+  for (const node of nodes) {
+    const nodeId = firstPositiveInt(
+      node?.DP2NodeID,
+      node?.dp2NodeID,
+      node?.ProductNodeID,
+      node?.productNodeID,
+      node?.ProductNodeId,
+      node?.productNodeId
+    );
+    if (nodeId) return nodeId;
+  }
+
+  return null;
 };
 
 const ATTRIBUTE_PRICE_ROUNDING_SUFFIXES = ['.00', '.05', '.25', '.50', '.95', '.99'];
@@ -478,11 +532,29 @@ router.post('/:id/import-items', async (req, res) => {
     let updatedCount = 0;
     let skippedCount = 0;
     const errorSamples = [];
+    const mappingSummary = {
+      resolvedUidCount: 0,
+      resolvedNodeIdCount: 0,
+      appliedUidCount: 0,
+      appliedNodeIdCount: 0,
+      missingUidCount: 0,
+      missingNodeIdCount: 0,
+    };
 
     // Fetch WHCC catalog once for all items
     let whccCatalogMap = null;
+    const whccNodeToUidMap = new Map();
+    const whccUidToNodeMap = new Map();
     try {
       whccCatalogMap = await getWhccCatalogMap();
+      for (const row of whccCatalogMap.values()) {
+        const uid = getCatalogProductUID(row);
+        const node = getCatalogProductNodeID(row);
+        if (uid && node) {
+          if (!whccNodeToUidMap.has(node)) whccNodeToUidMap.set(node, uid);
+          if (!whccUidToNodeMap.has(uid)) whccUidToNodeMap.set(uid, node);
+        }
+      }
     } catch (err) {
       return res.status(500).json({ error: 'Failed to fetch WHCC catalog from API', details: err?.message || String(err) });
     }
@@ -514,25 +586,84 @@ router.post('/:id/import-items', async (req, res) => {
         const category = (item.category || 'whcc').toString().trim();
         const description = (item.description || 'Imported from WHCC').toString();
 
-        // Always match WHCC product from live catalog
-        let whccProductUID = null;
-        let whccProductNodeID = null;
+        // Prefer explicit WHCC mapping sent by UI; only fallback to live catalog if missing.
+        let whccProductUID = firstPositiveInt(
+          item.whccProductUID,
+          item.whcc_product_uid,
+          item.whccEditorProductId,
+          item.productUID,
+          item.ProductUID,
+          item.ProductCode
+        );
+        let whccProductNodeID = firstPositiveInt(
+          item.whccProductNodeID,
+          item.whcc_product_node_id,
+          item.whccEditorProductNodeId,
+          item.ProductNodeId,
+          item.ProductNodeID,
+          item.productNodeID
+        );
         let whccProductMatch = null;
-        try {
-          whccProductMatch = await (async () => {
-            const key = `${require('../services/whccCatalog.js').normalize(productName.replace(sizeName, '').trim())}|${require('../services/whccCatalog.js').normalize(sizeName)}`;
-            return whccCatalogMap.get(key) || null;
-          })();
-        } catch (_) {}
-        if (whccProductMatch) {
-          whccProductUID = Number(whccProductMatch.ProductCode) || null;
-          whccProductNodeID = Number(whccProductMatch.ProductNodeId || whccProductMatch.ProductNodeID) || null;
+        if (!whccProductUID || !whccProductNodeID) {
+          try {
+            const normalizeCatalogKey = (value) => String(value || '')
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, ' ')
+              .replace(/\s+/g, ' ')
+              .trim();
+
+            const normalizedProduct = normalizeCatalogKey(productName);
+            const normalizedSize = normalizeCatalogKey(sizeName);
+            const strippedProduct = normalizeCatalogKey(
+              sizeName && productName.toLowerCase() !== sizeName.toLowerCase()
+                ? productName.replace(sizeName, '').trim()
+                : productName
+            );
+
+            const candidateKeys = [
+              `${strippedProduct}|${normalizedSize}`,
+              `${normalizedProduct}|${normalizedSize}`,
+              `${normalizedProduct}|`,
+              `${strippedProduct}|`,
+            ].filter((key, idx, arr) => key && arr.indexOf(key) === idx);
+
+            for (const key of candidateKeys) {
+              if (whccCatalogMap.has(key)) {
+                whccProductMatch = whccCatalogMap.get(key);
+                break;
+              }
+            }
+
+            if (!whccProductMatch) {
+              whccProductMatch = await matchWhccProduct({ productName, sizeName });
+            }
+          } catch (_) {}
+          if (whccProductMatch) {
+            if (!whccProductUID) {
+              whccProductUID = getCatalogProductUID(whccProductMatch);
+            }
+            if (!whccProductNodeID) {
+              whccProductNodeID = getCatalogProductNodeID(whccProductMatch);
+            }
+          }
+        }
+
+        // Final reconciliation from catalog lookup maps.
+        if (!whccProductUID && whccProductNodeID) {
+          whccProductUID = Number(whccNodeToUidMap.get(whccProductNodeID) || 0) || null;
+        }
+        if (!whccProductNodeID && whccProductUID) {
+          whccProductNodeID = Number(whccUidToNodeMap.get(whccProductUID) || 0) || null;
         }
         const whccAttributeCostMultiplierPercent = Number(item.whccAttributeCostMultiplierPercent ?? 0) || 0;
         const whccAttributeCategories = normalizeWhccAttributeCategories(item.whccAttributeCategories);
         const rawAttrUIDs = Array.isArray(item.whccItemAttributeUIDs)
           ? item.whccItemAttributeUIDs.map(Number).filter(v => Number.isInteger(v) && v > 0)
           : null;
+        if (whccProductUID) mappingSummary.resolvedUidCount++;
+        else mappingSummary.missingUidCount++;
+        if (whccProductNodeID) mappingSummary.resolvedNodeIdCount++;
+        else mappingSummary.missingNodeIdCount++;
         const generatedWhccVariants = buildDefaultWhccVariantsFromCategories({
           whccProductUID,
           whccProductNodeID,
@@ -643,7 +774,10 @@ router.post('/:id/import-items', async (req, res) => {
 
         // Upsert super price list item but only fill missing information on existing rows.
         const existing = await mssql.query(`
-          SELECT TOP 1 spi.id, spi.base_cost, spi.markup_percent, spi.is_active, p.id AS product_id, p.options AS product_options
+          SELECT TOP 1 spi.id, spi.base_cost, spi.markup_percent, spi.is_active,
+                 spi.whcc_product_uid AS existing_whcc_product_uid,
+                 spi.whcc_product_node_id AS existing_whcc_product_node_id,
+                 p.id AS product_id, p.options AS product_options
           FROM super_price_list_items spi
           JOIN product_sizes ps ON spi.product_size_id = ps.id
           JOIN products p ON ps.product_id = p.id
@@ -662,9 +796,14 @@ router.post('/:id/import-items', async (req, res) => {
             updateParams.push(markup_percent);
             updateParts.push(`markup_percent = @p${updateParams.length}`);
           }
-          updateParams.push(whccProductUID);
+          const existingWhccUid = Number(existing[0]?.existing_whcc_product_uid || 0) || null;
+          const existingWhccNode = Number(existing[0]?.existing_whcc_product_node_id || 0) || null;
+          const nextWhccUid = whccProductUID || existingWhccUid || null;
+          const nextWhccNode = whccProductNodeID || existingWhccNode || null;
+
+          updateParams.push(nextWhccUid);
           updateParts.push(`whcc_product_uid = @p${updateParams.length}`);
-          updateParams.push(whccProductNodeID);
+          updateParams.push(nextWhccNode);
           updateParts.push(`whcc_product_node_id = @p${updateParams.length}`);
           updateParams.push(rawAttrUIDs && rawAttrUIDs.length ? JSON.stringify(rawAttrUIDs) : null);
           updateParts.push(`whcc_item_attribute_uids = @p${updateParams.length}`);
@@ -733,6 +872,8 @@ router.post('/:id/import-items', async (req, res) => {
           if (updateParts.length) {
             updateParams.push(existing[0].id);
             await mssql.query(`UPDATE super_price_list_items SET ${updateParts.join(', ')} WHERE id = @p${updateParams.length}`, updateParams);
+            if (nextWhccUid) mappingSummary.appliedUidCount++;
+            if (nextWhccNode) mappingSummary.appliedNodeIdCount++;
             // Propagate base_cost fill-in to linked studio items that still have no price set
             if (base_cost !== null && base_cost !== undefined && linkedStudioIds.length) {
               for (const studioListId of linkedStudioIds) {
@@ -771,6 +912,10 @@ router.post('/:id/import-items', async (req, res) => {
             [id, resolvedProductSizeId]
           );
           const createdItemId = Number(createdItem[0]?.id || 0);
+          if (createdItemId) {
+            if (whccProductUID) mappingSummary.appliedUidCount++;
+            if (whccProductNodeID) mappingSummary.appliedNodeIdCount++;
+          }
           if (createdItemId && generatedWhccVariants.length) {
             await ensureWhccVariantsTable();
             for (const variant of generatedWhccVariants) {
@@ -825,8 +970,128 @@ router.post('/:id/import-items', async (req, res) => {
       }
     }
 
+    // Auto-backfill missing UIDs from raw WHCC catalog + variants + node maps
+    try {
+      const uidByNode = new Map();
+
+      // Prefer raw catalog products to avoid flattening gaps on certain product families.
+      const consumerKey = String(process.env.WHCC_CONSUMER_KEY || '').trim();
+      const consumerSecret = String(process.env.WHCC_CONSUMER_SECRET || '').trim();
+      const isSandbox = process.env.WHCC_SANDBOX === 'true';
+      const baseUrl = isSandbox ? 'https://sandbox.apps.whcc.com' : 'https://apps.whcc.com';
+
+      if (consumerKey && consumerSecret) {
+        const axios = (await import('axios')).default;
+        const tokenResponse = await axios.get(`${baseUrl}/api/AccessToken`, {
+          params: {
+            grant_type: 'consumer_credentials',
+            consumer_key: consumerKey,
+            consumer_secret: consumerSecret,
+          },
+          headers: { Accept: 'application/json' },
+        });
+
+        const token = tokenResponse.data?.Token || tokenResponse.data?.token || null;
+        if (token) {
+          const catalogResponse = await axios.get(`${baseUrl}/api/catalog`, {
+            headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+          });
+          const categories = Array.isArray(catalogResponse.data?.Categories) ? catalogResponse.data.Categories : [];
+          const products = categories.flatMap((c) => (Array.isArray(c?.ProductList) ? c.ProductList : []));
+          for (const product of products) {
+            const uid = getCatalogProductUID(product);
+            const node = getCatalogProductNodeID(product);
+            if (uid && node && !uidByNode.has(node)) {
+              uidByNode.set(node, uid);
+            }
+          }
+        }
+      }
+
+      // Fallback: include flattened-map rows as a secondary source.
+      if (!uidByNode.size) {
+        const whccCatalogMap = await getWhccCatalogMap();
+        for (const row of whccCatalogMap.values()) {
+          const uid = getCatalogProductUID(row);
+          const node = getCatalogProductNodeID(row);
+          if (uid && node && !uidByNode.has(node)) {
+            uidByNode.set(node, uid);
+          }
+        }
+      }
+
+      const variantRows = await mssql.query(`
+        SELECT v.super_price_list_item_id, v.whcc_product_uid, v.is_default, v.id
+        FROM super_price_list_item_whcc_variants v
+        INNER JOIN super_price_list_items spi ON spi.id = v.super_price_list_item_id
+        WHERE spi.super_price_list_id = @p1
+        ORDER BY v.super_price_list_item_id ASC, v.is_default DESC, v.id ASC
+      `, [id]);
+
+      const variantUidByItemId = new Map();
+      for (const row of variantRows) {
+        const itemId = Number(row.super_price_list_item_id || 0);
+        const uid = Number(row.whcc_product_uid || 0);
+        if (!itemId || !uid) continue;
+        if (!variantUidByItemId.has(itemId)) variantUidByItemId.set(itemId, uid);
+      }
+
+      const itemRows = await mssql.query(`
+        SELECT spi.id,
+               spi.whcc_product_uid,
+               spi.whcc_product_node_id,
+               p.id as product_id,
+               p.options as product_options
+        FROM super_price_list_items spi
+        JOIN product_sizes ps ON spi.product_size_id = ps.id
+        JOIN products p ON ps.product_id = p.id
+        WHERE spi.super_price_list_id = @p1
+      `, [id]);
+
+      let backfillCount = 0;
+      for (const row of itemRows) {
+        const itemId = Number(row.id || 0);
+        const existingUid = Number(row.whcc_product_uid || 0);
+        if (existingUid > 0) continue;
+
+        let options = {};
+        try {
+          options = row.product_options ? JSON.parse(row.product_options) : {};
+        } catch (_) {
+          options = {};
+        }
+
+        const node = firstPositiveInt(row.whcc_product_node_id, options?.whccProductNodeID, options?.productNodeID);
+        const repairedUid = firstPositiveInt(
+          options?.whccProductUID,
+          options?.productUID,
+          variantUidByItemId.get(itemId),
+          uidByNode.get(node)
+        );
+
+        if (!(repairedUid > 0)) continue;
+
+        await mssql.query('UPDATE super_price_list_items SET whcc_product_uid = @p1 WHERE id = @p2', [repairedUid, itemId]);
+        backfillCount++;
+
+        const optionsUid = Number(options?.whccProductUID || 0);
+        if (optionsUid !== repairedUid && Number(row.product_id || 0) > 0) {
+          const nextOptions = {
+            ...(options || {}),
+            whccProductUID: repairedUid,
+            ...(node > 0 ? { whccProductNodeID: node } : {}),
+          };
+          await mssql.query('UPDATE products SET options = @p1 WHERE id = @p2', [JSON.stringify(nextOptions), row.product_id]);
+        }
+      }
+
+      mappingSummary.autoBackfillCount = backfillCount;
+    } catch (backfillErr) {
+      console.error('[SuperPriceLists] Auto-backfill error:', backfillErr?.message || String(backfillErr));
+    }
+
     // ...existing code...
-    res.status(201).json({ success: true, importedCount, updatedCount, skippedCount, errorSamples });
+    res.status(201).json({ success: true, importedCount, updatedCount, skippedCount, errorSamples, mappingSummary });
   } catch (err) {
     res.status(500).json({ error: 'Failed to import items to super price list', details: err?.message || String(err) });
   }
@@ -1064,6 +1329,151 @@ router.post('/:id/fill-missing-whcc-node-ids', superAdminRequired, async (req, r
   }
 });
 
+// POST fill missing WHCC UIDs for items in this super price list
+router.post('/:id/fill-missing-whcc-uids', superAdminRequired, async (req, res) => {
+  const { id } = req.params;
+  try {
+    await ensureWhccVariantsTable();
+    await ensureSuperPriceListItemWhccMetadataColumns();
+
+    const uidByNode = new Map();
+
+    // Prefer raw catalog products to avoid flattening gaps on certain product families.
+    const consumerKey = String(process.env.WHCC_CONSUMER_KEY || '').trim();
+    const consumerSecret = String(process.env.WHCC_CONSUMER_SECRET || '').trim();
+    const isSandbox = process.env.WHCC_SANDBOX === 'true';
+    const baseUrl = isSandbox ? 'https://sandbox.apps.whcc.com' : 'https://apps.whcc.com';
+
+    if (consumerKey && consumerSecret) {
+      const axios = (await import('axios')).default;
+      const tokenResponse = await axios.get(`${baseUrl}/api/AccessToken`, {
+        params: {
+          grant_type: 'consumer_credentials',
+          consumer_key: consumerKey,
+          consumer_secret: consumerSecret,
+        },
+        headers: { Accept: 'application/json' },
+      });
+
+      const token = tokenResponse.data?.Token || tokenResponse.data?.token || null;
+      if (token) {
+        const catalogResponse = await axios.get(`${baseUrl}/api/catalog`, {
+          headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+        });
+        const categories = Array.isArray(catalogResponse.data?.Categories) ? catalogResponse.data.Categories : [];
+        const products = categories.flatMap((c) => (Array.isArray(c?.ProductList) ? c.ProductList : []));
+        for (const product of products) {
+          const uid = getCatalogProductUID(product);
+          const node = getCatalogProductNodeID(product);
+          if (uid && node && !uidByNode.has(node)) {
+            uidByNode.set(node, uid);
+          }
+        }
+      }
+    }
+
+    // Fallback: include flattened-map rows as a secondary source.
+    if (!uidByNode.size) {
+      const whccCatalogMap = await getWhccCatalogMap();
+      for (const row of whccCatalogMap.values()) {
+        const uid = getCatalogProductUID(row);
+        const node = getCatalogProductNodeID(row);
+        if (uid && node && !uidByNode.has(node)) {
+          uidByNode.set(node, uid);
+        }
+      }
+    }
+
+    const variantRows = await mssql.query(`
+      SELECT v.super_price_list_item_id, v.whcc_product_uid, v.is_default, v.id
+      FROM super_price_list_item_whcc_variants v
+      INNER JOIN super_price_list_items spi ON spi.id = v.super_price_list_item_id
+      WHERE spi.super_price_list_id = @p1
+      ORDER BY v.super_price_list_item_id ASC, v.is_default DESC, v.id ASC
+    `, [id]);
+
+    const variantUidByItemId = new Map();
+    for (const row of variantRows) {
+      const itemId = Number(row.super_price_list_item_id || 0);
+      const uid = Number(row.whcc_product_uid || 0);
+      if (!itemId || !uid) continue;
+      if (!variantUidByItemId.has(itemId)) variantUidByItemId.set(itemId, uid);
+    }
+
+    const rows = await mssql.query(`
+      SELECT spi.id,
+             spi.whcc_product_uid,
+             spi.whcc_product_node_id,
+             p.id as product_id,
+             p.options as product_options
+      FROM super_price_list_items spi
+      JOIN product_sizes ps ON spi.product_size_id = ps.id
+      JOIN products p ON ps.product_id = p.id
+      WHERE spi.super_price_list_id = @p1
+    `, [id]);
+
+    let alreadySetCount = 0;
+    let updatedCount = 0;
+    let optionsUpdatedCount = 0;
+    let unresolvedCount = 0;
+
+    for (const row of rows) {
+      const itemId = Number(row.id || 0);
+      const existingUid = Number(row.whcc_product_uid || 0);
+      if (existingUid > 0) {
+        alreadySetCount++;
+        continue;
+      }
+
+      let options = {};
+      try {
+        options = row.product_options ? JSON.parse(row.product_options) : {};
+      } catch (_) {
+        options = {};
+      }
+
+      const node = firstPositiveInt(row.whcc_product_node_id, options?.whccProductNodeID, options?.productNodeID);
+      const repairedUid = firstPositiveInt(
+        options?.whccProductUID,
+        options?.productUID,
+        variantUidByItemId.get(itemId),
+        uidByNode.get(node)
+      );
+
+      if (!(repairedUid > 0)) {
+        unresolvedCount++;
+        continue;
+      }
+
+      await mssql.query('UPDATE super_price_list_items SET whcc_product_uid = @p1 WHERE id = @p2', [repairedUid, itemId]);
+      updatedCount++;
+
+      const optionsUid = Number(options?.whccProductUID || 0);
+      if (optionsUid !== repairedUid && Number(row.product_id || 0) > 0) {
+        const nextOptions = {
+          ...(options || {}),
+          whccProductUID: repairedUid,
+          ...(node > 0 ? { whccProductNodeID: node } : {}),
+        };
+        await mssql.query('UPDATE products SET options = @p1 WHERE id = @p2', [JSON.stringify(nextOptions), row.product_id]);
+        optionsUpdatedCount++;
+      }
+    }
+
+    res.json({
+      success: true,
+      totalItems: rows.length,
+      alreadySetCount,
+      updatedCount,
+      optionsUpdatedCount,
+      unresolvedCount,
+      uidByNodeMapSize: uidByNode.size,
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fill missing WHCC UIDs', details: err?.message || String(err) });
+  }
+});
+
 
 
 // GET all super price lists
@@ -1233,6 +1643,9 @@ router.get('/:id/items', async (req, res) => {
         : [];
       const whccVariants = persistedVariants.length ? persistedVariants : fallbackVariant;
 
+      const finalUid = Number(item.whcc_product_uid || options?.whccProductUID || 0);
+      const finalNode = Number(item.whcc_product_node_id || options?.whccProductNodeID || 0);
+
       return {
         ...item,
         isDigital: options?.isDigital === true || options?.is_digital_only === true,
@@ -1243,11 +1656,12 @@ router.get('/:id/items', async (req, res) => {
           : 0,
         attributePricingPercent: Number.isFinite(attributePricingPercent) ? Math.max(0, attributePricingPercent) : 0,
         attributePriceRoundingSuffix,
-        whccProductUID: item.whcc_product_uid ?? options?.whccProductUID ?? '',
-        whccProductNodeID: item.whcc_product_node_id ?? options?.whccProductNodeID ?? '',
+        whccProductUID: finalUid > 0 ? String(finalUid) : '',
+        whccProductNodeID: finalNode > 0 ? String(finalNode) : '',
         whccItemAttributeUIDs: itemLevelAttrUids.length ? itemLevelAttrUids : (Array.isArray(options?.whccItemAttributeUIDs) ? options.whccItemAttributeUIDs : []),
         whccAttributeCategories: itemLevelCategories.length ? itemLevelCategories : (Array.isArray(options?.whccAttributeCategories) ? options.whccAttributeCategories : []),
         whccVariants,
+        cropShape: item.crop_shape === 'circle' ? 'circle' : 'rect',
       };
     });
     res.json(items);
@@ -1611,6 +2025,11 @@ router.put('/:id/items/:itemId', async (req, res) => {
     attribute_price_rounding_suffix,
     attributePriceRoundingSuffix,
     whccVariants,
+    cropShape,
+    sizeName,
+    sizeWidth,
+    sizeHeight,
+    productName,
   } = req.body;
   try {
     await ensureWhccVariantsTable();
@@ -1621,13 +2040,65 @@ router.put('/:id/items/:itemId', async (req, res) => {
     if (base_cost !== undefined) { params.push(base_cost); parts.push(`base_cost = @p${params.length}`); }
     if (markup_percent !== undefined) { params.push(markup_percent); parts.push(`markup_percent = @p${params.length}`); }
     if (is_active !== undefined) { params.push(is_active ? 1 : 0); parts.push(`is_active = @p${params.length}`); }
+    if (cropShape !== undefined) {
+      const normalizedCropShape = cropShape === 'circle' ? 'circle' : 'rect';
+      // Only write to DB if explicitly circle, or if overriding an existing non-null value back to rect
+      params.push(normalizedCropShape === 'rect' ? null : normalizedCropShape);
+      parts.push(`crop_shape = @p${params.length}`);
+    }
     if (parts.length) {
       params.push(itemId);
       await mssql.query(`UPDATE super_price_list_items SET ${parts.join(', ')} WHERE id = @p${params.length}`, params);
     }
 
+    // Update product_sizes.size_name (re-encode with dimensions) and products.name
+    const hasSizeEdit = sizeName !== undefined || sizeWidth !== undefined || sizeHeight !== undefined;
+    const hasProductNameEdit = productName !== undefined;
+    if (hasSizeEdit || hasProductNameEdit) {
+      const sizeRow = await mssql.query(`
+        SELECT ps.id as sizeId, ps.size_name as storedSizeName, ps.product_id as productId, p.name as productName
+        FROM super_price_list_items spi
+        JOIN product_sizes ps ON spi.product_size_id = ps.id
+        JOIN products p ON ps.product_id = p.id
+        WHERE spi.id = @p1
+      `, [itemId]);
+      if (sizeRow.length) {
+        const { sizeId, storedSizeName, productId } = sizeRow[0];
+        if (hasSizeEdit) {
+          // Decode existing stored name to get current parts
+          const delimiter = '__';
+          let currentDisplayName = storedSizeName || '';
+          let currentW = 0, currentH = 0;
+          if (storedSizeName && storedSizeName.includes(delimiter)) {
+            const [namePart, dimPart] = storedSizeName.split(delimiter);
+            currentDisplayName = namePart;
+            const [wp, hp] = (dimPart || '').split('x');
+            currentW = Number(wp) || 0;
+            currentH = Number(hp) || 0;
+          } else if (storedSizeName) {
+            const m = storedSizeName.match(/^(.*?)\s*\(?([0-9.]+)x([0-9.]+)\)?$/i);
+            if (m) { currentDisplayName = m[1].trim(); currentW = Number(m[2]) || 0; currentH = Number(m[3]) || 0; }
+          }
+          const newDisplayName = sizeName !== undefined ? String(sizeName).trim() : currentDisplayName;
+          const newW = sizeWidth !== undefined ? Number(sizeWidth) || 0 : currentW;
+          const newH = sizeHeight !== undefined ? Number(sizeHeight) || 0 : currentH;
+          const newStoredName = (newW > 0 && newH > 0)
+            ? `${newDisplayName}${delimiter}${newW}x${newH}`
+            : newDisplayName;
+          await mssql.query('UPDATE product_sizes SET size_name = @p1 WHERE id = @p2', [newStoredName, sizeId]);
+        }
+        if (hasProductNameEdit && productName !== undefined) {
+          const trimmedProductName = String(productName).trim();
+          if (trimmedProductName) {
+            await mssql.query('UPDATE products SET name = @p1 WHERE id = @p2', [trimmedProductName, productId]);
+          }
+        }
+      }
+    }
+
     const hasWhccVariantsUpdate = Array.isArray(whccVariants);
     const hasWhccMappingUpdate = whccProductUID !== undefined || whccProductNodeID !== undefined || whccItemAttributeUIDs !== undefined || hasWhccVariantsUpdate;
+    const hasCropShapeUpdate = cropShape !== undefined;
     const hasDigitalConfigUpdate =
       digital_download_scope !== undefined ||
       downloadScope !== undefined ||
@@ -1640,7 +2111,7 @@ router.put('/:id/items/:itemId', async (req, res) => {
       attributePricingPercent !== undefined ||
       attribute_price_rounding_suffix !== undefined ||
       attributePriceRoundingSuffix !== undefined;
-    if (hasWhccMappingUpdate || hasDigitalConfigUpdate || hasAttributePricingConfigUpdate) {
+    if (hasWhccMappingUpdate || hasDigitalConfigUpdate || hasAttributePricingConfigUpdate || hasCropShapeUpdate) {
       if (hasWhccMappingUpdate) {
         const itemParts = [];
         const itemParams = [];
@@ -1868,6 +2339,11 @@ router.put('/:id/items/:itemId', async (req, res) => {
             attribute_price_rounding_suffix ?? attributePriceRoundingSuffix
           );
         }
+      }
+
+      if (cropShape !== undefined) {
+        if (cropShape === 'circle') nextOptions.cropShape = 'circle';
+        else delete nextOptions.cropShape; // null/rect = default, don't pollute options
       }
 
       await mssql.query('UPDATE products SET options = @p1 WHERE id = @p2', [JSON.stringify(nextOptions), productId]);

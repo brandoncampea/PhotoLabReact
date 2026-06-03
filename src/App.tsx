@@ -13,6 +13,7 @@ import AdminProtectedRoute from './components/AdminProtectedRoute';
 import StudioAlbumStyles from './pages/admin/StudioAlbumStyles';
 
 const SuperAdminShipping = lazy(() => import('./pages/admin/SuperAdminShipping'));
+const SuperAdminWhccPriceAudit = lazy(() => import('./pages/admin/SuperAdminWhccPriceAudit'));
 
 const AdminSubscriptionGateway = lazy(() => import('./pages/admin/AdminSubscriptionGateway'));
 
@@ -101,6 +102,7 @@ function App() {
                 <Route path="/admin/customers" element={<AdminProtectedRoute><AdminCustomers /></AdminProtectedRoute>} />
                 <Route path="/admin/shipping" element={<AdminProtectedRoute><AdminShipping /></AdminProtectedRoute>} />
                 <Route path="/admin/super-shipping" element={<AdminProtectedRoute><SuperAdminShipping /></AdminProtectedRoute>} />
+                <Route path="/admin/whcc-price-audit" element={<AdminProtectedRoute><SuperAdminWhccPriceAudit /></AdminProtectedRoute>} />
                 <Route path="/admin/album-styles" element={<AdminProtectedRoute><StudioAlbumStyles /></AdminProtectedRoute>} />
                 <Route path="/admin/discount-codes" element={<AdminProtectedRoute><AdminDiscountCodes /></AdminProtectedRoute>} />
                 <Route path="/admin/watermarks" element={<AdminProtectedRoute><AdminWatermarks /></AdminProtectedRoute>} />

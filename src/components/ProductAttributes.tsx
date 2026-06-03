@@ -1,5 +1,3 @@
-import React from 'react';
-
 /**
  * Renders product attributes/finishes (lustre, pearl, etc.) consistently.
  * Accepts a string or array of strings.

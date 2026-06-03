@@ -242,7 +242,7 @@ export default function LandingPage() {
                       onMouseDown={() => {
                         setSearchQuery(photo.fileName);
                         setShowDropdown(false);
-                        navigate(`/albums/${photo.albumId}?photo=${photo.id}&studioSlug=${encodeURIComponent(photo.studioSlug)}`);
+                        navigate(`/albums/${photo.albumId}?photo=${photo.id}&studioSlug=${encodeURIComponent((photo as any).studioSlug || '')}`);
                       }}
                     >
                       <img
@@ -253,7 +253,7 @@ export default function LandingPage() {
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontWeight: 600, fontSize: '1rem', color: '#fff', wordBreak: 'break-all' }}>{photo.fileName}</div>
                         <div style={{ fontSize: '0.85rem', color: '#aaa', marginTop: 2 }}>
-                          {photo.albumName} &bull; {photo.studioName}
+                          {(photo as any).albumName || 'Album'} &bull; {(photo as any).studioName || 'Studio'}
                         </div>
                         {photo.description && (
                           <div style={{ fontSize: '0.82rem', color: '#c9c9d4', marginTop: 8, lineHeight: 1.35 }}>

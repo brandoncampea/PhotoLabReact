@@ -13,7 +13,7 @@ export type CropperModalProps = {
 };
 
 
-export default function CropperModal({ item, onClose, displayWidth, displayHeight }: CropperModalProps) {
+export default function CropperModal({ item, onClose }: CropperModalProps) {
   const { updateCropData } = useCart();
   const cropperRef = React.useRef<any>(null);
   const handleRotate = () => {
@@ -123,7 +123,7 @@ export default function CropperModal({ item, onClose, displayWidth, displayHeigh
           cropperRefCallback={(ref) => (cropperRef.current = ref)}
           width={thumbWidth}
           height={thumbHeight}
-          style={{ width: thumbWidth, height: thumbHeight, maxWidth: '100%', maxHeight: '100%' }}
+          cropShape={item.productSize?.cropShape}
         />
       </div>
       <div style={{ display: 'flex', justifyContent: 'center', gap: 16, width: thumbWidth, marginTop: 0 }}>

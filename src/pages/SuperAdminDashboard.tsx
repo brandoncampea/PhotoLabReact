@@ -107,7 +107,11 @@ const SuperAdminDashboard: React.FC = () => {
         albumService.getAlbums(),
       ]);
 
-      const ordersData = ordersResult.status === 'fulfilled' ? ordersResult.value : [];
+      const ordersData: Order[] = ordersResult.status === 'fulfilled'
+        ? (Array.isArray(ordersResult.value)
+          ? ordersResult.value
+          : ((ordersResult.value as any)?.orders || []))
+        : [];
       const customers = customersResult.status === 'fulfilled' ? customersResult.value : [];
       const albums = albumsResult.status === 'fulfilled' ? albumsResult.value : [];
 

@@ -124,6 +124,7 @@ const [newListName, setNewListName] = useState('');
 const [newListDesc, setNewListDesc] = useState('');
 const [selectedSuperListId, setSelectedSuperListId] = useState<number | ''>('');
 const [draftPrices, setDraftPrices] = useState<Record<number, string>>({});
+const [, setProductOrderDrafts] = useState<Record<string, string>>({});
 const [draggingProductKey, setDraggingProductKey] = useState<string | null>(null);
 const [draggingRecommendedProductId, setDraggingRecommendedProductId] = useState<number | null>(null);
 const [markupPercent, setMarkupPercent] = useState('');

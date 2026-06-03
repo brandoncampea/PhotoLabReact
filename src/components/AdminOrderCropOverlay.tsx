@@ -7,6 +7,7 @@ interface AdminOrderCropOverlayProps {
   photoHeight: number;
   cropData?: { x: number; y: number; width: number; height: number };
   whccCrop?: { X: number; Y: number; ZoomX: number; ZoomY: number };
+  cropShape?: 'rect' | 'circle';
 }
 
 export const AdminOrderCropOverlay: React.FC<AdminOrderCropOverlayProps> = ({
@@ -16,12 +17,13 @@ export const AdminOrderCropOverlay: React.FC<AdminOrderCropOverlayProps> = ({
   photoHeight,
   cropData,
   whccCrop,
+  cropShape,
 }) => {
   // Use thumbnail if provided, else fallback to photoUrl
   const imageUrl = thumbnailUrl || photoUrl;
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
-  const [displayWidth, setDisplayWidth] = useState(400);
+  const displayWidth = 400;
   const [displayHeight, setDisplayHeight] = useState(0);
 
   // On image load, set displayHeight to auto (preserve aspect ratio)
@@ -44,8 +46,6 @@ export const AdminOrderCropOverlay: React.FC<AdminOrderCropOverlayProps> = ({
   // No letterboxing needed: image is always width 400, height auto (aspect ratio preserved)
   const drawnW = displayWidth;
   const drawnH = displayHeight;
-  const offsetX = 0;
-  const offsetY = 0;
 
   // Customer crop overlay (yellow)
   let customerRect = null;
@@ -110,6 +110,7 @@ export const AdminOrderCropOverlay: React.FC<AdminOrderCropOverlayProps> = ({
             boxSizing: 'border-box',
             pointerEvents: 'none',
             zIndex: 2,
+            borderRadius: cropShape === 'circle' ? '50%' : undefined,
           }}
           title="Customer Crop"
         />
@@ -126,6 +127,7 @@ export const AdminOrderCropOverlay: React.FC<AdminOrderCropOverlayProps> = ({
             boxSizing: 'border-box',
             pointerEvents: 'none',
             zIndex: 3,
+            borderRadius: cropShape === 'circle' ? '50%' : undefined,
           }}
           title="WHCC Crop"
         />

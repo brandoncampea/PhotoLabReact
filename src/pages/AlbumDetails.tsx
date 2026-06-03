@@ -961,7 +961,7 @@ const AlbumDetails: React.FC = () => {
         if (size && size.width && size.height) {
           cropAspect = Number(size.width) / Number(size.height);
         }
-        function getCenteredCrop(naturalWidth, naturalHeight, targetAspect) {
+        function getCenteredCrop(naturalWidth: number, naturalHeight: number, targetAspect: number) {
           const imageAspect = naturalWidth / naturalHeight;
           let cropWidth, cropHeight, cropX, cropY;
           if (imageAspect > targetAspect) {

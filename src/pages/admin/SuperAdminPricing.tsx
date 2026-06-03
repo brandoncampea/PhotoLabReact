@@ -99,6 +99,12 @@ type ItemDraft = {
   digitalDownloadScope: 'photo' | 'album';
   digitalPricingMode: 'fixed' | 'percentage';
   superAdminPercentage: string;
+  cropShape: 'rect' | 'circle';
+  // Size / product name editing
+  sizeNameDraft: string;
+  sizeWidthDraft: string;
+  sizeHeightDraft: string;
+  productNameDraft: string;
 };
 
 type WhccVariant = {
@@ -153,6 +159,10 @@ const hasMeaningfulVariantContent = (variant: {
   const displayName = String(variant?.displayName || '').trim();
   const attrCount = Array.isArray(variant?.whccItemAttributeUIDs) ? variant.whccItemAttributeUIDs.length : 0;
   return displayName.length > 0 || attrCount > 0;
+};
+
+const hasMeaningfulVariantRows = (variants: Array<{ displayName?: string; whccItemAttributeUIDs?: number[] }> | null | undefined): boolean => {
+  return Array.isArray(variants) && variants.some((variant) => hasMeaningfulVariantContent(variant));
 };
 
 const pruneBlankVariants = <T extends { displayName?: string; whccItemAttributeUIDs?: number[]; isDefault?: boolean; isActive?: boolean }>(variants: T[]): T[] => {
@@ -458,6 +468,20 @@ function normalizeWhccCatalog(rawCatalog: any): WhccCatalogEntry[] {
   });
 }
 
+function decodeSizeNameForDraft(storedSizeName: string): { displayName: string; width: string; height: string } {
+  const delimiter = '__';
+  if (storedSizeName && storedSizeName.includes(delimiter)) {
+    const [namePart, dimPart] = storedSizeName.split(delimiter);
+    const [w, h] = (dimPart || '').split('x');
+    return { displayName: namePart || '', width: w || '', height: h || '' };
+  }
+  if (storedSizeName) {
+    const m = storedSizeName.match(/^(.*?)\s*\(?([0-9.]+)x([0-9.]+)\)?$/i);
+    if (m) return { displayName: m[1].trim(), width: m[2], height: m[3] };
+  }
+  return { displayName: storedSizeName || '', width: '', height: '' };
+}
+
 function buildItemDrafts(items: any[]): Record<number, ItemDraft> {
   const drafts: Record<number, ItemDraft> = {};
   items.forEach(item => {
@@ -479,6 +503,7 @@ function buildItemDrafts(items: any[]): Record<number, ItemDraft> {
       ? generatedCategoryVariants
       : fallbackVariants;
 
+    const decoded = decodeSizeNameForDraft(String(item.size_name || ''));
     drafts[item.id] = {
       base_cost: String(item.base_cost ?? ''),
       markup_percent: String(item.markup_percent ?? ''),
@@ -489,6 +514,11 @@ function buildItemDrafts(items: any[]): Record<number, ItemDraft> {
       digitalDownloadScope: scope,
       digitalPricingMode: pricingMode,
       superAdminPercentage: String(item.superAdminPercentage ?? ''),
+      cropShape: item.cropShape === 'circle' ? 'circle' : 'rect',
+      sizeNameDraft: decoded.displayName,
+      sizeWidthDraft: decoded.width,
+      sizeHeightDraft: decoded.height,
+      productNameDraft: String(item.product_name ?? ''),
     };
   });
   return drafts;
@@ -592,6 +622,7 @@ const SuperAdminPricing: React.FC = () => {
   // item drafts: local editable values (auto-saved on blur)
   const [itemDrafts, setItemDrafts] = useState<Record<number, ItemDraft>>({});
   const [autoSaving, setAutoSaving] = useState<Record<number, boolean>>({});
+  const sizeInfoSaveTimeouts = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
   const [togglingActive, setTogglingActive] = useState(false);
   // collapse state
   const [catCollapsed, setCatCollapsed] = useState<Record<string, boolean>>({});
@@ -645,6 +676,7 @@ const SuperAdminPricing: React.FC = () => {
   const [attributePricingConfigByItem, setAttributePricingConfigByItem] = useState<Record<number, AttributePricingConfig>>({});
   const [savingVariantItemId, setSavingVariantItemId] = useState<number | null>(null);
   const [expandedSizeRows, setExpandedSizeRows] = useState<Record<number, boolean>>({});
+  const [showSizeDetails, setShowSizeDetails] = useState<Record<number, boolean>>({});
   const [savingProductAttributeKey, setSavingProductAttributeKey] = useState<string | null>(null);
 
   // derive grouped structure from viewItems
@@ -681,6 +713,13 @@ const SuperAdminPricing: React.FC = () => {
   };
 
   useEffect(() => { loadPriceLists(); }, []);
+
+  useEffect(() => {
+    return () => {
+      Object.values(sizeInfoSaveTimeouts.current).forEach(timeoutId => clearTimeout(timeoutId));
+      sizeInfoSaveTimeouts.current = {};
+    };
+  }, []);
 
   const openViewEdit = async (list: SuperPriceListRow) => {
     setViewList(list);
@@ -933,6 +972,8 @@ const SuperAdminPricing: React.FC = () => {
     const normalizedSuperAdminPercentage = Number.isFinite(newSuperAdminPercentage)
       ? Math.max(0, Math.min(100, newSuperAdminPercentage))
       : 0;
+    const newCropShape = draft.cropShape === 'circle' ? 'circle' : 'rect';
+    const originalCropShape = original.cropShape === 'circle' ? 'circle' : 'rect';
     if (
       effectiveCost === original.base_cost &&
       effectiveMarkup === original.markup_percent &&
@@ -940,6 +981,7 @@ const SuperAdminPricing: React.FC = () => {
       String(newWhccProductNodeID ?? '') === String(original.whccProductNodeID ?? '') &&
       newAttributes.join(',') === originalAttributes &&
       normalizedNewVariants === normalizedOriginalVariants &&
+      newCropShape === originalCropShape &&
       (!original.isDigital || (
         newDigitalDownloadScope === (String(original.digitalDownloadScope || '').toLowerCase() === 'album' ? 'album' : 'photo') &&
         newDigitalPricingMode === (String(original.digitalPricingMode || '').toLowerCase() === 'percentage' ? 'percentage' : 'fixed') &&
@@ -956,6 +998,9 @@ const SuperAdminPricing: React.FC = () => {
         whccItemAttributeUIDs: newAttributes,
         whccVariants: parsedWhccVariants,
       };
+      if (newCropShape !== originalCropShape) {
+        updatePayload.cropShape = newCropShape;
+      }
       if (original.isDigital) {
         updatePayload.digital_download_scope = newDigitalDownloadScope;
         updatePayload.digital_pricing_mode = newDigitalPricingMode;
@@ -973,6 +1018,7 @@ const SuperAdminPricing: React.FC = () => {
         whccProductNodeID: newWhccProductNodeID,
         whccItemAttributeUIDs: newAttributes,
         whccVariants: parsedWhccVariants,
+        cropShape: newCropShape,
         ...(original.isDigital
           ? {
               digitalDownloadScope: newDigitalDownloadScope,
@@ -986,6 +1032,88 @@ const SuperAdminPricing: React.FC = () => {
     } finally {
       setAutoSaving(prev => { const n = { ...prev }; delete n[itemId]; return n; });
     }
+  };
+
+  const saveSizeInfo = async (itemId: number, draftOverride?: ItemDraft) => {
+    const draft = draftOverride || itemDrafts[itemId];
+    const original = viewItems.find(i => i.id === itemId);
+    if (!draft || !original || !viewList) return;
+    const origDecoded = decodeSizeNameForDraft(String(original.size_name || ''));
+    const sizeNameChanged = draft.sizeNameDraft !== origDecoded.displayName;
+    const widthChanged = draft.sizeWidthDraft !== origDecoded.width;
+    const heightChanged = draft.sizeHeightDraft !== origDecoded.height;
+    const productNameChanged = draft.productNameDraft !== String(original.product_name ?? '');
+    if (!sizeNameChanged && !widthChanged && !heightChanged && !productNameChanged) return;
+    setAutoSaving(prev => ({ ...prev, [itemId]: true }));
+    try {
+      const payload: any = {};
+      if (sizeNameChanged || widthChanged || heightChanged) {
+        payload.sizeName = draft.sizeNameDraft;
+        if (draft.sizeWidthDraft !== '') payload.sizeWidth = Number(draft.sizeWidthDraft);
+        if (draft.sizeHeightDraft !== '') payload.sizeHeight = Number(draft.sizeHeightDraft);
+      }
+      if (productNameChanged && draft.productNameDraft.trim()) {
+        payload.productName = draft.productNameDraft.trim();
+      }
+      await superPriceListService.updateItem(viewList.id, itemId, payload);
+      // Rebuild the encoded size_name for local state update
+      const newW = payload.sizeWidth ?? Number(origDecoded.width);
+      const newH = payload.sizeHeight ?? Number(origDecoded.height);
+      const newDisplayName = payload.sizeName !== undefined ? payload.sizeName : origDecoded.displayName;
+      const newStoredSizeName = (newW > 0 && newH > 0)
+        ? `${newDisplayName}__${newW}x${newH}`
+        : newDisplayName;
+      setViewItems(prev => prev.map(i => {
+        if (i.id !== itemId) {
+          // If product_id matches and productName changed, update it there too
+          if (payload.productName && i.product_id === original.product_id) {
+            return { ...i, product_name: payload.productName };
+          }
+          return i;
+        }
+        return {
+          ...i,
+          size_name: newStoredSizeName,
+          _sizeLabel: newDisplayName,
+          ...(payload.productName ? { product_name: payload.productName } : {}),
+        };
+      }));
+    } catch {
+      setViewError('Failed to save size info.');
+    } finally {
+      setAutoSaving(prev => { const n = { ...prev }; delete n[itemId]; return n; });
+    }
+  };
+
+  const hasPendingSizeInfoChanges = (itemId: number) => {
+    const draft = itemDrafts[itemId];
+    const original = viewItems.find(i => i.id === itemId);
+    if (!draft || !original) return false;
+    const origDecoded = decodeSizeNameForDraft(String(original.size_name || ''));
+    return (
+      draft.sizeNameDraft !== origDecoded.displayName ||
+      draft.sizeWidthDraft !== origDecoded.width ||
+      draft.sizeHeightDraft !== origDecoded.height ||
+      draft.productNameDraft !== String(original.product_name ?? '')
+    );
+  };
+
+  const scheduleSizeInfoAutoSave = (itemId: number, nextDraft: ItemDraft) => {
+    const existing = sizeInfoSaveTimeouts.current[itemId];
+    if (existing) clearTimeout(existing);
+    sizeInfoSaveTimeouts.current[itemId] = setTimeout(() => {
+      delete sizeInfoSaveTimeouts.current[itemId];
+      void saveSizeInfo(itemId, nextDraft);
+    }, 700);
+  };
+
+  const flushSizeInfoAutoSave = (itemId: number) => {
+    const existing = sizeInfoSaveTimeouts.current[itemId];
+    if (existing) {
+      clearTimeout(existing);
+      delete sizeInfoSaveTimeouts.current[itemId];
+    }
+    void saveSizeInfo(itemId);
   };
 
   const getItemVariantsFromSource = useCallback((item: any, draftOverride?: ItemDraft): WhccVariant[] => {
@@ -1096,13 +1224,13 @@ const SuperAdminPricing: React.FC = () => {
     if (draft?.whccVariantsJson && draft.whccVariantsJson.trim()) {
       try {
         const parsed = JSON.parse(draft.whccVariantsJson);
-        if (Array.isArray(parsed) && parsed.length > 0) return true;
+        if (hasMeaningfulVariantRows(parsed)) return true;
       } catch {
         // ignore malformed draft json
       }
     }
 
-    if (Array.isArray(item?.whccVariants) && item.whccVariants.length > 0) return true;
+    if (hasMeaningfulVariantRows(item?.whccVariants)) return true;
     if (Array.isArray(item?.whccAttributeCategories) && item.whccAttributeCategories.length > 0) return true;
     return false;
   }, [itemDrafts]);
@@ -2500,6 +2628,7 @@ const SuperAdminPricing: React.FC = () => {
                                           if (!referenceItem) return;
                                           const referenceVariants = getItemVariantsFromSource(referenceItem);
                                           // For each other size, update its variants to match the reference
+                                          if (!viewList) return;
                                           for (let i = 1; i < visibleProdItems.length; ++i) {
                                             const item = visibleProdItems[i];
                                             try {
@@ -2604,7 +2733,7 @@ const SuperAdminPricing: React.FC = () => {
                                               <strong>Required:</strong>
                                               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: 4 }}>
                                                 {(productWhccAttrs[prodKey]?.attrs?.required ?? []).length > 0 ? (
-                                                  (productWhccAttrs[prodKey].attrs.required ?? []).map((attr) => {
+                                                  (productWhccAttrs[prodKey]?.attrs?.required ?? []).map((attr) => {
                                                     const pill = productAttributePills.find(p => String(p.label).includes(attr.name));
                                                     if (!pill) return null;
                                                     const toggleKey = `${prodKey}-${pill.key}`;
@@ -2649,7 +2778,7 @@ const SuperAdminPricing: React.FC = () => {
                                               <strong>Optional:</strong>
                                               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: 4 }}>
                                                 {(productWhccAttrs[prodKey]?.attrs?.optional ?? []).length > 0 ? (
-                                                  (productWhccAttrs[prodKey].attrs.optional ?? []).map((attr) => {
+                                                  (productWhccAttrs[prodKey]?.attrs?.optional ?? []).map((attr) => {
                                                     const pill = productAttributePills.find(p => String(p.label).includes(attr.name));
                                                     if (!pill) return null;
                                                     const toggleKey = `${prodKey}-${pill.key}`;
@@ -2731,37 +2860,7 @@ const SuperAdminPricing: React.FC = () => {
                                                 </button>
                                                 <span className="spl-size-name">{item._sizeLabel || item.size_name || '—'}</span>
                                                 <span style={{ fontSize: 11, color: 'var(--text-secondary)', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
-                                                  {/* Show all possible UID fields and debug backend values */}
                                                   WHCC: {sizeWhccUids.length ? sizeWhccUids.join(', ') : (itemDrafts[item.id]?.whccProductUID || item.whccProductUID || '—')}
-                                                  {typeof item.whccProductUID !== 'undefined' && (
-                                                    <span style={{ color: '#ffb347', marginLeft: 6 }}>
-                                                      [item.whccProductUID: {String(item.whccProductUID)}]
-                                                    </span>
-                                                  )}
-                                                  {typeof item.whcc_product_uid !== 'undefined' && (
-                                                    <span style={{ color: '#ffb347', marginLeft: 6 }}>
-                                                      [item.whcc_product_uid: {String(item.whcc_product_uid)}]
-                                                    </span>
-                                                  )}
-                                                  {typeof item.productUID !== 'undefined' && (
-                                                    <span style={{ color: '#ffb347', marginLeft: 6 }}>
-                                                      [item.productUID: {String(item.productUID)}]
-                                                    </span>
-                                                  )}
-                                                  {typeof item.product_uid !== 'undefined' && (
-                                                    <span style={{ color: '#ffb347', marginLeft: 6 }}>
-                                                      [item.product_uid: {String(item.product_uid)}]
-                                                    </span>
-                                                  )}
-                                                  {/* Full item debug: */}
-                                                  <span style={{ color: '#ffb347', marginLeft: 6, fontSize: 9 }}>
-                                                    [raw: {JSON.stringify({
-                                                      whccProductUID: item.whccProductUID,
-                                                      whcc_product_uid: item.whcc_product_uid,
-                                                      productUID: item.productUID,
-                                                      product_uid: item.product_uid
-                                                    })}]
-                                                  </span>
                                                 </span>
                                                 {sizeAttributeUids.length > 0 && (
                                                   <span style={{ fontSize: 11, color: '#8ec9ff', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
@@ -2856,6 +2955,86 @@ const SuperAdminPricing: React.FC = () => {
                                                       </div>
                                                     ))
                                                   )}
+                                                </div>
+                                              )}
+
+                                              {isExpanded && (
+                                                <div className="spl-size-meta-group" style={{ marginTop: 10 }}>
+                                                  <div className="spl-size-meta-header">
+                                                    <span className="spl-size-meta-title">Size Details</span>
+                                                    <span className="spl-size-meta-note">Product name updates every size under this product.</span>
+                                                  </div>
+                                                  <div className="spl-size-meta-fields">
+                                                    <div className="spl-field-group spl-field-group-stack spl-field-group-grow">
+                                                      <label>Product Name</label>
+                                                      <input
+                                                        className={`spl-num-input spl-text-input${autoSaving[item.id] ? ' spl-saving' : ''}`}
+                                                        type="text"
+                                                        value={itemDrafts[item.id]?.productNameDraft ?? ''}
+                                                        onChange={e => setItemDrafts(p => {
+                                                          const nextDraft = { ...p[item.id], productNameDraft: e.target.value };
+                                                          scheduleSizeInfoAutoSave(item.id, nextDraft);
+                                                          return { ...p, [item.id]: nextDraft };
+                                                        })}
+                                                        onBlur={() => flushSizeInfoAutoSave(item.id)}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                      />
+                                                    </div>
+                                                    <div className="spl-field-group spl-field-group-stack spl-field-group-grow">
+                                                      <label>Size Label</label>
+                                                      <input
+                                                        className={`spl-num-input spl-text-input${autoSaving[item.id] ? ' spl-saving' : ''}`}
+                                                        type="text"
+                                                        value={itemDrafts[item.id]?.sizeNameDraft ?? ''}
+                                                        onChange={e => setItemDrafts(p => {
+                                                          const nextDraft = { ...p[item.id], sizeNameDraft: e.target.value };
+                                                          scheduleSizeInfoAutoSave(item.id, nextDraft);
+                                                          return { ...p, [item.id]: nextDraft };
+                                                        })}
+                                                        onBlur={() => flushSizeInfoAutoSave(item.id)}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                      />
+                                                    </div>
+                                                    <div className="spl-field-group spl-field-group-stack spl-field-group-compact">
+                                                      <label>Width</label>
+                                                      <input
+                                                        className={`spl-num-input spl-dimension-input${autoSaving[item.id] ? ' spl-saving' : ''}`}
+                                                        type="number" min={0} step="0.01"
+                                                        value={itemDrafts[item.id]?.sizeWidthDraft ?? ''}
+                                                        onChange={e => setItemDrafts(p => {
+                                                          const nextDraft = { ...p[item.id], sizeWidthDraft: e.target.value };
+                                                          scheduleSizeInfoAutoSave(item.id, nextDraft);
+                                                          return { ...p, [item.id]: nextDraft };
+                                                        })}
+                                                        onBlur={() => flushSizeInfoAutoSave(item.id)}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                      />
+                                                    </div>
+                                                    <div className="spl-field-group spl-field-group-stack spl-field-group-compact">
+                                                      <label>Height</label>
+                                                      <input
+                                                        className={`spl-num-input spl-dimension-input${autoSaving[item.id] ? ' spl-saving' : ''}`}
+                                                        type="number" min={0} step="0.01"
+                                                        value={itemDrafts[item.id]?.sizeHeightDraft ?? ''}
+                                                        onChange={e => setItemDrafts(p => {
+                                                          const nextDraft = { ...p[item.id], sizeHeightDraft: e.target.value };
+                                                          scheduleSizeInfoAutoSave(item.id, nextDraft);
+                                                          return { ...p, [item.id]: nextDraft };
+                                                        })}
+                                                        onBlur={() => flushSizeInfoAutoSave(item.id)}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                      />
+                                                    </div>
+                                                    <div className="spl-size-meta-actions">
+                                                      <div className="spl-size-meta-status">
+                                                        {autoSaving[item.id]
+                                                          ? 'Saving…'
+                                                          : hasPendingSizeInfoChanges(item.id)
+                                                          ? 'Unsaved changes'
+                                                          : 'Auto-saves on blur'}
+                                                      </div>
+                                                    </div>
+                                                  </div>
                                                 </div>
                                               )}
                                             </div>
@@ -3424,6 +3603,110 @@ const SuperAdminPricing: React.FC = () => {
                                             </div>
                                           </div>
                                         )}
+                                        <div className="spl-field-group">
+                                          <label>Crop Shape</label>
+                                          <select
+                                            className={`spl-num-input${autoSaving[item.id] ? ' spl-saving' : ''}`}
+                                            value={itemDrafts[item.id]?.cropShape ?? 'rect'}
+                                            onChange={e => {
+                                              const val = (e.target.value as 'rect' | 'circle');
+                                              setItemDrafts(p => ({ ...p, [item.id]: { ...p[item.id], cropShape: val } }));
+                                              void autoSaveItem(item.id, { ...itemDrafts[item.id], cropShape: val });
+                                            }}
+                                            onClick={(e) => e.stopPropagation()}
+                                          >
+                                            <option value="rect">Rectangle</option>
+                                            <option value="circle">Circle</option>
+                                          </select>
+                                        </div>
+                                        <div className="spl-field-group">
+                                          <button
+                                            className="btn btn-secondary btn-sm"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setShowSizeDetails((prev) => ({ ...prev, [itemId]: !prev[itemId] }));
+                                            }}
+                                          >
+                                            {showSizeDetails[itemId] ? 'Hide Size Details' : 'Show Size Details'}
+                                          </button>
+                                        </div>
+                                        <div className="spl-size-meta-group" style={{ display: showSizeDetails[itemId] !== false ? 'block' : 'none' }}>
+                                          <div className="spl-size-meta-header">
+                                            <span className="spl-size-meta-title">Size Details</span>
+                                            <span className="spl-size-meta-note">Product name updates every size under this product.</span>
+                                          </div>
+                                          <div className="spl-size-meta-fields">
+                                            <div className="spl-field-group spl-field-group-stack spl-field-group-grow">
+                                              <label>Product Name</label>
+                                              <input
+                                                className={`spl-num-input spl-text-input${autoSaving[item.id] ? ' spl-saving' : ''}`}
+                                                type="text"
+                                                value={itemDrafts[item.id]?.productNameDraft ?? ''}
+                                                onChange={e => setItemDrafts(p => {
+                                                  const nextDraft = { ...p[item.id], productNameDraft: e.target.value };
+                                                  scheduleSizeInfoAutoSave(item.id, nextDraft);
+                                                  return { ...p, [item.id]: nextDraft };
+                                                })}
+                                                onBlur={() => flushSizeInfoAutoSave(item.id)}
+                                                onClick={(e) => e.stopPropagation()}
+                                              />
+                                            </div>
+                                            <div className="spl-field-group spl-field-group-stack spl-field-group-grow">
+                                              <label>Size Label</label>
+                                              <input
+                                                className={`spl-num-input spl-text-input${autoSaving[item.id] ? ' spl-saving' : ''}`}
+                                                type="text"
+                                                value={itemDrafts[item.id]?.sizeNameDraft ?? ''}
+                                                onChange={e => setItemDrafts(p => {
+                                                  const nextDraft = { ...p[item.id], sizeNameDraft: e.target.value };
+                                                  scheduleSizeInfoAutoSave(item.id, nextDraft);
+                                                  return { ...p, [item.id]: nextDraft };
+                                                })}
+                                                onBlur={() => flushSizeInfoAutoSave(item.id)}
+                                                onClick={(e) => e.stopPropagation()}
+                                              />
+                                            </div>
+                                            <div className="spl-field-group spl-field-group-stack spl-field-group-compact">
+                                              <label>Width</label>
+                                              <input
+                                                className={`spl-num-input spl-dimension-input${autoSaving[item.id] ? ' spl-saving' : ''}`}
+                                                type="number" min={0} step="0.01"
+                                                value={itemDrafts[item.id]?.sizeWidthDraft ?? ''}
+                                                onChange={e => setItemDrafts(p => {
+                                                  const nextDraft = { ...p[item.id], sizeWidthDraft: e.target.value };
+                                                  scheduleSizeInfoAutoSave(item.id, nextDraft);
+                                                  return { ...p, [item.id]: nextDraft };
+                                                })}
+                                                onBlur={() => flushSizeInfoAutoSave(item.id)}
+                                                onClick={(e) => e.stopPropagation()}
+                                              />
+                                            </div>
+                                            <div className="spl-field-group spl-field-group-stack spl-field-group-compact">
+                                              <label>Height</label>
+                                              <input
+                                                className={`spl-num-input spl-dimension-input${autoSaving[item.id] ? ' spl-saving' : ''}`}
+                                                type="number" min={0} step="0.01"
+                                                value={itemDrafts[item.id]?.sizeHeightDraft ?? ''}
+                                                onChange={e => setItemDrafts(p => {
+                                                  const nextDraft = { ...p[item.id], sizeHeightDraft: e.target.value };
+                                                  scheduleSizeInfoAutoSave(item.id, nextDraft);
+                                                  return { ...p, [item.id]: nextDraft };
+                                                })}
+                                                onBlur={() => flushSizeInfoAutoSave(item.id)}
+                                                onClick={(e) => e.stopPropagation()}
+                                              />
+                                            </div>
+                                            <div className="spl-size-meta-actions">
+                                              <div className="spl-size-meta-status">
+                                                {autoSaving[item.id]
+                                                  ? 'Saving…'
+                                                  : hasPendingSizeInfoChanges(item.id)
+                                                  ? 'Unsaved changes'
+                                                  : 'Auto-saves on blur'}
+                                              </div>
+                                            </div>
+                                          </div>
+                                        </div>
                                         <div className="spl-field-group">
                                           <button
                                             className="btn btn-secondary btn-sm"

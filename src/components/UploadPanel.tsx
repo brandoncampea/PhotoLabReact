@@ -1,12 +1,18 @@
-import React from 'react';
-import UploadPhotoItem from './UploadPhotoItem';
+import UploadPhotoItem, { UploadPanelFile } from './UploadPhotoItem';
 
-const UploadPanel = ({ files, onCancel, overallProgress, visible }) => {
+type UploadPanelProps = {
+  files: UploadPanelFile[];
+  onCancel: () => void;
+  overallProgress: number;
+  visible: boolean;
+};
+
+const UploadPanel = ({ files, onCancel, overallProgress, visible }: UploadPanelProps) => {
   if (!visible) return null;
   const total = files.length;
-  const done = files.filter(f => f.status === 'done').length;
-  const failed = files.filter(f => f.status === 'error').length;
-  const uploading = files.filter(f => f.status === 'uploading').length;
+  const done = files.filter((f) => f.status === 'done').length;
+  const failed = files.filter((f) => f.status === 'error').length;
+  const uploading = files.filter((f) => f.status === 'uploading').length;
   return (
     <div className="upload-panel">
       <div className="upload-header">
@@ -14,7 +20,7 @@ const UploadPanel = ({ files, onCancel, overallProgress, visible }) => {
         <span>Uploading {total} file{total > 1 ? 's' : ''}</span>
       </div>
       <div className="upload-grid">
-        {files.map(file => (
+        {files.map((file) => (
           <UploadPhotoItem key={file.id} file={file} />
         ))}
       </div>

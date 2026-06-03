@@ -19,8 +19,7 @@ const CustomerAccount: React.FC = () => {
   const [selectedSchool, setSelectedSchool] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   // Use string for per-player loading state (player name), or '' for none
-  // Use boolean for actionInProgress
-  const [actionInProgress, setActionInProgress] = useState(false);
+  const [actionInProgress, setActionInProgress] = useState('');
   const [schoolActionInProgress, setSchoolActionInProgress] = useState<number|null>(null);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [roster, setRoster] = useState<any[]>([]);
@@ -113,7 +112,7 @@ const CustomerAccount: React.FC = () => {
   const handleAddWatch = async () => {
     const name = search.trim();
     if (!name) return;
-    setActionInProgress(true);
+    setActionInProgress('__adding__');
     try {
       await playerWatchlistService.addPlayer(name);
       showMessage('success', `Now watching ${name}! You'll get an email when new photos are added.`);
@@ -122,7 +121,7 @@ const CustomerAccount: React.FC = () => {
     } catch (err: any) {
       showMessage('error', err?.response?.data?.error || 'Something went wrong. Please try again.');
     } finally {
-      setActionInProgress(false);
+      setActionInProgress('');
     }
   };
 
@@ -291,7 +290,7 @@ const CustomerAccount: React.FC = () => {
               onChange={e => setSearch(e.target.value)}
               list="available-players"
               onKeyDown={e => { if (e.key === 'Enter') handleAddWatch(); }}
-              disabled={actionInProgress}
+              disabled={!!actionInProgress}
             />
             <datalist id="available-players">
               {search.trim() && (() => {
@@ -317,7 +316,7 @@ const CustomerAccount: React.FC = () => {
             <button
               className="roster-watch-btn"
               onClick={handleAddWatch}
-              disabled={actionInProgress || !search.trim()}
+              disabled={!!actionInProgress || !search.trim()}
             >
               {actionInProgress ? '…' : '+ Watch'}
             </button>

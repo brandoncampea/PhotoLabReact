@@ -4,9 +4,14 @@
 import fetch from 'node-fetch';
 import fs from 'fs';
 import path from 'path';
+import { fetchToken } from '../routes/whccProxy.js';
 
-const WHCC_API_URL = 'https://sandbox.whcc.com/api/v1/request-catalog';
-const WHCC_API_KEY = process.env.WHCC_API_KEY || '';
+function getWhccCreds() {
+  const consumerKey = process.env.WHCC_CONSUMER_KEY || process.env.WHCC_API_KEY || '';
+  const consumerSecret = process.env.WHCC_CONSUMER_SECRET || process.env.WHCC_API_SECRET || '';
+  const isSandbox = process.env.WHCC_SANDBOX === 'true';
+  return { consumerKey, consumerSecret, isSandbox };
+}
 
 function normalize(s) {
   return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
@@ -36,14 +41,18 @@ function flattenCatalog(catalog) {
 }
 
 async function fetchWhccCatalog() {
-  if (!WHCC_API_KEY) throw new Error('Set WHCC_API_KEY in your environment.');
-  const res = await fetch(WHCC_API_URL, {
-    method: 'POST',
+  const { consumerKey, consumerSecret, isSandbox } = getWhccCreds();
+  if (!consumerKey || !consumerSecret) {
+    throw new Error('Set WHCC_CONSUMER_KEY and WHCC_CONSUMER_SECRET in your environment.');
+  }
+  const baseUrl = isSandbox ? 'https://sandbox.apps.whcc.com' : 'https://apps.whcc.com';
+  const token = await fetchToken(consumerKey, consumerSecret, isSandbox);
+  const res = await fetch(`${baseUrl}/api/catalog`, {
+    method: 'GET',
     headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${WHCC_API_KEY}`,
+      'Authorization': `Bearer ${token}`,
+      'Accept': 'application/json',
     },
-    body: JSON.stringify({})
   });
   if (!res.ok) throw new Error(`Failed to fetch WHCC catalog: ${res.status} ${await res.text()}`);
   return res.json();

@@ -258,7 +258,8 @@ router.get('/active', async (req, res) => {
            spi.whcc_variants_json as whccVariantsJson,
            spi.is_recommended as isRecommended,
            spi.display_order as displayOrder,
-           sspi.id as superItemId
+           sspi.id as superItemId,
+           sspi.crop_shape as sizeCropShape
          FROM studio_price_list_items spi
          JOIN studio_price_lists spl ON spl.id = spi.studio_price_list_id
          JOIN product_sizes ps ON ps.id = spi.product_size_id
@@ -396,6 +397,7 @@ router.get('/active', async (req, res) => {
           price: sizePrice,
           cost: Number(row.sizeCost) || 0,
           whccVariants: activeVariants,
+          cropShape: row.sizeCropShape === 'circle' ? 'circle' : 'rect',
         });
         if (entry.price === 0 || sizePrice < entry.price) {
           entry.price = sizePrice;

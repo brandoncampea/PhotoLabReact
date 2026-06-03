@@ -17,6 +17,7 @@ function OrderItemWithSas({ item }: { item: any }) {
       top:    `${(cropData.y / photoH) * 100}%`,
       width:  `${(cropData.width  / photoW) * 100}%`,
       height: `${(cropData.height / photoH) * 100}%`,
+      borderRadius: item.productSize?.cropShape === 'circle' ? '50%' : undefined,
     };
   }
 

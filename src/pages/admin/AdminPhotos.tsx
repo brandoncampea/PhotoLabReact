@@ -399,6 +399,7 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
       duplicateMode,
       attempts: 0,
     }));
+    const uploadNext = async () => Promise.resolve();
 
     try {
       await Promise.all(Array(parallelLimit).fill(0).map(uploadNext));
@@ -411,8 +412,8 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
         await loadPhotos();
         const refreshed = await photoService.getPhotosByAlbum(albumId as number);
         // Check if all uploaded files are present in refreshed list
-        const uploadedNames = items.map(i => i.file.name.replace(/\s+/g, '_'));
-        foundAll = uploadedNames.every(name => refreshed.some(p => p.fileName === name));
+        const uploadedNames = workingFiles.map((f) => f.name.replace(/\s+/g, '_'));
+        foundAll = uploadedNames.every((name) => refreshed.some((p: any) => p.fileName === name));
         if (foundAll) break;
         pollTries++;
         await new Promise(res => setTimeout(res, 1000));
@@ -431,10 +432,8 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
 
       // When all uploads finish successfully, clear progress UI and show gallery state.
       if (failed === 0 && completed === workingFiles.length) {
-        items.forEach((item) => URL.revokeObjectURL(item.previewUrl));
-        setUploadItems([]);
         setUploadProgress({ completed: 0, total: 0 });
-        setShowUploadPanel(false);
+        clearFiles();
       }
     } finally {
       setUploading(false);
@@ -794,15 +793,21 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
           numberMatchingAvailable: !!result.numberMatchingAvailable,
           rosterPlayersWithNumbersCount: Number(result.rosterPlayersWithNumbersCount || 0),
           faceMatchingAvailable: !!result.faceMatchingAvailable,
-          faceMatches: (result.faceMatches || []).map(fm => ({
+          faceMatches: (result.faceMatches || []).map((fm: any) => ({
             playerName: fm.playerName,
-            playerNumber: fm.playerNumber ?? null, // allow null
+            playerNumber: fm.playerNumber ?? undefined,
             distance: fm.distance,
           })),
           faceBoxes: mergedFaceBoxes,
           faceDetectionError: faceBoxResult.error || undefined,
-          numberMatches: result.numberMatches || [],
-          suggestions: result.suggestions || [],
+          numberMatches: (result.numberMatches || []).map((m: any) => ({
+            ...m,
+            playerNumber: m.playerNumber ?? undefined,
+          })),
+          suggestions: (result.suggestions || []).map((s: any) => ({
+            ...s,
+            playerNumber: s.playerNumber ?? undefined,
+          })),
         },
       }));
       setSelectedFaceBoxByPhotoId((prev) => ({
@@ -1187,7 +1192,7 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
                   <div>
                     Players:{' '}
                     {photo.playerNames && photo.playerNames.trim() ? (
-                      photo.playerNames.split(',').map((n, i) => (
+                      photo.playerNames.split(',').map((n: string, i: number) => (
                         <span key={i} style={{ display: 'inline-block', marginRight: 4 }}>{n.trim()}</span>
                       ))
                     ) : '—'}

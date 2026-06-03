@@ -185,7 +185,6 @@ echo -e "${YELLOW}════════════════════�
 echo -e "${YELLOW}→ Creating production environment config...${NC}"
 cat > .env.production << EOF
 VITE_API_URL=${BACKEND_URL}/api
-VITE_USE_MOCK_API=false
 EOF
 echo -e "${GREEN}✓ Production config created${NC}"
 

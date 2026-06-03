@@ -433,7 +433,7 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
           fontSize: '16px',
         }}>
           <div style={{ marginBottom: '10px' }}>No valid SmugMug OAuth token found. Please connect your SmugMug account to continue.</div>
-          <button className="btn btn-info" onClick={handleConnectSmugMug} disabled={!!oauthWindow}>
+          <button className="btn btn-info" onClick={() => { void handleConnectSmugMug(); }} disabled={!!oauthWindow}>
             Connect SmugMug
           </button>
         </div>
@@ -492,14 +492,14 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
             {smugmugImporting ? 'Importing...' : 'Import Selected Albums'}
           </button>
           {!oauthRequired && (
-            <button className="btn btn-info" onClick={handleConnectSmugMug} disabled={!!oauthWindow}>
+            <button className="btn btn-info" onClick={() => { void handleConnectSmugMug(); }} disabled={!!oauthWindow}>
               Connect SmugMug
             </button>
           )}
         </div>
         {showOAuthPrompt && (
           <div style={{ marginTop: '10px', color: '#fcd34d', fontWeight: 500 }}>
-            Some images are missing OriginalUrl. <button className="btn btn-info" onClick={handleConnectSmugMug}>Connect SmugMug</button>
+            Some images are missing OriginalUrl. <button className="btn btn-info" onClick={() => { void handleConnectSmugMug(); }}>Connect SmugMug</button>
           </div>
         )}
 

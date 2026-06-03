@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 // import { useSasUrl } from '../hooks/useSasUrl';
 // SlotImage import removed; component not found.
 import { Photo, Product, ProductSize, CropData } from '../types';

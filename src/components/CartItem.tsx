@@ -1,7 +1,4 @@
-    function handleEditCrop() {
-      // ...existing code...
-    }
-import React, { useMemo, useState, useRef, useLayoutEffect, useEffect } from 'react';
+import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { mapCropToDisplay } from '../utils/mapCropToDisplay';
 import { CartItem as CartItemType } from '../types';
 import { useCart } from '../contexts/CartContext';
@@ -103,7 +100,7 @@ const CartItem: React.FC<CartItemProps> = ({ item, photo, onEditCrop, onOpenWhcc
       height: `${mapped.height}px`,
       border: '2px solid #ffe066',
       boxShadow: '0 0 0 9999px rgba(10, 8, 24, 0.45)',
-      borderRadius: 2,
+      borderRadius: item.productSize?.cropShape === 'circle' ? '50%' : 2,
       pointerEvents: 'none' as React.CSSProperties['pointerEvents'],
       zIndex: 3,
     };

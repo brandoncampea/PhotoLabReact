@@ -126,9 +126,17 @@ import { whccService } from '../services/whccService';
 
 const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => void }> = ({ onClose, onImportComplete }) => {
   const getUid = (prod: any): number => {
-    const raw = prod?.productUID ?? prod?.ProductUID ?? prod?.productUid ?? prod?.ProductUid;
+    const raw =
+      prod?.productUID ??
+      prod?.ProductUID ??
+      prod?.productUid ??
+      prod?.ProductUid ??
+      prod?.ProductCode ??
+      prod?.productCode ??
+      prod?.Code ??
+      prod?.code;
     const n = Number(raw);
-    return Number.isFinite(n) ? n : 0;
+    return Number.isFinite(n) && n > 0 ? n : 0;
   };
 
   // Import handler for the confirm step
@@ -161,7 +169,7 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
           if (!hit) return null;
           const product = hit.row;
           const baseCost = Number(product.price || 0);
-          const whccUID = Number(product.productUID || product.ProductUID || 0) || undefined;
+          const whccUID = getUid(product) || undefined;
           const whccNodeID = getProductNodeID(product) ?? undefined;
           const whccAttrUIDs = getItemAttributeUIDs(product);
           const whccAttrs = getItemAttributes(product);
@@ -214,6 +222,7 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
             category: String(hit.category || 'whcc'),
             description: 'Imported from WHCC',
             ...(attrMultiplierPercent > 0 ? { whccAttributeCostMultiplierPercent: attrMultiplierPercent } : {}),
+            ...(whccUID ? { whccProductUID: whccUID } : {}),
             ...(whccUID ? { whccEditorProductId: whccUID } : {}),
             ...(whccNodeID ? { whccProductNodeID: whccNodeID } : {}),
             ...(whccAttrUIDs.length ? { whccItemAttributeUIDs: whccAttrUIDs } : {}),
@@ -236,6 +245,14 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
       let updatedTotal = 0;
       let skippedTotal = 0;
       const errorSamples: any[] = [];
+      const mappingTotals = {
+        resolvedUidCount: 0,
+        resolvedNodeIdCount: 0,
+        appliedUidCount: 0,
+        appliedNodeIdCount: 0,
+        missingUidCount: 0,
+        missingNodeIdCount: 0,
+      };
       for (let i = 0; i < items.length; i += batchSize) {
         const batch = items.slice(i, i + batchSize);
         const batchIndex = Math.floor(i / batchSize) + 1;
@@ -247,6 +264,13 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
         if (Array.isArray(result?.errorSamples)) {
           errorSamples.push(...result.errorSamples);
         }
+        const summary = result?.mappingSummary || {};
+        mappingTotals.resolvedUidCount += Number(summary.resolvedUidCount || 0);
+        mappingTotals.resolvedNodeIdCount += Number(summary.resolvedNodeIdCount || 0);
+        mappingTotals.appliedUidCount += Number(summary.appliedUidCount || 0);
+        mappingTotals.appliedNodeIdCount += Number(summary.appliedNodeIdCount || 0);
+        mappingTotals.missingUidCount += Number(summary.missingUidCount || 0);
+        mappingTotals.missingNodeIdCount += Number(summary.missingNodeIdCount || 0);
         setInfo(`Imported ${importedTotal}, updated ${updatedTotal} of ${items.length} selected so far...`);
       }
 
@@ -258,7 +282,13 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
         if (importedTotal > 0) parts.push(`${importedTotal} imported`);
         if (updatedTotal > 0) parts.push(`${updatedTotal} enriched`);
         if (skippedTotal > 0) parts.push(`${skippedTotal} unchanged`);
-        setInfo(`${parts.join(', ')}.`);
+        const mappingBits = [
+          `UID applied: ${mappingTotals.appliedUidCount}`,
+          `NodeID applied: ${mappingTotals.appliedNodeIdCount}`,
+          `UID missing: ${mappingTotals.missingUidCount}`,
+          `NodeID missing: ${mappingTotals.missingNodeIdCount}`,
+        ];
+        setInfo(`${parts.join(', ')}. ${mappingBits.join(' · ')}`);
       }
       if (importedTotal > 0 || updatedTotal > 0) {
         setSelectedProducts(new Map());
@@ -516,7 +546,7 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
           let status: PreviewRow['status'];
           if (!hit) {
             status = 'new';
-          } else if (!hit.whccEditorProductId) {
+          } else if (!hit.whccProductUID && !hit.whccEditorProductId) {
             // Product exists by name/size/category but is missing the UID, so allow update
             status = 'enrich';
           } else {

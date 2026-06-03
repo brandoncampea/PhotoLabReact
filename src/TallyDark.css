@@ -764,11 +764,60 @@ input:focus, select:focus, textarea:focus {
 }
 .spl-size-row-details { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:8px 16px 10px 38px; border-bottom:1px solid #1a1730; background:#100d20; }
 .spl-field-group { display:flex; align-items:center; gap:4px; white-space:nowrap; }
+.spl-field-group-stack { flex-direction:column; align-items:flex-start; gap:6px; white-space:normal; }
+.spl-field-group-grow { min-width:180px; flex:1 1 220px; }
+.spl-field-group-compact { min-width:88px; }
 .spl-field-group label { color:#888; font-size:0.78rem; }
 .spl-num-input { width:72px; padding:3px 6px; border-radius:4px; border:1px solid #3a3860; background:#0d0b1a; color:#fff; font-size:0.82rem; text-align:right; }
 .spl-num-input:focus { border-color:#7c70e8; outline:none; }
 .spl-num-input.spl-saving { border-color:#f59e0b; }
 .spl-field-group textarea.spl-num-input { width:100%; min-width:320px; text-align:left; resize:vertical; }
+.spl-text-input { width:100%; min-width:180px; text-align:left; }
+.spl-dimension-input { width:92px; }
+.spl-size-meta-group {
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  min-width:420px;
+  flex:1 1 520px;
+  padding:10px 12px;
+  border:1px solid #2b2850;
+  border-radius:8px;
+  background:rgba(18, 15, 36, 0.85);
+}
+.spl-size-meta-header {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  flex-wrap:wrap;
+}
+.spl-size-meta-title {
+  color:#efeaff;
+  font-size:0.82rem;
+  font-weight:600;
+}
+.spl-size-meta-note {
+  color:#a6a0cb;
+  font-size:0.74rem;
+}
+.spl-size-meta-fields {
+  display:flex;
+  align-items:flex-end;
+  gap:10px;
+  flex-wrap:wrap;
+}
+.spl-size-meta-actions {
+  display:flex;
+  align-items:flex-end;
+  min-width:150px;
+}
+.spl-size-meta-status {
+  color:#a6a0cb;
+  font-size:0.75rem;
+  line-height:1.3;
+  padding-bottom:4px;
+}
 .spl-inactive-row { opacity:0.45; }
 
 .spl-variant-editor {
@@ -918,4 +967,20 @@ input:focus, select:focus, textarea:focus {
 @media (max-width: 1280px) {
   .spl-variant-editor { overflow-x: hidden; }
   .spl-variant-grid { min-width: 0; }
+}
+
+/* ====== Circle crop shape overlay ====== */
+/* Makes Cropper.js show a circular crop box when cropShape === 'circle' */
+.crop-shape-circle .cropper-view-box,
+.crop-shape-circle .cropper-face {
+  border-radius: 50%;
+}
+
+.crop-box-overlay {
+  position: absolute;
+  border: 2px solid #ffe066;
+  box-shadow: 0 0 0 9999px rgba(10, 8, 24, 0.45);
+  pointer-events: none;
+  z-index: 3;
+  box-sizing: border-box;
 }

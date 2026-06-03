@@ -16,6 +16,7 @@ export interface SharedCropperProps {
   cropperRefCallback?: (ref: ReactCropperElement | null) => void;
   width?: number;
   height?: number;
+  cropShape?: 'rect' | 'circle';
 }
 
 const SharedCropper: React.FC<SharedCropperProps> = ({
@@ -23,15 +24,16 @@ const SharedCropper: React.FC<SharedCropperProps> = ({
   aspectRatio,
   initialCropData,
   onSave,
-  onCancel,
+  onCancel: _onCancel,
   cropLabel = '',
-  saveLabel = '✓ Save Crop',
-  cancelLabel = 'Cancel',
+  saveLabel: _saveLabel = '✓ Save Crop',
+  cancelLabel: _cancelLabel = 'Cancel',
   className = '',
   showFullPhoto = false,
   cropperRefCallback,
   width = 240,
   height = 180,
+  cropShape,
 }) => {
   const cropperRef = useRef<ReactCropperElement>(null);
 
@@ -51,30 +53,17 @@ const SharedCropper: React.FC<SharedCropperProps> = ({
   const handleCropperReady = useCallback(() => {
     const cropper = cropperRef.current?.cropper;
     if (cropper) {
-      // Log image size and crop data for debugging
-      const imgData = cropper.getImageData();
       if (initialCropDataRef.current) {
         cropper.setData(initialCropDataRef.current);
-        // Log the crop box after setting
-        setTimeout(() => {
-        }, 100);
       } else if (showFullPhoto) {
         cropper.reset();
       }
     }
   }, [showFullPhoto, imageUrl]);
 
-  const handleSave = () => {
-    const cropper = cropperRef.current?.cropper;
-    if (cropper) {
-      const cropData = cropper.getData();
-      onSave(cropData);
-    }
-  };
-
   return (
     <div
-      className={`shared-cropper-container ${className}`.trim()}
+      className={`shared-cropper-container ${className}${cropShape === 'circle' ? ' crop-shape-circle' : ''}`.trim()}
       style={{ width, height, maxWidth: width, maxHeight: height, overflow: 'hidden', position: 'relative' }}
     >
       <Cropper

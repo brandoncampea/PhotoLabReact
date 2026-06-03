@@ -1,6 +1,6 @@
 
 
-import { useState, useEffect } from 'react';
+import { Fragment, useState, useEffect } from 'react';
 import AdminLayout from '../components/AdminLayout';
 import api from '../services/api';
 import { superPriceListService } from '../services/superPriceListService';
@@ -135,7 +135,7 @@ const SuperAdminPricing = () => {
           </thead>
           <tbody>
             {pricing.map((item, index) => (
-              <>
+              <Fragment key={item.id}>
                 <tr key={item.id}>
                   <td>{item.productName}</td>
                   <td>
@@ -176,11 +176,16 @@ const SuperAdminPricing = () => {
                         <span>Loading WHCC attributes...</span>
                       ) : whccAttrs[item.productUid] ? (
                         <div style={{ display: 'flex', gap: '2rem' }}>
+                          {(() => {
+                            const attrs = whccAttrs[item.productUid!];
+                            if (!attrs) return null;
+                            return (
+                              <>
                           <div>
                             <strong>Required Attributes:</strong>
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: 4 }}>
-                              {whccAttrs[item.productUid].required.length === 0 && <span>None</span>}
-                              {whccAttrs[item.productUid].required.map((attr) => (
+                              {attrs.required.length === 0 && <span>None</span>}
+                              {attrs.required.map((attr) => (
                                 <span key={attr.name} style={{ background: '#e0e0e0', borderRadius: 8, padding: '2px 8px' }}>{attr.name}</span>
                               ))}
                             </div>
@@ -188,17 +193,20 @@ const SuperAdminPricing = () => {
                           <div>
                             <strong>Optional Attributes:</strong>
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: 4 }}>
-                              {whccAttrs[item.productUid].optional.length === 0 && <span>None</span>}
-                              {whccAttrs[item.productUid].optional.map((attr) => (
+                              {attrs.optional.length === 0 && <span>None</span>}
+                              {attrs.optional.map((attr) => (
                                 <span key={attr.name} style={{ background: '#f5f5f5', borderRadius: 8, padding: '2px 8px' }}>{attr.name}</span>
                               ))}
                             </div>
                           </div>
-                          {whccAttrs[item.productUid].whccCost && (
+                          {attrs.whccCost && (
                             <div>
-                              <strong>WHCC Cost:</strong> ${whccAttrs[item.productUid].whccCost}
+                              <strong>WHCC Cost:</strong> ${attrs.whccCost}
                             </div>
                           )}
+                              </>
+                            );
+                          })()}
                         </div>
                       ) : (
                         <span style={{ color: 'red' }}>Failed to load WHCC attributes.</span>
@@ -206,7 +214,7 @@ const SuperAdminPricing = () => {
                     </td>
                   </tr>
                 )}
-              </>
+              </Fragment>
             ))}
           </tbody>
         </table>

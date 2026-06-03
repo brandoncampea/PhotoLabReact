@@ -181,7 +181,17 @@ router.post('/create-payment-intent', authRequired, async (req, res) => {
         enabled: true,
       },
       metadata: {
-        items: JSON.stringify(items.map(i => ({ photoId: i.photoId, quantity: i.quantity }))),
+        items: (() => {
+          // Deduplicate by photoId and sum quantities, then use compact keys to stay under Stripe's 500-char limit
+          const merged = {};
+          for (const i of items) {
+            merged[i.photoId] = (merged[i.photoId] || 0) + (i.quantity || 1);
+          }
+          const compact = Object.entries(merged).map(([p, q]) => ({ p: Number(p), q }));
+          const str = JSON.stringify(compact);
+          // Stripe metadata value limit is 500 chars; truncate with a flag if still over
+          return str.length <= 500 ? str : str.slice(0, 496) + '...]';
+        })(),
         shippingOption,
         shippingCost: shipping.toFixed(2),
         discountAmount: discount.toFixed(2),

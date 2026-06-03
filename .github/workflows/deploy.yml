@@ -31,7 +31,6 @@ jobs:
         run: npm run build:appservice
         env:
           VITE_API_URL: /api
-          VITE_USE_MOCK_API: false
 
       - name: Verify build artifacts
         run: |

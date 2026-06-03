@@ -115,6 +115,7 @@ export interface CartItem {
   cropData?: CropData;
   productId?: number;
   productSizeId?: number;
+  productSize?: PriceListProductSize;
   productName?: string;
   productSizeName?: string;
   product_image_url?: string;
@@ -126,7 +127,8 @@ export interface CartItem {
   isDigital?: boolean;
   digitalDownloadScope?: 'photo' | 'album';
   productOptions?: Record<string, any>;
-  attributes?: string[] | string; // Added: product attributes (e.g., Lustre, Glossy)
+  productOptionsSnapshot?: string | Record<string, any> | null;
+  attributes?: string[] | string | number[]; // Added: product attributes (e.g., Lustre, Glossy)
 }
 
 export interface CropData {
@@ -174,6 +176,7 @@ export interface Order {
   whccImportResponse?: any;
   whccSubmitResponse?: any;
   whccRequestLog?: any;
+  whccPriceAudit?: any;
   whccLastError?: any;
   whccOrderNumber?: string;
   whccWebhookStatus?: string;
@@ -185,6 +188,66 @@ export interface Order {
   hasDigitalItems?: boolean;
   digitalItemCount?: number;
   excludedItemsNote?: string;
+}
+
+export interface WhccPriceAuditDifference {
+  localItemId?: string | null;
+  localProductId?: number | null;
+  localProductSizeId?: number | null;
+  productUID?: number | null;
+  productName?: string | null;
+  quantity?: number;
+  expectedUnitCost?: number | null;
+  expectedLineCost?: number | null;
+  actualUnitCost?: number | null;
+  actualLineCost?: number | null;
+  differenceAmount?: number | null;
+  isMismatch?: boolean;
+  expectedVariantName?: string | null;
+}
+
+export interface WhccPriceAuditSummary {
+  expectedItemCount: number;
+  matchedItemCount: number;
+  mismatchCount: number;
+  unmatchedWhccRowCount: number;
+  expectedTotalCost: number;
+  actualTotalCost: number;
+  differenceAmount: number;
+}
+
+export interface WhccPriceAudit {
+  runAt?: string;
+  comparisonSource?: string;
+  summary: WhccPriceAuditSummary;
+  differences: WhccPriceAuditDifference[];
+  unmatchedWhccRows?: any[];
+}
+
+export interface WhccPriceAuditReportRow {
+  orderId: number;
+  userId?: number | null;
+  studioId?: number | null;
+  studioName?: string | null;
+  customerEmail?: string | null;
+  customerName?: string | null;
+  status?: string | null;
+  orderDate?: string | null;
+  whccConfirmationId?: string | null;
+  whccOrderNumber?: string | null;
+  audit: WhccPriceAudit;
+}
+
+export interface WhccPriceAuditReport {
+  summary: {
+    ordersScanned: number;
+    ordersWithMismatch: number;
+    mismatchItems: number;
+    expectedTotalCost: number;
+    actualTotalCost: number;
+    totalDifferenceAmount: number;
+  };
+  results: WhccPriceAuditReportRow[];
 }
 
 export interface ShippingAddress {
@@ -297,6 +360,7 @@ export interface ProductSize {
   width: number;
   height: number;
   price: number;
+  cropShape?: 'rect' | 'circle';
   whccVariants?: Array<{
     id?: number | null;
     localId?: string;
@@ -584,6 +648,7 @@ export interface PriceListProductSize {
   basePrice?: number;
   cost: number;
   isOffered?: boolean;
+  cropShape?: 'rect' | 'circle';
 }
 
 export interface PriceListItem {

@@ -329,13 +329,6 @@ class WhccService {
   }
 
   /**
-   * Generate MD5 hash for image (simple version - use crypto-js in production)
-   * For production, calculate actual MD5 of the image file
-   */
-  private generateMd5Hash(_input: string): string {
-  }
-
-  /**
    * Import order to WHCC (step 1)
    */
   async importOrder(orderRequest: WhccOrderRequest): Promise<WhccOrderResponse> {
@@ -418,8 +411,12 @@ class WhccService {
    * For production, you may need to manually fetch and cache the catalog
    */
   async getProductCatalog(): Promise<any> {
-    const response = await api.get('/whcc/products');
-    return response.data;
+    try {
+      const response = await api.get('/whcc/products');
+      return response.data;
+    } catch {
+      return this.getDefaultProductCatalog();
+    }
   }
 
   /**

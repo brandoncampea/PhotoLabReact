@@ -927,6 +927,12 @@ const AdminOrders: React.FC = () => {
     return date.toLocaleString();
   };
 
+  const formatCurrency = (value: unknown) => {
+    const amount = Number(value);
+    if (!Number.isFinite(amount)) return '—';
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
+  };
+
   const renderWhccLogBlock = (title: string, value: unknown, defaultOpen = false, runAt?: unknown) => {
     const formatted = formatWhccPayload(value);
     if (!formatted) return null;
@@ -1168,6 +1174,10 @@ const AdminOrders: React.FC = () => {
           webhookEvent: order.whccWebhookEvent || null,
           lastUpdatedAt: submitRunAt || importRunAt || errorRunAt || null,
         };
+        const whccPriceAudit = user?.role === 'super_admin' ? order.whccPriceAudit : null;
+        const whccPriceAuditSummary = whccPriceAudit?.summary || null;
+        const whccPriceDifferences = Array.isArray(whccPriceAudit?.differences) ? whccPriceAudit.differences : [];
+        const mismatchedWhccPriceDifferences = whccPriceDifferences.filter((item: any) => item?.isMismatch);
 
         return (
           <>
@@ -1427,7 +1437,59 @@ const AdminOrders: React.FC = () => {
                 <span className="whcc-detail-value">{formatDateTime(lastWhccAttemptAt)}</span>
               </div>
             )}
+            {whccPriceAuditSummary && (
+              <>
+                <div className="whcc-detail-field">
+                  <span className="whcc-detail-label">Expected WHCC Cost</span>
+                  <span className="whcc-detail-value">{formatCurrency(whccPriceAuditSummary.expectedTotalCost)}</span>
+                </div>
+                <div className="whcc-detail-field">
+                  <span className="whcc-detail-label">Returned WHCC Cost</span>
+                  <span className="whcc-detail-value">{formatCurrency(whccPriceAuditSummary.actualTotalCost)}</span>
+                </div>
+                <div className="whcc-detail-field">
+                  <span className="whcc-detail-label">Cost Difference</span>
+                  <span className="whcc-detail-value">{formatCurrency(whccPriceAuditSummary.differenceAmount)}</span>
+                </div>
+                <div className="whcc-detail-field">
+                  <span className="whcc-detail-label">Mismatched Items</span>
+                  <span className="whcc-detail-value">{String(whccPriceAuditSummary.mismatchCount || 0)}</span>
+                </div>
+              </>
+            )}
           </div>
+          {user?.role === 'super_admin' && whccPriceAuditSummary && (
+            <div className="whcc-log-panel" style={{ marginBottom: 14 }}>
+              <div className="whcc-log-summary" style={{ cursor: 'default' }}>
+                <span>WHCC Price Audit</span>
+                <span className="whcc-log-run-at">Run: {formatDateTime(whccPriceAudit?.runAt) || 'Unknown'}</span>
+              </div>
+              <div style={{ padding: '12px 14px' }}>
+                {mismatchedWhccPriceDifferences.length ? (
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    {mismatchedWhccPriceDifferences.map((item: any) => (
+                      <div key={`${item.localItemId || item.productUID || item.productName}`} style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: '10px 12px', background: '#fff7ed' }}>
+                        <div style={{ fontWeight: 700, marginBottom: 4 }}>
+                          {item.productName || `Item ${item.localItemId || 'Unknown'}`}
+                        </div>
+                        <div style={{ color: '#475569', fontSize: 13 }}>
+                          Item #{item.localItemId || '—'} · Qty {item.quantity || 1}
+                          {item.expectedVariantName ? ` · Variant ${item.expectedVariantName}` : ''}
+                        </div>
+                        <div style={{ marginTop: 6, display: 'grid', gap: 4, fontSize: 14 }}>
+                          <div><strong>Expected:</strong> {formatCurrency(item.expectedLineCost)} ({formatCurrency(item.expectedUnitCost)}/unit)</div>
+                          <div><strong>WHCC returned:</strong> {formatCurrency(item.actualLineCost)} ({formatCurrency(item.actualUnitCost)}/unit)</div>
+                          <div><strong>Difference:</strong> {formatCurrency(item.differenceAmount)}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ color: '#475569' }}>No WHCC price differences detected for this submission.</div>
+                )}
+              </div>
+            </div>
+          )}
           {order.whccLastError && (
             <div className="whcc-error-box">
               <span className="whcc-error-label">⚠ Last Error</span>
@@ -1437,6 +1499,7 @@ const AdminOrders: React.FC = () => {
             </div>
           )}
           <div className="whcc-log-list">
+            {user?.role === 'super_admin' && renderWhccLogBlock('WHCC Price Audit', order.whccPriceAudit, false, order.whccPriceAudit?.runAt)}
             {renderWhccLogBlock('Full OrderImport Payload Sent to WHCC', order.whccRequestLog?.importRequest?.body, true, order.whccRequestLog?.importRequest?.runAt)}
             {renderWhccLogBlock('WHCC Token Request Metadata', order.whccRequestLog?.tokenRequest, false, order.whccRequestLog?.tokenRequest?.runAt)}
             {renderWhccLogBlock('WHCC Import Request Envelope', order.whccRequestLog?.importRequest, false, order.whccRequestLog?.importRequest?.runAt)}

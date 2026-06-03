@@ -1,6 +1,14 @@
-import React from 'react';
+export type UploadPanelFile = {
+  id: string | number;
+  name?: string;
+  previewUrl: string;
+  status: 'queued' | 'uploading' | 'done' | 'paused' | 'error' | string;
+  progress: number;
+  size?: number;
+  file?: { name?: string; size?: number };
+};
 
-const UploadPhotoItem = ({ file }) => {
+const UploadPhotoItem = ({ file }: { file: UploadPanelFile }) => {
   return (
     <div className="upload-photo-item" style={{ position: 'relative' }}>
       <img src={file.previewUrl} alt={file.name} style={{ width: '100%', height: 'auto', display: 'block', borderRadius: 8 }} />

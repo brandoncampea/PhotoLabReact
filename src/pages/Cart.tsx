@@ -3,16 +3,12 @@
 
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { formatCropData } from '../utils/formatCropData';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { Elements } from '@stripe/react-stripe-js';
 import { loadStripe } from '@stripe/stripe-js';
-import Cropper from 'react-cropper';
 import CropperModal from '../components/CropperModal';
 import Modal from '../components/Modal/Modal';
-import { getPhotoAssetUrl } from '../utils/getPhotoAssetUrl';
-import { getCropAspectRatioForPhotoAndProduct } from '../utils/getCropAspectRatio';
 import { formatDateInStudioTimezone } from '../utils/studioDateTime';
 import 'cropperjs/dist/cropper.css';
 import './Cart.css';
@@ -27,8 +23,7 @@ import { downloadService } from '../services/downloadService';
 import { discountCodeService } from '../services/discountCodeService';
 import { taxService } from '../services/taxService';
 import { whccEditorService } from '../services/whccEditorService';
-import { superPriceListService } from '../services/superPriceListService';
-import { ShippingConfig, StripeConfig, Product, DiscountCode, DiscountValidation, ShippingAddress, CartItem as CartItemType, PaymentIntent, ShippingQuote } from '../types';
+import { ShippingConfig, Product, ShippingAddress, CartItem as CartItemType, PaymentIntent, ShippingQuote } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 
 
@@ -36,7 +31,8 @@ const Cart: React.FC = () => {
         // ...existing code...
         // ...
         // ...existing code...
-    const { items, getTotalPrice, getTotalItems, clearCart, updateCropData } = useCart();
+    const { items, getTotalPrice, getTotalItems, clearCart } = useCart();
+    const navigate = useNavigate();
 
     // Debug log: show cart items and their attributeUIDs/productOptions on every render
     // ...
@@ -64,18 +60,18 @@ const Cart: React.FC = () => {
     // Functions that depend on 'items' and 'products' must be declared after both are initialized
 
     // Stripe payment intent state
-    const [activePaymentIntent, setActivePaymentIntent] = useState<any>(null);
+    const [activePaymentIntent, setActivePaymentIntent] = useState<PaymentIntent | null>(null);
     const [shippingQuote, setShippingQuote] = useState<ShippingQuote | null>(null);
     const [products, setProducts] = useState<Product[]>([]);
     const [appliedDiscount, setAppliedDiscount] = useState<any>(null);
-    const [editingItem, setEditingItem] = useState(null);
+    const [editingItem, setEditingItem] = useState<CartItemType | null>(null);
     const [editingDrawnSize, setEditingDrawnSize] = useState<{ width: number; height: number } | null>(null);
     const [showPaymentModal, setShowPaymentModal] = useState(false);
-    const autoLaunchEditorRef = useRef(null);
+    const autoLaunchEditorRef = useRef<boolean>(false);
     // State for product images
-    const [productImages, setProductImages] = useState<Record<string, string>>({});
+    const [productImages] = useState<Record<string, string>>({});
     // State for category images (fix ReferenceError)
-    const [categoryImages, setCategoryImages] = useState<Record<string, string>>({});
+    const [categoryImages] = useState<Record<string, string>>({});
     // TODO: Load category images from API if needed and setCategoryImages
     // State for best discount search loading
     const [bestDiscountSearchLoading, setBestDiscountSearchLoading] = useState(false);
@@ -131,6 +127,7 @@ const Cart: React.FC = () => {
     if (user?.email) {
       setShippingAddress(prev => ({ ...prev, email: user.email }));
     }
+    void loadStudioFees();
   }, [user]);
 
   useEffect(() => {
@@ -456,7 +453,7 @@ const Cart: React.FC = () => {
 
     if (appliedDiscount.discountType === 'bundle-price') {
       const matchingProducts = (appliedDiscount.applicableProductIds || [])
-        .map((productId) => products.find((product) => Number(product.id) === Number(productId))?.name)
+        .map((productId: number | string) => products.find((product) => Number(product.id) === Number(productId))?.name)
         .filter(Boolean) as string[];
 
       const productLabel = matchingProducts.length === 1
@@ -474,7 +471,7 @@ const Cart: React.FC = () => {
   const [taxAmount, setTaxAmount] = useState(0);
   const [taxRate, setTaxRate] = useState(0);
   const [taxLoading, setTaxLoading] = useState(false);
-  const [taxError, setTaxError] = useState('');
+  const [, setTaxError] = useState('');
 
   const calculateTaxAmount = async () => {
     setTaxLoading(true);
@@ -484,7 +481,7 @@ const Cart: React.FC = () => {
     const discount = getDiscountAmount();
     let fees = 0;
     if (studioFees && studioFees.feeValue > 0) {
-        if (!item.productId || !item.productSizeId) {
+      if (studioFees.feeType === 'percentage') {
         fees = (subtotal * studioFees.feeValue) / 100;
       } else if (studioFees.feeType === 'fixed') {
         fees = studioFees.feeValue * items.reduce((count, item) => count + item.quantity, 0);
@@ -632,16 +629,6 @@ const Cart: React.FC = () => {
     return Math.max(0, days);
   };
 
-  const getItemAspectRatio = (item: CartItemType | null): number => {
-    if (!item || !item.productId || !item.productSizeId) return NaN;
-    const product = products.find((p) => p.id === item.productId);
-    const size = product?.sizes?.find((s) => s.id === item.productSizeId);
-    const width = Number(size?.width || 0);
-    const height = Number(size?.height || 0);
-    if (width > 0 && height > 0) return width / height;
-    return NaN;
-  };
-
   const getResolvedCartItem = (item: CartItemType): any => {
     const itemProductId = Number(item.productId || 0);
     const itemSizeId = Number(item.productSizeId || 0);
@@ -754,28 +741,6 @@ const Cart: React.FC = () => {
     const nextQuery = params.toString();
     window.history.replaceState({}, '', `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}`);
   }, [items, products]);
-
-  const handleSaveCrop = () => {
-    if (!editingItem) return;
-    const cropper = cropperRef?.cropper || cropperRef;
-        if (!cropper || typeof cropper.getData !== 'function' || !editingItem.productId || !editingItem.productSizeId) {
-      window.alert('Cropper is not ready. Please try again.');
-      return;
-    }
-    const data = cropper.getData();
-    if (!data || isNaN(data.x) || isNaN(data.y) || isNaN(data.width) || isNaN(data.height) || data.width <= 0 || data.height <= 0) {
-      window.alert('Invalid crop area. Please adjust the crop and try again.');
-      return;
-    }
-    const formatted = formatCropData(data);
-    updateCropData(editingItem.photoId, formatted, editingItem.productId, editingItem.productSizeId);
-    setTimeout(() => {
-      setEditingItem(null);
-      setCropperRef(null);
-    }, 0);
-  };
-
-  // formatCropData now imported from utils/formatCropData
 
   const finalizeSuccessfulCheckout = async (paymentIntentId: string) => {
     if (shippingOption === 'batch' && !isBatchAvailable()) {
@@ -944,6 +909,74 @@ const Cart: React.FC = () => {
     }
   };
 
+  const handleTestOrder = async () => {
+    if (items.length === 0) {
+      setError('No items in cart.');
+      return;
+    }
+
+    if (!shippingAddress.fullName || !shippingAddress.addressLine1 ||
+        !shippingAddress.city || !shippingAddress.state || !shippingAddress.zipCode || !shippingAddress.email) {
+      setError('Please complete all required shipping address fields.');
+      return;
+    }
+
+    if (shippingOption === 'batch' && !isBatchAvailable()) {
+      setShippingOption('direct');
+      setError('Batch shipping is no longer available because the deadline has passed. Shipping was switched to direct. Please review totals and submit again.');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    try {
+      const itemsWithCrop = items.map(item => {
+        const latest = items.find(
+          ci => ci.photoId === item.photoId && ci.productId === item.productId && ci.productSizeId === item.productSizeId
+        );
+        return latest ? { ...item, cropData: latest.cropData } : item;
+      });
+
+      await orderService.createOrder(
+        itemsWithCrop,
+        shippingAddress,
+        shippingOption,
+        getShippingCost(),
+        appliedDiscount?.code,
+        studioFees?.feeType,
+        studioFees?.feeValue,
+        undefined,
+        {
+          taxAmount,
+          taxRate,
+          total: getFinalTotal(),
+          subtotalBeforeDiscount: cartSubtotal + getStudioFeeAmount() + currentShippingCost,
+        },
+        true
+      );
+
+      clearCart();
+      setShowPaymentModal(false);
+      setActivePaymentIntent(null);
+
+      const successMessage = hasOnlyDigitalProducts()
+        ? 'Test order placed (no payment). Customer emails were suppressed for this test order.'
+        : `Test order placed (no payment). Shipping mode: ${shippingOption === 'batch' ? 'batch' : 'direct'}. Customer emails were suppressed for this test order.`;
+
+      navigate('/orders', { state: { message: successMessage } });
+    } catch (err: any) {
+      setError(
+        err?.response?.data?.error ||
+        err?.response?.data?.details ||
+        err?.message ||
+        'Failed to place test order.'
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (items.length === 0) {
     return (
       <div className="main-content dark-bg cart-page">
@@ -982,7 +1015,7 @@ const Cart: React.FC = () => {
                 key={item.photoId + '-' + (item.productId || '') + '-' + (item.productSizeId || '') + '-' + cropKey}
                 item={resolvedItem}
                 photo={photo}
-                onEditCrop={(editItem, editPhoto, drawnSize) => {
+                onEditCrop={(editItem, _editPhoto, drawnSize) => {
                   // Always use the latest item from cart state to ensure fresh cropData
                   const latest = items.find(
                     (i) => i.photoId === editItem.photoId && i.productId === editItem.productId && i.productSizeId === editItem.productSizeId

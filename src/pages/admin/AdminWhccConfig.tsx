@@ -1,4 +1,3 @@
-  const [consumerKey, setConsumerKey] = useState('');
 import { useState, useEffect } from 'react';
 import { whccService, WhccWebhookStatus } from '../../services/whccService';
 import { orderService } from '../../services/orderService';
@@ -139,7 +138,10 @@ const AdminWhccConfig = () => {
     setIsLogLoading(true);
     setLogError(null);
     try {
-      const orders = await orderService.getAdminOrders();
+      const ordersResponse = await orderService.getAdminOrders();
+      const orders = Array.isArray(ordersResponse)
+        ? ordersResponse
+        : (ordersResponse as any)?.orders || [];
       const withWhccLogs = (orders || [])
         .filter((order: any) => (
           order.whccRequestLog ||
@@ -279,7 +281,6 @@ const AdminWhccConfig = () => {
     // Temporarily save config for test
     const tempConfig = {
       enabled: true,
-      consumerKey,
       isSandbox,
     };
     localStorage.setItem('whccConfig', JSON.stringify(tempConfig));

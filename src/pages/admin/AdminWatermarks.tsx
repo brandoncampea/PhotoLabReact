@@ -85,7 +85,7 @@ const AdminWatermarks: React.FC = () => {
       isDefault: watermark.isDefault,
       tiled: watermark.tiled,
     });
-    setPreviewUrl(watermarkService.getProxiedImageUrl(watermark.imageUrl));
+    setPreviewUrl(watermarkService.getProxiedImageUrl(watermark.imageUrl) ?? null);
     setShowModal(true);
   };
 
@@ -113,7 +113,7 @@ const AdminWatermarks: React.FC = () => {
     if (file) {
       setPreviewUrl(URL.createObjectURL(file));
     } else if (editingWatermark?.imageUrl) {
-      setPreviewUrl(watermarkService.getProxiedImageUrl(editingWatermark.imageUrl));
+      setPreviewUrl(watermarkService.getProxiedImageUrl(editingWatermark.imageUrl) ?? null);
     } else {
       setPreviewUrl(null);
     }
@@ -190,7 +190,11 @@ const AdminWatermarks: React.FC = () => {
 
       <div className="watermarks-grid">
         {watermarks
-          .filter(w => w.studioId && user?.studioId && w.studioId === user.studioId)
+          .filter((w) => {
+            if (!user?.studioId) return true;
+            const watermarkStudioId = Number((w as any)?.studioId || 0);
+            return watermarkStudioId > 0 ? watermarkStudioId === Number(user.studioId) : true;
+          })
           .map((watermark) => (
             <div key={watermark.id} className="watermark-card">
               <WatermarkSasImage src={watermark.imageUrl} alt={watermark.name} />

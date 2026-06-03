@@ -9,6 +9,7 @@ import { useAuth } from '../../contexts/AuthContext';
 
 const superAdminLinks = [
 	{ to: '/super-admin', label: 'Dashboard' },
+	{ to: '/admin/whcc-price-audit', label: 'WHCC Price Audit' },
 	{ to: '/admin/super-pricing', label: 'Super Admin Pricing' },
 	{ to: '/admin/users', label: 'Users' },
 	{ to: '/admin/studio-admins', label: 'Studio Admins' },
@@ -90,7 +91,7 @@ const Sidebar: React.FC = () => {
 					{superAdminOpen && !collapsed && (
 						<ul className={styles.sidebarSubmenu}>
 							{superAdminLinks.map(link => (
-								<li>
+								<li key={link.to}>
 									<Link to={link.to} className={styles.sidebarLink}>
 										{link.label}
 									</Link>

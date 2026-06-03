@@ -1,5 +1,5 @@
 import api from './api';
-import { Order, CartItem, ShippingAddress, BatchQueueSummary } from '../types';
+import { Order, CartItem, ShippingAddress, BatchQueueSummary, WhccPriceAuditReport } from '../types';
 
 export const orderService = {
   async batchUpdateStatus(orderIds: number[], status: string, message: string): Promise<{ success: boolean; updatedCount?: number; error?: string }> {
@@ -134,6 +134,19 @@ export const orderService = {
 
   async getAdminOrderDetails(orderId: number): Promise<Order> {
     const response = await api.get<Order>(`/orders/admin/order-details/${orderId}`);
+    return response.data;
+  },
+
+  async getWhccPriceAuditReport(options?: { limit?: number; search?: string }): Promise<WhccPriceAuditReport> {
+    const params = new URLSearchParams();
+    if (typeof options?.limit === 'number' && Number.isFinite(options.limit) && options.limit > 0) {
+      params.set('limit', String(Math.floor(options.limit)));
+    }
+    if (options?.search && String(options.search).trim()) {
+      params.set('search', String(options.search).trim());
+    }
+    const query = params.toString();
+    const response = await api.get<WhccPriceAuditReport>(`/orders/admin/whcc-price-audit-report${query ? `?${query}` : ''}`);
     return response.data;
   },
 
