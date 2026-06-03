@@ -3271,7 +3271,31 @@ router.post('/', requireActiveSubscription, async (req, res) => {
       : (Number(subtotal) || 0);
     const computedShipping = allDigital ? 0 : (Number(shippingCost) || 0);
     const computedTax = Number(taxAmount) || 0;
-    const total = +(computedSubtotal + computedShipping + computedTax).toFixed(2);
+
+    // Apply discount if code is provided
+    let discountAmount = 0;
+    if (discountCode && String(discountCode).trim()) {
+      try {
+        // Import the validation function from discountCodes route
+        const { validateDiscountForCart } = await import('./discountCodes.js');
+        const validation = await validateDiscountForCart({
+          codeText: discountCode,
+          studioId: orderStudioId,
+          items: items || [],
+          subtotal: computedSubtotal,
+          shippingCost: computedShipping,
+          userId: userId,
+        });
+        if (validation.valid) {
+          discountAmount = Number(validation.discountAmount || 0);
+        }
+      } catch (err) {
+        console.error('[ORDER] Failed to validate discount code during order creation:', err?.message || err);
+        // Continue without discount if validation fails
+      }
+    }
+
+    const total = +(computedSubtotal + computedShipping + computedTax - discountAmount).toFixed(2);
 
     // --- PATCH: If all items are digital, update Stripe payment intent to correct amount (no shipping) ---
     if (allDigital && paymentIntentId) {

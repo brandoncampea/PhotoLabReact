@@ -709,3 +709,4 @@ router.delete('/:id', adminRequired, async (req, res) => {
 });
 
 export default router;
+export { validateDiscountForCart };
