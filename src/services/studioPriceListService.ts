@@ -37,4 +37,12 @@ export const studioPriceListService = {
     const res = await api.patch(`/studio-price-lists/${listId}/items/apply-markup`, { markup_percent });
     return res.data;
   },
+  async moveProductToCategory(listId: number, productId: number, targetCategory: string) {
+    const res = await api.put(`/studio-price-lists/${listId}/products/${productId}/category`, { targetCategory });
+    return res.data;
+  },
+  async moveItemToCategory(listId: number, itemId: number, targetCategory: string, targetProductName?: string) {
+    const res = await api.put(`/studio-price-lists/${listId}/items/${itemId}/move-category`, { targetCategory, targetProductName });
+    return res.data;
+  },
 };

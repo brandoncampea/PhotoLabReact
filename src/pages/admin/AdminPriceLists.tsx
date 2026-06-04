@@ -783,6 +783,97 @@ const [savingProductKey, setSavingProductKey] = useState<string | null>(null);
 		handleExpandAll();
 	};
 
+	const PRICE_MOVE_DRAG_MIME = 'application/x-photolab-price-move';
+
+	const parseDragPayload = (event: React.DragEvent): any | null => {
+		const raw = event.dataTransfer.getData(PRICE_MOVE_DRAG_MIME) || event.dataTransfer.getData('text/plain');
+		if (!raw) return null;
+		try {
+			return JSON.parse(raw);
+		} catch {
+			return null;
+		}
+	};
+
+	const beginProductCategoryDrag = (event: React.DragEvent, item: any) => {
+		const payload = {
+			kind: 'product',
+			productId: Number(item?.product_id || 0),
+			productName: String(baseProductName(item?.product_name || 'Unknown Product')),
+			sourceCategory: String(item?.product_category || ''),
+		};
+		const encoded = JSON.stringify(payload);
+		event.dataTransfer.effectAllowed = 'move';
+		event.dataTransfer.setData(PRICE_MOVE_DRAG_MIME, encoded);
+		event.dataTransfer.setData('text/plain', encoded);
+	};
+
+	const beginSizeCategoryDrag = (event: React.DragEvent, item: any) => {
+		const payload = {
+			kind: 'size',
+			itemId: Number(item?.id || 0),
+			productName: String(baseProductName(item?.product_name || 'Unknown Product')),
+			sourceCategory: String(item?.product_category || ''),
+		};
+		const encoded = JSON.stringify(payload);
+		event.dataTransfer.effectAllowed = 'move';
+		event.dataTransfer.setData(PRICE_MOVE_DRAG_MIME, encoded);
+		event.dataTransfer.setData('text/plain', encoded);
+	};
+
+	const handleDropOnCategory = async (event: React.DragEvent, targetCategory: string) => {
+		event.preventDefault();
+		if (!selectedPriceList) return;
+		const payload = parseDragPayload(event);
+		if (!payload) return;
+
+		try {
+			if (payload.kind === 'product' && Number(payload.productId) > 0) {
+				if (String(payload.sourceCategory || '') === targetCategory) return;
+				await studioPriceListService.moveProductToCategory(selectedPriceList.id, Number(payload.productId), targetCategory);
+			} else if (payload.kind === 'size' && Number(payload.itemId) > 0) {
+				if (String(payload.sourceCategory || '') === targetCategory) return;
+				await studioPriceListService.moveItemToCategory(
+					selectedPriceList.id,
+					Number(payload.itemId),
+					targetCategory,
+					String(payload.productName || '').trim() || undefined
+				);
+			} else {
+				return;
+			}
+			await refreshSelectedItems();
+		} catch (err: any) {
+			setError(err?.response?.data?.error || err?.message || 'Failed to move item with drag and drop.');
+		}
+	};
+
+	const handleDropOnProduct = async (event: React.DragEvent, targetCategory: string, targetProductName: string) => {
+		event.preventDefault();
+		if (!selectedPriceList) return;
+		const payload = parseDragPayload(event);
+		if (!payload) return;
+
+		try {
+			if (payload.kind === 'size' && Number(payload.itemId) > 0) {
+				await studioPriceListService.moveItemToCategory(
+					selectedPriceList.id,
+					Number(payload.itemId),
+					targetCategory,
+					targetProductName || undefined
+				);
+			} else if (payload.kind === 'product' && Number(payload.productId) > 0) {
+				if (String(payload.sourceCategory || '') === targetCategory) return;
+				await studioPriceListService.moveProductToCategory(selectedPriceList.id, Number(payload.productId), targetCategory);
+			} else {
+				return;
+			}
+			await refreshSelectedItems();
+		} catch (err: any) {
+			setError(err?.response?.data?.error || err?.message || 'Failed to drop item on product.');
+		}
+	};
+
 
 
 	return (
@@ -961,6 +1052,8 @@ const [savingProductKey, setSavingProductKey] = useState<string | null>(null);
 									return (
 								<div
 									className="spl-category-header"
+									onDragOver={(e) => e.preventDefault()}
+									onDrop={(e) => { e.stopPropagation(); void handleDropOnCategory(e, cat); }}
 									onClick={() => setCatCollapsed(prev => ({ ...prev, [cat]: !prev[cat] }))}
 								>
 									<span>{catCollapsed[cat] ? '▶' : '▼'}</span>
@@ -1024,6 +1117,12 @@ const [savingProductKey, setSavingProductKey] = useState<string | null>(null);
 														onDragOver={(e) => e.preventDefault()}
 														onDrop={async (e) => {
 															e.preventDefault();
+															const payload = parseDragPayload(e);
+															if (payload) {
+																e.stopPropagation();
+																await handleDropOnProduct(e, cat, product);
+																return;
+															}
 															if (!draggingProductKey || draggingProductKey === product) return;
 															try {
 																const fromIndex = sortedProducts.indexOf(draggingProductKey);
@@ -1058,6 +1157,17 @@ const [savingProductKey, setSavingProductKey] = useState<string | null>(null);
 																style={{ width: 32, height: 32, borderRadius: 4, objectFit: 'cover', border: '1px solid #444', opacity: 0.5 }}
 															/>
 														) : null}
+														{firstItem && Number(firstItem?.product_id || 0) > 0 && (
+															<span
+																draggable
+																onDragStart={(e) => { e.stopPropagation(); beginProductCategoryDrag(e, firstItem); }}
+																onClick={(e) => e.stopPropagation()}
+																title="Drag to another category"
+																style={{ cursor: 'grab', fontSize: 12, opacity: 0.9 }}
+															>
+																🗂
+															</span>
+														)}
 														<span className="studio-product-title">{product}</span>
 														<div className="studio-product-actions" onClick={e => e.stopPropagation()}>
 															<button
@@ -1108,6 +1218,14 @@ const [savingProductKey, setSavingProductKey] = useState<string | null>(null);
 																	const hasVariantPricing = itemHasVariantPricing(item);
 																	return (
 																<div className={`spl-size-row ${hasVariantPricing ? 'studio-size-grid-variant' : 'studio-size-grid'}`}>
+																	<span
+																		draggable
+																		onDragStart={(e) => beginSizeCategoryDrag(e, item)}
+																		title="Drag size to another category/product"
+																		style={{ cursor: 'grab', opacity: 0.85 }}
+																	>
+																		⋮⋮
+																	</span>
 																	<label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
 																		<input
 																			type="checkbox"

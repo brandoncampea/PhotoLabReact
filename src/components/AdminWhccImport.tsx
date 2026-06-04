@@ -68,57 +68,6 @@ const getItemAttributeUIDs = (prod: any): number[] => {
     .filter((v: number) => Number.isInteger(v) && v > 0);
 };
 
-const getItemAttributes = (prod: any): Array<{ uid: number; label: string }> => {
-  const attrs =
-    prod?.DefaultItemAttributes ??
-    prod?.defaultItemAttributes ??
-    prod?.ItemAttributes ??
-    prod?.itemAttributes ??
-    [];
-
-  if (!Array.isArray(attrs)) return [];
-
-  return attrs
-    .map((a: any) => {
-      const uid = Number(a?.AttributeUID ?? a?.attributeUID ?? a?.uid ?? a);
-      const label = String(
-        a?.Name ??
-        a?.name ??
-        a?.DisplayName ??
-        a?.displayName ??
-        a?.Description ??
-        a?.description ??
-        ''
-      ).trim();
-      if (!Number.isInteger(uid) || uid <= 0) return null;
-      return { uid, label };
-    })
-    .filter(Boolean) as Array<{ uid: number; label: string }>;
-};
-
-const getAttributeCostMultiplierPercent = (
-  attributes: Array<{ uid: number; label: string }>,
-  multipliers?: { pearlPercent?: number; deepMattePercent?: number }
-): number => {
-  if (!Array.isArray(attributes) || attributes.length === 0) return 0;
-  const pearlPercent = Number.isFinite(Number(multipliers?.pearlPercent)) ? Number(multipliers?.pearlPercent) : 11;
-  const deepMattePercent = Number.isFinite(Number(multipliers?.deepMattePercent)) ? Number(multipliers?.deepMattePercent) : 35;
-  let multiplier = 0;
-
-  for (const attr of attributes) {
-    const label = String(attr?.label || '').toLowerCase();
-    if (!label) continue;
-    if (label.includes('deep matte')) {
-      multiplier = Math.max(multiplier, Math.max(0, deepMattePercent));
-      continue;
-    }
-    if (label.includes('fuji pearl') || label.includes('pearl')) {
-      multiplier = Math.max(multiplier, Math.max(0, pearlPercent));
-    }
-  }
-
-  return multiplier;
-};
 import Papa from 'papaparse';
 // CSV will be fetched at runtime from public/
 import { superPriceListService } from '../services/superPriceListService';
@@ -172,14 +121,9 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
           const whccUID = getUid(product) || undefined;
           const whccNodeID = getProductNodeID(product) ?? undefined;
           const whccAttrUIDs = getItemAttributeUIDs(product);
-          const whccAttrs = getItemAttributes(product);
           const whccAttributeCategories = getAttributeCategories(product);
-          const attrMultiplierPercent = getAttributeCostMultiplierPercent(whccAttrs, {
-            pearlPercent: pearlUpchargePercent,
-            deepMattePercent: deepMatteUpchargePercent,
-          });
           const adjustedCost = Number.isFinite(baseCost)
-            ? Number((baseCost * (1 + attrMultiplierPercent / 100)).toFixed(4))
+            ? Number(baseCost.toFixed(4))
             : 0;
 
           // Extract all finish/surface AttributeUIDs for this product
@@ -221,7 +165,6 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
             size_name: String(hit.size || ''),
             category: String(hit.category || 'whcc'),
             description: 'Imported from WHCC',
-            ...(attrMultiplierPercent > 0 ? { whccAttributeCostMultiplierPercent: attrMultiplierPercent } : {}),
             ...(whccUID ? { whccProductUID: whccUID } : {}),
             ...(whccUID ? { whccEditorProductId: whccUID } : {}),
             ...(whccNodeID ? { whccProductNodeID: whccNodeID } : {}),
@@ -317,26 +260,6 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
   type PreviewRow = { name: string; size: string; cat: string; status: 'new' | 'enrich' | 'unchanged' };
   const [previewRows, setPreviewRows] = useState<PreviewRow[]>([]);
   const [previewLoading, setPreviewLoading] = useState(false);
-  const [pearlUpchargePercent, setPearlUpchargePercent] = useState<number>(() => {
-    if (typeof window === 'undefined') return 11;
-    const raw = Number(window.localStorage.getItem('whcc.pearlUpchargePercent') || '11');
-    return Number.isFinite(raw) ? Math.max(0, raw) : 11;
-  });
-  const [deepMatteUpchargePercent, setDeepMatteUpchargePercent] = useState<number>(() => {
-    if (typeof window === 'undefined') return 35;
-    const raw = Number(window.localStorage.getItem('whcc.deepMatteUpchargePercent') || '35');
-    return Number.isFinite(raw) ? Math.max(0, raw) : 35;
-  });
-
-  React.useEffect(() => {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem('whcc.pearlUpchargePercent', String(pearlUpchargePercent));
-  }, [pearlUpchargePercent]);
-
-  React.useEffect(() => {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem('whcc.deepMatteUpchargePercent', String(deepMatteUpchargePercent));
-  }, [deepMatteUpchargePercent]);
 
   // Load price lists on mount
   React.useEffect(() => {
@@ -873,36 +796,6 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
           {step === 'confirm' && (
             <>
               <p className="admin-whcc-desc">Review what will happen when you import, then click <strong>Import to Price List</strong>.</p>
-              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <label style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Fuji Pearl %</label>
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.1"
-                    value={pearlUpchargePercent}
-                    onChange={(e) => {
-                      const next = Number(e.target.value);
-                      setPearlUpchargePercent(Number.isFinite(next) ? Math.max(0, next) : 0);
-                    }}
-                    style={{ width: 90 }}
-                  />
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <label style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Deep Matte %</label>
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.1"
-                    value={deepMatteUpchargePercent}
-                    onChange={(e) => {
-                      const next = Number(e.target.value);
-                      setDeepMatteUpchargePercent(Number.isFinite(next) ? Math.max(0, next) : 0);
-                    }}
-                    style={{ width: 90 }}
-                  />
-                </div>
-              </div>
               {previewLoading ? (
                 <div style={{ padding: '1rem', color: 'var(--text-secondary)' }}>Analysing existing list…</div>
               ) : (

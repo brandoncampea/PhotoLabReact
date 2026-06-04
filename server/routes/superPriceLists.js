@@ -186,6 +186,15 @@ const firstPositiveInt = (...values) => {
   return null;
 };
 
+const normalizeBaseProductName = (name) => {
+  return String(name || '')
+    .replace(/\s+\d+(?:\.\d+)?x\d+(?:\.\d+)?(?:x\d+(?:\.\d+)?)?\s*$/i, '')
+    .replace(/\s*[-–]\s*\d+(?:\.\d+)?x\d+(?:\.\d+)?\s*$/i, '')
+    .replace(/\s*\(\d+(?:\.\d+)?x\d+(?:\.\d+)?\)\s*$/i, '')
+    .trim()
+    .toLowerCase();
+};
+
 const getCatalogProductUID = (product) => firstPositiveInt(
   product?.ProductCode,
   product?.ProductUID,
@@ -2464,7 +2473,7 @@ router.put('/:id/products/:productId/category', async (req, res) => {
   if (!targetCategory) return res.status(400).json({ error: 'targetCategory is required' });
   try {
     const belongs = await mssql.query(
-      `SELECT TOP 1 p.id
+      `SELECT TOP 1 p.id, p.name
        FROM products p
        INNER JOIN product_sizes ps ON ps.product_id = p.id
        INNER JOIN super_price_list_items spi ON spi.product_size_id = ps.id
@@ -2474,8 +2483,31 @@ router.put('/:id/products/:productId/category', async (req, res) => {
     );
     if (!belongs.length) return res.status(404).json({ error: 'Product not found in this super price list' });
 
-    await mssql.query('UPDATE products SET category = @p1 WHERE id = @p2', [targetCategory, Number(productId)]);
-    res.json({ success: true });
+    const selectedBaseName = normalizeBaseProductName(belongs[0]?.name || '');
+
+    const listProducts = await mssql.query(
+      `SELECT DISTINCT p.id, p.name
+       FROM products p
+       INNER JOIN product_sizes ps ON ps.product_id = p.id
+       INNER JOIN super_price_list_items spi ON spi.product_size_id = ps.id
+       WHERE spi.super_price_list_id = @p1`,
+      [id]
+    );
+
+    const productIdsToMove = listProducts
+      .filter((row) => normalizeBaseProductName(row?.name || '') === selectedBaseName)
+      .map((row) => Number(row?.id || 0))
+      .filter((v, idx, arr) => Number.isInteger(v) && v > 0 && arr.indexOf(v) === idx);
+
+    if (!productIdsToMove.length) {
+      productIdsToMove.push(Number(productId));
+    }
+
+    for (const pid of productIdsToMove) {
+      await mssql.query('UPDATE products SET category = @p1 WHERE id = @p2', [targetCategory, pid]);
+    }
+
+    res.json({ success: true, movedProductCount: productIdsToMove.length, movedProductIds: productIdsToMove });
   } catch (err) {
     res.status(500).json({ error: 'Failed to move product category' });
   }

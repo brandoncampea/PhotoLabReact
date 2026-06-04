@@ -64,6 +64,15 @@ const buildVariantKey = (variant = {}) => {
   return `uid:${uid}|attrs:${attrs.join('-')}|name:${name}`;
 };
 
+const normalizeBaseProductName = (name) => {
+  return String(name || '')
+    .replace(/\s+\d+(?:\.\d+)?x\d+(?:\.\d+)?(?:x\d+(?:\.\d+)?)?\s*$/i, '')
+    .replace(/\s*[-–]\s*\d+(?:\.\d+)?x\d+(?:\.\d+)?\s*$/i, '')
+    .replace(/\s*\(\d+(?:\.\d+)?x\d+(?:\.\d+)?\)\s*$/i, '')
+    .trim()
+    .toLowerCase();
+};
+
 
 
 // GET all studio price lists for a studio
@@ -525,6 +534,127 @@ router.put('/:id/products/display-order', async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Failed to update display order' });
+  }
+});
+
+// PUT move all sizes of a product group to a different category (within a studio list)
+router.put('/:id/products/:productId/category', async (req, res) => {
+  const { id, productId } = req.params;
+  const targetCategory = String(req.body?.targetCategory || '').trim();
+  if (!targetCategory) return res.status(400).json({ error: 'targetCategory is required' });
+
+  try {
+    const belongs = await mssql.query(
+      `SELECT TOP 1 p.id, p.name
+       FROM studio_price_list_items spi
+       INNER JOIN product_sizes ps ON ps.id = spi.product_size_id
+       INNER JOIN products p ON p.id = ps.product_id
+       WHERE spi.studio_price_list_id = @p1
+         AND p.id = @p2`,
+      [id, Number(productId)]
+    );
+    if (!belongs.length) return res.status(404).json({ error: 'Product not found in this studio price list' });
+
+    const selectedBaseName = normalizeBaseProductName(belongs[0]?.name || '');
+    const listProducts = await mssql.query(
+      `SELECT DISTINCT p.id, p.name
+       FROM studio_price_list_items spi
+       INNER JOIN product_sizes ps ON ps.id = spi.product_size_id
+       INNER JOIN products p ON p.id = ps.product_id
+       WHERE spi.studio_price_list_id = @p1`,
+      [id]
+    );
+
+    const productIdsToMove = listProducts
+      .filter((row) => normalizeBaseProductName(row?.name || '') === selectedBaseName)
+      .map((row) => Number(row?.id || 0))
+      .filter((v, idx, arr) => Number.isInteger(v) && v > 0 && arr.indexOf(v) === idx);
+
+    if (!productIdsToMove.length) {
+      productIdsToMove.push(Number(productId));
+    }
+
+    for (const pid of productIdsToMove) {
+      await mssql.query('UPDATE products SET category = @p1 WHERE id = @p2', [targetCategory, pid]);
+    }
+
+    res.json({ success: true, movedProductCount: productIdsToMove.length, movedProductIds: productIdsToMove });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to move product category' });
+  }
+});
+
+// PUT move a single size item to another category (and optional product name) within a studio list
+router.put('/:id/items/:itemId/move-category', async (req, res) => {
+  const { id, itemId } = req.params;
+  const targetCategory = String(req.body?.targetCategory || '').trim();
+  const requestedTargetProductName = String(req.body?.targetProductName || '').trim();
+  if (!targetCategory) return res.status(400).json({ error: 'targetCategory is required' });
+
+  try {
+    const header = await mssql.query('SELECT TOP 1 super_price_list_id FROM studio_price_lists WHERE id = @p1', [id]);
+    const superPriceListId = Number(header[0]?.super_price_list_id || 0);
+    if (!Number.isInteger(superPriceListId) || superPriceListId <= 0) {
+      return res.status(404).json({ error: 'Studio price list not found' });
+    }
+
+    const sourceRows = await mssql.query(
+      `SELECT TOP 1
+              spi.id as studio_item_id,
+              spi.product_size_id,
+              ps.price_list_id,
+              ps.size_name,
+              ps.price as size_price,
+              ps.cost as size_cost,
+              p.name as product_name,
+              p.description as product_description,
+              p.options as product_options,
+              p.image_url as product_image_url
+       FROM studio_price_list_items spi
+       INNER JOIN product_sizes ps ON ps.id = spi.product_size_id
+       INNER JOIN products p ON p.id = ps.product_id
+       WHERE spi.studio_price_list_id = @p1
+         AND spi.id = @p2`,
+      [id, Number(itemId)]
+    );
+
+    const source = sourceRows[0];
+    if (!source) return res.status(404).json({ error: 'Item not found in this studio price list' });
+
+    const targetProductName = requestedTargetProductName || String(source.product_name || '').trim();
+    if (!targetProductName) return res.status(400).json({ error: 'targetProductName is required' });
+
+    const targetRows = await mssql.query(
+      `SELECT TOP 1 ps.id AS product_size_id, p.id AS product_id
+       FROM super_price_list_items sspi
+       INNER JOIN product_sizes ps ON ps.id = sspi.product_size_id
+       INNER JOIN products p ON p.id = ps.product_id
+       WHERE sspi.super_price_list_id = @p1
+         AND sspi.is_active = 1
+         AND p.name = @p2
+         AND p.category = @p3
+         AND ps.size_name = @p4
+       ORDER BY ps.id DESC`,
+      [superPriceListId, targetProductName, targetCategory, String(source.size_name || '')]
+    );
+
+    const targetProductSizeId = targetRows[0]?.product_size_id;
+    const targetProductId = targetRows[0]?.product_id;
+
+    if (!targetProductSizeId) {
+      return res.status(400).json({
+        error: 'Target product/size is not available in this price list source. Move the product group first or choose an existing product in the target category.',
+      });
+    }
+
+    await mssql.query(
+      'UPDATE studio_price_list_items SET product_size_id = @p1 WHERE id = @p2',
+      [Number(targetProductSizeId), Number(itemId)]
+    );
+
+    res.json({ success: true, product_size_id: Number(targetProductSizeId), product_id: Number(targetProductId) });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to move item category' });
   }
 });
 
