@@ -2654,6 +2654,7 @@ router.put('/:id/items/:itemId/move-category', async (req, res) => {
   if (!targetCategory) return res.status(400).json({ error: 'targetCategory is required' });
 
   try {
+    await ensureSuperPriceListItemWhccMetadataColumns();
     const sourceRows = await mssql.query(
       `SELECT TOP 1
               spi.id as super_item_id,
@@ -2671,7 +2672,8 @@ router.put('/:id/items/:itemId/move-category', async (req, res) => {
        INNER JOIN product_sizes ps ON ps.id = spi.product_size_id
        INNER JOIN products p ON p.id = ps.product_id
        WHERE spi.super_price_list_id = @p1
-         AND spi.id = @p2`,
+         AND spi.id = @p2
+         AND ISNULL(spi.is_deleted, 0) = 0`,
       [id, Number(itemId)]
     );
 
@@ -2751,24 +2753,78 @@ router.put('/:id/items/:itemId/move-category', async (req, res) => {
 
     const oldProductSizeId = Number(source.product_size_id);
 
-    await mssql.query(
-      'UPDATE super_price_list_items SET product_size_id = @p1 WHERE id = @p2',
-      [Number(targetProductSizeId), Number(itemId)]
+    // If another active super item already points at the target size in this same list,
+    // keep that existing item and soft-delete the moved source item to avoid duplicate-key collisions.
+    const existingTargetItemRows = await mssql.query(
+      `SELECT TOP 1 id
+       FROM super_price_list_items
+       WHERE super_price_list_id = @p1
+         AND product_size_id = @p2
+         AND ISNULL(is_deleted, 0) = 0
+         AND id <> @p3
+       ORDER BY id DESC`,
+      [Number(id), Number(targetProductSizeId), Number(itemId)]
     );
+    const existingTargetSuperItemId = Number(existingTargetItemRows[0]?.id || 0);
 
+    if (existingTargetSuperItemId > 0) {
+      await mssql.query(
+        `UPDATE super_price_list_items
+         SET is_deleted = 1,
+             is_active = 0
+         WHERE id = @p1`,
+        [Number(itemId)]
+      );
+    } else {
+      await mssql.query(
+        'UPDATE super_price_list_items SET product_size_id = @p1 WHERE id = @p2',
+        [Number(targetProductSizeId), Number(itemId)]
+      );
+    }
+
+    // Move studio rows safely: first update where target size is not already present,
+    // then soft-delete remaining source rows that would conflict.
     await mssql.query(
       `UPDATE spi
        SET spi.product_size_id = @p1
        FROM studio_price_list_items spi
        INNER JOIN studio_price_lists spl ON spl.id = spi.studio_price_list_id
        WHERE spl.super_price_list_id = @p2
-         AND spi.product_size_id = @p3`,
+         AND spi.product_size_id = @p3
+         AND ISNULL(spi.is_deleted, 0) = 0
+         AND NOT EXISTS (
+           SELECT 1
+           FROM studio_price_list_items existing
+           WHERE existing.studio_price_list_id = spi.studio_price_list_id
+             AND existing.product_size_id = @p1
+             AND ISNULL(existing.is_deleted, 0) = 0
+         )`,
+      [Number(targetProductSizeId), Number(id), oldProductSizeId]
+    );
+
+    await mssql.query(
+      `UPDATE spi
+       SET spi.is_deleted = 1,
+           spi.is_offered = 0
+       FROM studio_price_list_items spi
+       INNER JOIN studio_price_lists spl ON spl.id = spi.studio_price_list_id
+       WHERE spl.super_price_list_id = @p2
+         AND spi.product_size_id = @p3
+         AND ISNULL(spi.is_deleted, 0) = 0
+         AND EXISTS (
+           SELECT 1
+           FROM studio_price_list_items existing
+           WHERE existing.studio_price_list_id = spi.studio_price_list_id
+             AND existing.product_size_id = @p1
+             AND ISNULL(existing.is_deleted, 0) = 0
+         )`,
       [Number(targetProductSizeId), id, oldProductSizeId]
     );
 
     res.json({ success: true, product_size_id: Number(targetProductSizeId), product_id: Number(targetProductId) });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to move item category' });
+    const detail = String(err?.message || '').trim();
+    res.status(500).json({ error: detail ? `Failed to move item category: ${detail}` : 'Failed to move item category' });
   }
 });
 
@@ -2792,7 +2848,13 @@ router.patch('/:id/bulk-markup', async (req, res) => {
   const { markup_percent } = req.body;
   if (markup_percent === undefined || markup_percent === null) return res.status(400).json({ error: 'markup_percent required' });
   try {
-    await mssql.query('UPDATE super_price_list_items SET markup_percent = @p1 WHERE super_price_list_id = @p2 AND is_active = 1', [Number(markup_percent), id]);
+    await ensureSuperPriceListItemWhccMetadataColumns();
+    const markupValue = Number(markup_percent);
+    if (!Number.isFinite(markupValue) || markupValue < 0) return res.status(400).json({ error: 'markup_percent must be a non-negative number' });
+    await mssql.query(
+      'UPDATE super_price_list_items SET markup_percent = @p1 WHERE super_price_list_id = @p2 AND is_active = 1 AND ISNULL(is_deleted, 0) = 0',
+      [markupValue, id]
+    );
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

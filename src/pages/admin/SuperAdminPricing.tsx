@@ -2024,13 +2024,8 @@ const SuperAdminPricing: React.FC = () => {
     setApplyingMarkup(true);
     try {
       await superPriceListService.bulkSetMarkup(viewList.id, Number(globalMarkup));
-      const val = Number(globalMarkup);
-      setViewItems(prev => prev.map(i => i.is_active ? { ...i, markup_percent: val } : i));
-      setItemDrafts(prev => {
-        const n = { ...prev };
-        viewItems.forEach(i => { if (i.is_active) n[i.id] = { ...n[i.id], markup_percent: globalMarkup }; });
-        return n;
-      });
+      setGlobalMarkup('');
+      await refreshViewItems();
     } catch { setViewError('Failed to apply markup.'); }
     finally { setApplyingMarkup(false); }
   };
