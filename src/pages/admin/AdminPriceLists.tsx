@@ -1226,13 +1226,13 @@ const [savingProductKey, setSavingProductKey] = useState<string | null>(null);
 																	>
 																		⋮⋮
 																	</span>
-																	<label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+																	<label className="studio-offer-toggle">
 																		<input
 																			type="checkbox"
 																			checked={!!item.is_offered}
 																			onChange={e => handleToggleOffered(item, e.target.checked)}
 																		/>
-																		<span style={{ fontSize: 12 }}>Offer</span>
+																		<span className="studio-offer-toggle-label">Offer</span>
 																	</label>
 																	<div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
 																		<span>{item._sizeLabel || item.size_name || '—'}</span>
@@ -1264,7 +1264,7 @@ const [savingProductKey, setSavingProductKey] = useState<string | null>(null);
 																					value={draftPrices[item.id] ?? ''}
 																					onChange={e => setDraftPrices(prev => ({ ...prev, [item.id]: e.target.value }))}
 																					disabled={!item.is_offered}
-																					style={{ width: 120 }}
+																					placeholder="Studio price"
 																				/>
 																			</>
 																		)}
@@ -1287,7 +1287,7 @@ const [savingProductKey, setSavingProductKey] = useState<string | null>(null);
 																		);
 																	})()}
 																		{!hasVariantPricing && (
-																			<div style={{ fontSize: 12, color: '#aaa', textAlign: 'right' }}>
+																			<div className="studio-profit-estimate">
 																				{(() => {
 																					const cost = computedDisplayCost(item, draftPrices[item.id]);
 																					const profit = estimateProfit(cost, draftPrices[item.id]);
@@ -1314,7 +1314,7 @@ const [savingProductKey, setSavingProductKey] = useState<string | null>(null);
 																				{savingVariantItemId === Number(item.id) ? 'Saving...' : 'Save'}
 																			</button>
 																		</div>
-																		<div className="spl-variant-grid spl-variant-grid-header" style={{ gridTemplateColumns: '1.2fr 0.6fr 0.7fr' }}>
+																		<div className="spl-variant-grid spl-variant-grid-header">
 																			<span>Attribute</span>
 																			<span>Studio Cost</span>
 																			<span>Studio Price</span>
@@ -1325,7 +1325,7 @@ const [savingProductKey, setSavingProductKey] = useState<string | null>(null);
 																			(variantDraftsByItem[Number(item.id)] || [])
 																				.filter((row) => row.isActive)
 																				.map((row) => (
-																					<div key={row.key} className="spl-variant-grid spl-variant-grid-row" style={{ gridTemplateColumns: '1.2fr 0.6fr 0.7fr', marginBottom: 6 }}>
+																					<div key={row.key} className="spl-variant-grid spl-variant-grid-row">
 																						<div style={{ color: '#c7c1ed', fontSize: 13 }}>{row.label}</div>
 																						<div style={{ color: '#b5b0d6', fontSize: 12 }}>Cost {toCurrency(row.superCost || 0)}</div>
 																						<input

@@ -3720,11 +3720,58 @@ router.post('/', requireActiveSubscription, async (req, res) => {
         productCategory: productRow?.productCategory,
         productName: productRow?.productName,
       });
+
+      // PATCH: If a variant is selected, resolve its base_cost and price
+      // instead of using the default product/size pricing.
+      let resolvedBaseUnitPrice = productRow?.sizeBasePrice ?? productRow?.productBasePrice ?? 0;
+      let resolvedProductionUnitCost = productRow?.sizeCost ?? productRow?.productCost ?? 0;
+
+      if (productOptions && item.productSizeId) {
+        const selectedVariantId = Number(
+          productOptions?.whccSelectedVariantId ??
+          productOptions?.selectedWhccVariantId ??
+          productOptions?.selectedVariantId ?? 0
+        );
+        const selectedVariantLocalId = String(
+          productOptions?.whccSelectedVariantLocalId ??
+          productOptions?.selectedWhccVariantLocalId ??
+          ''
+        ).trim();
+
+        if (selectedVariantId > 0 || selectedVariantLocalId) {
+          // Try to find the selected variant in the database
+          const variantRow = selectedVariantId > 0
+            ? await queryRow(
+                `SELECT v.base_cost, v.price
+                 FROM super_price_list_item_whcc_variants v
+                 INNER JOIN super_price_list_items spi ON spi.id = v.super_price_list_item_id
+                 WHERE v.id = $1 AND spi.product_size_id = $2`,
+                [selectedVariantId, item.productSizeId]
+              )
+            : null;
+
+          if (variantRow) {
+            const variantBaseCost = parseNullableNumber(variantRow?.base_cost);
+            const variantPrice = parseNullableNumber(variantRow?.price);
+            if (variantBaseCost !== null) {
+              resolvedBaseUnitPrice = variantBaseCost;
+            }
+            console.log('[ORDER ITEM VARIANT PRICING]', {
+              productSizeId: item.productSizeId,
+              selectedVariantId,
+              variantBaseCost,
+              variantPrice,
+              resolvedBaseUnitPrice,
+            });
+          }
+        }
+      }
+
       const accounting = calculateItemAccountingSnapshot({
         unitPrice: item.price,
         quantity: item.quantity,
-        baseUnitPrice: productRow?.sizeBasePrice ?? productRow?.productBasePrice ?? 0,
-        productionUnitCost: productRow?.sizeCost ?? productRow?.productCost ?? 0,
+        baseUnitPrice: resolvedBaseUnitPrice,
+        productionUnitCost: resolvedProductionUnitCost,
         isDigital,
         productOptions,
       });

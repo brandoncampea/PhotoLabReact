@@ -245,7 +245,7 @@ router.get('/:id/items', async (req, res) => {
                v.whcc_product_node_ids,
                v.whcc_item_attribute_uids,
                v.base_cost,
-               v.price,
+           v.price,
                v.is_default,
                v.is_active
         FROM super_price_list_item_whcc_variants v
@@ -731,7 +731,7 @@ router.patch('/:id/items/apply-markup', async (req, res) => {
                v.whcc_product_uid,
                v.whcc_item_attribute_uids,
                v.base_cost,
-               v.price,
+           v.price,
                v.is_default,
                v.is_active
         FROM super_price_list_item_whcc_variants v

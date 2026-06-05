@@ -317,7 +317,7 @@ router.get('/active', async (req, res) => {
                   v.whcc_product_node_ids as whccProductNodeIDs,
                   v.whcc_item_attribute_uids as whccItemAttributeUIDs,
                   v.base_cost as baseCost,
-                  v.price,
+              v.price,
                   v.is_default as isDefault,
                   v.is_active as isActive
            FROM super_price_list_item_whcc_variants v

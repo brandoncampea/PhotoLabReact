@@ -78,6 +78,7 @@ import notifyWatchersRoutes from './routes/notifyWatchers.js';
 import reportsRoutes from './routes/reports.js';
 
 import runWhccEditorBackfillOnce from './startup/runWhccEditorBackfillOnce.js';
+import runWhccVariantSchemaMigrations from './startup/runWhccVariantSchemaMigrations.js';
 import './startup/ensureFreeBatchShippingColumn.js';
 import './startup/ensureOrderApprovalColumns.js';
 
@@ -266,6 +267,7 @@ const initializeDatabaseWithRetry = async () => {
     attempt += 1;
     try {
       await initializeDatabase();
+      await runWhccVariantSchemaMigrations();
       await runWhccEditorBackfillOnce({ appVersion });
       console.log(`✓ Database initialized successfully (attempt ${attempt})`);
       return;

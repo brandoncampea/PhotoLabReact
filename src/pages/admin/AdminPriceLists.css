@@ -132,18 +132,25 @@
 
 .admin-price-lists-page .studio-size-grid {
   display: grid;
-  grid-template-columns: 74px 1fr 100px 120px 110px 90px;
-  gap: 6px;
+  grid-template-columns: 44px 84px minmax(170px, 1fr) minmax(92px, 110px) minmax(110px, 140px) minmax(96px, 126px) minmax(130px, 1fr);
+  gap: 10px;
   align-items: center;
-  padding: 4px 8px;
+  padding: 10px 12px;
 }
 
 .admin-price-lists-page .studio-size-grid-variant {
   display: grid;
-  grid-template-columns: 74px 1fr 110px;
-  gap: 6px;
+  grid-template-columns: 44px 90px minmax(240px, 1fr) 140px;
+  gap: 10px;
   align-items: center;
-  padding: 4px 8px;
+  padding: 10px 12px;
+}
+
+.admin-price-lists-page .spl-size-row {
+  border: 1px solid rgba(102, 102, 204, 0.24);
+  border-radius: 10px;
+  background: rgba(18, 20, 38, 0.58);
+  margin-bottom: 8px;
 }
 
 .admin-price-lists-page .studio-meta-line {
@@ -156,16 +163,36 @@
 }
 
 .admin-price-lists-page .studio-variant-editor {
-  margin: 6px 10px 10px clamp(10px, 2.2vw, 40px);
+  margin: 8px 10px 12px clamp(10px, 2.2vw, 40px);
   max-width: calc(100% - 20px);
+  border: 1px solid rgba(136, 123, 255, 0.25);
+  border-radius: 12px;
+  background: rgba(13, 16, 34, 0.8);
+  padding: 12px;
 }
 
 .admin-price-lists-page .studio-variant-editor .spl-variant-grid {
-  grid-template-columns: minmax(140px, 1.2fr) minmax(96px, 0.6fr) minmax(140px, 0.9fr) !important;
+  grid-template-columns: minmax(160px, 1.2fr) minmax(130px, 0.75fr) minmax(180px, 1fr) !important;
+  gap: 10px;
+  align-items: center;
 }
 
 .admin-price-lists-page .studio-variant-editor .spl-variant-input {
   width: 100%;
+  min-height: 36px;
+}
+
+.admin-price-lists-page .studio-variant-editor .spl-variant-grid-header {
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(86, 72, 190, 0.14);
+}
+
+.admin-price-lists-page .studio-variant-editor .spl-variant-grid-row {
+  padding: 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+  margin-bottom: 8px;
 }
 
 .admin-price-lists-page .studio-attrs-toggle-btn,
@@ -178,7 +205,71 @@
   justify-self: end;
 }
 
+.admin-price-lists-page .studio-offer-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.admin-price-lists-page .studio-offer-toggle-label {
+  font-size: 12px;
+  color: #d7dcfb;
+}
+
+.admin-price-lists-page .studio-size-price-input {
+  width: 100%;
+  min-width: 120px;
+  min-height: 36px;
+}
+
+.admin-price-lists-page .studio-profit-estimate {
+  font-size: 12px;
+  color: #aaa;
+  text-align: right;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
 .admin-price-lists-page .studio-size-price-input.is-locked {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+@media (max-width: 1200px) {
+  .admin-price-lists-page .studio-size-grid {
+    grid-template-columns: 44px 84px minmax(150px, 1fr) minmax(92px, 110px) minmax(96px, 120px) minmax(110px, 1fr);
+  }
+
+  .admin-price-lists-page .studio-profit-estimate {
+    grid-column: 3 / -1;
+    text-align: left;
+  }
+}
+
+@media (max-width: 920px) {
+  .admin-price-lists-page .studio-size-grid,
+  .admin-price-lists-page .studio-size-grid-variant {
+    grid-template-columns: 36px 1fr;
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .admin-price-lists-page .studio-attrs-toggle-btn,
+  .admin-price-lists-page .studio-size-price-input,
+  .admin-price-lists-page .studio-profit-estimate {
+    grid-column: 2;
+    justify-self: start;
+    text-align: left;
+  }
+
+  .admin-price-lists-page .studio-variant-editor {
+    margin-left: 8px;
+    margin-right: 8px;
+    max-width: calc(100% - 16px);
+  }
+
+  .admin-price-lists-page .studio-variant-editor .spl-variant-grid {
+    grid-template-columns: 1fr !important;
+  }
 }

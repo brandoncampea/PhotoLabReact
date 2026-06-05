@@ -2023,9 +2023,37 @@ const SuperAdminPricing: React.FC = () => {
     if (globalMarkup === '' || !viewList) return;
     setApplyingMarkup(true);
     try {
-      await superPriceListService.bulkSetMarkup(viewList.id, Number(globalMarkup));
+      const markupValue = Number(globalMarkup);
+      await superPriceListService.bulkSetMarkup(viewList.id, markupValue);
+
+      // Apply updates locally so the screen reflects changes immediately.
+      setViewItems((prev) => {
+        const next = (prev || []).map((item: any) => {
+          if (!item || !item.is_active) return item;
+
+          const nextVariants = Array.isArray(item.whccVariants)
+            ? item.whccVariants.map((variant: any) => {
+                if (!variant || variant.isActive === false) return variant;
+                const base = Number(variant.baseCost);
+                if (!Number.isFinite(base) || base <= 0) return variant;
+                const price = Number((base * (1 + markupValue / 100)).toFixed(2));
+                return { ...variant, price };
+              })
+            : item.whccVariants;
+
+          return {
+            ...item,
+            markup_percent: markupValue,
+            whccVariants: nextVariants,
+          };
+        });
+
+        setItemDrafts(buildItemDrafts(next));
+        return next;
+      });
+
       setGlobalMarkup('');
-      await refreshViewItems();
+      setViewError('');
     } catch { setViewError('Failed to apply markup.'); }
     finally { setApplyingMarkup(false); }
   };

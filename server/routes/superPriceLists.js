@@ -1627,7 +1627,7 @@ router.get('/:id/items', async (req, res) => {
              v.whcc_product_node_ids,
              v.whcc_item_attribute_uids,
               v.base_cost,
-              v.price,
+          v.price,
              v.is_default,
              v.is_active
       FROM super_price_list_item_whcc_variants v
@@ -2852,44 +2852,49 @@ router.patch('/:id/bulk-markup', async (req, res) => {
     await ensureWhccVariantsTable();
     const markupValue = Number(markup_percent);
     if (!Number.isFinite(markupValue) || markupValue < 0) return res.status(400).json({ error: 'markup_percent must be a non-negative number' });
-    
-    // Fetch all active items with their base_cost, calculate price, and update both markup_percent and price
-    const activeItems = await mssql.query(
-      `SELECT id, base_cost FROM super_price_list_items 
-       WHERE super_price_list_id = @p1 AND is_active = 1 AND ISNULL(is_deleted, 0) = 0 AND base_cost IS NOT NULL AND base_cost > 0`,
-      [id]
+
+    // Set-based updates (single round-trip) for all active items and active variants.
+    const result = await mssql.query(
+      `SET NOCOUNT ON;
+
+       UPDATE spi
+       SET spi.markup_percent = @p2
+       FROM super_price_list_items spi
+       WHERE spi.super_price_list_id = @p1
+         AND spi.is_active = 1
+         AND ISNULL(spi.is_deleted, 0) = 0
+         AND spi.base_cost IS NOT NULL
+         AND spi.base_cost > 0;
+
+       DECLARE @updatedItems INT = @@ROWCOUNT;
+
+       UPDATE v
+       SET v.price = ROUND(CAST(v.base_cost AS DECIMAL(18,6)) * (1 + (@p2 / 100.0)), 2)
+       FROM super_price_list_item_whcc_variants v
+       INNER JOIN super_price_list_items spi ON spi.id = v.super_price_list_item_id
+       WHERE spi.super_price_list_id = @p1
+         AND spi.is_active = 1
+         AND ISNULL(spi.is_deleted, 0) = 0
+         AND v.is_active = 1
+         AND v.base_cost IS NOT NULL
+         AND v.base_cost > 0;
+
+       DECLARE @updatedVariants INT = @@ROWCOUNT;
+
+       SELECT @updatedItems AS updatedItems, @updatedVariants AS updatedVariants;`,
+      [id, markupValue]
     );
-    
-    for (const item of activeItems) {
-      const baseCost = Number(item.base_cost);
-      if (!Number.isFinite(baseCost) || baseCost <= 0) continue;
-      const calculatedPrice = Number((baseCost * (1 + markupValue / 100)).toFixed(2));
-      
-      // Update base item
-      await mssql.query(
-        'UPDATE super_price_list_items SET markup_percent = @p1, price = @p2 WHERE id = @p3',
-        [markupValue, calculatedPrice, item.id]
-      );
-      
-      // Also update variants for this item: recalculate their prices based on their base_cost
-      const variants = await mssql.query(
-        `SELECT id, base_cost FROM super_price_list_item_whcc_variants 
-         WHERE super_price_list_item_id = @p1 AND base_cost IS NOT NULL AND base_cost > 0`,
-        [item.id]
-      );
-      
-      for (const variant of variants) {
-        const variantBaseCost = Number(variant.base_cost);
-        if (!Number.isFinite(variantBaseCost) || variantBaseCost <= 0) continue;
-        const variantCalculatedPrice = Number((variantBaseCost * (1 + markupValue / 100)).toFixed(2));
-        await mssql.query(
-          'UPDATE super_price_list_item_whcc_variants SET price = @p1 WHERE id = @p2',
-          [variantCalculatedPrice, variant.id]
-        );
-      }
-    }
-    
-    res.json({ success: true });
+
+    const meta = Array.isArray(result) && result[0]
+      ? result[0]
+      : { updatedItems: 0, updatedVariants: 0 };
+
+    res.json({
+      success: true,
+      markup_percent: markupValue,
+      updatedItems: Number(meta.updatedItems || 0),
+      updatedVariants: Number(meta.updatedVariants || 0),
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
