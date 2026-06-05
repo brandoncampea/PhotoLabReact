@@ -2637,6 +2637,8 @@ const SuperAdminPricing: React.FC = () => {
                                       const first = visibleProdItems[0];
                                       if (first) beginProductDrag(e, first);
                                     }}
+                                    onDragOver={(e) => e.preventDefault()}
+                                    onDrop={(e) => { e.stopPropagation(); void handleDropOnProduct(e, cat, prod); }}
                                     onClick={() => setProdCollapsed((p) => ({ ...p, [prodKey]: !p[prodKey] }))}
                                   >
                                     <button className="spl-collapse-btn">{prodCollapsed[prodKey] ? '▶' : '▼'}</button>
@@ -2898,7 +2900,11 @@ const SuperAdminPricing: React.FC = () => {
 
                                           return (
                                             <div key={`compact-size-${item.id}`} className="spl-size-row-wrap">
-                                              <div className={`spl-size-row${item.is_active ? '' : ' spl-inactive-row'}`}>
+                                              <div
+                                                className={`spl-size-row${item.is_active ? '' : ' spl-inactive-row'}`}
+                                                draggable
+                                                onDragStart={(e) => beginSizeDrag(e, item)}
+                                              >
                                                 <button
                                                   className="spl-collapse-btn"
                                                   onClick={() => {
@@ -2973,6 +2979,12 @@ const SuperAdminPricing: React.FC = () => {
                                                   }}
                                                 >
                                                   {isVariantEditorOpen ? 'Close attrs' : 'Edit attrs'}
+                                                </button>
+                                                <button
+                                                  className="btn btn-danger btn-sm"
+                                                  onClick={() => void handleDeleteItem(item)}
+                                                >
+                                                  Remove size
                                                 </button>
                                               </div>
 
