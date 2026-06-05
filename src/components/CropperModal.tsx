@@ -30,6 +30,23 @@ export default function CropperModal({ item, onClose }: CropperModalProps) {
   let aspectRatio = 1;
   if (item.productSize && item.productSize.width && item.productSize.height) {
     aspectRatio = item.productSize.width / item.productSize.height;
+  } else if (item.productSizeName) {
+    // Parse size name like "5x7", "8x10", "4x6" etc. as a fallback
+    const sizeMatch = String(item.productSizeName).match(/(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)/i);
+    if (sizeMatch) {
+      const pw = parseFloat(sizeMatch[1]);
+      const ph = parseFloat(sizeMatch[2]);
+      if (pw > 0 && ph > 0) {
+        // Orient to match photo if dimensions are available
+        if (originalWidth > 0 && originalHeight > 0 && (originalWidth > originalHeight) !== (pw > ph)) {
+          aspectRatio = ph / pw;
+        } else {
+          aspectRatio = pw / ph;
+        }
+      }
+    } else if (originalWidth && originalHeight) {
+      aspectRatio = originalWidth / originalHeight;
+    }
   } else if (originalWidth && originalHeight) {
     aspectRatio = originalWidth / originalHeight;
   }

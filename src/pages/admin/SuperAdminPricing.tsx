@@ -586,9 +586,26 @@ const SuperAdminPricing: React.FC = () => {
             optional.push(...attrs.map((a: any) => ({ name: a.AttributeName || a.name || '', description: a.Description || a.description })));
           }
         }
+        const dedupeAttrs = (items: Array<{ name: string; description?: string }>) => {
+          const seen = new Set<string>();
+          const out: Array<{ name: string; description?: string }> = [];
+          for (const item of items) {
+            const name = String(item?.name || '').trim();
+            if (!name) continue;
+            const key = name.toLowerCase();
+            if (seen.has(key)) continue;
+            seen.add(key);
+            out.push({ name, description: item?.description });
+          }
+          return out;
+        };
+
+        const uniqueRequired = dedupeAttrs(required);
+        const uniqueOptional = dedupeAttrs(optional);
+
         setProductWhccAttrs((prev) => ({
           ...prev,
-          [prodKey]: { loading: false, attrs: { required, optional, whccCost: raw.whccCost }, shown: true },
+          [prodKey]: { loading: false, attrs: { required: uniqueRequired, optional: uniqueOptional, whccCost: raw.whccCost }, shown: true },
         }));
       } catch (e: any) {
         setProductWhccAttrs((prev) => ({
@@ -2087,6 +2104,30 @@ const SuperAdminPricing: React.FC = () => {
     }
   };
 
+  const handleDeleteProduct = async (item: any) => {
+    if (!viewList) return;
+    const prodName = String(item?.product_name || 'this product');
+    if (!window.confirm(`Remove all sizes of "${prodName}" from this price list?`)) return;
+    try {
+      await superPriceListService.deleteProduct(viewList.id, Number(item.product_id));
+      await refreshViewItems();
+    } catch (err: any) {
+      setViewError(err?.response?.data?.error || err?.message || 'Failed to remove product.');
+    }
+  };
+
+  const handleDeleteItem = async (item: any) => {
+    if (!viewList) return;
+    const label = String(item?._sizeLabel || item?.size_name || 'this size');
+    if (!window.confirm(`Remove size "${label}" from this price list?`)) return;
+    try {
+      await superPriceListService.deleteItem(viewList.id, Number(item.id));
+      await refreshViewItems();
+    } catch (err: any) {
+      setViewError(err?.response?.data?.error || err?.message || 'Failed to remove size.');
+    }
+  };
+
   const handleMoveProductCategory = async (item: any) => {
     if (!viewList) return;
     const targetCategory = window.prompt('Move product to category:', String(item?.product_category || ''))?.trim();
@@ -2546,6 +2587,11 @@ const SuperAdminPricing: React.FC = () => {
                             type="button"
                             onClick={(e) => { e.stopPropagation(); void handleRenameCategory(cat); }}
                           >Rename</button>
+                          <button
+                            className="btn btn-danger btn-sm spl-inline-action-btn"
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); void handleDeleteCategory(cat); }}
+                          >Delete</button>
                           <label className="spl-toggle-label" onClick={(e) => e.stopPropagation()}>
                             <IndeterminateCheckbox
                               checked={catAllActive}
@@ -2655,6 +2701,14 @@ const SuperAdminPricing: React.FC = () => {
                                       }}
                                     >Move</button>
                                     <button
+                                      className="btn btn-danger btn-sm spl-inline-action-btn"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        const first = visibleProdItems[0];
+                                        if (first) void handleDeleteProduct(first);
+                                      }}
+                                    >Remove</button>
+                                    <button
                                       className="btn btn-secondary btn-sm spl-inline-action-btn"
                                       onClick={(e) => {
                                         e.stopPropagation();
@@ -2733,7 +2787,7 @@ const SuperAdminPricing: React.FC = () => {
                                               <strong>Required:</strong>
                                               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: 4 }}>
                                                 {(productWhccAttrs[prodKey]?.attrs?.required ?? []).length > 0 ? (
-                                                  (productWhccAttrs[prodKey]?.attrs?.required ?? []).map((attr) => {
+                                                  (productWhccAttrs[prodKey]?.attrs?.required ?? []).map((attr, idx) => {
                                                     const pill = productAttributePills.find(p => String(p.label).includes(attr.name));
                                                     if (!pill) return null;
                                                     const toggleKey = `${prodKey}-${pill.key}`;
@@ -2741,7 +2795,7 @@ const SuperAdminPricing: React.FC = () => {
                                                     const isSaving = savingProductAttributeKey === toggleKey || savingProductAttributeKey === defaultKey;
                                                     return (
                                                       <div
-                                                        key={`compact-pill-required-${pill.key}`}
+                                                        key={`compact-pill-required-${pill.key}-${idx}`}
                                                         className={`spl-product-attribute-chip-wrap${pill.isActive ? ' is-active' : ''}${pill.isDefault ? ' is-default' : ''}`}
                                                       >
                                                         <button
@@ -2778,7 +2832,7 @@ const SuperAdminPricing: React.FC = () => {
                                               <strong>Optional:</strong>
                                               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: 4 }}>
                                                 {(productWhccAttrs[prodKey]?.attrs?.optional ?? []).length > 0 ? (
-                                                  (productWhccAttrs[prodKey]?.attrs?.optional ?? []).map((attr) => {
+                                                  (productWhccAttrs[prodKey]?.attrs?.optional ?? []).map((attr, idx) => {
                                                     const pill = productAttributePills.find(p => String(p.label).includes(attr.name));
                                                     if (!pill) return null;
                                                     const toggleKey = `${prodKey}-${pill.key}`;
@@ -2786,7 +2840,7 @@ const SuperAdminPricing: React.FC = () => {
                                                     const isSaving = savingProductAttributeKey === toggleKey || savingProductAttributeKey === defaultKey;
                                                     return (
                                                       <div
-                                                        key={`compact-pill-optional-${pill.key}`}
+                                                        key={`compact-pill-optional-${pill.key}-${idx}`}
                                                         className={`spl-product-attribute-chip-wrap${pill.isActive ? ' is-active' : ''}${pill.isDefault ? ' is-default' : ''}`}
                                                       >
                                                         <button
@@ -3290,6 +3344,15 @@ const SuperAdminPricing: React.FC = () => {
                                       if (first) handleMoveProductCategory(first);
                                     }}
                                   >Move Product</button>
+                                  <button
+                                    className="btn btn-danger btn-sm"
+                                    style={{ padding: '2px 8px' }}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const first = viewGrouped[cat][prod]?.[0];
+                                      if (first) void handleDeleteProduct(first);
+                                    }}
+                                  >Remove Product</button>
                                   <label className="spl-toggle-label" onClick={e => e.stopPropagation()}>
                                     <IndeterminateCheckbox
                                       checked={prodAllActive}
@@ -3715,6 +3778,14 @@ const SuperAdminPricing: React.FC = () => {
                                               handleMoveSizeCategory(item);
                                             }}
                                           >Move Size</button>
+                                          <button
+                                            className="btn btn-danger btn-sm"
+                                            style={{ marginLeft: 6 }}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              void handleDeleteItem(item);
+                                            }}
+                                          >Remove Size</button>
                                         </div>
                                       </div>
                                       )}

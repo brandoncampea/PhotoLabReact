@@ -1251,6 +1251,7 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
   let currentRequestUrl = null;
   let sandboxMode = false;
   let requestLog = null;
+  let whccSubmissionDebug = null;
   const nowIso = () => new Date().toISOString();
 
   const extractWhccResponseDetails = (...sources) => {
@@ -2370,8 +2371,11 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
           return selected;
         })();
 
+        const preferredAttributeUIDs = finalAttributeUIDs.length
+          ? finalAttributeUIDs
+          : dbItemAttributeUIDsWithDirectParents;
         const itemAttributeUIDs = Array.from(
-          new Set((dbItemAttributeUIDsWithDirectParents.length ? dbItemAttributeUIDsWithDirectParents : finalAttributeUIDs)
+          new Set(preferredAttributeUIDs
             .map((value) => Number(value))
             .filter((value) => Number.isInteger(value) && value > 0))
         );
@@ -2425,7 +2429,7 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
               AssetPath: whccImageUrl,
               ImageHash: imageHash,
               PrintedFileName: item.fileName || `order-${orderId}-item-${index + 1}.jpg`,
-              AutoRotate: true,
+              AutoRotate: false,
               ...cropOverrides,
             })),
             // Include ItemAttributes from order_items.attributes (DB only)
@@ -2518,6 +2522,29 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
       EntryId: whccEntryId,
       Orders: [whccOrder],
       ...(webhookId ? { WebhookId: webhookId } : {}),
+    };
+
+    whccSubmissionDebug = {
+      orderIds: targetOrderIds,
+      confirmationId,
+      items: filteredWhccItems.map((item) => ({
+        localItemId: item.localItemId,
+        productUID: item.productUID,
+        productNodeID: item.productNodeID,
+        itemAttributeUIDs: item.itemAttributeUIDs,
+        variantId: item.variantId,
+        variantLocalId: item.variantLocalId,
+        variantDisplayName: item.variantDisplayName,
+        nodeCount: item.nodeCount,
+        expectedVariantId: item.expectedVariantId,
+        expectedVariantName: item.expectedVariantName,
+        payload: {
+          ItemAttributes: Array.isArray(item.payload?.ItemAttributes) ? item.payload.ItemAttributes : [],
+          ItemAssets: Array.isArray(item.payload?.ItemAssets)
+            ? item.payload.ItemAssets.map((asset) => ({ ProductNodeID: asset?.ProductNodeID }))
+            : [],
+        },
+      })),
     };
 
 
@@ -2721,6 +2748,14 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
       confirmationId,
       responseData: error?.response?.data || null,
     };
+
+    if (currentStage === 'submit' && whccSubmissionDebug) {
+      console.error('[WHCC][DEBUG] Submit failure payload:', JSON.stringify({
+        requestUrl: currentRequestUrl,
+        error: errorPayload,
+        submissionDebug: whccSubmissionDebug,
+      }, null, 2));
+    }
 
     requestLog = {
       ...(requestLog || {}),

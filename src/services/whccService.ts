@@ -307,7 +307,7 @@ class WhccService {
                 AssetPath: item.imageUrl || 'https://placeholder.com/image.jpg',
                 ImageHash: item.imageHash || '', // Always use backend-computed hash
                 PrintedFileName: item.imageName || 'image.jpg',
-                AutoRotate: true,
+                AutoRotate: false,
                 X: item.cropX || 0,
                 Y: item.cropY || 0,
                 ZoomX: item.zoomX || 100,

@@ -51,6 +51,8 @@ const ensureStudioProductPresentationColumns = async () => {
         ALTER TABLE studio_price_list_items ADD display_order INT NULL;
       IF COL_LENGTH('studio_price_list_items', 'whcc_variants_json') IS NULL
         ALTER TABLE studio_price_list_items ADD whcc_variants_json NVARCHAR(MAX) NULL;
+      IF COL_LENGTH('studio_price_list_items', 'is_deleted') IS NULL
+        ALTER TABLE studio_price_list_items ADD is_deleted BIT NOT NULL DEFAULT 0;
     `);
   } catch (_) {}
 };
@@ -108,7 +110,7 @@ router.post('/', async (req, res) => {
     const studioPriceListIdResult = await mssql.query('SELECT id FROM studio_price_lists WHERE name = @p1 AND studio_id = @p2', [name, studio_id]);
     const studioPriceListId = studioPriceListIdResult[0]?.id;
     // Copy items from super price list
-    const items = await mssql.query('SELECT product_size_id, base_cost FROM super_price_list_items WHERE super_price_list_id = @p1 AND is_active = 1', [super_price_list_id]);
+    const items = await mssql.query('SELECT product_size_id, base_cost FROM super_price_list_items WHERE super_price_list_id = @p1 AND is_active = 1 AND is_deleted = 0', [super_price_list_id]);
     for (const item of items) {
       await mssql.query('INSERT INTO studio_price_list_items (studio_price_list_id, product_size_id, price, is_offered) VALUES (@p1, @p2, @p3, 1)', [studioPriceListId, item.product_size_id, item.base_cost]);
     }
@@ -145,22 +147,46 @@ router.get('/:id/items', async (req, res) => {
     // Backfill any active source items that were added to the super price list
     // after this studio list was initially created.
     const activeSourceItems = await mssql.query(
-      'SELECT product_size_id, base_cost FROM super_price_list_items WHERE super_price_list_id = @p1 AND is_active = 1',
+      'SELECT product_size_id, base_cost FROM super_price_list_items WHERE super_price_list_id = @p1 AND is_active = 1 AND is_deleted = 0',
       [superPriceListId]
     );
     const existingStudioItems = await mssql.query(
-      'SELECT product_size_id FROM studio_price_list_items WHERE studio_price_list_id = @p1',
+      'SELECT id, product_size_id, is_deleted FROM studio_price_list_items WHERE studio_price_list_id = @p1',
       [id]
     );
-    const existingSizeIds = new Set(existingStudioItems.map((row) => Number(row.product_size_id)).filter(Number.isFinite));
+    const existingBySizeId = new Map(
+      existingStudioItems
+        .map((row) => ({
+          id: Number(row?.id || 0),
+          productSizeId: Number(row?.product_size_id || 0),
+          isDeleted: Number(row?.is_deleted || 0) === 1,
+        }))
+        .filter((row) => Number.isFinite(row.productSizeId) && row.productSizeId > 0)
+        .map((row) => [row.productSizeId, row])
+    );
     for (const sourceItem of activeSourceItems) {
       const productSizeId = Number(sourceItem?.product_size_id);
-      if (!Number.isFinite(productSizeId) || existingSizeIds.has(productSizeId)) continue;
+      if (!Number.isFinite(productSizeId) || productSizeId <= 0) continue;
+      const existing = existingBySizeId.get(productSizeId);
+      if (existing?.id) {
+        if (existing.isDeleted) {
+          await mssql.query(
+            `UPDATE studio_price_list_items
+             SET is_deleted = 0,
+                 is_offered = 0,
+                 price = COALESCE(price, @p1)
+             WHERE id = @p2`,
+            [sourceItem?.base_cost ?? null, existing.id]
+          );
+          existingBySizeId.set(productSizeId, { ...existing, isDeleted: false });
+        }
+        continue;
+      }
       await mssql.query(
-        'INSERT INTO studio_price_list_items (studio_price_list_id, product_size_id, price, is_offered) VALUES (@p1, @p2, @p3, 1)',
+        'INSERT INTO studio_price_list_items (studio_price_list_id, product_size_id, price, is_offered) VALUES (@p1, @p2, @p3, 0)',
         [id, productSizeId, sourceItem?.base_cost ?? null]
       );
-      existingSizeIds.add(productSizeId);
+      existingBySizeId.set(productSizeId, { id: 0, productSizeId, isDeleted: false });
     }
 
     const items = await mssql.query(`
@@ -193,12 +219,14 @@ router.get('/:id/items', async (req, res) => {
         ON sspi.product_size_id = spi.product_size_id
        AND sspi.super_price_list_id = @p2
        AND sspi.is_active = 1
+       AND sspi.is_deleted = 0
       JOIN product_sizes ps ON spi.product_size_id = ps.id
       JOIN products p ON ps.product_id = p.id
       LEFT JOIN super_price_list_category_images spci
         ON spci.super_price_list_id = @p2
        AND spci.category_name = p.category
       WHERE spi.studio_price_list_id = @p1
+        AND spi.is_deleted = 0
       ORDER BY COALESCE(spi.display_order, 2147483647), p.category, p.name, ps.size_name
     `, [id, superPriceListId]);
 
@@ -390,7 +418,9 @@ router.put('/:id/items/:itemId', async (req, res) => {
           ON sspi.product_size_id = spi.product_size_id
          AND sspi.super_price_list_id = @p1
          AND sspi.is_active = 1
+         AND sspi.is_deleted = 0
         WHERE spi.id = @p2
+          AND spi.is_deleted = 0
       `, [superPriceListId, itemId]);
       if (!row.length) {
         return res.status(400).json({ error: 'Cannot offer an inactive source product/size' });

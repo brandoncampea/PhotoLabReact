@@ -148,6 +148,14 @@ const ensureSuperPriceListItemWhccMetadataColumns = async () => {
       BEGIN
         ALTER TABLE super_price_list_items ADD crop_shape NVARCHAR(20) NULL
       END
+      IF COL_LENGTH('super_price_list_items', 'is_deleted') IS NULL
+      BEGIN
+        ALTER TABLE super_price_list_items ADD is_deleted BIT NOT NULL DEFAULT 0
+      END
+      IF COL_LENGTH('studio_price_list_items', 'is_deleted') IS NULL
+      BEGIN
+        ALTER TABLE studio_price_list_items ADD is_deleted BIT NOT NULL DEFAULT 0
+      END
     `);
   } catch (_) { /* columns may already exist */ }
 };
@@ -361,7 +369,7 @@ const buildDefaultWhccVariantsFromCategories = ({ whccProductUID, whccProductNod
       baseCost: normalizedBaseCost,
       price: normalizedBasePrice,
       isDefault: index === 0,
-      isActive: index === 0,
+      isActive: true,
     };
   });
 };
@@ -381,8 +389,6 @@ const hasMeaningfulWhccVariantRows = (variants) => {
 
 const shouldReplaceExistingWhccVariants = (existingVariants, generatedVariants) => {
   if (!Array.isArray(generatedVariants) || generatedVariants.length === 0) return false;
-  if (!Array.isArray(existingVariants) || existingVariants.length === 0) return true;
-  if (hasMeaningfulWhccVariantRows(existingVariants)) return false;
   return true;
 };
 
@@ -591,7 +597,10 @@ router.post('/:id/import-items', async (req, res) => {
         let { product_size_id, base_cost, markup_percent } = item;
         let resolvedProductSizeId = Number(product_size_id || 0);
         const productName = (item.product_name || item.name || item.display_name || `WHCC Product ${resolvedProductSizeId || ''}`).toString().trim();
-        const sizeName = (item.size_name || item.size || productName).toString().trim();
+        const rawSizeName = item.size_name ?? item.size;
+        const sizeName = (rawSizeName === undefined || rawSizeName === null)
+          ? productName
+          : String(rawSizeName).trim();
         const category = (item.category || 'whcc').toString().trim();
         const description = (item.description || 'Imported from WHCC').toString();
 
@@ -703,20 +712,28 @@ router.post('/:id/import-items', async (req, res) => {
         }
 
         if (!sizeExists.length && productName && sizeName) {
+          // Search without category filter so we match items that exist under a different category.
           const matchedExistingRow = await mssql.query(`
-            SELECT TOP 1 spi.product_size_id, p.id AS product_id, p.options AS product_options
+            SELECT TOP 1 spi.product_size_id, p.id AS product_id, p.options AS product_options, p.category AS existing_category
             FROM super_price_list_items spi
             JOIN product_sizes ps ON spi.product_size_id = ps.id
             JOIN products p ON ps.product_id = p.id
             WHERE spi.super_price_list_id = @p1
               AND LOWER(LTRIM(RTRIM(p.name))) = LOWER(LTRIM(RTRIM(@p2)))
               AND LOWER(LTRIM(RTRIM(ps.size_name))) = LOWER(LTRIM(RTRIM(@p3)))
-              AND LOWER(LTRIM(RTRIM(p.category))) = LOWER(LTRIM(RTRIM(@p4)))
-            ORDER BY spi.id
+              AND spi.is_deleted = 0
+            ORDER BY CASE WHEN LOWER(LTRIM(RTRIM(p.category))) = LOWER(LTRIM(RTRIM(@p4))) THEN 0 ELSE 1 END, spi.id
           `, [id, productName, sizeName, category]);
 
           if (matchedExistingRow.length) {
             resolvedProductSizeId = Number(matchedExistingRow[0].product_size_id || 0);
+            // If the product is in a different category, move it to the imported category.
+            if (
+              matchedExistingRow[0]?.product_id &&
+              String(matchedExistingRow[0]?.existing_category || '').toLowerCase() !== String(category || '').toLowerCase()
+            ) {
+              await mssql.query('UPDATE products SET category = @p1 WHERE id = @p2', [category, matchedExistingRow[0].product_id]);
+            }
             if (matchedExistingRow[0]?.product_id && whccOptionsJson) {
               const mergedOptions = mergeMissingWhccOptions(matchedExistingRow[0]?.product_options, { whccProductUID, whccProductNodeID, rawAttrUIDs, whccAttributeCostMultiplierPercent, whccAttributeCategories });
               if (mergedOptions.changed) {
@@ -727,8 +744,25 @@ router.post('/:id/import-items', async (req, res) => {
         }
 
         if (!sizeExists.length && !resolvedProductSizeId) {
-          // Find or create product
-          let productRows = await mssql.query('SELECT TOP 1 id, options FROM products WHERE name = @p1 AND category = @p2', [productName, category]);
+          // Find or create product — check with correct category first, then any category.
+          let productRows = await mssql.query('SELECT TOP 1 id, options, category FROM products WHERE name = @p1 AND category = @p2', [productName, category]);
+          if (!productRows.length) {
+            // Look for the same product name in a different category within this super list.
+            const crossCatRows = await mssql.query(`
+              SELECT TOP 1 p.id, p.options, p.category
+              FROM products p
+              INNER JOIN product_sizes ps ON ps.product_id = p.id
+              INNER JOIN super_price_list_items spi ON spi.product_size_id = ps.id
+              WHERE spi.super_price_list_id = @p1
+                AND LOWER(LTRIM(RTRIM(p.name))) = LOWER(LTRIM(RTRIM(@p2)))
+              ORDER BY p.id DESC
+            `, [id, productName]);
+            if (crossCatRows.length) {
+              // Move the existing product to the imported category instead of duplicating it.
+              await mssql.query('UPDATE products SET category = @p1 WHERE id = @p2', [category, crossCatRows[0].id]);
+              productRows = [{ ...crossCatRows[0], category }];
+            }
+          }
           let productId = productRows[0]?.id;
           if (!productId) {
             // Try schema with price/cost first (MSSQL bootstrap table), then fallback schema with is_digital.
@@ -783,7 +817,7 @@ router.post('/:id/import-items', async (req, res) => {
 
         // Upsert super price list item but only fill missing information on existing rows.
         const existing = await mssql.query(`
-          SELECT TOP 1 spi.id, spi.base_cost, spi.markup_percent, spi.is_active,
+          SELECT TOP 1 spi.id, spi.base_cost, spi.markup_percent, spi.is_active, spi.is_deleted,
                  spi.whcc_product_uid AS existing_whcc_product_uid,
                  spi.whcc_product_node_id AS existing_whcc_product_node_id,
                  p.id AS product_id, p.options AS product_options
@@ -796,6 +830,10 @@ router.post('/:id/import-items', async (req, res) => {
         if (existing.length) {
           const updateParts = [];
           const updateParams = [];
+          // Restore soft-deleted items on re-import
+          if (existing[0].is_deleted) {
+            updateParts.push('is_deleted = 0');
+          }
           // Always update these fields with the latest import value
           if (base_cost !== null && base_cost !== undefined) {
             updateParams.push(base_cost);
@@ -1055,6 +1093,7 @@ router.post('/:id/import-items', async (req, res) => {
         JOIN product_sizes ps ON spi.product_size_id = ps.id
         JOIN products p ON ps.product_id = p.id
         WHERE spi.super_price_list_id = @p1
+          AND spi.is_deleted = 0
       `, [id]);
 
       let backfillCount = 0;
@@ -1125,6 +1164,7 @@ router.post('/:id/sync-whcc-costs', superAdminRequired, async (req, res) => {
       JOIN product_sizes ps ON spi.product_size_id = ps.id
       JOIN products p ON ps.product_id = p.id
       WHERE spi.super_price_list_id = @p1
+        AND spi.is_deleted = 0
     `, [id]);
 
     let updatedCount = 0;
@@ -1281,6 +1321,7 @@ router.post('/:id/fill-missing-whcc-node-ids', superAdminRequired, async (req, r
       JOIN product_sizes ps ON spi.product_size_id = ps.id
       JOIN products p ON ps.product_id = p.id
       WHERE spi.super_price_list_id = @p1
+        AND spi.is_deleted = 0
     `, [id]);
 
     let updatedCount = 0;
@@ -1398,6 +1439,7 @@ router.post('/:id/fill-missing-whcc-uids', superAdminRequired, async (req, res) 
       FROM super_price_list_item_whcc_variants v
       INNER JOIN super_price_list_items spi ON spi.id = v.super_price_list_item_id
       WHERE spi.super_price_list_id = @p1
+        AND spi.is_deleted = 0
       ORDER BY v.super_price_list_item_id ASC, v.is_default DESC, v.id ASC
     `, [id]);
 
@@ -1419,6 +1461,7 @@ router.post('/:id/fill-missing-whcc-uids', superAdminRequired, async (req, res) 
       JOIN product_sizes ps ON spi.product_size_id = ps.id
       JOIN products p ON ps.product_id = p.id
       WHERE spi.super_price_list_id = @p1
+        AND spi.is_deleted = 0
     `, [id]);
 
     let alreadySetCount = 0;
@@ -1498,7 +1541,7 @@ router.get('/', async (req, res) => {
         COUNT(DISTINCT stpl.id) AS linkedStudioCount
       FROM super_price_lists spl
       LEFT JOIN super_price_list_items spi
-        ON spi.super_price_list_id = spl.id
+        ON spi.super_price_list_id = spl.id AND spi.is_deleted = 0
       LEFT JOIN studio_price_lists stpl
         ON stpl.super_price_list_id = spl.id
       GROUP BY spl.id, spl.name, spl.description, spl.is_active
@@ -1572,6 +1615,7 @@ router.get('/:id/items', async (req, res) => {
       LEFT JOIN product_sizes ps ON spi.product_size_id = ps.id
       LEFT JOIN products p ON ps.product_id = p.id
       WHERE spi.super_price_list_id = @p1
+        AND spi.is_deleted = 0
       ORDER BY p.category, p.name, ps.size_name
     `, [id]);
 
@@ -1589,6 +1633,7 @@ router.get('/:id/items', async (req, res) => {
       FROM super_price_list_item_whcc_variants v
       INNER JOIN super_price_list_items spi ON spi.id = v.super_price_list_item_id
       WHERE spi.super_price_list_id = @p1
+        AND spi.is_deleted = 0
       ORDER BY v.super_price_list_item_id ASC, v.is_default DESC, v.id ASC
     `, [id]);
 
@@ -1700,6 +1745,7 @@ router.post('/:id/bootstrap-whcc-variants', superAdminRequired, async (req, res)
       INNER JOIN product_sizes ps ON ps.id = spi.product_size_id
       INNER JOIN products p ON p.id = ps.product_id
       WHERE spi.super_price_list_id = @p1
+        AND spi.is_deleted = 0
     `, [id]);
 
     const existingVariantRows = await mssql.query(`
@@ -1707,6 +1753,7 @@ router.post('/:id/bootstrap-whcc-variants', superAdminRequired, async (req, res)
       FROM super_price_list_item_whcc_variants v
       INNER JOIN super_price_list_items spi ON spi.id = v.super_price_list_item_id
       WHERE spi.super_price_list_id = @p1
+        AND spi.is_deleted = 0
       ORDER BY v.super_price_list_item_id, v.is_default DESC, v.id ASC
     `, [id]);
 
@@ -2431,7 +2478,8 @@ router.delete('/:id/categories', async (req, res) => {
   if (!category) return res.status(400).json({ error: 'category is required' });
   try {
     await mssql.query(
-      `DELETE spi
+      `UPDATE spi
+       SET spi.is_deleted = 1
        FROM studio_price_list_items spi
        INNER JOIN studio_price_lists spl ON spl.id = spi.studio_price_list_id
        INNER JOIN super_price_list_items sspi
@@ -2445,7 +2493,8 @@ router.delete('/:id/categories', async (req, res) => {
     );
 
     await mssql.query(
-      `DELETE sspi
+      `UPDATE sspi
+       SET sspi.is_deleted = 1
        FROM super_price_list_items sspi
        INNER JOIN product_sizes ps ON ps.id = sspi.product_size_id
        INNER JOIN products p ON p.id = ps.product_id
@@ -2463,6 +2512,90 @@ router.delete('/:id/categories', async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Failed to delete category' });
+  }
+});
+
+// DELETE a single item (size) from this super price list and all linked studio lists
+router.delete('/:id/items/:itemId', async (req, res) => {
+  const { id, itemId } = req.params;
+  try {
+    // Find the product_size_id so we can also remove from linked studio lists
+    const rows = await mssql.query(
+      `SELECT TOP 1 spi.product_size_id
+       FROM super_price_list_items spi
+       WHERE spi.super_price_list_id = @p1 AND spi.id = @p2`,
+      [id, Number(itemId)]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Item not found in this super price list' });
+
+    const productSizeId = Number(rows[0].product_size_id);
+
+    // Soft-delete from linked studio lists
+    await mssql.query(
+      `UPDATE spi
+       SET spi.is_deleted = 1
+       FROM studio_price_list_items spi
+       INNER JOIN studio_price_lists spl ON spl.id = spi.studio_price_list_id
+       WHERE spl.super_price_list_id = @p1
+         AND spi.product_size_id = @p2`,
+      [id, productSizeId]
+    );
+
+    // Soft-delete the super list item
+    await mssql.query(
+      'UPDATE super_price_list_items SET is_deleted = 1 WHERE super_price_list_id = @p1 AND id = @p2',
+      [id, Number(itemId)]
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete item' });
+  }
+});
+
+// DELETE all items for a product group from this super price list (and linked studio lists)
+router.delete('/:id/products/:productId', async (req, res) => {
+  const { id, productId } = req.params;
+  try {
+    // Get all super list item ids and product_size_ids for this product
+    const rows = await mssql.query(
+      `SELECT spi.id AS item_id, spi.product_size_id
+       FROM super_price_list_items spi
+       INNER JOIN product_sizes ps ON ps.id = spi.product_size_id
+       WHERE spi.super_price_list_id = @p1
+         AND ps.product_id = @p2`,
+      [id, Number(productId)]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Product not found in this super price list' });
+
+    const productSizeIds = rows.map(r => Number(r.product_size_id));
+    const superItemIds = rows.map(r => Number(r.item_id));
+
+    for (const sizeId of productSizeIds) {
+      await mssql.query(
+        `UPDATE spi
+         SET spi.is_deleted = 1
+         FROM studio_price_list_items spi
+         INNER JOIN studio_price_lists spl ON spl.id = spi.studio_price_list_id
+         WHERE spl.super_price_list_id = @p1
+           AND spi.product_size_id = @p2`,
+        [id, sizeId]
+      );
+    }
+
+    await mssql.query(
+      `UPDATE spi
+       SET spi.is_deleted = 1
+       FROM super_price_list_items spi
+       INNER JOIN product_sizes ps ON ps.id = spi.product_size_id
+       WHERE spi.super_price_list_id = @p1
+         AND ps.product_id = @p2`,
+      [id, Number(productId)]
+    );
+
+    res.json({ success: true, deletedCount: rows.length });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete product' });
   }
 });
 

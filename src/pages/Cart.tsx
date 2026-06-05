@@ -661,6 +661,7 @@ const Cart: React.FC = () => {
       ...item,
       productName: item.productName || resolvedProduct?.name || (item.productId ? `Product #${item.productId}` : 'Product'),
       productSizeName: item.productSizeName || resolvedSize?.name || (item.productSizeId ? `Size #${item.productSizeId}` : 'Size'),
+      productSize: resolvedSize || item.productSize || undefined,
       albumId: effectiveAlbumId,
       albumName: item.albumName || albumDetails?.name,
       albumCoverImageUrl: item.albumCoverImageUrl || albumDetails?.coverImageUrl,
@@ -1016,11 +1017,12 @@ const Cart: React.FC = () => {
                 item={resolvedItem}
                 photo={photo}
                 onEditCrop={(editItem, _editPhoto, drawnSize) => {
-                  // Always use the latest item from cart state to ensure fresh cropData
+                  // Merge latest cropData from raw cart state into the enriched resolved item
+                  // so CropperModal has both fresh cropData and productSize dimensions.
                   const latest = items.find(
                     (i) => i.photoId === editItem.photoId && i.productId === editItem.productId && i.productSizeId === editItem.productSizeId
                   );
-                  setEditingItem(latest || editItem);
+                  setEditingItem(latest ? { ...editItem, cropData: latest.cropData } : editItem);
                   setEditingDrawnSize(drawnSize || null);
                 }}
                 onOpenWhccEditor={handleOpenWhccEditor}

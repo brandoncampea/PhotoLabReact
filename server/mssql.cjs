@@ -732,6 +732,18 @@ async function initializeDatabase() {
 			ALTER TABLE shipping_config DROP CONSTRAINT ck_shipping_config_id
 		END
 	`);
+	await query(`
+		IF COL_LENGTH('super_price_list_items', 'is_deleted') IS NULL
+		BEGIN
+			ALTER TABLE super_price_list_items ADD is_deleted BIT NOT NULL DEFAULT 0
+		END
+	`);
+	await query(`
+		IF COL_LENGTH('studio_price_list_items', 'is_deleted') IS NULL
+		BEGIN
+			ALTER TABLE studio_price_list_items ADD is_deleted BIT NOT NULL DEFAULT 0
+		END
+	`);
 	// Add more tables as needed for your app...
 	// (price_list_products, product_sizes, packages, etc.)
 }

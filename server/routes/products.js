@@ -229,25 +229,50 @@ router.get('/active', async (req, res) => {
         `SELECT product_size_id as productSizeId, base_cost as baseCost
          FROM super_price_list_items
          WHERE super_price_list_id = $1
-           AND is_active = 1`,
+           AND is_active = 1
+           AND COALESCE(is_deleted, 0) = 0`,
         [studioPriceList.superPriceListId]
       );
       const studioItems = await queryRows(
-        `SELECT product_size_id as productSizeId
+        `SELECT id, product_size_id as productSizeId, is_deleted as isDeleted
          FROM studio_price_list_items
          WHERE studio_price_list_id = $1`,
         [studioPriceList.id]
       );
-      const existingSizeIds = new Set((studioItems || []).map((row) => Number(row.productSizeId)).filter(Number.isFinite));
+      const existingBySizeId = new Map(
+        (studioItems || [])
+          .map((row) => ({
+            id: Number(row?.id || 0),
+            productSizeId: Number(row?.productSizeId || 0),
+            isDeleted: Number(row?.isDeleted || 0) === 1,
+          }))
+          .filter((row) => Number.isFinite(row.productSizeId) && row.productSizeId > 0)
+          .map((row) => [row.productSizeId, row])
+      );
       for (const source of sourceItems || []) {
         const sizeId = Number(source?.productSizeId);
-        if (!Number.isFinite(sizeId) || existingSizeIds.has(sizeId)) continue;
+        if (!Number.isFinite(sizeId) || sizeId <= 0) continue;
+        const existing = existingBySizeId.get(sizeId);
+        if (existing?.id) {
+          if (existing.isDeleted) {
+            await query(
+              `UPDATE studio_price_list_items
+               SET is_deleted = 0,
+                   is_offered = 0,
+                   price = COALESCE(price, $1)
+               WHERE id = $2`,
+              [Number(source?.baseCost) || 0, existing.id]
+            );
+            existingBySizeId.set(sizeId, { ...existing, isDeleted: false });
+          }
+          continue;
+        }
         await query(
           `INSERT INTO studio_price_list_items (studio_price_list_id, product_size_id, price, is_offered)
-           VALUES ($1, $2, $3, 1)`,
+           VALUES ($1, $2, $3, 0)`,
           [studioPriceList.id, sizeId, Number(source?.baseCost) || 0]
         );
-        existingSizeIds.add(sizeId);
+        existingBySizeId.set(sizeId, { id: 0, productSizeId: sizeId, isDeleted: false });
       }
 
       const rows = await queryRows(
@@ -269,7 +294,9 @@ router.get('/active', async (req, res) => {
           AND sspi.product_size_id = spi.product_size_id
          WHERE spi.studio_price_list_id = $1
            AND spi.is_offered = 1
+           AND COALESCE(spi.is_deleted, 0) = 0
            AND COALESCE(sspi.is_active, 1) = 1
+           AND COALESCE(sspi.is_deleted, 0) = 0
          ORDER BY p.category, p.name, ps.size_name`,
         [studioPriceList.id]
       );
@@ -440,7 +467,7 @@ router.get('/active', async (req, res) => {
       // ── NEW SYSTEM: studio_price_list_items (preferred) ──────────────────
       if (effectiveStudioId) {
         const parsedProducts = await getOfferedProductsFromStudioPriceList(effectiveStudioId, album?.priceListId || null);
-        if (Array.isArray(parsedProducts) && parsedProducts.length > 0) {
+        if (Array.isArray(parsedProducts)) {
           return res.json(parsedProducts);
         }
       }
@@ -530,7 +557,7 @@ router.get('/active', async (req, res) => {
     // Studio-scoped offered products without album context
     if (studioId) {
       const parsedProducts = await getOfferedProductsFromStudioPriceList(Number(studioId), null);
-      if (Array.isArray(parsedProducts) && parsedProducts.length > 0) {
+      if (Array.isArray(parsedProducts)) {
         return res.json(parsedProducts);
       }
     }

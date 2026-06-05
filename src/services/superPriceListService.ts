@@ -101,6 +101,14 @@ export const superPriceListService = {
     const res = await api.delete(`/super-price-lists/${listId}/categories`, { data: { category } });
     return res.data;
   },
+  async deleteItem(listId: number, itemId: number) {
+    const res = await api.delete(`/super-price-lists/${listId}/items/${itemId}`);
+    return res.data;
+  },
+  async deleteProduct(listId: number, productId: number) {
+    const res = await api.delete(`/super-price-lists/${listId}/products/${productId}`);
+    return res.data;
+  },
   async moveProductToCategory(listId: number, productId: number, targetCategory: string) {
     const res = await api.put(`/super-price-lists/${listId}/products/${productId}/category`, { targetCategory });
     return res.data;

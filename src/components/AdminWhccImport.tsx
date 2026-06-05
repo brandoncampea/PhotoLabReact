@@ -80,6 +80,8 @@ const AdminWhccImport: React.FC<{ onClose: () => void; onImportComplete: () => v
       prod?.ProductUID ??
       prod?.productUid ??
       prod?.ProductUid ??
+      prod?.Id ??
+      prod?.id ??
       prod?.ProductCode ??
       prod?.productCode ??
       prod?.Code ??
