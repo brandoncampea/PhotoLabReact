@@ -2851,10 +2851,24 @@ router.patch('/:id/bulk-markup', async (req, res) => {
     await ensureSuperPriceListItemWhccMetadataColumns();
     const markupValue = Number(markup_percent);
     if (!Number.isFinite(markupValue) || markupValue < 0) return res.status(400).json({ error: 'markup_percent must be a non-negative number' });
-    await mssql.query(
-      'UPDATE super_price_list_items SET markup_percent = @p1 WHERE super_price_list_id = @p2 AND is_active = 1 AND ISNULL(is_deleted, 0) = 0',
-      [markupValue, id]
+    
+    // Fetch all active items with their base_cost, calculate price, and update both markup_percent and price
+    const activeItems = await mssql.query(
+      `SELECT id, base_cost FROM super_price_list_items 
+       WHERE super_price_list_id = @p1 AND is_active = 1 AND ISNULL(is_deleted, 0) = 0 AND base_cost IS NOT NULL AND base_cost > 0`,
+      [id]
     );
+    
+    for (const item of activeItems) {
+      const baseCost = Number(item.base_cost);
+      if (!Number.isFinite(baseCost) || baseCost <= 0) continue;
+      const calculatedPrice = Number((baseCost * (1 + markupValue / 100)).toFixed(2));
+      await mssql.query(
+        'UPDATE super_price_list_items SET markup_percent = @p1, price = @p2 WHERE id = @p3',
+        [markupValue, calculatedPrice, item.id]
+      );
+    }
+    
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
