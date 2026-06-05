@@ -2849,6 +2849,7 @@ router.patch('/:id/bulk-markup', async (req, res) => {
   if (markup_percent === undefined || markup_percent === null) return res.status(400).json({ error: 'markup_percent required' });
   try {
     await ensureSuperPriceListItemWhccMetadataColumns();
+    await ensureWhccVariantsTable();
     const markupValue = Number(markup_percent);
     if (!Number.isFinite(markupValue) || markupValue < 0) return res.status(400).json({ error: 'markup_percent must be a non-negative number' });
     
@@ -2863,10 +2864,29 @@ router.patch('/:id/bulk-markup', async (req, res) => {
       const baseCost = Number(item.base_cost);
       if (!Number.isFinite(baseCost) || baseCost <= 0) continue;
       const calculatedPrice = Number((baseCost * (1 + markupValue / 100)).toFixed(2));
+      
+      // Update base item
       await mssql.query(
         'UPDATE super_price_list_items SET markup_percent = @p1, price = @p2 WHERE id = @p3',
         [markupValue, calculatedPrice, item.id]
       );
+      
+      // Also update variants for this item: recalculate their prices based on their base_cost
+      const variants = await mssql.query(
+        `SELECT id, base_cost FROM super_price_list_item_whcc_variants 
+         WHERE super_price_list_item_id = @p1 AND base_cost IS NOT NULL AND base_cost > 0`,
+        [item.id]
+      );
+      
+      for (const variant of variants) {
+        const variantBaseCost = Number(variant.base_cost);
+        if (!Number.isFinite(variantBaseCost) || variantBaseCost <= 0) continue;
+        const variantCalculatedPrice = Number((variantBaseCost * (1 + markupValue / 100)).toFixed(2));
+        await mssql.query(
+          'UPDATE super_price_list_item_whcc_variants SET price = @p1 WHERE id = @p2',
+          [variantCalculatedPrice, variant.id]
+        );
+      }
     }
     
     res.json({ success: true });
