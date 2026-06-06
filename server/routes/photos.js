@@ -2,6 +2,7 @@
 console.log('[PHOTOS.JS] photos.js loaded');
 import express from 'express';
 import multer from 'multer';
+import { normalizePhotoAssetVariant, verifyPhotoAssetToken } from '../utils/photoAssetTokens.js';
 const router = express.Router();
 
 // Train face signature for a player on a photo (used by face tagging UI)
@@ -2512,7 +2513,25 @@ router.get('/:id/asset', async (req, res) => {
     console.log('[ASSET ROUTE] asset route hit', req.url);
   try {
     const photoId = req.params.id;
-    const variant = (req.query.variant === 'thumb' || req.query.variant === 'thumbnail') ? 'thumb' : 'full';
+    const variant = normalizePhotoAssetVariant(req.query.variant);
+    const assetToken = String(req.query.asset_token || req.query.token || '').trim();
+
+    if (variant === 'full') {
+      if (!assetToken) {
+        return res.status(401).json({ error: 'A signed access token is required for full-resolution photos' });
+      }
+
+      let tokenPayload;
+      try {
+        tokenPayload = verifyPhotoAssetToken(assetToken);
+      } catch {
+        return res.status(401).json({ error: 'Invalid or expired photo access token' });
+      }
+
+      if (tokenPayload?.scope !== 'photo-asset' || Number(tokenPayload.photoId) !== Number(photoId) || String(tokenPayload.variant || '') !== 'full') {
+        return res.status(403).json({ error: 'Photo access token does not match this image' });
+      }
+    }
     // Fetch photo from DB, include file_name for download
     const photo = await queryRow('SELECT file_name, thumbnail_url, full_image_url FROM photos WHERE id = $1', [photoId]);
     if (!photo) {

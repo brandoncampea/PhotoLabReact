@@ -3,6 +3,7 @@ import mssql from '../mssql.cjs';
 const { queryRow, queryRows, query, tableExists } = mssql;
 import { adminRequired } from '../middleware/auth.js';
 import { SUBSCRIPTION_PLANS } from '../constants/subscriptions.js';
+import { buildSignedPhotoAssetUrl } from '../utils/photoAssetTokens.js';
 const router = express.Router();
 
 const ensureAnalyticsTable = async () => {
@@ -21,7 +22,7 @@ const ensureAnalyticsTable = async () => {
 
 const albumCoverUrl = (albumId, coverPhotoId, coverImageUrl) => {
   if (coverPhotoId) {
-    return `/api/photos/${coverPhotoId}/asset?variant=full`;
+    return buildSignedPhotoAssetUrl(coverPhotoId, 'full', 'analytics');
   }
   if (coverImageUrl) {
     return `/api/photos/proxy?source=${encodeURIComponent(coverImageUrl)}`;
@@ -29,7 +30,13 @@ const albumCoverUrl = (albumId, coverPhotoId, coverImageUrl) => {
   return undefined;
 };
 
-const photoAssetUrl = (photoId, variant) => `/api/photos/${photoId}/asset?variant=${variant}`;
+const photoAssetUrl = (photoId, variant) => {
+  const normalizedVariant = String(variant || 'full').toLowerCase();
+  if (normalizedVariant === 'full') {
+    return buildSignedPhotoAssetUrl(photoId, 'full', 'analytics');
+  }
+  return `/api/photos/${photoId}/asset?variant=${normalizedVariant}`;
+};
 
 const hasAdvancedAnalyticsAccess = async (req) => {
   if (req.user.role === 'super_admin' || req.user.role === 'admin') {

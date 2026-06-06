@@ -2,6 +2,7 @@ import express from 'express';
 import axios from 'axios';
 import mssql from '../mssql.cjs';
 import { authRequired } from '../middleware/auth.js';
+import { buildSignedPhotoAssetUrl } from '../utils/photoAssetTokens.js';
 
 const { queryRow, queryRows } = mssql;
 const router = express.Router();
@@ -151,7 +152,7 @@ router.post('/session/create', authRequired, async (req, res) => {
         if (!row) return null;
 
         const previewUrl = apiPublicBase ? `${apiPublicBase}/api/photos/${row.id}/asset?variant=thumb` : null;
-        const fullUrl = apiPublicBase ? `${apiPublicBase}/api/photos/${row.id}/asset?variant=full` : null;
+        const fullUrl = apiPublicBase ? `${apiPublicBase}${buildSignedPhotoAssetUrl(row.id, 'full', 'whcc')}` : null;
         if (!fullUrl && !previewUrl) return null;
 
         const fileName = String(row.fileName || '');

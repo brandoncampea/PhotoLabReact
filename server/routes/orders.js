@@ -4,6 +4,7 @@ import mssql from '../mssql.cjs';
 const { queryRow, queryRows, query } = mssql;
 import { authRequired, adminRequired, superAdminRequired } from '../middleware/auth.js';
 import { requireActiveSubscription } from '../middleware/subscription.js';
+import { buildSignedPhotoAssetUrl } from '../utils/photoAssetTokens.js';
 
 const router = express.Router();
 
@@ -3124,7 +3125,7 @@ router.get('/digital-download/:token', async (req, res) => {
       if (Number(payload.photoId || 0) > 0 && Number(orderItem.photoId || 0) !== Number(payload.photoId || 0)) {
         return res.status(404).json({ error: 'Download item not found' });
       }
-      return res.redirect(302, `/api/photos/${orderItem.photoId}/asset?variant=full`);
+      return res.redirect(302, buildSignedPhotoAssetUrl(orderItem.photoId, 'full', 'digital-download'));
     }
 
     const parsedPhotoIds = safeJsonParse(orderItem.photoIds, orderItem.photoId ? [orderItem.photoId] : []);
@@ -3163,7 +3164,7 @@ router.get('/digital-download/:token', async (req, res) => {
 
     const usedNames = new Map();
     for (const photo of photoRows) {
-      const assetUrl = assetBaseUrl ? `${assetBaseUrl}/api/photos/${photo.id}/asset?variant=full` : '';
+      const assetUrl = assetBaseUrl ? `${assetBaseUrl}${buildSignedPhotoAssetUrl(photo.id, 'full', 'digital-download')}` : '';
       if (!assetUrl) continue;
 
       const response = await axios.get(assetUrl, { responseType: 'stream' });
@@ -4268,7 +4269,7 @@ router.get('/', async (req, res) => {
             width: photo.width || null,
             height: photo.height || null,
             thumbnailUrl: `/api/photos/${photo.id}/asset?variant=thumbnail`,
-            url: `/api/photos/${photo.id}/asset?variant=full`,
+            url: buildSignedPhotoAssetUrl(photo.id, 'full', 'customer'),
           } : {
             id: item.photoId,
             albumId: 0,
@@ -4550,7 +4551,7 @@ router.get('/details/:orderId', async (req, res) => {
           width: photo.width || null,
           height: photo.height || null,
           thumbnailUrl: `/api/photos/${photo.id}/asset?variant=thumbnail`,
-          url: `/api/photos/${photo.id}/asset?variant=full`,
+          url: buildSignedPhotoAssetUrl(photo.id, 'full', 'customer'),
         } : {
           id: item.photoId,
           albumId: 0,
@@ -4785,7 +4786,7 @@ router.get('/admin/all-orders', adminRequired, async (req, res) => {
               width: photo.width || null,
               height: photo.height || null,
               thumbnailUrl: `/api/photos/${photo.id}/asset?variant=thumbnail`,
-              fullImageUrl: `/api/photos/${photo.id}/asset?variant=full`,
+              fullImageUrl: buildSignedPhotoAssetUrl(photo.id, 'full', 'customer'),
             } : {
               id: item.photoId,
               albumId: 0,
@@ -5026,7 +5027,7 @@ router.get('/admin/order-details/:orderId', adminRequired, async (req, res) => {
           width: photo.width || null,
           height: photo.height || null,
           thumbnailUrl: `/api/photos/${photo.id}/asset?variant=thumbnail`,
-          fullImageUrl: `/api/photos/${photo.id}/asset?variant=full`,
+          fullImageUrl: buildSignedPhotoAssetUrl(photo.id, 'full', 'customer'),
         } : {
           id: item.photoId,
           albumId: 0,
