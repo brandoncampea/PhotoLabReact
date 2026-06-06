@@ -139,12 +139,12 @@ const WatermarkedImage: React.FC<WatermarkedImageProps> = ({ src, alt, className
     }
   };
   const containerStyle: React.CSSProperties = fill
-    ? { position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }
-    : { position: 'relative', width: '100%', height: 'auto', overflow: 'hidden' };
+    ? { position: 'relative', width: '100%', height: '100%', overflow: 'hidden', WebkitTouchCallout: 'none' as any, userSelect: 'none' }
+    : { position: 'relative', width: '100%', height: 'auto', overflow: 'hidden', WebkitTouchCallout: 'none' as any, userSelect: 'none' };
 
   const imageStyle: React.CSSProperties = fill
-    ? { width: '100%', height: '100%', objectFit: 'cover', display: 'block', ...style }
-    : { width: '100%', height: 'auto', display: 'block', objectFit: 'contain', ...style };
+    ? { width: '100%', height: '100%', objectFit: 'cover', display: 'block', WebkitTouchCallout: 'none' as any, userSelect: 'none', ...style }
+    : { width: '100%', height: 'auto', display: 'block', objectFit: 'contain', WebkitTouchCallout: 'none' as any, userSelect: 'none', ...style };
 
   // If src is a full URL, use it directly. If it's a legacy /uploads/ path or API route, use as-is. Otherwise, use SAS URL for Azure Blob Storage.
   // Always use proxy endpoint for Azure blob paths (e.g., albums/68/filename.jpg)

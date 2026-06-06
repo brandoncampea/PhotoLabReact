@@ -32,7 +32,14 @@ function OrderItemWithSas({ item }: { item: any }) {
     <div className="order-item">
       <div className="item-image-container">
         {assetUrl ? (
-          <img src={assetUrl} alt={item.photo?.fileName || 'Photo'} className="item-image" />
+          <img
+            src={assetUrl}
+            alt={item.photo?.fileName || 'Photo'}
+            className="item-image"
+            onContextMenu={e => e.preventDefault()}
+            draggable={false}
+            onDragStart={e => e.preventDefault()}
+          />
         ) : (
           <div className="item-image-placeholder">No Image</div>
         )}
