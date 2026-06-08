@@ -3337,6 +3337,10 @@ router.post('/', requireActiveSubscription, async (req, res) => {
       : (Number(subtotal) || 0);
     const computedShipping = allDigital ? 0 : (Number(shippingCost) || 0);
     const computedTax = Number(taxAmount) || 0;
+    const orderStudioId = await getOrderStudioIdFromItems(items);
+    if (!orderStudioId) {
+      return res.status(400).json({ error: 'Unable to determine studio for this order' });
+    }
 
     // Apply discount if code is provided
     let discountAmount = 0;
@@ -3384,10 +3388,6 @@ router.post('/', requireActiveSubscription, async (req, res) => {
     const directOrder = !batchOrder;
     // If all digital, shipping option is forced to 'none'
     const normalizedShippingOption = allDigital ? 'none' : (batchOrder ? 'batch' : 'direct');
-    const orderStudioId = await getOrderStudioIdFromItems(items);
-    if (!orderStudioId) {
-      return res.status(400).json({ error: 'Unable to determine studio for this order' });
-    }
 
     let batchReadyDate = null;
     if (batchOrder) {

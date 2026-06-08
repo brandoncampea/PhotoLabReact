@@ -5,6 +5,33 @@ import { adminRequired } from '../middleware/auth.js';
 const { queryRow, queryRows, query } = mssql;
 const router = express.Router();
 
+const roundCurrency = (value) => {
+    const numeric = Number(value || 0);
+    if (!Number.isFinite(numeric)) return 0;
+    return Number(numeric.toFixed(2));
+};
+
+const resolveOrderDiscountAmount = ({ subtotal, shippingCost, taxAmount, totalAmount, discountCode }) => {
+    const code = String(discountCode || '').trim();
+    if (!code) return 0;
+
+    const normalizedSubtotal = roundCurrency(subtotal);
+    const normalizedShipping = roundCurrency(shippingCost);
+    const normalizedTax = roundCurrency(taxAmount);
+    const normalizedTotal = roundCurrency(totalAmount);
+
+    const preferredComputed = roundCurrency((normalizedSubtotal + normalizedTax) - normalizedTotal);
+    const fallbackComputed = roundCurrency((normalizedSubtotal + normalizedTax + normalizedShipping) - normalizedTotal);
+
+    if (Number.isFinite(preferredComputed) && preferredComputed > 0) {
+        return preferredComputed;
+    }
+    if (Number.isFinite(fallbackComputed) && fallbackComputed > 0) {
+        return fallbackComputed;
+    }
+    return 0;
+};
+
 // Helper: ensure payout tracking tables exist
 const ensurePayoutTables = async () => {
     const hasPayoutsTable = await queryRow(
@@ -110,7 +137,15 @@ router.get('/studio-revenue-details', adminRequired, async (req, res) => {
                 const studioRevenue = Number(order.studio_revenue || 0);
                 const baseRevenue = Number(order.base_revenue || 0);
                 const stripeFeeAmount = Number(order.stripe_fee_amount || 0);
-                order.studio_profit = studioRevenue - baseRevenue - stripeFeeAmount;
+                const discountAmount = resolveOrderDiscountAmount({
+                    subtotal: order.subtotal,
+                    shippingCost: order.shipping_cost,
+                    taxAmount: order.tax_amount,
+                    totalAmount: order.total,
+                    discountCode: order.discount_code,
+                });
+                const studioRevenueNet = Math.max(0, studioRevenue - discountAmount);
+                order.studio_profit = studioRevenueNet - baseRevenue - stripeFeeAmount;
                 order.is_paid = paidOrderMap.has(Number(order.id));
                 order.payout_id = paidOrderMap.get(Number(order.id)) || null;
 
@@ -349,6 +384,10 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
                 o.id,
                 o.user_id,
                 o.total,
+                o.subtotal,
+                o.tax_amount,
+                o.shipping_cost,
+                o.discount_code,
                 o.status,
                 o.created_at,
                 u.email as customer_email,
@@ -361,7 +400,7 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
              LEFT JOIN products p ON p.id = oi.product_id
              ${hasProductSizeId ? 'LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id' : ''}
              WHERE 1=1${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}
-             GROUP BY o.id, o.user_id, o.total, o.status, o.created_at, u.email
+             GROUP BY o.id, o.user_id, o.total, o.subtotal, o.tax_amount, o.shipping_cost, o.discount_code, o.status, o.created_at, u.email
              ORDER BY o.created_at DESC`
         );
 
@@ -369,7 +408,15 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
             const studioRevenue = Number(order.studioRevenue || 0);
             const baseRevenue = Number(order.baseRevenue || 0);
             const stripeFeeAmount = Number(order.stripeFeeAmount || 0);
-            const studioProfit = studioRevenue - baseRevenue - stripeFeeAmount;
+            const discountAmount = resolveOrderDiscountAmount({
+                subtotal: order.subtotal,
+                shippingCost: order.shipping_cost,
+                taxAmount: order.tax_amount,
+                totalAmount: order.total,
+                discountCode: order.discount_code,
+            });
+            const studioRevenueNet = Math.max(0, studioRevenue - discountAmount);
+            const studioProfit = studioRevenueNet - baseRevenue - stripeFeeAmount;
             return {
                 ...order,
                 studioProfit,
