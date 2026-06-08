@@ -268,6 +268,17 @@ router.post('/admin/:orderId/resend-digital-download', adminRequired, async (req
       replyTo: studioEmail,
     });
 
+    const allItemsDigital = items.length > 0 && items.every((item) => isDigitalDownloadItem(item));
+    if (allItemsDigital) {
+      await query(
+        `UPDATE orders
+         SET customer_receipt_sent_at = CURRENT_TIMESTAMP,
+             status = 'completed'
+         WHERE id = $1`,
+        [orderId]
+      );
+    }
+
     return res.json({ success: true, message: `Resent digital download links to ${recipientEmail}`, digitalItemCount: digitalDownloads.length, recipientEmail });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message, digitalItemCount: 0 });
@@ -343,6 +354,24 @@ const normalizeOrderAmounts = ({ subtotal, shippingCost, taxAmount, totalAmount,
     taxAmount: storedTax,
     totalAmount: storedTotal,
   };
+};
+
+const resolveOrderDiscountAmount = ({ subtotal, shippingCost, taxAmount, totalAmount }) => {
+  const normalizedSubtotal = roundCurrency(subtotal);
+  const normalizedShipping = roundCurrency(shippingCost);
+  const normalizedTax = roundCurrency(taxAmount);
+  const normalizedTotal = roundCurrency(totalAmount);
+
+  const preferredComputed = roundCurrency((normalizedSubtotal + normalizedTax) - normalizedTotal);
+  const fallbackComputed = roundCurrency((normalizedSubtotal + normalizedTax + normalizedShipping) - normalizedTotal);
+
+  if (Number.isFinite(preferredComputed) && preferredComputed > 0) {
+    return preferredComputed;
+  }
+  if (Number.isFinite(fallbackComputed) && fallbackComputed > 0) {
+    return fallbackComputed;
+  }
+  return 0;
 };
 
 const parseNullableNumber = (value) => {
@@ -3052,11 +3081,12 @@ const sendOrderReceipts = async (orderId) => {
   if (customerSent || anyStudioSent) {
     // Check if all items are digital
     const allDigital = items.length > 0 && items.every(isDigitalProductRow);
+    const shouldAutoCompleteDigitalOrder = allDigital && customerSent && digitalDownloads.length > 0;
     let updateSql = `UPDATE orders
       SET customer_receipt_sent_at = CASE WHEN $1 = 1 THEN CURRENT_TIMESTAMP ELSE customer_receipt_sent_at END,
           studio_receipt_sent_at = CASE WHEN $2 = 1 THEN CURRENT_TIMESTAMP ELSE studio_receipt_sent_at END`;
     const params = [customerSent ? 1 : 0, anyStudioSent ? 1 : 0];
-    if (allDigital) {
+    if (shouldAutoCompleteDigitalOrder) {
       updateSql += ', status = \'completed\'';
     }
     updateSql += ' WHERE id = $3';
@@ -4069,6 +4099,7 @@ router.get('/', async (req, res) => {
           o.shipping_address as shippingAddress,
           o.shipping_option as shippingOption,
           o.shipping_cost as shippingCost,
+          o.discount_code as discountCode,
           o.is_batch as isBatch,
           o.batch_shipping_address as batchShippingAddress,
           o.batch_ready_date as batchReadyDate,
@@ -4099,6 +4130,7 @@ router.get('/', async (req, res) => {
           o.shipping_address as shippingAddress,
           o.shipping_option as shippingOption,
           o.shipping_cost as shippingCost,
+          o.discount_code as discountCode,
           o.is_batch as isBatch,
           o.batch_shipping_address as batchShippingAddress,
           o.batch_ready_date as batchReadyDate,
@@ -4300,10 +4332,16 @@ router.get('/', async (req, res) => {
       totalAmountOut = normalizedAmounts.totalAmount;
       taxAmountOut = normalizedAmounts.taxAmount;
       if (itemsWithPhotos.length > 0 && itemsWithPhotos.every((item) => isDigitalDownloadItem(item))) {
+        const discountAmount = resolveOrderDiscountAmount({
+          subtotal: order.subtotal,
+          shippingCost: order.shippingCost,
+          taxAmount: order.taxAmount,
+          totalAmount: order.totalAmount,
+        });
         shippingCostOut = 0;
         subtotalOut = itemSubtotal;
         taxAmountOut = Number(order.taxAmount) || 0;
-        totalAmountOut = +(subtotalOut + shippingCostOut + taxAmountOut).toFixed(2);
+        totalAmountOut = roundCurrency(Math.max(0, subtotalOut + taxAmountOut - discountAmount));
       }
       const parsedWhccImportResponse = canViewWhccFields ? safeJsonParse(order.whccImportResponse) : undefined;
       const parsedWhccSubmitResponse = canViewWhccFields ? safeJsonParse(order.whccSubmitResponse) : undefined;
@@ -4380,6 +4418,7 @@ router.get('/details/:orderId', async (req, res) => {
                 o.shipping_address as shippingAddress,
                 o.shipping_option as shippingOption,
                 o.shipping_cost as shippingCost,
+                o.discount_code as discountCode,
                 o.is_batch as isBatch,
                 o.batch_shipping_address as batchShippingAddress,
                 o.batch_ready_date as batchReadyDate,
@@ -4409,6 +4448,7 @@ router.get('/details/:orderId', async (req, res) => {
                 o.shipping_address as shippingAddress,
                 o.shipping_option as shippingOption,
                 o.shipping_cost as shippingCost,
+                o.discount_code as discountCode,
                 o.is_batch as isBatch,
                 o.batch_shipping_address as batchShippingAddress,
                 o.batch_ready_date as batchReadyDate,
@@ -4593,10 +4633,16 @@ router.get('/details/:orderId', async (req, res) => {
       const name = String(item.productName || '').toLowerCase();
       return options?.isDigital === true || options?.is_digital_only === true || options?.digitalOnly === true || category.includes('digital') || name.includes('digital');
     })) {
+      const discountAmount = resolveOrderDiscountAmount({
+        subtotal: order.subtotal,
+        shippingCost: order.shippingCost,
+        taxAmount: order.taxAmount,
+        totalAmount: order.totalAmount,
+      });
       shippingCostOut = 0;
       subtotalOut = itemSubtotal;
       taxAmountOut = Number(order.taxAmount) || 0;
-      totalAmountOut = +(subtotalOut + shippingCostOut + taxAmountOut).toFixed(2);
+      totalAmountOut = roundCurrency(Math.max(0, subtotalOut + taxAmountOut - discountAmount));
     }
     const parsedWhccImportResponse = canViewWhccFields ? safeJsonParse(order.whccImportResponse) : undefined;
     const parsedWhccSubmitResponse = canViewWhccFields ? safeJsonParse(order.whccSubmitResponse) : undefined;
@@ -4676,6 +4722,7 @@ router.get('/admin/all-orders', adminRequired, async (req, res) => {
         o.shipping_product_group as shippingProductGroup,
         o.direct_pricing_mode_used as directPricingModeUsed,
         o.shipping_rubric_source as shippingRubricSource,
+        o.discount_code as discountCode,
         o.is_batch as isBatch,
         o.batch_shipping_address as batchShippingAddress,
         o.batch_ready_date as batchReadyDate,
@@ -4827,10 +4874,16 @@ router.get('/admin/all-orders', adminRequired, async (req, res) => {
         const name = String(item.productName || '').toLowerCase();
         return options?.isDigital === true || options?.is_digital_only === true || options?.digitalOnly === true || category.includes('digital') || name.includes('digital');
       })) {
+        const discountAmount = resolveOrderDiscountAmount({
+          subtotal: order.subtotal,
+          shippingCost: order.shippingCost,
+          taxAmount: order.taxAmount,
+          totalAmount: order.totalAmount,
+        });
         shippingCostOut = 0;
         subtotalOut = itemSubtotal;
         taxAmountOut = Number(order.taxAmount) || 0;
-        totalAmountOut = +(subtotalOut + shippingCostOut + taxAmountOut).toFixed(2);
+        totalAmountOut = roundCurrency(Math.max(0, subtotalOut + taxAmountOut - discountAmount));
       }
       const parsedWhccImportResponse = canViewWhccFields ? safeJsonParse(order.whccImportResponse) : undefined;
       const parsedWhccSubmitResponse = canViewWhccFields ? safeJsonParse(order.whccSubmitResponse) : undefined;
@@ -4911,6 +4964,7 @@ router.get('/admin/order-details/:orderId', adminRequired, async (req, res) => {
         o.shipping_product_group as shippingProductGroup,
         o.direct_pricing_mode_used as directPricingModeUsed,
         o.shipping_rubric_source as shippingRubricSource,
+        o.discount_code as discountCode,
         o.is_batch as isBatch,
         o.batch_shipping_address as batchShippingAddress,
         o.batch_ready_date as batchReadyDate,
@@ -5060,10 +5114,16 @@ router.get('/admin/order-details/:orderId', adminRequired, async (req, res) => {
     totalAmountOut = normalizedAmounts.totalAmount;
     taxAmountOut = normalizedAmounts.taxAmount;
     if (itemsWithPhotos.length > 0 && itemsWithPhotos.every((item) => item.isDigital)) {
+      const discountAmount = resolveOrderDiscountAmount({
+        subtotal: order.subtotal,
+        shippingCost: order.shippingCost,
+        taxAmount: order.taxAmount,
+        totalAmount: order.totalAmount,
+      });
       shippingCostOut = 0;
       subtotalOut = itemSubtotal;
       taxAmountOut = Number(order.taxAmount) || 0;
-      totalAmountOut = +(subtotalOut + shippingCostOut + taxAmountOut).toFixed(2);
+      totalAmountOut = roundCurrency(Math.max(0, subtotalOut + taxAmountOut - discountAmount));
     }
 
     const parsedWhccImportResponse = canViewWhccFields ? safeJsonParse(order.whccImportResponse) : undefined;

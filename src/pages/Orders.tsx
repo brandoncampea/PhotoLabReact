@@ -97,6 +97,26 @@ import { orderService } from '../services/orderService';
 import './Orders.css';
 // import TopNavbar from '../components/TopNavbar';
 
+const resolveOrderDiscount = (order: Pick<Order, 'subtotal' | 'shippingCost' | 'taxAmount' | 'totalAmount' | 'discountCode'>) => {
+  const subtotal = Number(order?.subtotal || 0);
+  const shipping = Number(order?.shippingCost || 0);
+  const tax = Number(order?.taxAmount || 0);
+  const total = Number(order?.totalAmount || 0);
+
+  const preferred = (subtotal + tax) - total;
+  const fallback = (subtotal + shipping + tax) - total;
+  const amount = Number.isFinite(preferred) && preferred > 0
+    ? preferred
+    : Number.isFinite(fallback) && fallback > 0
+      ? fallback
+      : 0;
+
+  return {
+    code: String(order?.discountCode || '').trim(),
+    amount: Number(amount.toFixed(2)),
+  };
+};
+
 const Orders: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -247,28 +267,51 @@ const Orders: React.FC = () => {
                               })}
                           </div>
                           <div className="order-pricing-summary">
-                            {order.subtotal != null && (
-                              <div className="pricing-row">
-                                <span>Subtotal</span>
-                                <span>${Number(order.subtotal).toFixed(2)}</span>
-                              </div>
-                            )}
-                            {Number(order.shippingCost) > 0 && (
-                              <div className="pricing-row">
-                                <span>Shipping</span>
-                                <span>${Number(order.shippingCost).toFixed(2)}</span>
-                              </div>
-                            )}
-                            {Number(order.taxAmount) > 0 && (
-                              <div className="pricing-row">
-                                <span>Tax</span>
-                                <span>${Number(order.taxAmount).toFixed(2)}</span>
-                              </div>
-                            )}
-                            <div className="pricing-row pricing-total-row">
-                              <span>Total Charged</span>
-                              <span>${Number(order.totalAmount || 0).toFixed(2)}</span>
-                            </div>
+                            {(() => {
+                              const discount = resolveOrderDiscount(order);
+                              return (
+                                <>
+                                  {order.subtotal != null && (
+                                    <div className="pricing-row">
+                                      <span>Subtotal</span>
+                                      <span>${Number(order.subtotal).toFixed(2)}</span>
+                                    </div>
+                                  )}
+                                  {Number(order.shippingCost) > 0 && (
+                                    <div className="pricing-row">
+                                      <span>Shipping</span>
+                                      <span>${Number(order.shippingCost).toFixed(2)}</span>
+                                    </div>
+                                  )}
+                                  {Number(order.taxAmount) > 0 && (
+                                    <div className="pricing-row">
+                                      <span>Tax</span>
+                                      <span>${Number(order.taxAmount).toFixed(2)}</span>
+                                    </div>
+                                  )}
+                                  {(discount.amount > 0 || discount.code) && (
+                                    <>
+                                      {discount.code && (
+                                        <div className="pricing-row">
+                                          <span>Coupon</span>
+                                          <span>{discount.code}</span>
+                                        </div>
+                                      )}
+                                      {discount.amount > 0 && (
+                                        <div className="pricing-row">
+                                          <span>Discount</span>
+                                          <span>-${discount.amount.toFixed(2)}</span>
+                                        </div>
+                                      )}
+                                    </>
+                                  )}
+                                  <div className="pricing-row pricing-total-row">
+                                    <span>Total Charged</span>
+                                    <span>${Number(order.totalAmount || 0).toFixed(2)}</span>
+                                  </div>
+                                </>
+                              );
+                            })()}
                           </div>
                         </>
                       )}

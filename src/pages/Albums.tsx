@@ -47,6 +47,13 @@ const formatDealHeadline = (deal: PublicDeal) => {
   return `$${deal.discountValue.toFixed(2)} Off`;
 };
 
+const hasBatchDeadlinePassed = (deadline?: string) => {
+  if (!deadline) return false;
+  const deadlineTime = new Date(deadline).getTime();
+  if (!Number.isFinite(deadlineTime)) return false;
+  return deadlineTime < Date.now();
+};
+
 
 const Albums: React.FC = () => {
     const [searchPlayerNames, setSearchPlayerNames] = useState(false);
@@ -68,8 +75,13 @@ const Albums: React.FC = () => {
   const showHidden = searchParams.get('hidden') === '1';
 
   const isBatchEnabledForAlbum = (album: PublicAlbum) => {
-    return Boolean(album.batchShippingActive) && Boolean(album.studioBatchShippingActive);
+    return Boolean(album.batchShippingActive) && Boolean(album.studioBatchShippingActive) && !hasBatchDeadlinePassed(album.batchDeadline);
   };
+
+  const activeStudioBatchAlbum = React.useMemo(
+    () => albums.find((album) => Boolean(album.studioBatchShippingActive) && !hasBatchDeadlinePassed(album.batchDeadline)),
+    [albums]
+  );
 
   useEffect(() => {
     if (!selectedStudio) {
@@ -384,13 +396,13 @@ const Albums: React.FC = () => {
               Showing {filteredAlbums.length} of {albums.length} album{albums.length === 1 ? '' : 's'}
             </span>
           </div>
-          {albums.some((album) => Boolean(album.studioBatchShippingActive)) && (
+          {Boolean(activeStudioBatchAlbum) && (
             <div className={styles.albumsBatchNotice}>
               <strong>Batch shipping is available for this studio.</strong>
               <span>
                 Batch shipping can only be used for albums marked with the “Batch Shipping Available” badge.
-                {albums.find((album) => Boolean(album.studioBatchShippingActive))?.batchDeadline
-                  ? ` Current release deadline: ${formatDateTimeInStudioTimezone(albums.find((album) => Boolean(album.studioBatchShippingActive))?.batchDeadline)}.`
+                {activeStudioBatchAlbum?.batchDeadline
+                  ? ` Current release deadline: ${formatDateTimeInStudioTimezone(activeStudioBatchAlbum.batchDeadline)}.`
                   : ''}
               </span>
             </div>

@@ -168,6 +168,8 @@ export interface Order {
   taxAmount?: number; // Tax calculated based on shipping address
   taxRate?: number; // Tax rate percentage applied
   subtotal?: number; // Total before tax and shipping
+  discountCode?: string;
+  discountAmount?: number;
   stripeFeeAmount?: number;
   paymentIntentId?: string;
   customerReceiptSentAt?: string;

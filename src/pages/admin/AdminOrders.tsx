@@ -20,6 +20,32 @@ function buildAdminRequestHeaders() {
   return headers;
 }
 
+function resolveOrderDiscount(order: { subtotal?: number; shippingCost?: number; taxAmount?: number; totalAmount?: number; discountCode?: string }) {
+  const subtotal = Number(order?.subtotal || 0);
+  const shipping = Number(order?.shippingCost || 0);
+  const tax = Number(order?.taxAmount || 0);
+  const total = Number(order?.totalAmount || 0);
+
+  const preferred = (subtotal + tax) - total;
+  const fallback = (subtotal + shipping + tax) - total;
+
+  let amount = 0;
+  let appliesToItems = false;
+
+  if (Number.isFinite(preferred) && preferred > 0) {
+    amount = preferred;
+    appliesToItems = true;
+  } else if (Number.isFinite(fallback) && fallback > 0) {
+    amount = fallback;
+  }
+
+  return {
+    code: String(order?.discountCode || '').trim(),
+    amount: Number(amount.toFixed(2)),
+    appliesToItems,
+  };
+}
+
 export async function fetchWhccPreview(orderId: number, specialInstructions?: string) {
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), 30000);
@@ -1159,6 +1185,7 @@ const AdminOrders: React.FC = () => {
           : order.directPricingModeUsed === 'pass_through'
             ? 'Direct order: customer charged rubric cost'
             : 'Direct order: customer charged flat fee';
+        const discount = resolveOrderDiscount(order);
 
         const stripeFeeAmount = Number(order.stripeFeeAmount) || 0;
         const digitalItemCountFromItems = (order.items || []).filter((item) =>
@@ -1169,8 +1196,9 @@ const AdminOrders: React.FC = () => {
         // Only include uncovered shipping cost (not tax or stripe fees)
         const uncoveredShippingCost = Math.max(0, studioShippingCost - shippingCost);
         const otherOrderCosts = uncoveredShippingCost;
+        const studioPriceTotal = Math.max(0, studioRevenue - (discount.appliesToItems ? discount.amount : 0));
         // Gross Margin = Studio Price Total - Base Cost Total - Other Order Costs - Stripe Fees
-        const grossMargin = studioRevenue - baseRevenue - otherOrderCosts - stripeFeeAmount;
+        const grossMargin = studioPriceTotal - baseRevenue - otherOrderCosts - stripeFeeAmount;
         const importRunAt =
           order.whccRequestLog?.importResponseMeta?.runAt ||
           order.whccImportResponse?.Received ||
@@ -1617,8 +1645,18 @@ const AdminOrders: React.FC = () => {
         {Number(order.taxAmount) > 0 && (
           <div className="admin-order-pricing-row"><span>Tax</span><span>${Number(order.taxAmount).toFixed(2)}</span></div>
         )}
+        {(discount.amount > 0 || discount.code) && (
+          <>
+            {discount.code && (
+              <div className="admin-order-pricing-row"><span>Coupon</span><span>{discount.code}</span></div>
+            )}
+            {discount.amount > 0 && (
+              <div className="admin-order-pricing-row"><span>Discount</span><span>-${discount.amount.toFixed(2)}</span></div>
+            )}
+          </>
+        )}
         <div className="admin-order-pricing-row admin-order-pricing-total"><span>Total Charged</span><span>${Number(order.totalAmount).toFixed(2)}</span></div>
-        <div className="admin-order-pricing-row"><span>Studio Price Total</span><span>${studioRevenue.toFixed(2)}</span></div>
+        <div className="admin-order-pricing-row"><span>Studio Price Total</span><span>${studioPriceTotal.toFixed(2)}</span></div>
         <div className="admin-order-pricing-row"><span>Base Cost Total</span><span>${baseRevenue.toFixed(2)}</span></div>
         <div className="admin-order-pricing-row"><span>Other Order Costs</span><span>${otherOrderCosts.toFixed(2)}</span></div>
         <div className="admin-order-pricing-row"><span>Stripe Fees</span><span>${stripeFeeAmount.toFixed(2)}</span></div>
