@@ -579,6 +579,7 @@ const AdminOrders: React.FC = () => {
   const [loading, setLoading] = useState(true);
   // const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null); // Duplicate, removed
   const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState(''); // Empty string = show all
   const [whccRetrying, setWhccRetrying] = useState<number | null>(null);
   const [whccRetryMessageByOrder, setWhccRetryMessageByOrder] = useState<Record<number, { tone: 'info' | 'error'; text: string }>>({});
   const [digitalResendingOrderId, setDigitalResendingOrderId] = useState<number | null>(null);
@@ -837,28 +838,36 @@ const AdminOrders: React.FC = () => {
   const normalizedQuery = searchQuery.trim().toLowerCase();
 
   const filteredRecentOrders = React.useMemo(() => {
-    if (!normalizedQuery) {
-      return recentDirectOrders;
+    let filtered = recentDirectOrders;
+
+    // Apply search filter
+    if (normalizedQuery) {
+      filtered = filtered.filter((order) => {
+        const shipping = order.shippingAddress || ({} as ShippingAddress);
+        const searchableText = [
+          shipping.fullName,
+          shipping.email,
+          shipping.addressLine1,
+          shipping.addressLine2,
+          shipping.city,
+          shipping.state,
+          shipping.zipCode,
+          shipping.country,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        return searchableText.includes(normalizedQuery);
+      });
     }
 
-    return recentDirectOrders.filter((order) => {
-      const shipping = order.shippingAddress || ({} as ShippingAddress);
-      const searchableText = [
-        shipping.fullName,
-        shipping.email,
-        shipping.addressLine1,
-        shipping.addressLine2,
-        shipping.city,
-        shipping.state,
-        shipping.zipCode,
-        shipping.country,
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-      return searchableText.includes(normalizedQuery);
-    });
-  }, [normalizedQuery, recentDirectOrders]);
+    // Apply status filter
+    if (statusFilter && statusFilter !== '') {
+      filtered = filtered.filter((order) => String(order.status).toLowerCase() === String(statusFilter).toLowerCase());
+    }
+
+    return filtered;
+  }, [normalizedQuery, statusFilter, recentDirectOrders]);
 
   const showWhccColumn = React.useMemo(
     () => canViewWhccDetails && visibleOrders.some(
@@ -1954,6 +1963,20 @@ const AdminOrders: React.FC = () => {
               placeholder="Search by customer name, email, or address"
               aria-label="Search orders"
             />
+            <select
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+              style={{ padding: '8px 12px', borderRadius: '4px', border: '1px solid #ccc', fontFamily: 'inherit' }}
+              aria-label="Filter by status"
+            >
+              <option value="">All Statuses</option>
+              <option value="pending">Pending</option>
+              <option value="processing">Processing</option>
+              <option value="completed">Completed</option>
+              <option value="shipped">Shipped</option>
+              <option value="cancelled">Cancelled</option>
+              <option value="waiting">Waiting</option>
+            </select>
           </div>
           {loading ? (
             <div className="loading-state">Loading orders...</div>
