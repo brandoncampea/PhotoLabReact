@@ -2202,10 +2202,33 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
         }
 
         // Step 2: If a finish attribute is selected, filter for catalog products that support it
+        const dbSelectedAttributeUIDs = (() => {
+          if (Array.isArray(item.attributes)) {
+            return item.attributes
+              .map((value) => Number(value?.AttributeUID ?? value))
+              .filter((value) => Number.isInteger(value) && value > 0);
+          }
+          if (typeof item.attributes === 'string') {
+            const parsed = safeJsonParse(item.attributes, []);
+            if (Array.isArray(parsed)) {
+              return parsed
+                .map((value) => Number(value?.AttributeUID ?? value))
+                .filter((value) => Number.isInteger(value) && value > 0);
+            }
+            const single = Number(parsed?.AttributeUID ?? parsed);
+            return Number.isInteger(single) && single > 0 ? [single] : [];
+          }
+          return [];
+        })();
+
+        const selectedAttributeUIDs = dbSelectedAttributeUIDs.length
+          ? dbSelectedAttributeUIDs
+          : (Array.isArray(optionsConfig.itemAttributeUIDs) ? optionsConfig.itemAttributeUIDs : []);
+
         let selectedFinishUid = null;
-        if (Array.isArray(optionsConfig.itemAttributeUIDs) && optionsConfig.itemAttributeUIDs.length > 0) {
+        if (selectedAttributeUIDs.length > 0) {
           // Try to find a finish attribute (not just parent Paper)
-          selectedFinishUid = optionsConfig.itemAttributeUIDs.find(uid => Number(uid) !== 1); // 1 = Paper (parent)
+          selectedFinishUid = selectedAttributeUIDs.find(uid => Number(uid) !== 1) || null; // 1 = Paper (parent)
         }
         let catalogMatch = null;
         if (selectedFinishUid) {
@@ -2429,9 +2452,9 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
           return selected;
         })();
 
-        const preferredAttributeUIDs = finalAttributeUIDs.length
-          ? finalAttributeUIDs
-          : dbItemAttributeUIDsWithDirectParents;
+        const preferredAttributeUIDs = dbItemAttributeUIDsWithDirectParents.length
+          ? dbItemAttributeUIDsWithDirectParents
+          : finalAttributeUIDs;
         const itemAttributeUIDs = Array.from(
           new Set(preferredAttributeUIDs
             .map((value) => Number(value))
@@ -3926,9 +3949,14 @@ router.post('/', requireActiveSubscription, async (req, res) => {
             .map(x => typeof x === 'string' ? Number(x) : x)
             .filter(x => typeof x === 'number' && !isNaN(x))
         : [];
-      // PATCH: Filter out default attribute UID (5) if another is present
-      if (attrs.length > 1 && attrs.includes(5)) {
-        attrs = attrs.filter(x => x !== 5);
+      // If UID 5 (legacy/default gloss) is present alongside another non-parent/non-5
+      // attribute, drop UID 5 so the explicit finish selection is preserved.
+      // Keep [1,5] intact (valid glossy selection).
+      if (attrs.includes(5)) {
+        const hasExplicitNonDefaultFinish = attrs.some(x => x !== 1 && x !== 5);
+        if (hasExplicitNonDefaultFinish) {
+          attrs = attrs.filter(x => x !== 5);
+        }
       }
       const attributesJson = attrs && attrs.length ? JSON.stringify(attrs) : null;
       // Debug logging for attribute extraction and what will be saved
@@ -3959,7 +3987,12 @@ router.post('/', requireActiveSubscription, async (req, res) => {
         try { options = JSON.parse(options); } catch { options = {}; }
       }
       let productOptionsSnapshotPatched = options && typeof options === 'object'
-        ? JSON.stringify({ ...options, attributes: attrs })
+        ? JSON.stringify({
+            ...options,
+            attributes: attrs,
+            whccItemAttributeUIDs: attrs,
+            itemAttributeUIDs: attrs,
+          })
         : item.productOptionsSnapshot;
 
       try {
