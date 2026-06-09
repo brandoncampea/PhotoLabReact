@@ -2987,7 +2987,7 @@ const sendOrderReceipts = async (orderId) => {
             oi.studio_net_payout_amount as studioNetPayoutAmount
      FROM order_items oi
      INNER JOIN products p ON p.id = oi.product_id
-     INNER JOIN product_sizes ps ON ps.id = oi.product_size_id
+     LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id
      INNER JOIN photos ph ON ph.id = oi.photo_id
      INNER JOIN albums a ON a.id = ph.album_id
      INNER JOIN studios s ON s.id = a.studio_id
