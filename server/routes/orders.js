@@ -4782,12 +4782,11 @@ router.get('/admin/all-orders', adminRequired, async (req, res) => {
       FROM orders o
     `;
     const params = [];
-    if (actingStudioId) {
+    const studioScopeId = actingStudioId ||
+      (req.user.role === 'studio_admin' || req.user.role === 'admin' ? req.user.studio_id : null);
+    if (studioScopeId) {
       queryText += ` WHERE o.studio_id = $1`;
-      params.push(actingStudioId);
-    } else if (req.user.role === 'studio_admin') {
-      queryText += ` WHERE o.studio_id = $1`;
-      params.push(req.user.studio_id);
+      params.push(studioScopeId);
     }
     queryText += ` ORDER BY o.created_at DESC`;
 
@@ -5026,12 +5025,11 @@ router.get('/admin/order-details/:orderId', adminRequired, async (req, res) => {
     `;
     const params = [orderId];
 
-    if (actingStudioId) {
+    const studioScopeId = actingStudioId ||
+      (req.user.role === 'studio_admin' || req.user.role === 'admin' ? req.user.studio_id : null);
+    if (studioScopeId) {
       queryText += ` AND o.studio_id = $2`;
-      params.push(actingStudioId);
-    } else if (req.user.role === 'studio_admin') {
-      queryText += ` AND o.studio_id = $2`;
-      params.push(req.user.studio_id);
+      params.push(studioScopeId);
     }
 
 
