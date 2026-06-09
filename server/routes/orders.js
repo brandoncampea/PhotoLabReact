@@ -3784,12 +3784,14 @@ router.post('/', requireActiveSubscription, async (req, res) => {
         productName: productRow?.productName,
       });
 
-      // PATCH: If a variant is selected, resolve its base_cost and price
-      // instead of using the default product/size pricing.
+      // Resolve the correct variant base cost using:
+      // 1. If whccSelectedVariantId is set, use that variant's base_cost
+      // 2. Fallback: exact attribute-set match against variant table (excluding UID 5)
+      // 3. Final fallback: product/size default pricing
       let resolvedBaseUnitPrice = productRow?.sizeBasePrice ?? productRow?.productBasePrice ?? 0;
       let resolvedProductionUnitCost = productRow?.sizeCost ?? productRow?.productCost ?? 0;
 
-      if (productOptions && item.productSizeId) {
+      if (item.productSizeId) {
         const selectedVariantId = Number(
           productOptions?.whccSelectedVariantId ??
           productOptions?.selectedWhccVariantId ??
@@ -3801,34 +3803,78 @@ router.post('/', requireActiveSubscription, async (req, res) => {
           ''
         ).trim();
 
-        if (selectedVariantId > 0 || selectedVariantLocalId) {
-          // Try to find the selected variant in the database
-          const variantRow = selectedVariantId > 0
-            ? await queryRow(
-                `SELECT v.base_cost, v.price
-                 FROM super_price_list_item_whcc_variants v
-                 INNER JOIN super_price_list_items spi ON spi.id = v.super_price_list_item_id
-                 WHERE v.id = $1 AND spi.product_size_id = $2`,
-                [selectedVariantId, item.productSizeId]
-              )
-            : null;
+        let variantRow = null;
 
-          if (variantRow) {
-            const variantBaseCost = parseNullableNumber(variantRow?.base_cost);
-            const variantPrice = parseNullableNumber(variantRow?.price);
-            if (variantBaseCost !== null) {
-              resolvedBaseUnitPrice = variantBaseCost;
+        // Strategy 1: lookup by stored variant ID
+        if (selectedVariantId > 0) {
+          variantRow = await queryRow(
+            `SELECT v.id, v.base_cost, v.price, v.whcc_item_attribute_uids
+             FROM super_price_list_item_whcc_variants v
+             INNER JOIN super_price_list_items spi ON spi.id = v.super_price_list_item_id
+             WHERE v.id = $1 AND spi.product_size_id = $2`,
+            [selectedVariantId, item.productSizeId]
+          );
+        }
+
+        // Strategy 2: exact attribute-set match (excluding UID 5)
+        if (!variantRow && Array.isArray(attributes) && attributes.length > 0) {
+          const itemAttrSet = attributes
+            .map(Number)
+            .filter(n => Number.isInteger(n) && n > 0 && n !== 5)
+            .sort((a, b) => a - b);
+
+          if (itemAttrSet.length > 0) {
+            const candidateVariants = await queryRows(
+              `SELECT v.id, v.base_cost, v.price, v.whcc_item_attribute_uids
+               FROM super_price_list_item_whcc_variants v
+               INNER JOIN super_price_list_items spi ON spi.id = v.super_price_list_item_id
+               WHERE spi.product_size_id = $1
+                 AND ISNULL(v.is_active, 1) = 1
+                 AND v.base_cost IS NOT NULL`,
+              [item.productSizeId]
+            );
+
+            for (const candidate of (candidateVariants || [])) {
+              const candidateAttrs = (safeJsonParse(candidate.whcc_item_attribute_uids, []) || [])
+                .map(Number)
+                .filter(n => Number.isInteger(n) && n > 0 && n !== 5)
+                .sort((a, b) => a - b);
+
+              if (
+                candidateAttrs.length === itemAttrSet.length &&
+                candidateAttrs.every((uid, i) => uid === itemAttrSet[i])
+              ) {
+                variantRow = candidate;
+                break;
+              }
             }
-            console.log('[ORDER ITEM VARIANT PRICING]', {
-              productSizeId: item.productSizeId,
-              selectedVariantId,
-              variantBaseCost,
-              variantPrice,
-              resolvedBaseUnitPrice,
-            });
           }
         }
-      }
+
+        // Strategy 3: local variant list from productOptions
+        if (!variantRow && selectedVariantLocalId) {
+          const localVariant = (productOptions?.whccVariants || []).find(
+            v => String(v?.localId || '') === selectedVariantLocalId
+          );
+          if (localVariant?.baseCost != null) {
+            resolvedBaseUnitPrice = Number(localVariant.baseCost);
+          }
+        }
+
+        if (variantRow) {
+          const variantBaseCost = parseNullableNumber(variantRow?.base_cost);
+          if (variantBaseCost !== null && variantBaseCost > 0) {
+            resolvedBaseUnitPrice = variantBaseCost;
+          }
+          console.log('[ORDER ITEM VARIANT PRICING]', {
+            productSizeId: item.productSizeId,
+            selectedVariantId,
+            variantId: variantRow.id,
+            variantBaseCost,
+            resolvedBaseUnitPrice,
+          });
+        }
+      } // end if (item.productSizeId) variant resolution
 
       const accounting = calculateItemAccountingSnapshot({
         unitPrice: item.price,
