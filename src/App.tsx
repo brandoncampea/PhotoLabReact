@@ -10,6 +10,7 @@ import { UploadProvider } from './contexts/UploadContext';
 import './components/UploadPanel.css';
 import Layout from './components/Layout/Layout';
 import AdminProtectedRoute from './components/AdminProtectedRoute';
+import SuperAdminProtectedRoute from './components/SuperAdminProtectedRoute';
 import StudioAlbumStyles from './pages/admin/StudioAlbumStyles';
 
 const SuperAdminShipping = lazy(() => import('./pages/admin/SuperAdminShipping'));
@@ -102,7 +103,7 @@ function App() {
                 <Route path="/admin/customers" element={<AdminProtectedRoute><AdminCustomers /></AdminProtectedRoute>} />
                 <Route path="/admin/shipping" element={<AdminProtectedRoute><AdminShipping /></AdminProtectedRoute>} />
                 <Route path="/admin/super-shipping" element={<AdminProtectedRoute><SuperAdminShipping /></AdminProtectedRoute>} />
-                <Route path="/admin/whcc-price-audit" element={<AdminProtectedRoute><SuperAdminWhccPriceAudit /></AdminProtectedRoute>} />
+                <Route path="/admin/whcc-price-audit" element={<SuperAdminProtectedRoute><SuperAdminWhccPriceAudit /></SuperAdminProtectedRoute>} />
                 <Route path="/admin/album-styles" element={<AdminProtectedRoute><StudioAlbumStyles /></AdminProtectedRoute>} />
                 <Route path="/admin/discount-codes" element={<AdminProtectedRoute><AdminDiscountCodes /></AdminProtectedRoute>} />
                 <Route path="/admin/watermarks" element={<AdminProtectedRoute><AdminWatermarks /></AdminProtectedRoute>} />

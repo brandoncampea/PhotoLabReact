@@ -456,6 +456,22 @@ const extractWhccOrderBillingTotals = (importData) => {
 };
 
 const buildWhccPriceAudit = ({ importResponseData, submitResponseData, resolvedWhccItems }) => {
+  const SHIPPING_KEYWORDS = [
+    'fulfillment shipping',
+    'delivery area surcharge',
+    'shipping surcharge',
+    'residential delivery',
+    'fuel surcharge',
+    'delivery surcharge',
+    'extended surcharge',
+    'shipping & handling',
+    'handling',
+  ];
+  const isShippingDescription = (value) => {
+    const normalized = String(value || '').toLowerCase();
+    return SHIPPING_KEYWORDS.some((keyword) => normalized.includes(keyword));
+  };
+
   const expectedItems = Array.isArray(resolvedWhccItems)
     ? resolvedWhccItems
         .filter(Boolean)
@@ -514,8 +530,10 @@ const buildWhccPriceAudit = ({ importResponseData, submitResponseData, resolvedW
     const quantity = pickNumber(value, ['Quantity', 'quantity', 'Qty', 'qty']);
     const unitPrice = pickNumber(value, ['UnitPrice', 'unitPrice', 'PriceEach', 'priceEach', 'EachPrice', 'eachPrice']);
     const totalPrice = pickNumber(value, ['TotalPrice', 'totalPrice', 'ExtendedPrice', 'extendedPrice', 'LinePrice', 'linePrice', 'ItemPrice', 'itemPrice', 'Price', 'price', 'Amount', 'amount']);
+    const description = pickString(value, ['ProductDescription', 'productDescription', 'Description', 'description', 'Name', 'name']);
     const hasPrice = unitPrice !== null || totalPrice !== null;
-    const hasIdentity = Boolean(lineItemId || productUID || /item|line/i.test(path));
+    const isShippingRow = isShippingDescription(description);
+    const hasIdentity = Boolean(lineItemId || productUID || /products?\[\d+\]/i.test(path) || /item|line/i.test(path));
 
     if (hasPrice && hasIdentity) {
       const normalizedPath = path.replace(/\[\d+\]/g, '[]');
@@ -528,6 +546,8 @@ const buildWhccPriceAudit = ({ importResponseData, submitResponseData, resolvedW
           quantity: quantity === null ? null : Math.max(1, quantity),
           unitPrice: roundMoney(unitPrice),
           totalPrice: roundMoney(totalPrice),
+          description,
+          isShippingRow,
           path,
         });
       }
@@ -546,12 +566,20 @@ const buildWhccPriceAudit = ({ importResponseData, submitResponseData, resolvedW
   if (!expectedItems.length && !rawRows.length) return null;
 
   const usedRowIndexes = new Set();
+  const productRows = rawRows.filter((row) => /products?\[\d+\]/i.test(row.path) && !row.isShippingRow);
   const findRowForItem = (expected) => {
     const tryFind = (predicate) => rawRows.findIndex((row, rowIndex) => !usedRowIndexes.has(rowIndex) && predicate(row));
 
     let index = tryFind((row) => row.lineItemId && expected.localItemId && row.lineItemId === expected.localItemId);
     if (index < 0 && expected.productUID !== null) {
       index = tryFind((row) => row.productUID !== null && Number(row.productUID) === Number(expected.productUID));
+    }
+    if (index < 0 && productRows[expected.index]) {
+      const fallbackRow = productRows[expected.index];
+      const fallbackIndex = rawRows.findIndex((row, rowIndex) => !usedRowIndexes.has(rowIndex) && row.path === fallbackRow.path && row.description === fallbackRow.description);
+      if (fallbackIndex >= 0) {
+        index = fallbackIndex;
+      }
     }
     if (index < 0) {
       index = tryFind((row) => /item|line/i.test(row.path));
@@ -610,9 +638,15 @@ const buildWhccPriceAudit = ({ importResponseData, submitResponseData, resolvedW
   const expectedTotalCost = roundMoney(
     differences.reduce((sum, item) => sum + (parseNullableNumber(item.expectedLineCost) || 0), 0)
   ) || 0;
-  const actualTotalCost = roundMoney(
+  const actualTotalCostFromMatches = roundMoney(
     differences.reduce((sum, item) => sum + (parseNullableNumber(item.actualLineCost) || 0), 0)
   ) || 0;
+  const actualTotalCostFromProducts = roundMoney(
+    rawRows
+      .filter((row) => !row.isShippingRow && /products?\[\d+\]/i.test(row.path))
+      .reduce((sum, row) => sum + (parseNullableNumber(row.totalPrice ?? row.unitPrice) || 0), 0)
+  ) || 0;
+  const actualTotalCost = actualTotalCostFromMatches > 0 ? actualTotalCostFromMatches : actualTotalCostFromProducts;
 
   return {
     runAt: new Date().toISOString(),
