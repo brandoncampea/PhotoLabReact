@@ -46,6 +46,38 @@ function resolveOrderDiscount(order: { subtotal?: number; shippingCost?: number;
   };
 }
 
+function getItemBaseCostTotal(item: {
+  quantity?: number;
+  productionCostAmount?: number;
+  cost?: number;
+  labCost?: number;
+  baseRevenueAmount?: number;
+  basePrice?: number;
+}) {
+  const quantity = Math.max(1, Number(item?.quantity) || 1);
+  const productionCostAmount = Number(item?.productionCostAmount);
+  if (Number.isFinite(productionCostAmount) && productionCostAmount > 0) {
+    return productionCostAmount;
+  }
+
+  const unitCost = Number(item?.cost ?? item?.labCost);
+  if (Number.isFinite(unitCost) && unitCost > 0) {
+    return unitCost * quantity;
+  }
+
+  const baseRevenueAmount = Number(item?.baseRevenueAmount);
+  if (Number.isFinite(baseRevenueAmount) && baseRevenueAmount > 0) {
+    return baseRevenueAmount;
+  }
+
+  const basePrice = Number(item?.basePrice);
+  if (Number.isFinite(basePrice) && basePrice > 0) {
+    return basePrice * quantity;
+  }
+
+  return 0;
+}
+
 export async function fetchWhccPreview(orderId: number, specialInstructions?: string) {
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), 30000);
@@ -914,7 +946,7 @@ const AdminOrders: React.FC = () => {
           0
         );
         const baseRevenue = (order.items || []).reduce(
-          (sum, item) => sum + (Number(item.basePrice) || 0) * (Number(item.quantity) || 0),
+          (sum, item) => sum + getItemBaseCostTotal(item),
           0
         );
         const stripeFeeAmount = Number(order.stripeFeeAmount) || 0;
@@ -1177,7 +1209,7 @@ const AdminOrders: React.FC = () => {
           0
         );
         const baseRevenue = (order.items || []).reduce(
-          (sum, item) => sum + (Number(item.basePrice) || 0) * (Number(item.quantity) || 0),
+          (sum, item) => sum + getItemBaseCostTotal(item),
           0
         );
         const shippingCost = Number(order.shippingCost) || 0;
