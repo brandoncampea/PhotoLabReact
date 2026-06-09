@@ -8,21 +8,36 @@
  * @param {string} opts.cancelReason - reason for cancellation
  */
 export async function sendOrderCancellationEmail({ to, customerName, order, items, cancelReason, replyTo }) {
-  if (!isConfigured() || !to) return false;
-  const html = renderOrderCancellationHtml({ customerName, order, items, cancelReason });
-  await mailtrapClient.send({
-    from: {
-      email: mailtrapSenderEmail,
-      name: mailtrapSenderName,
-    },
-    to: Array.isArray(to) ? to.map(email => ({ email })) : [{ email: to }],
-    subject: `Order #${order.id} Cancelled — Photo Lab`,
-    html,
-    text: `Your order #${order.id} has been cancelled.\nReason: ${cancelReason}\nTotal: ${currency(order.totalAmount)}\nIf you have questions, please contact support.`,
-    reply_to: replyTo || smtpReplyTo,
-    category: 'Order Cancelled',
-  });
-  return true;
+  if (!isConfigured()) {
+    console.warn('[CANCELLATION EMAIL] Email not configured (Mailtrap not set up)');
+    return false;
+  }
+  if (!to) {
+    console.warn('[CANCELLATION EMAIL] No recipient email provided');
+    return false;
+  }
+  
+  try {
+    console.log('[CANCELLATION EMAIL] Sending cancellation email to:', to, 'for order:', order?.id);
+    const html = renderOrderCancellationHtml({ customerName, order, items, cancelReason });
+    const response = await mailtrapClient.send({
+      from: {
+        email: mailtrapSenderEmail,
+        name: mailtrapSenderName,
+      },
+      to: Array.isArray(to) ? to.map(email => ({ email })) : [{ email: to }],
+      subject: `Order #${order.id} Cancelled — Photo Lab`,
+      html,
+      text: `Your order #${order.id} has been cancelled.\nReason: ${cancelReason}\nTotal: ${currency(order.totalAmount)}\nIf you have questions, please contact support.`,
+      reply_to: replyTo || smtpReplyTo,
+      category: 'Order Cancelled',
+    });
+    console.log('[CANCELLATION EMAIL] Email sent successfully to:', to, 'response:', response?.success || response?.id);
+    return true;
+  } catch (err) {
+    console.error('[CANCELLATION EMAIL] Failed to send cancellation email to:', to, 'Error:', err?.message || err);
+    return false;
+  }
 }
 
 function renderOrderCancellationHtml({ customerName, order, items, cancelReason }) {

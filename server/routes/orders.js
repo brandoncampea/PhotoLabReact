@@ -5447,6 +5447,8 @@ router.patch('/admin/:orderId/status', adminRequired, async (req, res) => {
 
       let studioEmail = null;
       try {
+        console.log('[CANCEL EMAIL] Starting cancellation email process for order:', orderId);
+        
         // Fetch order items for email
         const items = await queryRows(
           `SELECT oi.id, oi.photo_id as photoId, oi.product_id as productId, oi.product_size_id as productSizeId, oi.quantity, oi.price as price, oi.crop_data as cropData, p.name as productName, ps.size_name as productSizeName, a.studio_id as studioId
@@ -5458,24 +5460,36 @@ router.patch('/admin/:orderId/status', adminRequired, async (req, res) => {
            WHERE oi.order_id = $1`,
           [orderId]
         );
+        console.log('[CANCEL EMAIL] Fetched', items?.length || 0, 'items for order:', orderId);
+        
         if (items && items.length > 0 && items[0].studioId) {
           const studio = await queryRow('SELECT email FROM studios WHERE id = $1', [items[0].studioId]);
           if (studio && studio.email) studioEmail = studio.email;
         }
+        
         const { sendOrderCancellationEmail } = await import('../services/orderReceiptService.js');
-        console.log('[CANCEL EMAIL] Attempting to send cancellation email to:', order.email, 'for order:', orderId, 'reason:', cancelReason);
-        const emailResult = await sendOrderCancellationEmail({
-          to: order.email,
-          customerName: '',
-          order: { ...order, status: 'cancelled' },
-          items,
-          cancelReason,
-          replyTo: studioEmail
-        });
-        console.log('[CANCEL EMAIL] sendOrderCancellationEmail result:', emailResult);
+        console.log('[CANCEL EMAIL] Attempting to send cancellation email to:', order.email, 'for order:', orderId, 'reason:', cancelReason, 'items:', items?.length || 0);
+        
+        if (!order.email) {
+          console.warn('[CANCEL EMAIL] No customer email found for order:', orderId);
+        } else {
+          const emailResult = await sendOrderCancellationEmail({
+            to: order.email,
+            customerName: '',
+            order: { ...order, status: 'cancelled' },
+            items,
+            cancelReason,
+            replyTo: studioEmail
+          });
+          console.log('[CANCEL EMAIL] sendOrderCancellationEmail result:', emailResult, 'for order:', orderId);
+          
+          if (!emailResult) {
+            console.warn('[CANCEL EMAIL] Email service returned false for order:', orderId, '- Mailtrap may not be configured');
+          }
+        }
       } catch (emailErr) {
         // Log but do not fail
-        console.error('Failed to send cancellation email:', emailErr);
+        console.error('[CANCEL EMAIL] Failed to send cancellation email for order:', orderId, ':', emailErr?.message || emailErr);
       }
 
       return res.json({ success: true, cancelled: true, refundStatus, refundId, refundError });
