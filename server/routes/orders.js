@@ -1218,7 +1218,7 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
         if (token) {
           webhookId = null;
           // Prepare webhook registration URL
-          const webhookUrl = process.env.WHCC_WEBHOOK_URL || `${process.env.APP_BASE_URL || 'http://localhost:3000'}/api/whcc-webhook`;
+          const webhookUrl = process.env.WHCC_WEBHOOK_URL || `${process.env.APP_BASE_URL || 'http://localhost:3000'}/api/webhooks/whcc`;
           // Register webhook with WHCC
           try {
             const webhookRegisterResponse = await axios.post(
