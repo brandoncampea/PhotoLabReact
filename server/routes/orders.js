@@ -434,6 +434,27 @@ const extractWhccShippingCostFromImportResponse = (importData) => {
   return roundCurrency(total);
 };
 
+/**
+ * Extract WHCC order-level billing totals (SubTotal, Tax, Total) from import response.
+ * Returns { subtotal, tax, total } — what WHCC will charge the studio account.
+ */
+const extractWhccOrderBillingTotals = (importData) => {
+  const orders = importData?.Orders ?? importData?.orders ?? [];
+  let subtotal = 0;
+  let tax = 0;
+  let total = 0;
+  for (const order of (Array.isArray(orders) ? orders : [])) {
+    subtotal += parseFloat(order?.SubTotal ?? order?.subTotal ?? order?.subtotal ?? 0) || 0;
+    tax += parseFloat(order?.Tax ?? order?.tax ?? 0) || 0;
+    total += parseFloat(order?.Total ?? order?.total ?? 0) || 0;
+  }
+  return {
+    subtotal: roundCurrency(subtotal),
+    tax: roundCurrency(tax),
+    total: roundCurrency(total),
+  };
+};
+
 const buildWhccPriceAudit = ({ importResponseData, submitResponseData, resolvedWhccItems }) => {
   const expectedItems = Array.isArray(resolvedWhccItems)
     ? resolvedWhccItems
@@ -705,6 +726,15 @@ const buildWhccPriceAuditFromStoredOrder = ({ importResponse, submitResponse, it
 };
 
 const ensureOrderItemAccountingSchema = async () => {
+  // Order-level WHCC billing columns
+  await query(`
+    IF COL_LENGTH('orders', 'whcc_lab_subtotal') IS NULL
+      ALTER TABLE orders ADD whcc_lab_subtotal FLOAT NULL;
+    IF COL_LENGTH('orders', 'whcc_lab_tax') IS NULL
+      ALTER TABLE orders ADD whcc_lab_tax FLOAT NULL;
+    IF COL_LENGTH('orders', 'whcc_lab_total') IS NULL
+      ALTER TABLE orders ADD whcc_lab_total FLOAT NULL;
+  `);
   await query(`
     IF COL_LENGTH('order_items', 'product_options_snapshot') IS NULL
       ALTER TABLE order_items ADD product_options_snapshot NVARCHAR(MAX) NULL;
@@ -2760,11 +2790,19 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
       : whccTotalShippingCost;
     const customerShippingCost = roundCurrency(Number(order?.shipping_cost ?? order?.shippingCost ?? 0) || 0);
     const shippingMarginAmount = roundCurrency(customerShippingCost - perOrderWhccShippingCost);
-    if (whccTotalShippingCost > 0) {
-      console.log(`[WHCC] Extracted shipping cost from import response: $${whccTotalShippingCost} total, $${perOrderWhccShippingCost} per order, customer paid $${customerShippingCost}, margin $${shippingMarginAmount}`);
+
+    // Extract WHCC order-level billing totals (SubTotal, Tax, Total)
+    const whccBillingRaw = extractWhccOrderBillingTotals(importResponseData);
+    const orderCount = Math.max(1, targetOrderIds.length);
+    const perOrderWhccLabSubtotal = roundCurrency(whccBillingRaw.subtotal / orderCount);
+    const perOrderWhccLabTax = roundCurrency(whccBillingRaw.tax / orderCount);
+    const perOrderWhccLabTotal = roundCurrency(whccBillingRaw.total / orderCount);
+
+    if (whccTotalShippingCost > 0 || whccBillingRaw.total > 0) {
+      console.log(`[WHCC] Import billing totals: labSubtotal=$${perOrderWhccLabSubtotal} labTax=$${perOrderWhccLabTax} labTotal=$${perOrderWhccLabTotal} shipping=$${perOrderWhccShippingCost} shippingMargin=$${shippingMarginAmount}`);
     }
 
-    const updateImportPlaceholders = targetOrderIds.map((_, index) => `$${index + 9}`).join(',');
+    const updateImportPlaceholders = targetOrderIds.map((_, index) => `$${index + 12}`).join(',');
     await query(
       `UPDATE orders
        SET whcc_confirmation_id = $1,
@@ -2776,6 +2814,9 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
            whcc_webhook_event = COALESCE($6, whcc_webhook_event),
            studio_shipping_cost = CASE WHEN $7 > 0 THEN $7 ELSE studio_shipping_cost END,
            shipping_margin = CASE WHEN $7 > 0 THEN $8 ELSE shipping_margin END,
+           whcc_lab_subtotal = CASE WHEN $9 > 0 THEN $9 ELSE whcc_lab_subtotal END,
+           whcc_lab_tax = CASE WHEN $10 > 0 THEN $10 ELSE whcc_lab_tax END,
+           whcc_lab_total = CASE WHEN $11 > 0 THEN $11 ELSE whcc_lab_total END,
            whcc_last_error = NULL
        WHERE id IN (${updateImportPlaceholders})`,
       [
@@ -2787,9 +2828,35 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
         importResponseDetails.webhookEvent,
         perOrderWhccShippingCost,
         shippingMarginAmount,
+        perOrderWhccLabSubtotal,
+        perOrderWhccLabTax,
+        perOrderWhccLabTotal,
         ...targetOrderIds,
       ]
     );
+
+    // Update per-item super_admin_share_amount to account for WHCC tax distributed across items.
+    // WHCC tax reduces the super admin's net take from each order.
+    if (perOrderWhccLabTax > 0) {
+      const orderItems = await queryRows(
+        `SELECT id, super_admin_share_amount
+         FROM order_items
+         WHERE order_id IN (${targetOrderIds.map((_, i) => `$${i + 1}`).join(',')})`,
+        targetOrderIds
+      );
+      if (orderItems && orderItems.length > 0) {
+        const taxPerItem = roundCurrency(perOrderWhccLabTax / orderItems.length);
+        for (const oi of orderItems) {
+          const currentShare = Number(oi.super_admin_share_amount) || 0;
+          const adjustedShare = roundCurrency(currentShare - taxPerItem);
+          await query(
+            `UPDATE order_items SET super_admin_share_amount = $1 WHERE id = $2`,
+            [adjustedShare, oi.id]
+          );
+        }
+        console.log(`[WHCC] Adjusted super_admin_share_amount for ${orderItems.length} item(s) by -$${taxPerItem}/item for WHCC tax`);
+      }
+    }
 
     console.log(`[WHCC] Order(s) ${targetOrderIds.join(', ')} imported with confirmationId: ${confirmationId}`);
 
@@ -2826,7 +2893,7 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
       },
     };
 
-    const updateSubmitPlaceholders = targetOrderIds.map((_, index) => `$${index + 11}`).join(',');
+    const updateSubmitPlaceholders = targetOrderIds.map((_, index) => `$${index + 14}`).join(',');
     await query(
       `UPDATE orders
        SET lab_submitted = 1,
@@ -2837,6 +2904,9 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
            status = CASE WHEN status = 'pending' THEN 'processing' ELSE status END,
            studio_shipping_cost = CASE WHEN $9 > 0 THEN $9 ELSE studio_shipping_cost END,
            shipping_margin = CASE WHEN $9 > 0 THEN $10 ELSE shipping_margin END,
+           whcc_lab_subtotal = CASE WHEN $11 > 0 THEN $11 ELSE whcc_lab_subtotal END,
+           whcc_lab_tax = CASE WHEN $12 > 0 THEN $12 ELSE whcc_lab_tax END,
+           whcc_lab_total = CASE WHEN $13 > 0 THEN $13 ELSE whcc_lab_total END,
            whcc_confirmation_id = $1,
            whcc_import_response = $2,
            whcc_submit_response = $3,
@@ -2857,6 +2927,9 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
         shippingAddressOverride ? stringifyForDb(shippingAddressOverride) : null,
         perOrderWhccShippingCost,
         shippingMarginAmount,
+        perOrderWhccLabSubtotal,
+        perOrderWhccLabTax,
+        perOrderWhccLabTotal,
         ...targetOrderIds,
       ]
     );
