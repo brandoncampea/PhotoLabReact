@@ -20,7 +20,16 @@ export async function sendOrderCancellationEmail({ to, customerName, order, item
   try {
     console.log('[CANCELLATION EMAIL] Sending cancellation email to:', to, 'for order:', order?.id);
     const html = renderOrderCancellationHtml({ customerName, order, items, cancelReason });
-    const response = await mailtrapClient.send({
+    
+    // Build reply_to object - Mailtrap requires it to be an object, not a string
+    let replyToObj = null;
+    if (replyTo) {
+      replyToObj = { email: replyTo };
+    } else if (smtpReplyTo) {
+      replyToObj = { email: smtpReplyTo };
+    }
+    
+    const mailPayload = {
       from: {
         email: mailtrapSenderEmail,
         name: mailtrapSenderName,
@@ -29,9 +38,14 @@ export async function sendOrderCancellationEmail({ to, customerName, order, item
       subject: `Order #${order.id} Cancelled — Photo Lab`,
       html,
       text: `Your order #${order.id} has been cancelled.\nReason: ${cancelReason}\nTotal: ${currency(order.totalAmount)}\nIf you have questions, please contact support.`,
-      reply_to: replyTo || smtpReplyTo,
       category: 'Order Cancelled',
-    });
+    };
+    
+    if (replyToObj) {
+      mailPayload.reply_to = replyToObj;
+    }
+    
+    const response = await mailtrapClient.send(mailPayload);
     console.log('[CANCELLATION EMAIL] Email sent successfully to:', to, 'response:', response?.success || response?.id);
     return true;
   } catch (err) {
@@ -591,7 +605,15 @@ export const orderReceiptService = {
     const albumPart = albumName ? ` in "${albumName}"` : '';
     const photoWord = photoCount === 1 ? 'photo' : 'photos';
     try {
-      await mailtrapClient.send({
+      // Build reply_to object - Mailtrap requires it to be an object, not a string
+      let replyToObj = null;
+      if (this._replyTo) {
+        replyToObj = { email: this._replyTo };
+      } else if (smtpReplyTo) {
+        replyToObj = { email: smtpReplyTo };
+      }
+      
+      const mailPayload = {
         from: {
           email: mailtrapSenderEmail,
           name: mailtrapSenderName,
@@ -600,9 +622,14 @@ export const orderReceiptService = {
         subject: `New ${photoWord} added for ${playerLabel}${albumPart}`,
         html: renderPlayerPhotoNotificationHtml({ customerName, playerName, playerNumber, albumName, albumUrl, studioName, photoCount }),
         text: `Hi ${customerName || 'there'},\n\n${photoCount} new ${photoWord} featuring ${playerLabel}${albumPart} have been added.\n${albumUrl ? `\nView the album: ${albumUrl}` : ''}\n\nManage your watchlist: ${appBaseUrl ? `${appBaseUrl}/account` : '/account'}`,
-        reply_to: this._replyTo || smtpReplyTo,
         category: 'Player Photo Notification',
-      });
+      };
+      
+      if (replyToObj) {
+        mailPayload.reply_to = replyToObj;
+      }
+      
+      await mailtrapClient.send(mailPayload);
     } catch (emailErr) {
       // ...existing code...
       return false;
