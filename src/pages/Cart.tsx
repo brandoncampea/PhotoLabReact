@@ -176,7 +176,7 @@ const Cart: React.FC = () => {
   }, [items, albumDetailsById]);
 
   useEffect(() => {
-    const shouldQuote = !!shippingConfig && hasPhysicalProducts();
+    const shouldQuote = hasPhysicalProducts();
     if (!shouldQuote) {
       setShippingQuote(null);
       return;
@@ -204,7 +204,7 @@ const Cart: React.FC = () => {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [shippingConfig, shippingOption, shippingAddress, items]);
+  }, [shippingOption, shippingAddress, items]);
 
   const loadStudioFees = async () => {
     try {
