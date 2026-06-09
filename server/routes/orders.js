@@ -3179,9 +3179,9 @@ const sendOrderReceipts = async (orderId) => {
      FROM order_items oi
      INNER JOIN products p ON p.id = oi.product_id
      LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id
-     INNER JOIN photos ph ON ph.id = oi.photo_id
-     INNER JOIN albums a ON a.id = ph.album_id
-     INNER JOIN studios s ON s.id = a.studio_id
+     LEFT JOIN photos ph ON ph.id = oi.photo_id
+     LEFT JOIN albums a ON a.id = ph.album_id
+     LEFT JOIN studios s ON s.id = a.studio_id
      WHERE oi.order_id = $1`,
     [orderId]
   );
@@ -3298,9 +3298,8 @@ const sendOrderReceipts = async (orderId) => {
   }
 
   if (customerSent || anyStudioSent) {
-    // Check if all items are digital
-    const allDigital = items.length > 0 && items.every(isDigitalProductRow);
-    const shouldAutoCompleteDigitalOrder = allDigital && customerSent && digitalDownloads.length > 0;
+    // Auto-complete if we sent digital downloads: if downloads were sent, the order is digital-only
+    const shouldAutoCompleteDigitalOrder = customerSent && digitalDownloads.length > 0;
     let updateSql = `UPDATE orders
       SET customer_receipt_sent_at = CASE WHEN $1 = 1 THEN CURRENT_TIMESTAMP ELSE customer_receipt_sent_at END,
           studio_receipt_sent_at = CASE WHEN $2 = 1 THEN CURRENT_TIMESTAMP ELSE studio_receipt_sent_at END`;

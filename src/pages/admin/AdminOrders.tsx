@@ -472,6 +472,7 @@ const AdminOrders: React.FC = () => {
   const [whccPreviewByOrder, setWhccPreviewByOrder] = useState<Record<number, { approvalStatus?: string; preview?: any }>>({});
   const [whccApprovalLoading, setWhccApprovalLoading] = useState<Record<number, boolean>>({});
   const [whccApprovalError, setWhccApprovalError] = useState<Record<number, string | null>>({});
+  const [whccResubmitConfirmed, setWhccResubmitConfirmed] = useState<Record<number, boolean>>({});
   const [batchStatusUpdate, setBatchStatusUpdate] = useState({ status: '', message: '', loading: false, result: '' });
 
 
@@ -1407,12 +1408,19 @@ const AdminOrders: React.FC = () => {
           const whccPreview = whccPreviewByOrder[order.id];
           const approvalStatus = whccPreview?.approvalStatus || '';
           const previewPayload = whccPreview?.preview;
+          const alreadySubmitted = Boolean(order.whccConfirmationId);
+          const resubmitConfirmed = whccResubmitConfirmed[order.id] || false;
           const handleApprove = async () => {
+            if (alreadySubmitted && !resubmitConfirmed) {
+              setWhccResubmitConfirmed((cur) => ({ ...cur, [order.id]: true }));
+              return;
+            }
             setWhccApprovalLoading((cur) => ({ ...cur, [order.id]: true }));
             setWhccApprovalError((cur) => ({ ...cur, [order.id]: null }));
             try {
               await approveWhccOrder(order.id);
               await ensureOrderDetailsLoaded(order.id);
+              setWhccResubmitConfirmed((cur) => ({ ...cur, [order.id]: false }));
               setMessage('Order approved and submitted to WHCC.');
             } catch (err: any) {
               setWhccApprovalError((cur) => ({ ...cur, [order.id]: err?.response?.data?.error || 'Failed to approve order.' }));
@@ -1441,23 +1449,39 @@ const AdminOrders: React.FC = () => {
               </div>
               {approvalStatus === 'pending' && (
                 <div style={{ marginBottom: 8 }}>
+                  {alreadySubmitted && !resubmitConfirmed && (
+                    <div style={{ padding: 10, borderRadius: 8, background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.3)', marginBottom: 10, color: '#fbbf24', fontSize: 13 }}>
+                      <strong>⚠ Already submitted to WHCC</strong> — This order was already submitted to WHCC. Do you want to resubmit?
+                    </div>
+                  )}
                   <button
                     className="btn btn-success"
                     style={{ marginRight: 8 }}
                     disabled={whccApprovalLoading[order.id]}
                     onClick={handleApprove}
                   >
-                    {whccApprovalLoading[order.id] ? 'Approving…' : 'Approve & Submit to WHCC'}
+                    {whccApprovalLoading[order.id] ? (alreadySubmitted && !resubmitConfirmed ? 'Processing…' : 'Approving…') : (alreadySubmitted && resubmitConfirmed ? 'Confirm & Resubmit' : 'Approve & Submit to WHCC')}
                   </button>
+                  {alreadySubmitted && resubmitConfirmed && (
+                    <button
+                      className="btn btn-secondary"
+                      style={{ marginLeft: 8 }}
+                      disabled={whccApprovalLoading[order.id]}
+                      onClick={() => setWhccResubmitConfirmed((cur) => ({ ...cur, [order.id]: false }))}
+                    >
+                      Cancel
+                    </button>
+                  )}
                   <button
                     className="btn btn-danger"
-                    disabled={whccApprovalLoading[order.id]}
+                    style={{ marginLeft: 8 }}
+                    disabled={whccApprovalLoading[order.id] || (alreadySubmitted && !resubmitConfirmed)}
                     onClick={handleReject}
                   >
                     {whccApprovalLoading[order.id] ? 'Rejecting…' : 'Reject'}
                   </button>
                   {whccApprovalError[order.id] && (
-                    <div style={{ color: 'red', marginTop: 6 }}>{whccApprovalError[order.id]}</div>
+                    <div style={{ color: '#fca5a5', marginTop: 6 }}>{whccApprovalError[order.id]}</div>
                   )}
                 </div>
               )}
