@@ -1280,7 +1280,8 @@ const AdminOrders: React.FC = () => {
           webhookEvent: order.whccWebhookEvent || null,
           lastUpdatedAt: submitRunAt || importRunAt || errorRunAt || null,
         };
-        const whccPriceAudit = user?.role === 'super_admin' ? order.whccPriceAudit : null;
+        const isSuperAdmin = user?.role === 'super_admin';
+        const whccPriceAudit = isSuperAdmin ? order.whccPriceAudit : null;
         const whccPriceAuditSummary = whccPriceAudit?.summary || null;
         const whccPriceDifferences = Array.isArray(whccPriceAudit?.differences) ? whccPriceAudit.differences : [];
         const mismatchedWhccPriceDifferences = whccPriceDifferences.filter((item: any) => item?.isMismatch);
@@ -1561,7 +1562,7 @@ const AdminOrders: React.FC = () => {
                 <span className="whcc-detail-value">{formatDateTime(lastWhccAttemptAt)}</span>
               </div>
             )}
-            {whccPriceAuditSummary && (
+            {isSuperAdmin && whccPriceAuditSummary && (
               <>
                 <div className="whcc-detail-field">
                   <span className="whcc-detail-label">Expected WHCC Cost</span>
@@ -1582,7 +1583,7 @@ const AdminOrders: React.FC = () => {
               </>
             )}
           </div>
-          {user?.role === 'super_admin' && whccPriceAuditSummary && (
+          {isSuperAdmin && whccPriceAuditSummary && (
             <div className="whcc-log-panel" style={{ marginBottom: 14 }}>
               <div className="whcc-log-summary" style={{ cursor: 'default' }}>
                 <span>WHCC Price Audit</span>

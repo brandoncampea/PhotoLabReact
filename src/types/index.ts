@@ -208,6 +208,9 @@ export interface WhccPriceAuditDifference {
   differenceAmount?: number | null;
   isMismatch?: boolean;
   expectedVariantName?: string | null;
+  matchedResponsePath?: string | null;
+  matchedResponseLineItemId?: string | null;
+  matchedResponseProductUID?: number | null;
 }
 
 export interface WhccPriceAuditSummary {
