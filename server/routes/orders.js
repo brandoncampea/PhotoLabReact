@@ -4786,7 +4786,7 @@ router.get('/admin/all-orders', adminRequired, async (req, res) => {
       queryText += ` WHERE o.studio_id = $1`;
       params.push(actingStudioId);
     } else if (req.user.role === 'studio_admin') {
-      queryText += ` WHERE o.user_id IN (SELECT u.id FROM users u WHERE u.studio_id = $1)`;
+      queryText += ` WHERE o.studio_id = $1`;
       params.push(req.user.studio_id);
     }
     queryText += ` ORDER BY o.created_at DESC`;
@@ -5030,7 +5030,7 @@ router.get('/admin/order-details/:orderId', adminRequired, async (req, res) => {
       queryText += ` AND o.studio_id = $2`;
       params.push(actingStudioId);
     } else if (req.user.role === 'studio_admin') {
-      queryText += ` AND o.user_id IN (SELECT u.id FROM users u WHERE u.studio_id = $2)`;
+      queryText += ` AND o.studio_id = $2`;
       params.push(req.user.studio_id);
     }
 
