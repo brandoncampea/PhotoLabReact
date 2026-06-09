@@ -892,6 +892,34 @@ const getOrderStudioIdFromItems = async (items) => {
   return studioId;
 };
 
+const getFallbackDirectShippingChargeForStudio = async (studioId) => {
+  const fallback = 9.95;
+  if (!studioId) return fallback;
+
+  const row = await queryRow(
+    `SELECT direct_pricing_mode as directPricingMode,
+            direct_flat_fee as directFlatFee,
+            direct_shipping_charge as directShippingCharge
+     FROM shipping_config
+     WHERE id = $1`,
+    [studioId]
+  );
+
+  const mode = String(row?.directPricingMode || 'flat_fee').toLowerCase();
+  const flatFee = Number(row?.directFlatFee);
+  const directCharge = Number(row?.directShippingCharge);
+
+  if (mode === 'flat_fee' && Number.isFinite(flatFee) && flatFee > 0) {
+    return roundCurrency(flatFee);
+  }
+
+  if (Number.isFinite(directCharge) && directCharge > 0) {
+    return roundCurrency(directCharge);
+  }
+
+  return fallback;
+};
+
 const validateBatchEligibilityForOrder = async ({ studioId, items }) => {
   if (!studioId) {
     return { ok: false, error: 'Unable to determine studio for batch shipping' };
@@ -3335,12 +3363,21 @@ router.post('/', requireActiveSubscription, async (req, res) => {
     const computedSubtotal = Array.isArray(items)
       ? roundCurrency(items.reduce((sum, item) => sum + ((Number(item?.price) || 0) * (Number(item?.quantity) || 0)), 0))
       : (Number(subtotal) || 0);
-    const computedShipping = allDigital ? 0 : (Number(shippingCost) || 0);
     const computedTax = Number(taxAmount) || 0;
     const orderStudioId = await getOrderStudioIdFromItems(items);
     if (!orderStudioId) {
       return res.status(400).json({ error: 'Unable to determine studio for this order' });
     }
+    const requestedShippingOption = String(shippingOption || '').toLowerCase();
+    const batchOrder = !!isBatch || requestedShippingOption === 'batch';
+    const normalizedShippingOption = allDigital ? 'none' : (batchOrder ? 'batch' : 'direct');
+    const requestedShippingCost = Number(shippingCost) || 0;
+    const fallbackDirectShippingCost = await getFallbackDirectShippingChargeForStudio(orderStudioId);
+    const computedShipping = allDigital
+      ? 0
+      : (normalizedShippingOption === 'batch'
+        ? 0
+        : (requestedShippingCost > 0 ? requestedShippingCost : fallbackDirectShippingCost));
 
     // Apply discount if code is provided
     let discountAmount = 0;
@@ -3382,12 +3419,7 @@ router.post('/', requireActiveSubscription, async (req, res) => {
     }
 
     const paymentAccounting = await fetchPaymentIntentAccounting(paymentIntentId);
-
-    const requestedShippingOption = String(shippingOption || '').toLowerCase();
-    const batchOrder = !!isBatch || requestedShippingOption === 'batch';
     const directOrder = !batchOrder;
-    // If all digital, shipping option is forced to 'none'
-    const normalizedShippingOption = allDigital ? 'none' : (batchOrder ? 'batch' : 'direct');
 
     let batchReadyDate = null;
     if (batchOrder) {
@@ -3457,7 +3489,7 @@ router.post('/', requireActiveSubscription, async (req, res) => {
       taxRate || 0,
       JSON.stringify(shippingAddress),
       normalizedShippingOption,
-      allDigital ? 0 : (shippingCost || 0),
+      computedShipping,
       studioShippingCost,
       shippingMargin,
       discountCode || null,

@@ -109,7 +109,7 @@ const Cart: React.FC = () => {
     };
   const [shippingConfig, setShippingConfig] = useState<ShippingConfig | null>(null);
   const [albumDetailsById, setAlbumDetailsById] = useState<{ [albumId: number]: any }>({});
-  const [shippingOption, setShippingOption] = useState<any>(null);
+  const [shippingOption, setShippingOption] = useState<any>('direct');
   const [shippingAddress, setShippingAddress] = useState<ShippingAddress>({
     fullName: '',
     email: '',

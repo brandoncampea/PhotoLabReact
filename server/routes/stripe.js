@@ -5,6 +5,72 @@ import { authRequired, superAdminRequired } from '../middleware/auth.js';
 
 const router = express.Router();
 
+const roundCurrency = (value) => {
+  const numeric = Number(value || 0);
+  if (!Number.isFinite(numeric)) return 0;
+  return Number(numeric.toFixed(2));
+};
+
+const getStudioIdFromItems = async (items) => {
+  let studioId = null;
+
+  for (const item of items || []) {
+    const photoIds = Array.isArray(item.photoIds)
+      ? item.photoIds
+      : item.photoId
+      ? [item.photoId]
+      : [];
+    const primaryPhotoId = Number(photoIds[0] || 0);
+    if (!Number.isInteger(primaryPhotoId) || primaryPhotoId <= 0) continue;
+
+    const row = await queryRow(
+      `SELECT a.studio_id as studioId
+       FROM photos p
+       INNER JOIN albums a ON a.id = p.album_id
+       WHERE p.id = $1`,
+      [primaryPhotoId]
+    );
+
+    if (!row?.studioId) continue;
+
+    if (studioId && Number(studioId) !== Number(row.studioId)) {
+      throw new Error('Orders cannot span multiple studios');
+    }
+
+    studioId = Number(row.studioId);
+  }
+
+  return studioId;
+};
+
+const getFallbackDirectShippingChargeForStudio = async (studioId) => {
+  const fallback = 9.95;
+  if (!studioId) return fallback;
+
+  const row = await queryRow(
+    `SELECT direct_pricing_mode as directPricingMode,
+            direct_flat_fee as directFlatFee,
+            direct_shipping_charge as directShippingCharge
+     FROM shipping_config
+     WHERE id = $1`,
+    [studioId]
+  );
+
+  const mode = String(row?.directPricingMode || 'flat_fee').toLowerCase();
+  const flatFee = Number(row?.directFlatFee);
+  const directCharge = Number(row?.directShippingCharge);
+
+  if (mode === 'flat_fee' && Number.isFinite(flatFee) && flatFee > 0) {
+    return roundCurrency(flatFee);
+  }
+
+  if (Number.isFinite(directCharge) && directCharge > 0) {
+    return roundCurrency(directCharge);
+  }
+
+  return fallback;
+};
+
 const getNormalizedStripeKeys = () => {
   const rawPublishableKey = String(process.env.STRIPE_PUBLISHABLE_KEY || '').trim();
   const rawSecretKey = String(process.env.STRIPE_SECRET_KEY || '').trim();
@@ -147,7 +213,19 @@ router.post('/create-payment-intent', authRequired, async (req, res) => {
       const name = String(item.productName || '').toLowerCase();
       return options?.isDigital === true || options?.is_digital_only === true || options?.digitalOnly === true || category.includes('digital') || name.includes('digital');
     });
-    const shipping = allDigital ? 0 : (shippingCost || 0);
+    const normalizedShippingOption = String(shippingOption || '').toLowerCase() === 'batch' ? 'batch' : 'direct';
+    const requestedShippingCost = Number(shippingCost) || 0;
+
+    let shipping = 0;
+    if (!allDigital && normalizedShippingOption !== 'batch') {
+      if (requestedShippingCost > 0) {
+        shipping = requestedShippingCost;
+      } else {
+        const studioId = await getStudioIdFromItems(items);
+        shipping = await getFallbackDirectShippingChargeForStudio(studioId);
+      }
+    }
+
     const discount = discountAmount || 0;
     const tax = taxAmount || 0;
     const fee = feeAmount || 0;
@@ -192,7 +270,7 @@ router.post('/create-payment-intent', authRequired, async (req, res) => {
           // Stripe metadata value limit is 500 chars; truncate with a flag if still over
           return str.length <= 500 ? str : str.slice(0, 496) + '...]';
         })(),
-        shippingOption,
+        shippingOption: normalizedShippingOption,
         shippingCost: shipping.toFixed(2),
         discountAmount: discount.toFixed(2),
         taxAmount: tax.toFixed(2),
