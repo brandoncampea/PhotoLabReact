@@ -2920,12 +2920,18 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
 
     submitResponseData = submitResponse.data || null;
     const submitResponseDetails = extractWhccResponseDetails(submitResponseData);
+    const whccPriceAudit = buildWhccPriceAudit({
+      importResponseData,
+      submitResponseData,
+      resolvedWhccItems,
+    });
     requestLog = {
       ...requestLog,
       submitResponseMeta: {
         runAt: nowIso(),
         status: submitResponse?.status || null,
       },
+      priceAudit: whccPriceAudit,
     };
 
     const updateSubmitPlaceholders = targetOrderIds.map((_, index) => `$${index + 14}`).join(',');
