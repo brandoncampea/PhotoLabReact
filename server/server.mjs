@@ -81,6 +81,7 @@ import runWhccEditorBackfillOnce from './startup/runWhccEditorBackfillOnce.js';
 import runWhccVariantSchemaMigrations from './startup/runWhccVariantSchemaMigrations.js';
 import './startup/ensureFreeBatchShippingColumn.js';
 import './startup/ensureOrderApprovalColumns.js';
+import './startup/ensureWhccLabBillingColumns.js';
 
 import '../server/startup/ensureOrderItemAttributesColumn.js';
 
