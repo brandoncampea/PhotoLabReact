@@ -3805,19 +3805,8 @@ router.post('/', requireActiveSubscription, async (req, res) => {
 
         let variantRow = null;
 
-        // Strategy 1: lookup by stored variant ID
-        if (selectedVariantId > 0) {
-          variantRow = await queryRow(
-            `SELECT v.id, v.base_cost, v.price, v.whcc_item_attribute_uids
-             FROM super_price_list_item_whcc_variants v
-             INNER JOIN super_price_list_items spi ON spi.id = v.super_price_list_item_id
-             WHERE v.id = $1 AND spi.product_size_id = $2`,
-            [selectedVariantId, item.productSizeId]
-          );
-        }
-
-        // Strategy 2: exact attribute-set match (excluding UID 5)
-        if (!variantRow && Array.isArray(attributes) && attributes.length > 0) {
+        // Strategy 1: exact attribute-set match (excluding UID 5)
+        if (Array.isArray(attributes) && attributes.length > 0) {
           const itemAttrSet = attributes
             .map(Number)
             .filter(n => Number.isInteger(n) && n > 0 && n !== 5)
@@ -3849,6 +3838,17 @@ router.post('/', requireActiveSubscription, async (req, res) => {
               }
             }
           }
+        }
+
+        // Strategy 2: lookup by stored variant ID (fallback only)
+        if (!variantRow && selectedVariantId > 0) {
+          variantRow = await queryRow(
+            `SELECT v.id, v.base_cost, v.price, v.whcc_item_attribute_uids
+             FROM super_price_list_item_whcc_variants v
+             INNER JOIN super_price_list_items spi ON spi.id = v.super_price_list_item_id
+             WHERE v.id = $1 AND spi.product_size_id = $2`,
+            [selectedVariantId, item.productSizeId]
+          );
         }
 
         // Strategy 3: local variant list from productOptions
