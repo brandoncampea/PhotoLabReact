@@ -48,6 +48,7 @@ function resolveOrderDiscount(order: { subtotal?: number; shippingCost?: number;
 
 function getItemBaseCostTotal(item: {
   quantity?: number;
+  superAdminShareAmount?: number;
   productionCostAmount?: number;
   cost?: number;
   labCost?: number;
@@ -55,6 +56,11 @@ function getItemBaseCostTotal(item: {
   basePrice?: number;
 }) {
   const quantity = Math.max(1, Number(item?.quantity) || 1);
+  const superAdminShareAmount = Number(item?.superAdminShareAmount);
+  if (Number.isFinite(superAdminShareAmount) && superAdminShareAmount > 0) {
+    return superAdminShareAmount;
+  }
+
   const productionCostAmount = Number(item?.productionCostAmount);
   if (Number.isFinite(productionCostAmount) && productionCostAmount > 0) {
     return productionCostAmount;
