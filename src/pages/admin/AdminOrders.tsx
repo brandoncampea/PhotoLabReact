@@ -586,7 +586,7 @@ const AdminOrders: React.FC = () => {
   const [digitalResendMessageByOrder, setDigitalResendMessageByOrder] = useState<Record<number, { tone: 'info' | 'error'; text: string }>>({});
   const [loadingOrderDetails, setLoadingOrderDetails] = useState<Record<number, boolean>>({});
   const [expandedBatchGroups, setExpandedBatchGroups] = useState<Record<string, boolean>>({});
-  const [batchSectionCollapsed, setBatchSectionCollapsed] = useState(false);
+  const [batchSectionCollapsed, setBatchSectionCollapsed] = useState(true);
   const [batchReleaseProgress, setBatchReleaseProgress] = useState<{
     active: boolean;
     total: number;
