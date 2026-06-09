@@ -4766,6 +4766,7 @@ router.get('/admin/all-orders', adminRequired, async (req, res) => {
         o.payment_intent_id as paymentIntentId,
         o.customer_receipt_sent_at as customerReceiptSentAt,
         o.studio_receipt_sent_at as studioReceiptSentAt,
+        ISNULL((SELECT SUM(ISNULL(oi.price,0) * ISNULL(oi.quantity,0)) FROM order_items oi WHERE oi.order_id = o.id), 0) as itemSubtotal,
         ${canViewWhccFields ? `o.whcc_confirmation_id as whccConfirmationId,
         o.whcc_import_response as whccImportResponse,
         o.whcc_submit_response as whccSubmitResponse,
@@ -4883,7 +4884,9 @@ router.get('/admin/all-orders', adminRequired, async (req, res) => {
       let subtotalOut = order.subtotal;
       let totalAmountOut = order.totalAmount;
       let taxAmountOut = order.taxAmount;
-      const itemSubtotal = roundCurrency(itemsWithPhotos.reduce((sum, item) => sum + ((Number(item.price) || 0) * (Number(item.quantity) || 0)), 0));
+      const itemSubtotal = includeItems
+        ? roundCurrency(itemsWithPhotos.reduce((sum, item) => sum + ((Number(item.price) || 0) * (Number(item.quantity) || 0)), 0))
+        : roundCurrency(order.itemSubtotal);
       const normalizedAmounts = normalizeOrderAmounts({
         subtotal: subtotalOut,
         shippingCost: shippingCostOut,

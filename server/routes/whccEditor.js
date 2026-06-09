@@ -51,6 +51,13 @@ const toAbsoluteUrl = (value) => {
   return raw.startsWith('/') ? `${appBase}${raw}` : `${appBase}/${raw}`;
 };
 
+const normalizeHexColor = (value, fallback = '#7b61ff') => {
+  const raw = String(value || '').trim();
+  if (!raw) return fallback;
+  const withHash = raw.startsWith('#') ? raw : `#${raw}`;
+  return /^#[0-9a-fA-F]{6}$/.test(withHash) ? withHash : fallback;
+};
+
 const getEditorIdsFromOptions = (options) => {
   const direct = options || {};
   const nested = direct.whccEditor || direct.editor || {};
@@ -128,9 +135,12 @@ router.post('/session/create', authRequired, async (req, res) => {
               p.full_image_url as fullImageUrl,
               p.thumbnail_url as thumbnailUrl,
               p.width,
-              p.height
+              p.height,
+              a.studio_id as studioId,
+              s.name as studioName
        FROM photos p
        INNER JOIN albums a ON a.id = p.album_id
+       LEFT JOIN studios s ON s.id = a.studio_id
        WHERE p.id IN (${normalizedPhotoIds.map((_, idx) => `$${idx + 1}`).join(', ')})`,
       normalizedPhotoIds
     );
@@ -197,6 +207,11 @@ router.post('/session/create', authRequired, async (req, res) => {
     }
 
     const accountId = `user-${userId}`;
+    const primaryPhoto = payloadPhotos.length ? photoMap.get(Number(payloadPhotos[0].id)) : null;
+    const configuredStudioName = String(process.env.WHCC_EDITOR_STUDIO_NAME || process.env.BRAND_NAME || process.env.APP_NAME || '').trim();
+    const studioName = String(primaryPhoto?.studioName || configuredStudioName || 'Photo Lab').trim();
+    const accentColor = normalizeHexColor(process.env.WHCC_EDITOR_ACCENT_COLOR, '#7b61ff');
+    const editorVendor = String(process.env.WHCC_EDITOR_VENDOR || 'default').trim() || 'default';
     const tokenResponse = await axios.post(
       `${apiBase}/auth/access-token`,
       {
@@ -243,7 +258,9 @@ router.post('/session/create', authRequired, async (req, res) => {
           default: Math.max(1, Number(quantity) || 1),
         },
         client: {
-          vendor: 'default',
+          vendor: editorVendor,
+          accentColor,
+          studioName,
           hidePricing: true,
         },
       },
