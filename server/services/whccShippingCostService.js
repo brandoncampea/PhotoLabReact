@@ -126,11 +126,14 @@ export async function calculateWhccShippingQuote({
     : 'pass_through';
 
   const isBatch = shippingOption === 'batch';
-  // Use studio-configured flat fee if set, otherwise fall back to 9.95
-  const FLAT_WHCC_SHIPPING = (studioConfig?.directFlatFee != null && Number.isFinite(Number(studioConfig.directFlatFee)) && Number(studioConfig.directFlatFee) > 0)
+  const configuredFlatFee = (studioConfig?.directFlatFee != null && Number.isFinite(Number(studioConfig.directFlatFee)) && Number(studioConfig.directFlatFee) > 0)
     ? Number(studioConfig.directFlatFee)
-    : 9.95;
-  const customerShippingCost = isBatch ? 0 : FLAT_WHCC_SHIPPING;
+    : ((studioConfig?.directShippingCharge != null && Number.isFinite(Number(studioConfig.directShippingCharge)) && Number(studioConfig.directShippingCharge) > 0)
+      ? Number(studioConfig.directShippingCharge)
+      : roundCurrency(whccShippingCost));
+  const customerShippingCost = isBatch
+    ? 0
+    : (directPricingMode === 'flat_fee' ? configuredFlatFee : roundCurrency(whccShippingCost));
 
   const studioShippingCost = roundCurrency(whccShippingCost);
   const studioShippingDelta = roundCurrency(customerShippingCost - studioShippingCost);
@@ -144,7 +147,7 @@ export async function calculateWhccShippingQuote({
     studioShippingCost,
     studioShippingDelta,
     directPricingMode: directPricingMode,
-    directFlatFee: FLAT_WHCC_SHIPPING,
+    directFlatFee: configuredFlatFee,
     rubricSource: 'WHCC Shipping Rubric.xlsx',
   };
 }

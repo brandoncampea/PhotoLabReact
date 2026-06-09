@@ -351,8 +351,11 @@ const Cart: React.FC = () => {
       return Number(shippingQuote.customerShippingCost || 0);
     }
     if (option === 'direct') {
-      // Prefer directFlatFee (studio-configured flat fee), then directShippingCharge (legacy), never fall back to an arbitrary hardcoded amount
-      return shippingConfig?.directFlatFee || shippingConfig?.directShippingCharge || 9.95;
+      const directPricingMode = String(shippingConfig?.directPricingMode || 'flat_fee').toLowerCase();
+      if (directPricingMode === 'flat_fee') {
+        return Number(shippingConfig?.directFlatFee || shippingConfig?.directShippingCharge || 0);
+      }
+      return Number(shippingConfig?.directShippingCharge || 0);
     }
     return 0;
   };
