@@ -2835,11 +2835,12 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
       ]
     );
 
-    // Update per-item super_admin_share_amount to account for WHCC tax distributed across items.
-    // WHCC tax reduces the super admin's net take from each order.
+    // WHCC tax is a lab cost borne by the studio (reduces studio payout/net payout).
+    // Super admin share is unaffected — super admin prices do not include WHCC tax.
+    // We still track the amount in whcc_lab_tax for reporting purposes.
     if (perOrderWhccLabTax > 0) {
       const orderItems = await queryRows(
-        `SELECT id, super_admin_share_amount
+        `SELECT id, studio_payout_amount, studio_net_payout_amount
          FROM order_items
          WHERE order_id IN (${targetOrderIds.map((_, i) => `$${i + 1}`).join(',')})`,
         targetOrderIds
@@ -2847,14 +2848,14 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
       if (orderItems && orderItems.length > 0) {
         const taxPerItem = roundCurrency(perOrderWhccLabTax / orderItems.length);
         for (const oi of orderItems) {
-          const currentShare = Number(oi.super_admin_share_amount) || 0;
-          const adjustedShare = roundCurrency(currentShare - taxPerItem);
+          const adjustedPayout = roundCurrency((Number(oi.studio_payout_amount) || 0) - taxPerItem);
+          const adjustedNetPayout = roundCurrency((Number(oi.studio_net_payout_amount) || 0) - taxPerItem);
           await query(
-            `UPDATE order_items SET super_admin_share_amount = $1 WHERE id = $2`,
-            [adjustedShare, oi.id]
+            `UPDATE order_items SET studio_payout_amount = $1, studio_net_payout_amount = $2 WHERE id = $3`,
+            [adjustedPayout, adjustedNetPayout, oi.id]
           );
         }
-        console.log(`[WHCC] Adjusted super_admin_share_amount for ${orderItems.length} item(s) by -$${taxPerItem}/item for WHCC tax`);
+        console.log(`[WHCC] Reduced studio_payout_amount/studio_net_payout_amount for ${orderItems.length} item(s) by -$${taxPerItem}/item for WHCC tax`);
       }
     }
 
