@@ -586,6 +586,7 @@ const AdminOrders: React.FC = () => {
   const [digitalResendMessageByOrder, setDigitalResendMessageByOrder] = useState<Record<number, { tone: 'info' | 'error'; text: string }>>({});
   const [loadingOrderDetails, setLoadingOrderDetails] = useState<Record<number, boolean>>({});
   const [expandedBatchGroups, setExpandedBatchGroups] = useState<Record<string, boolean>>({});
+  const [batchSectionCollapsed, setBatchSectionCollapsed] = useState(false);
   const [batchReleaseProgress, setBatchReleaseProgress] = useState<{
     active: boolean;
     total: number;
@@ -1740,23 +1741,41 @@ const AdminOrders: React.FC = () => {
         {message && <div className="admin-orders-message">{message}</div>}
 
         <div className="batch-queue-section">
-          <h2>Batch Shipping Queue</h2>
-          {loading ? (
-            <div className="loading-state">Loading batch queue...</div>
-          ) : !batchQueue ? (
-            <p className="empty-state">Batch queue unavailable.</p>
-          ) : (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <h2 style={{ margin: 0 }}>Batch Shipping Queue</h2>
+            <button
+              onClick={() => setBatchSectionCollapsed(!batchSectionCollapsed)}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: 18,
+                padding: '0 8px',
+                color: '#7cc7ff'
+              }}
+              title={batchSectionCollapsed ? 'Expand' : 'Collapse'}
+            >
+              {batchSectionCollapsed ? '▶' : '▼'}
+            </button>
+          </div>
+          {!batchSectionCollapsed && (
             <>
-              <div className="batch-stats">
-                <div className="batch-stat-card">
-                  <strong>Total queued</strong>
-                  <div>{batchQueue.totalQueued}</div>
-                </div>
-                <div className="batch-stat-card">
-                  <strong>Eligible now</strong>
-                  <div>{batchQueue.eligibleCount}</div>
-                </div>
-                <div className="batch-stat-card">
+              {loading ? (
+                <div className="loading-state">Loading batch queue...</div>
+              ) : !batchQueue ? (
+                <p className="empty-state">Batch queue unavailable.</p>
+              ) : (
+                <>
+                  <div className="batch-stats">
+                    <div className="batch-stat-card">
+                      <strong>Total queued</strong>
+                      <div>{batchQueue.totalQueued}</div>
+                    </div>
+                    <div className="batch-stat-card">
+                      <strong>Eligible now</strong>
+                      <div>{batchQueue.eligibleCount}</div>
+                    </div>
+                    <div className="batch-stat-card">
                   <strong>Next batch date</strong>
                   <div>{batchQueue.nextBatchDate ? new Date(batchQueue.nextBatchDate).toLocaleString() : 'Ready now'}</div>
                 </div>
@@ -1930,6 +1949,8 @@ const AdminOrders: React.FC = () => {
                   </table>
                 )}
               </div>
+            </>
+          )}
             </>
           )}
         </div>
