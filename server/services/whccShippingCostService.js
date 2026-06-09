@@ -125,9 +125,11 @@ export async function calculateWhccShippingQuote({
     ? 'flat_fee'
     : 'pass_through';
 
-  // Force flat $7.95 shipping for all direct (non-batch) orders
-  const FLAT_WHCC_SHIPPING = 7.95;
   const isBatch = shippingOption === 'batch';
+  // Use studio-configured flat fee if set, otherwise fall back to 9.95
+  const FLAT_WHCC_SHIPPING = (studioConfig?.directFlatFee != null && Number.isFinite(Number(studioConfig.directFlatFee)) && Number(studioConfig.directFlatFee) > 0)
+    ? Number(studioConfig.directFlatFee)
+    : 9.95;
   const customerShippingCost = isBatch ? 0 : FLAT_WHCC_SHIPPING;
 
   const studioShippingCost = roundCurrency(whccShippingCost);
@@ -141,7 +143,7 @@ export async function calculateWhccShippingQuote({
     customerShippingCost,
     studioShippingCost,
     studioShippingDelta,
-    directPricingMode: 'flat_fee',
+    directPricingMode: directPricingMode,
     directFlatFee: FLAT_WHCC_SHIPPING,
     rubricSource: 'WHCC Shipping Rubric.xlsx',
   };

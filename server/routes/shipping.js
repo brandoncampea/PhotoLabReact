@@ -296,7 +296,7 @@ router.post('/quote', async (req, res) => {
       ? (studioConfig.batchShippingAddress || shippingAddress || {})
       : (shippingAddress || {});
 
-    const quote = calculateWhccShippingQuote({
+    const quote = await calculateWhccShippingQuote({
       shippingOption,
       destinationAddress,
       productCategories,
