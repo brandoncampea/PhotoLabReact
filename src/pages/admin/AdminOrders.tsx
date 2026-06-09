@@ -1268,6 +1268,24 @@ const AdminOrders: React.FC = () => {
         {statusUpdateError && <div style={{ color: 'red', marginTop: 6 }}>{statusUpdateError}</div>}
       </div>
 
+      {order.status === 'cancelled' && order.cancelReason && (
+        <div style={{
+          background: '#fee2e2',
+          border: '1px solid #fca5a5',
+          borderRadius: 6,
+          padding: 12,
+          marginBottom: 16,
+          color: '#7f1d1d'
+        }}>
+          <strong>Cancellation Reason:</strong> {order.cancelReason}
+          {order.cancelledAt && (
+            <div style={{ fontSize: 13, marginTop: 4, opacity: 0.8 }}>
+              Cancelled on {new Date(order.cancelledAt).toLocaleString()}
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="admin-order-detail-meta-grid">
         <div className="admin-order-detail-box">
           <strong>Customer</strong>

@@ -147,6 +147,8 @@ export interface Order {
   orderDate: string;
   totalAmount: number;
   status: string;
+  cancelReason?: string; // Reason for cancellation if order was cancelled
+  cancelledAt?: string; // Timestamp when order was cancelled
   shippingOption: 'batch' | 'direct' | 'none';
   shippingCost: number;
   studioShippingCost?: number;

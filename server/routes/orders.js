@@ -4989,6 +4989,8 @@ router.get('/admin/order-details/:orderId', adminRequired, async (req, res) => {
         o.tax_amount as taxAmount,
         o.tax_rate as taxRate,
         o.status,
+        o.cancel_reason as cancelReason,
+        o.cancel_at as cancelledAt,
         o.shipping_address as shippingAddress,
         o.shipping_option as shippingOption,
         o.shipping_cost as shippingCost,
