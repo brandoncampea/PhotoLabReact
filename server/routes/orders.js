@@ -401,6 +401,39 @@ const extractWhccPriceAudit = (value) => {
   return parsed.priceAudit && typeof parsed.priceAudit === 'object' ? parsed.priceAudit : null;
 };
 
+/**
+ * Sum all shipping-related line items in a WHCC import response.
+ * Matches products like "Fulfillment Shipping - Economy", "Mailer Delivery Area Surcharge", etc.
+ */
+const extractWhccShippingCostFromImportResponse = (importData) => {
+  const SHIPPING_KEYWORDS = [
+    'fulfillment shipping',
+    'delivery area surcharge',
+    'shipping surcharge',
+    'residential delivery',
+    'fuel surcharge',
+    'delivery surcharge',
+    'extended surcharge',
+    'shipping & handling',
+    'handling',
+  ];
+  let total = 0;
+  const orders = importData?.Orders ?? importData?.orders ?? [];
+  for (const order of (Array.isArray(orders) ? orders : [])) {
+    const products = order?.Products ?? order?.products ?? [];
+    for (const product of (Array.isArray(products) ? products : [])) {
+      const desc = String(product?.ProductDescription ?? product?.productDescription ?? '').toLowerCase();
+      const isShipping = SHIPPING_KEYWORDS.some(kw => desc.includes(kw));
+      if (isShipping) {
+        const price = parseFloat(product?.Price ?? product?.price ?? 0) || 0;
+        const qty = Math.max(1, Number(product?.Quantity ?? product?.quantity ?? 1));
+        total += price * qty;
+      }
+    }
+  }
+  return roundCurrency(total);
+};
+
 const buildWhccPriceAudit = ({ importResponseData, submitResponseData, resolvedWhccItems }) => {
   const expectedItems = Array.isArray(resolvedWhccItems)
     ? resolvedWhccItems
@@ -2720,7 +2753,18 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
       throw new Error('WHCC import succeeded but no confirmation ID was returned');
     }
 
-    const updateImportPlaceholders = targetOrderIds.map((_, index) => `$${index + 7}`).join(',');
+    // Extract WHCC-billed shipping cost from import response Products array
+    const whccTotalShippingCost = extractWhccShippingCostFromImportResponse(importResponseData);
+    const perOrderWhccShippingCost = targetOrderIds.length > 1
+      ? roundCurrency(whccTotalShippingCost / targetOrderIds.length)
+      : whccTotalShippingCost;
+    const customerShippingCost = roundCurrency(Number(order?.shipping_cost ?? order?.shippingCost ?? 0) || 0);
+    const shippingMarginAmount = roundCurrency(customerShippingCost - perOrderWhccShippingCost);
+    if (whccTotalShippingCost > 0) {
+      console.log(`[WHCC] Extracted shipping cost from import response: $${whccTotalShippingCost} total, $${perOrderWhccShippingCost} per order, customer paid $${customerShippingCost}, margin $${shippingMarginAmount}`);
+    }
+
+    const updateImportPlaceholders = targetOrderIds.map((_, index) => `$${index + 9}`).join(',');
     await query(
       `UPDATE orders
        SET whcc_confirmation_id = $1,
@@ -2730,6 +2774,8 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
            whcc_order_number = COALESCE($4, whcc_order_number),
            whcc_webhook_status = COALESCE($5, whcc_webhook_status),
            whcc_webhook_event = COALESCE($6, whcc_webhook_event),
+           studio_shipping_cost = CASE WHEN $7 > 0 THEN $7 ELSE studio_shipping_cost END,
+           shipping_margin = CASE WHEN $7 > 0 THEN $8 ELSE shipping_margin END,
            whcc_last_error = NULL
        WHERE id IN (${updateImportPlaceholders})`,
       [
@@ -2739,6 +2785,8 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
         importResponseDetails.orderNumber,
         importResponseDetails.webhookStatus,
         importResponseDetails.webhookEvent,
+        perOrderWhccShippingCost,
+        shippingMarginAmount,
         ...targetOrderIds,
       ]
     );
@@ -2778,7 +2826,7 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
       },
     };
 
-    const updateSubmitPlaceholders = targetOrderIds.map((_, index) => `$${index + 9}`).join(',');
+    const updateSubmitPlaceholders = targetOrderIds.map((_, index) => `$${index + 11}`).join(',');
     await query(
       `UPDATE orders
        SET lab_submitted = 1,
@@ -2787,6 +2835,8 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
            batch_queue_status = CASE WHEN is_batch = 1 THEN 'submitted' ELSE batch_queue_status END,
            batch_shipping_address = CASE WHEN is_batch = 1 THEN COALESCE($8, batch_shipping_address) ELSE batch_shipping_address END,
            status = CASE WHEN status = 'pending' THEN 'processing' ELSE status END,
+           studio_shipping_cost = CASE WHEN $9 > 0 THEN $9 ELSE studio_shipping_cost END,
+           shipping_margin = CASE WHEN $9 > 0 THEN $10 ELSE shipping_margin END,
            whcc_confirmation_id = $1,
            whcc_import_response = $2,
            whcc_submit_response = $3,
@@ -2805,6 +2855,8 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
         submitResponseDetails.webhookStatus,
         submitResponseDetails.webhookEvent,
         shippingAddressOverride ? stringifyForDb(shippingAddressOverride) : null,
+        perOrderWhccShippingCost,
+        shippingMarginAmount,
         ...targetOrderIds,
       ]
     );
