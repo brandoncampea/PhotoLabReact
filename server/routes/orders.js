@@ -3830,7 +3830,7 @@ router.post('/', requireActiveSubscription, async (req, res) => {
                INNER JOIN super_price_list_items spi ON spi.id = v.super_price_list_item_id
                WHERE spi.product_size_id = $1
                  AND ISNULL(v.is_active, 1) = 1
-                 AND v.base_cost IS NOT NULL`,
+                 AND (v.price IS NOT NULL OR v.base_cost IS NOT NULL)`,
               [item.productSizeId]
             );
 
@@ -3856,21 +3856,24 @@ router.post('/', requireActiveSubscription, async (req, res) => {
           const localVariant = (productOptions?.whccVariants || []).find(
             v => String(v?.localId || '') === selectedVariantLocalId
           );
-          if (localVariant?.baseCost != null) {
-            resolvedBaseUnitPrice = Number(localVariant.baseCost);
+          const localVariantStudioPrice = parseNullableNumber(localVariant?.price ?? localVariant?.basePrice ?? localVariant?.baseCost);
+          if (localVariantStudioPrice != null && localVariantStudioPrice > 0) {
+            resolvedBaseUnitPrice = Number(localVariantStudioPrice);
           }
         }
 
         if (variantRow) {
-          const variantBaseCost = parseNullableNumber(variantRow?.base_cost);
-          if (variantBaseCost !== null && variantBaseCost > 0) {
-            resolvedBaseUnitPrice = variantBaseCost;
+          // Studio base cost should use the super-admin markup amount (variant.price),
+          // not WHCC raw base_cost. Keep base_cost as fallback for legacy rows.
+          const variantStudioPrice = parseNullableNumber(variantRow?.price ?? variantRow?.base_cost);
+          if (variantStudioPrice !== null && variantStudioPrice > 0) {
+            resolvedBaseUnitPrice = variantStudioPrice;
           }
           console.log('[ORDER ITEM VARIANT PRICING]', {
             productSizeId: item.productSizeId,
             selectedVariantId,
             variantId: variantRow.id,
-            variantBaseCost,
+            variantStudioPrice,
             resolvedBaseUnitPrice,
           });
         }
