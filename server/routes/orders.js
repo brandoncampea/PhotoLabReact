@@ -592,12 +592,16 @@ const buildWhccPriceAudit = ({ importResponseData, submitResponseData, resolvedW
   const differences = expectedItems.map((expected) => {
     const matchedRow = findRowForItem(expected);
     const actualQuantity = matchedRow?.quantity || expected.quantity || 1;
-    const actualUnitCost = matchedRow
-      ? roundMoney(matchedRow.unitPrice ?? (matchedRow.totalPrice !== null ? matchedRow.totalPrice / actualQuantity : null))
+    const actualUnitCostRaw = matchedRow
+      ? roundMoney(matchedRow.unitPrice ?? (matchedRow.totalPrice != null ? matchedRow.totalPrice / actualQuantity : null))
       : null;
     const actualLineCost = matchedRow
-      ? roundMoney(matchedRow.totalPrice ?? (actualUnitCost !== null ? actualUnitCost * actualQuantity : null))
+      ? roundMoney(matchedRow.totalPrice ?? (actualUnitCostRaw !== null ? actualUnitCostRaw * actualQuantity : null))
       : null;
+    // If unit cost couldn't be derived from the response directly, fall back to line cost ÷ qty
+    const actualUnitCost = actualUnitCostRaw !== null
+      ? actualUnitCostRaw
+      : (actualLineCost !== null ? roundMoney(actualLineCost / actualQuantity) : null);
     const differenceAmount = expected.expectedLineCost !== null && actualLineCost !== null
       ? roundMoney(actualLineCost - expected.expectedLineCost)
       : null;
@@ -737,13 +741,11 @@ const buildWhccPriceAuditFromStoredOrder = ({ importResponse, submitResponse, it
         effectiveCatalogProductName: item?.productName || null,
         expectedVariantId: selectedVariant?.id ?? null,
         expectedVariantName: selectedVariant?.displayName || null,
-        expectedUnitCost: parseNullableNumber(selectedVariant?.baseCost ?? item?.basePrice ?? item?.cost),
-        expectedCostSource: selectedVariant?.baseCost !== null && selectedVariant?.baseCost !== undefined
-          ? 'whcc-variant-base-cost'
-          : item?.basePrice !== null && item?.basePrice !== undefined
+        expectedUnitCost: parseNullableNumber(item?.basePrice ?? selectedVariant?.baseCost),
+        expectedCostSource: item?.basePrice !== null && item?.basePrice !== undefined
           ? 'order-item-base-price'
-          : item?.cost !== null && item?.cost !== undefined
-          ? 'order-item-cost'
+          : selectedVariant?.baseCost !== null && selectedVariant?.baseCost !== undefined
+          ? 'whcc-variant-base-cost'
           : null,
         payload: {
           ProductUID: productUID,
@@ -2591,11 +2593,11 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
           nodeCount: productNodeIDs.length,
           expectedVariantId: optionsConfig.variantId,
           expectedVariantName: optionsConfig.variantDisplayName,
-          expectedUnitCost: parseNullableNumber(optionsConfig.variantBaseCost ?? item.basePrice),
-          expectedCostSource: optionsConfig.variantBaseCost !== null && optionsConfig.variantBaseCost !== undefined
-            ? 'whcc-variant-base-cost'
-            : item.basePrice !== null && item.basePrice !== undefined
+          expectedUnitCost: parseNullableNumber(item.basePrice ?? optionsConfig.variantBaseCost),
+          expectedCostSource: item.basePrice !== null && item.basePrice !== undefined
             ? 'order-item-base-price'
+            : optionsConfig.variantBaseCost !== null && optionsConfig.variantBaseCost !== undefined
+            ? 'whcc-variant-base-cost'
             : null,
           payload: {
             ProductUID: productUID,

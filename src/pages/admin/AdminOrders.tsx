@@ -1025,6 +1025,7 @@ const AdminOrders: React.FC = () => {
   };
 
   const formatCurrency = (value: unknown) => {
+    if (value === null || value === undefined) return '—';
     const amount = Number(value);
     if (!Number.isFinite(amount)) return '—';
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
@@ -1476,8 +1477,8 @@ const AdminOrders: React.FC = () => {
           <div className="whcc-detail-header">
             <span className="whcc-detail-title">WHCC Lab Details</span>
           </div>
-          <div className="whcc-sync-summary" style={{ marginBottom: 14, padding: '12px 14px', borderRadius: 8, background: '#f8fafc', border: '1px solid #e2e8f0' }}>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Latest WHCC sync</div>
+          <div className="whcc-sync-summary" style={{ marginBottom: 14, padding: '12px 14px', borderRadius: 8, background: 'rgba(255, 255, 255, 0.04)', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+            <div style={{ fontWeight: 700, marginBottom: 6, color: '#e5e7eb' }}>Latest WHCC sync</div>
             <div className="whcc-detail-grid" style={{ gap: 10 }}>
               <div className="whcc-detail-field">
                 <span className="whcc-detail-label">Confirmation ID</span>
@@ -1593,24 +1594,24 @@ const AdminOrders: React.FC = () => {
                 {mismatchedWhccPriceDifferences.length ? (
                   <div style={{ display: 'grid', gap: 10 }}>
                     {mismatchedWhccPriceDifferences.map((item: any) => (
-                      <div key={`${item.localItemId || item.productUID || item.productName}`} style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: '10px 12px', background: '#fff7ed' }}>
-                        <div style={{ fontWeight: 700, marginBottom: 4 }}>
+                      <div key={`${item.localItemId || item.productUID || item.productName}`} style={{ border: '1px solid rgba(245, 158, 11, 0.28)', borderRadius: 8, padding: '10px 12px', background: 'rgba(15, 23, 42, 0.92)' }}>
+                        <div style={{ fontWeight: 700, marginBottom: 4, color: '#f8fafc' }}>
                           {item.productName || `Item ${item.localItemId || 'Unknown'}`}
                         </div>
-                        <div style={{ color: '#475569', fontSize: 13 }}>
+                        <div style={{ color: '#94a3b8', fontSize: 13 }}>
                           Item #{item.localItemId || '—'} · Qty {item.quantity || 1}
                           {item.expectedVariantName ? ` · Variant ${item.expectedVariantName}` : ''}
                         </div>
                         <div style={{ marginTop: 6, display: 'grid', gap: 4, fontSize: 14 }}>
-                          <div><strong>Expected:</strong> {formatCurrency(item.expectedLineCost)} ({formatCurrency(item.expectedUnitCost)}/unit)</div>
-                          <div><strong>WHCC returned:</strong> {formatCurrency(item.actualLineCost)} ({formatCurrency(item.actualUnitCost)}/unit)</div>
-                          <div><strong>Difference:</strong> {formatCurrency(item.differenceAmount)}</div>
+                          <div style={{ color: '#e5e7eb' }}><strong>Expected:</strong> {formatCurrency(item.expectedLineCost)} ({formatCurrency(item.expectedUnitCost)}/unit)</div>
+                          <div style={{ color: '#e5e7eb' }}><strong>WHCC returned:</strong> {formatCurrency(item.actualLineCost)} ({formatCurrency(item.actualUnitCost)}/unit)</div>
+                          <div style={{ color: '#e5e7eb' }}><strong>Difference:</strong> {formatCurrency(item.differenceAmount)}</div>
                         </div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div style={{ color: '#475569' }}>No WHCC price differences detected for this submission.</div>
+                  <div style={{ color: '#94a3b8' }}>No WHCC price differences detected for this submission.</div>
                 )}
               </div>
             </div>

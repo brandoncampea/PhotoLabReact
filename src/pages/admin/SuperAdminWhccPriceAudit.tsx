@@ -4,6 +4,7 @@ import { orderService } from '../../services/orderService';
 import { WhccPriceAuditReport } from '../../types';
 
 const formatCurrency = (value: unknown) => {
+  if (value === null || value === undefined) return '—';
   const amount = Number(value);
   if (!Number.isFinite(amount)) return '—';
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
@@ -14,6 +15,23 @@ const formatDateTime = (value: unknown) => {
   const date = new Date(String(value));
   if (Number.isNaN(date.getTime())) return String(value);
   return date.toLocaleString();
+};
+
+const theme = {
+  pageBg: 'linear-gradient(180deg, #0b1120 0%, #111827 100%)',
+  cardBg: '#111827',
+  panelBg: '#0f172a',
+  cardBorder: '#243044',
+  panelBorder: '#334155',
+  mutedText: '#94a3b8',
+  bodyText: '#e5e7eb',
+  headingText: '#f8fafc',
+  accentBlueBg: 'rgba(37, 99, 235, 0.12)',
+  accentBlueBorder: 'rgba(96, 165, 250, 0.35)',
+  accentAmberBg: 'rgba(245, 158, 11, 0.12)',
+  accentAmberBorder: 'rgba(245, 158, 11, 0.35)',
+  accentRoseBg: 'rgba(244, 63, 94, 0.12)',
+  accentRoseBorder: 'rgba(244, 63, 94, 0.28)',
 };
 
 const SuperAdminWhccPriceAudit: React.FC = () => {
@@ -53,11 +71,11 @@ const SuperAdminWhccPriceAudit: React.FC = () => {
   const rows = useMemo(() => report?.results || [], [report]);
 
   return (
-    <div style={{ padding: 24, maxWidth: 1400, margin: '0 auto' }}>
+    <div style={{ padding: 24, maxWidth: 1400, margin: '0 auto', minHeight: '100vh', background: theme.pageBg, color: theme.bodyText }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'flex-start', marginBottom: 24, flexWrap: 'wrap' }}>
         <div>
-          <h1 style={{ margin: 0 }}>WHCC Price Audit</h1>
-          <p style={{ margin: '8px 0 0', color: '#64748b' }}>
+          <h1 style={{ margin: 0, color: theme.headingText }}>WHCC Price Audit</h1>
+          <p style={{ margin: '8px 0 0', color: theme.mutedText }}>
             Super-admin-only report of stored WHCC responses compared against current order-item WHCC cost snapshots.
           </p>
         </div>
@@ -72,7 +90,7 @@ const SuperAdminWhccPriceAudit: React.FC = () => {
             value={searchDraft}
             onChange={(event) => setSearchDraft(event.target.value)}
             placeholder="Search order #, WHCC #, studio, or customer email"
-            style={{ minWidth: 320, padding: '10px 12px', borderRadius: 8, border: '1px solid #cbd5e1' }}
+            style={{ minWidth: 320, padding: '10px 12px', borderRadius: 8, border: `1px solid ${theme.panelBorder}`, background: theme.panelBg, color: theme.bodyText, outline: 'none' }}
           />
           <button type="submit" className="btn">Search</button>
           {search && (
@@ -91,34 +109,34 @@ const SuperAdminWhccPriceAudit: React.FC = () => {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginBottom: 24 }}>
-        <div style={{ padding: 16, border: '1px solid #e2e8f0', borderRadius: 12, background: '#fff' }}>
-          <div style={{ color: '#64748b', fontSize: 13 }}>Orders Scanned</div>
-          <div style={{ fontSize: 28, fontWeight: 700 }}>{report?.summary.ordersScanned ?? 0}</div>
+        <div style={{ padding: 16, border: `1px solid ${theme.cardBorder}`, borderRadius: 12, background: theme.cardBg }}>
+          <div style={{ color: theme.mutedText, fontSize: 13 }}>Orders Scanned</div>
+          <div style={{ fontSize: 28, fontWeight: 700, color: theme.headingText }}>{report?.summary.ordersScanned ?? 0}</div>
         </div>
-        <div style={{ padding: 16, border: '1px solid #e2e8f0', borderRadius: 12, background: '#fff' }}>
-          <div style={{ color: '#64748b', fontSize: 13 }}>Orders With Mismatch</div>
-          <div style={{ fontSize: 28, fontWeight: 700 }}>{report?.summary.ordersWithMismatch ?? 0}</div>
+        <div style={{ padding: 16, border: `1px solid ${theme.cardBorder}`, borderRadius: 12, background: theme.cardBg }}>
+          <div style={{ color: theme.mutedText, fontSize: 13 }}>Orders With Mismatch</div>
+          <div style={{ fontSize: 28, fontWeight: 700, color: theme.headingText }}>{report?.summary.ordersWithMismatch ?? 0}</div>
         </div>
-        <div style={{ padding: 16, border: '1px solid #e2e8f0', borderRadius: 12, background: '#fff' }}>
-          <div style={{ color: '#64748b', fontSize: 13 }}>Mismatch Items</div>
-          <div style={{ fontSize: 28, fontWeight: 700 }}>{report?.summary.mismatchItems ?? 0}</div>
+        <div style={{ padding: 16, border: `1px solid ${theme.cardBorder}`, borderRadius: 12, background: theme.cardBg }}>
+          <div style={{ color: theme.mutedText, fontSize: 13 }}>Mismatch Items</div>
+          <div style={{ fontSize: 28, fontWeight: 700, color: theme.headingText }}>{report?.summary.mismatchItems ?? 0}</div>
         </div>
-        <div style={{ padding: 16, border: '1px solid #e2e8f0', borderRadius: 12, background: '#fff' }}>
-          <div style={{ color: '#64748b', fontSize: 13 }}>Net Difference</div>
-          <div style={{ fontSize: 28, fontWeight: 700 }}>{formatCurrency(report?.summary.totalDifferenceAmount ?? 0)}</div>
+        <div style={{ padding: 16, border: `1px solid ${theme.cardBorder}`, borderRadius: 12, background: theme.cardBg }}>
+          <div style={{ color: theme.mutedText, fontSize: 13 }}>Net Difference</div>
+          <div style={{ fontSize: 28, fontWeight: 700, color: theme.headingText }}>{formatCurrency(report?.summary.totalDifferenceAmount ?? 0)}</div>
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 20, color: '#64748b', fontSize: 13 }}>
-        <span style={{ padding: '4px 10px', borderRadius: 999, background: '#fff7ed', border: '1px solid #fed7aa' }}>Expected = your calculated WHCC product cost</span>
-        <span style={{ padding: '4px 10px', borderRadius: 999, background: '#eff6ff', border: '1px solid #bfdbfe' }}>Returned = WHCC import/submit response amount</span>
-        <span style={{ padding: '4px 10px', borderRadius: 999, background: '#f8fafc', border: '1px solid #cbd5e1' }}>Difference = Returned − Expected</span>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 20, color: theme.mutedText, fontSize: 13 }}>
+        <span style={{ padding: '4px 10px', borderRadius: 999, background: theme.accentAmberBg, border: `1px solid ${theme.accentAmberBorder}`, color: theme.bodyText }}>Expected = super-admin product/size attribute cost</span>
+        <span style={{ padding: '4px 10px', borderRadius: 999, background: theme.accentBlueBg, border: `1px solid ${theme.accentBlueBorder}`, color: theme.bodyText }}>Returned = amount WHCC returned on submit</span>
+        <span style={{ padding: '4px 10px', borderRadius: 999, background: theme.panelBg, border: `1px solid ${theme.panelBorder}`, color: theme.bodyText }}>Difference = Returned − Expected</span>
       </div>
 
-      {loading && <div style={{ color: '#475569' }}>Loading WHCC audit report…</div>}
-      {error && <div style={{ color: '#b91c1c', marginBottom: 16 }}>{error}</div>}
+      {loading && <div style={{ color: theme.mutedText }}>Loading WHCC audit report…</div>}
+      {error && <div style={{ color: '#fca5a5', marginBottom: 16 }}>{error}</div>}
       {!loading && !error && rows.length === 0 && (
-        <div style={{ padding: 24, border: '1px solid #e2e8f0', borderRadius: 12, background: '#fff' }}>
+        <div style={{ padding: 24, border: `1px solid ${theme.cardBorder}`, borderRadius: 12, background: theme.cardBg }}>
           No WHCC price mismatches found for the scanned orders.
         </div>
       )}
@@ -128,7 +146,7 @@ const SuperAdminWhccPriceAudit: React.FC = () => {
           const mismatches = (row.audit?.differences || []).filter((item) => item?.isMismatch);
           const isExpanded = Boolean(expandedOrderIds[row.orderId]);
           return (
-            <div key={row.orderId} style={{ border: '1px solid #e2e8f0', borderRadius: 12, background: '#fff', overflow: 'hidden', boxShadow: '0 1px 2px rgba(15,23,42,0.04)' }}>
+            <div key={row.orderId} style={{ border: `1px solid ${theme.cardBorder}`, borderRadius: 12, background: theme.cardBg, overflow: 'hidden', boxShadow: '0 1px 2px rgba(0,0,0,0.25)' }}>
               <button
                 type="button"
                 onClick={() => setExpandedOrderIds((current) => ({ ...current, [row.orderId]: !current[row.orderId] }))}
@@ -136,47 +154,47 @@ const SuperAdminWhccPriceAudit: React.FC = () => {
                   width: '100%',
                   padding: 16,
                   border: 'none',
-                  borderBottom: isExpanded ? '1px solid #e2e8f0' : 'none',
-                  background: '#f8fafc',
+                  borderBottom: isExpanded ? `1px solid ${theme.cardBorder}` : 'none',
+                  background: theme.panelBg,
                   textAlign: 'left',
                   cursor: 'pointer',
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
                   <div>
-                    <div style={{ fontSize: 20, fontWeight: 700 }}>
+                    <div style={{ fontSize: 20, fontWeight: 700, color: theme.headingText }}>
                       {isExpanded ? '▼' : '▶'} Order #{row.orderId}
                     </div>
-                    <div style={{ color: '#475569', marginTop: 4 }}>
+                    <div style={{ color: theme.bodyText, marginTop: 4 }}>
                       {row.studioName || 'Unknown studio'} · {row.customerEmail || row.customerName || 'Unknown customer'}
                     </div>
-                    <div style={{ color: '#64748b', fontSize: 13, marginTop: 4 }}>
+                    <div style={{ color: theme.mutedText, fontSize: 13, marginTop: 4 }}>
                       {formatDateTime(row.orderDate)} · Status: {row.status || '—'} · WHCC #: {row.whccOrderNumber || '—'}
                     </div>
                     <div style={{ marginTop: 6 }}>
-                      <Link to={`/admin/orders?orderId=${row.orderId}`} onClick={(event) => event.stopPropagation()} style={{ color: '#2563eb', fontSize: 13 }}>
+                      <Link to={`/admin/orders?orderId=${row.orderId}`} onClick={(event) => event.stopPropagation()} style={{ color: '#60a5fa', fontSize: 13 }}>
                         Open order ↗
                       </Link>
                     </div>
                   </div>
                   <div style={{ minWidth: 300, display: 'grid', gap: 8, fontSize: 14 }}>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 10, alignItems: 'center' }}>
-                      <span style={{ color: '#64748b' }}>Expected</span>
-                      <strong>{formatCurrency(row.audit?.summary?.expectedTotalCost ?? 0)}</strong>
+                      <span style={{ color: theme.mutedText }}>Expected</span>
+                      <strong style={{ color: theme.headingText }}>{formatCurrency(row.audit?.summary?.expectedTotalCost ?? 0)}</strong>
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 10, alignItems: 'center' }}>
-                      <span style={{ color: '#64748b' }}>WHCC returned</span>
-                      <strong>{formatCurrency(row.audit?.summary?.actualTotalCost ?? 0)}</strong>
+                      <span style={{ color: theme.mutedText }}>WHCC returned</span>
+                      <strong style={{ color: theme.headingText }}>{formatCurrency(row.audit?.summary?.actualTotalCost ?? 0)}</strong>
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 10, alignItems: 'center' }}>
-                      <span style={{ color: '#64748b' }}>Difference</span>
-                      <strong style={{ color: Number(row.audit?.summary?.differenceAmount || 0) === 0 ? '#0f172a' : '#b45309' }}>
+                      <span style={{ color: theme.mutedText }}>Difference</span>
+                      <strong style={{ color: Number(row.audit?.summary?.differenceAmount || 0) === 0 ? theme.headingText : '#fbbf24' }}>
                         {formatCurrency(row.audit?.summary?.differenceAmount ?? 0)}
                       </strong>
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 10, alignItems: 'center' }}>
-                      <span style={{ color: '#64748b' }}>Mismatches</span>
-                      <strong>{row.audit?.summary?.mismatchCount ?? 0}</strong>
+                      <span style={{ color: theme.mutedText }}>Mismatches</span>
+                      <strong style={{ color: theme.headingText }}>{row.audit?.summary?.mismatchCount ?? 0}</strong>
                     </div>
                   </div>
                 </div>
@@ -184,36 +202,36 @@ const SuperAdminWhccPriceAudit: React.FC = () => {
               {isExpanded && (
                 <div style={{ padding: 16, display: 'grid', gap: 10 }}>
                   {mismatches.map((item, index) => (
-                    <div key={`${row.orderId}-${item.localItemId || index}`} style={{ padding: 14, borderRadius: 10, border: '1px solid #fed7aa', background: '#fffaf0' }}>
+                    <div key={`${row.orderId}-${item.localItemId || index}`} style={{ padding: 14, borderRadius: 10, border: `1px solid ${theme.accentAmberBorder}`, background: theme.panelBg }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'baseline' }}>
-                        <div style={{ fontWeight: 700 }}>{item.productName || `Item ${item.localItemId || index + 1}`}</div>
-                        <div style={{ color: '#b45309', fontWeight: 700 }}>{formatCurrency(item.differenceAmount)}</div>
+                        <div style={{ fontWeight: 700, color: theme.headingText }}>{item.productName || `Item ${item.localItemId || index + 1}`}</div>
+                        <div style={{ color: '#fbbf24', fontWeight: 700 }}>{formatCurrency(item.differenceAmount)}</div>
                       </div>
-                      <div style={{ color: '#64748b', fontSize: 13, marginTop: 4 }}>
+                      <div style={{ color: theme.mutedText, fontSize: 13, marginTop: 4 }}>
                         Item #{item.localItemId || '—'} · Qty {item.quantity || 1}
                         {item.expectedVariantName ? ` · Variant ${item.expectedVariantName}` : ''}
                       </div>
                       <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, fontSize: 14 }}>
-                        <div style={{ padding: 10, borderRadius: 8, background: '#fff', border: '1px solid #fde68a' }}>
-                          <div style={{ color: '#92400e', fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.3 }}>Expected</div>
-                          <div style={{ fontWeight: 700 }}>{formatCurrency(item.expectedLineCost)}</div>
-                          <div style={{ color: '#64748b', fontSize: 12 }}>{formatCurrency(item.expectedUnitCost)}/unit</div>
+                        <div style={{ padding: 10, borderRadius: 8, background: theme.cardBg, border: `1px solid ${theme.accentAmberBorder}` }}>
+                          <div style={{ color: '#fbbf24', fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.3 }}>Super-admin cost</div>
+                          <div style={{ fontWeight: 700, color: theme.headingText }}>{formatCurrency(item.expectedLineCost)}</div>
+                          <div style={{ color: theme.mutedText, fontSize: 12 }}>{formatCurrency(item.expectedUnitCost)}/unit</div>
                         </div>
-                        <div style={{ padding: 10, borderRadius: 8, background: '#fff', border: '1px solid #bfdbfe' }}>
-                          <div style={{ color: '#1d4ed8', fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.3 }}>WHCC Returned</div>
-                          <div style={{ fontWeight: 700 }}>{formatCurrency(item.actualLineCost)}</div>
-                          <div style={{ color: '#64748b', fontSize: 12 }}>{formatCurrency(item.actualUnitCost)}/unit</div>
+                        <div style={{ padding: 10, borderRadius: 8, background: theme.cardBg, border: `1px solid ${theme.accentBlueBorder}` }}>
+                          <div style={{ color: '#60a5fa', fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.3 }}>WHCC Returned</div>
+                          <div style={{ fontWeight: 700, color: theme.headingText }}>{formatCurrency(item.actualLineCost)}</div>
+                          <div style={{ color: theme.mutedText, fontSize: 12 }}>{formatCurrency(item.actualUnitCost)}/unit</div>
                         </div>
-                        <div style={{ padding: 10, borderRadius: 8, background: '#fff', border: '1px solid #fecaca' }}>
-                          <div style={{ color: '#b91c1c', fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.3 }}>Difference</div>
-                          <div style={{ fontWeight: 700 }}>{formatCurrency(item.differenceAmount)}</div>
-                          <div style={{ color: '#64748b', fontSize: 12 }}>{item.matchedResponsePath || 'Matched from WHCC response'}</div>
+                        <div style={{ padding: 10, borderRadius: 8, background: theme.cardBg, border: `1px solid ${theme.accentRoseBorder}` }}>
+                          <div style={{ color: '#fb7185', fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.3 }}>Difference</div>
+                          <div style={{ fontWeight: 700, color: theme.headingText }}>{formatCurrency(item.differenceAmount)}</div>
+                          <div style={{ color: theme.mutedText, fontSize: 12 }}>{item.matchedResponsePath || 'Matched from WHCC response'}</div>
                         </div>
                       </div>
                     </div>
                   ))}
                   {!mismatches.length && (
-                    <div style={{ color: '#64748b', fontSize: 14 }}>No mismatches for this order.</div>
+                    <div style={{ color: theme.mutedText, fontSize: 14 }}>No mismatches for this order.</div>
                   )}
                 </div>
               )}
