@@ -1410,6 +1410,8 @@ const AdminOrders: React.FC = () => {
           const previewPayload = whccPreview?.preview;
           const alreadySubmitted = Boolean(order.whccConfirmationId);
           const resubmitConfirmed = whccResubmitConfirmed[order.id] || false;
+          const canResubmitApprovedOrder = approvalStatus === 'approved' && alreadySubmitted;
+          const showWhccSubmitActions = approvalStatus === 'pending' || canResubmitApprovedOrder;
           const handleApprove = async () => {
             if (alreadySubmitted && !resubmitConfirmed) {
               setWhccResubmitConfirmed((cur) => ({ ...cur, [order.id]: true }));
@@ -1447,7 +1449,7 @@ const AdminOrders: React.FC = () => {
                 <strong>WHCC Approval Status:</strong>{' '}
                 <span className={`whcc-approval-status whcc-approval-status-${approvalStatus}`}>{approvalStatus || 'unknown'}</span>
               </div>
-              {approvalStatus === 'pending' && (
+              {showWhccSubmitActions && (
                 <div style={{ marginBottom: 8 }}>
                   {alreadySubmitted && !resubmitConfirmed && (
                     <div style={{ padding: 10, borderRadius: 8, background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.3)', marginBottom: 10, color: '#fbbf24', fontSize: 13 }}>
@@ -1460,7 +1462,11 @@ const AdminOrders: React.FC = () => {
                     disabled={whccApprovalLoading[order.id]}
                     onClick={handleApprove}
                   >
-                    {whccApprovalLoading[order.id] ? (alreadySubmitted && !resubmitConfirmed ? 'Processing…' : 'Approving…') : (alreadySubmitted && resubmitConfirmed ? 'Confirm & Resubmit' : 'Approve & Submit to WHCC')}
+                    {whccApprovalLoading[order.id]
+                      ? (alreadySubmitted && !resubmitConfirmed ? 'Processing…' : 'Submitting…')
+                      : (alreadySubmitted && resubmitConfirmed
+                          ? 'Confirm & Resubmit'
+                          : (canResubmitApprovedOrder ? 'Resubmit to WHCC' : 'Approve & Submit to WHCC'))}
                   </button>
                   {alreadySubmitted && resubmitConfirmed && (
                     <button
@@ -1472,14 +1478,16 @@ const AdminOrders: React.FC = () => {
                       Cancel
                     </button>
                   )}
-                  <button
-                    className="btn btn-danger"
-                    style={{ marginLeft: 8 }}
-                    disabled={whccApprovalLoading[order.id] || (alreadySubmitted && !resubmitConfirmed)}
-                    onClick={handleReject}
-                  >
-                    {whccApprovalLoading[order.id] ? 'Rejecting…' : 'Reject'}
-                  </button>
+                  {approvalStatus === 'pending' && (
+                    <button
+                      className="btn btn-danger"
+                      style={{ marginLeft: 8 }}
+                      disabled={whccApprovalLoading[order.id] || (alreadySubmitted && !resubmitConfirmed)}
+                      onClick={handleReject}
+                    >
+                      {whccApprovalLoading[order.id] ? 'Rejecting…' : 'Reject'}
+                    </button>
+                  )}
                   {whccApprovalError[order.id] && (
                     <div style={{ color: '#fca5a5', marginTop: 6 }}>{whccApprovalError[order.id]}</div>
                   )}
