@@ -21,8 +21,21 @@ import { Album, PriceList } from '../../types';
 import { categoryService } from '../../services/categoryService';
 import { albumAdminService } from '../../services/albumAdminService';
 import { studioPriceListService } from '../../services/studioPriceListService';
+import { photoService } from '../../services/photoService';
 import AdminLayout from '../../components/AdminLayout';
 import './AdminAlbums.css';
+
+type TagSuggestion = {
+  id: number;
+  photoId: number;
+  fileName?: string;
+  playerName: string;
+  status: 'pending' | 'approved' | 'rejected';
+  submittedByName?: string | null;
+  submittedAt?: string;
+  reviewedAt?: string | null;
+  reviewNote?: string | null;
+};
 
 // Helper component for SAS-protected album covers
 function AlbumSasCover({ src, alt }: { src: string, alt: string }) {
@@ -86,6 +99,12 @@ const AdminAlbums: React.FC = () => {
   const [studioSchoolRoster, setStudioSchoolRoster] = useState<string[]>([]);
   const [albumSearch, setAlbumSearch] = useState('');
   const [formData, setFormData] = useState(emptyFormData);
+  const [pendingTagCounts, setPendingTagCounts] = useState<Record<string, number>>({});
+  const [tagReviewAlbum, setTagReviewAlbum] = useState<Album | null>(null);
+  const [tagSuggestions, setTagSuggestions] = useState<TagSuggestion[]>([]);
+  const [tagSuggestionsLoading, setTagSuggestionsLoading] = useState(false);
+  const [tagSuggestionsActionId, setTagSuggestionsActionId] = useState<number | null>(null);
+  const [tagSuggestionsMessage, setTagSuggestionsMessage] = useState('');
 
   // Load albums from API
   const loadAlbums = async () => {
@@ -102,6 +121,57 @@ const AdminAlbums: React.FC = () => {
     } catch (error) {
       setLoading(false);
       console.error('Failed to load albums:', error);
+    }
+  };
+
+  const loadPendingTagCounts = async () => {
+    try {
+      const counts = await photoService.getPendingTagSuggestionCounts();
+      setPendingTagCounts(counts || {});
+    } catch (error) {
+      console.error('Failed to load pending tag suggestion counts:', error);
+      setPendingTagCounts({});
+    }
+  };
+
+  const openTagReviewModal = async (album: Album) => {
+    setTagReviewAlbum(album);
+    setTagSuggestions([]);
+    setTagSuggestionsMessage('');
+    setTagSuggestionsLoading(true);
+    try {
+      const suggestions = await photoService.getAlbumTagSuggestions(album.id, 'pending');
+      setTagSuggestions(suggestions as TagSuggestion[]);
+    } catch (error) {
+      console.error('Failed to load tag suggestions:', error);
+      setTagSuggestionsMessage('Failed to load tag suggestions.');
+    } finally {
+      setTagSuggestionsLoading(false);
+    }
+  };
+
+  const closeTagReviewModal = () => {
+    setTagReviewAlbum(null);
+    setTagSuggestions([]);
+    setTagSuggestionsMessage('');
+    setTagSuggestionsActionId(null);
+  };
+
+  const handleReviewTagSuggestion = async (suggestionId: number, decision: 'approve' | 'reject') => {
+    if (!tagReviewAlbum) return;
+    try {
+      setTagSuggestionsActionId(suggestionId);
+      setTagSuggestionsMessage('');
+      await photoService.reviewTagSuggestion(suggestionId, decision);
+      const suggestions = await photoService.getAlbumTagSuggestions(tagReviewAlbum.id, 'pending');
+      setTagSuggestions(suggestions as TagSuggestion[]);
+      await loadPendingTagCounts();
+      setTagSuggestionsMessage(decision === 'approve' ? 'Tag approved.' : 'Tag rejected.');
+    } catch (error) {
+      console.error('Failed to review tag suggestion:', error);
+      setTagSuggestionsMessage('Failed to process tag review.');
+    } finally {
+      setTagSuggestionsActionId(null);
     }
   };
   // Load categories from API
@@ -237,6 +307,7 @@ const AdminAlbums: React.FC = () => {
       // Always reload albums from backend to get latest published/hidden state
       await loadAlbums();
       await loadSchoolRoster();
+      await loadPendingTagCounts();
     } catch (error: any) {
       console.error('Failed to save album:', error);
       const message = error?.response?.data?.error || 'Failed to save album. Please try again.';
@@ -249,6 +320,7 @@ const AdminAlbums: React.FC = () => {
         await albumAdminService.deleteAlbum(id);
         setAlbums(albums.filter(a => a.id !== id));
         await loadAlbums();
+        await loadPendingTagCounts();
       } catch (error) {
         console.error('Failed to delete album:', error);
       }
@@ -273,6 +345,7 @@ const AdminAlbums: React.FC = () => {
     loadCategories();
     loadPriceLists();
     loadSchoolRoster();
+    loadPendingTagCounts();
   }, [effectiveStudioId]);
 
   const normalizedSearch = albumSearch.trim().toLowerCase();
@@ -300,9 +373,54 @@ const AdminAlbums: React.FC = () => {
         .filter((school) => !formData.schoolTags.some((tag) => tag.toLowerCase() === school.toLowerCase()))
         .slice(0, 8);
 
+  const pendingTagReviewTotal = Object.values(pendingTagCounts).reduce((total, count) => total + Number(count || 0), 0);
+  const hasPendingTagReviews = pendingTagReviewTotal > 0;
+
   return (
     <AdminLayout>
       <div className="admin-albums-page">
+        {hasPendingTagReviews && (
+          <div
+            style={{
+              marginBottom: 16,
+              padding: '12px 14px',
+              borderRadius: 10,
+              border: '1px solid rgba(251, 191, 36, 0.5)',
+              background: 'linear-gradient(135deg, rgba(251, 191, 36, 0.16), rgba(249, 115, 22, 0.08))',
+              color: '#fff7d6',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+              flexWrap: 'wrap',
+              boxShadow: '0 8px 24px rgba(251, 191, 36, 0.12)',
+            }}
+          >
+            <div style={{ display: 'grid', gap: 4 }}>
+              <div style={{ fontWeight: 800, fontSize: '1rem' }}>
+                ⚠️ {pendingTagReviewTotal} player tag suggestion{pendingTagReviewTotal === 1 ? '' : 's'} need review
+              </div>
+              <div style={{ fontSize: 13, color: '#ffe8a3' }}>
+                Open an album’s review panel to approve or reject suggested player tags.
+              </div>
+            </div>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => {
+                const firstAlbumWithPending = filteredAlbums.find((album) => Number(pendingTagCounts[String(album.id)] || 0) > 0);
+                if (firstAlbumWithPending) {
+                  openTagReviewModal(firstAlbumWithPending);
+                }
+              }}
+              disabled={!filteredAlbums.some((album) => Number(pendingTagCounts[String(album.id)] || 0) > 0)}
+              style={{ whiteSpace: 'nowrap' }}
+            >
+              Review now
+            </button>
+          </div>
+        )}
+
         {/* Search + Create Album */}
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
           <input
@@ -332,13 +450,14 @@ const AdminAlbums: React.FC = () => {
                   <th style={{ padding: '8px 12px', textAlign: 'left' }}>Engagement</th>
                   <th style={{ padding: '8px 12px', textAlign: 'left' }}>Products Ordered</th>
                   <th style={{ padding: '8px 12px', textAlign: 'left' }}>Est. Net Revenue</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Tag Reviews</th>
                   <th style={{ padding: '8px 12px', textAlign: 'left' }}>Created</th>
                 </tr>
               </thead>
             <tbody>
               {filteredAlbums.length === 0 ? (
                 <tr>
-                  <td colSpan={12} style={{ textAlign: 'center', padding: '2rem', color: '#aaa', fontSize: '1.1rem' }}>
+                  <td colSpan={13} style={{ textAlign: 'center', padding: '2rem', color: '#aaa', fontSize: '1.1rem' }}>
                     {albums.length === 0 ? 'No albums found.' : 'No matching albums found.'}
                   </td>
                 </tr>
@@ -399,6 +518,42 @@ const AdminAlbums: React.FC = () => {
                       <td style={{ padding: '8px 12px', color: '#fff' }}>
                         {typeof album.netRevenue === 'number' ? `$${album.netRevenue.toFixed(2)}` : '$0.00'}
                       </td>
+                      <td style={{ padding: '8px 12px', color: '#fff', minWidth: 160 }}>
+                        {(() => {
+                          const pendingCount = Number(pendingTagCounts[String(album.id)] || 0);
+                          return (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                              <span
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  minWidth: 26,
+                                  height: 22,
+                                  padding: '0 8px',
+                                  borderRadius: 999,
+                                  fontSize: 12,
+                                  fontWeight: 700,
+                                  background: pendingCount > 0 ? 'rgba(251, 191, 36, 0.22)' : 'rgba(148, 163, 184, 0.2)',
+                                  color: pendingCount > 0 ? '#fde68a' : '#cbd5e1',
+                                  border: pendingCount > 0 ? '1px solid rgba(251, 191, 36, 0.55)' : '1px solid rgba(148, 163, 184, 0.45)',
+                                }}
+                                title={pendingCount > 0 ? `${pendingCount} pending tag suggestion(s)` : 'No pending tag suggestions'}
+                              >
+                                {pendingCount}
+                              </span>
+                              <button
+                                type="button"
+                                className="btn"
+                                style={{ padding: '4px 10px', fontSize: 12 }}
+                                onClick={() => openTagReviewModal(album)}
+                              >
+                                Review
+                              </button>
+                            </div>
+                          );
+                        })()}
+                      </td>
                       <td style={{ padding: '8px 12px', color: '#fff' }}>{new Date(album.createdDate).toLocaleDateString()}</td>
                     </tr>
                   );
@@ -410,6 +565,101 @@ const AdminAlbums: React.FC = () => {
       </div>
 
       </div>
+      {tagReviewAlbum && (
+        <div className="modal-overlay" onClick={closeTagReviewModal}>
+          <div className="modal-content admin-modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header admin-modal-header">
+              <h2>Review Photo Tag Suggestions</h2>
+              <button onClick={closeTagReviewModal} className="btn-close">×</button>
+            </div>
+            <div className="modal-body admin-modal-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+              <p style={{ marginTop: 0, color: '#bbb' }}>
+                Album: <strong>{tagReviewAlbum.name}</strong>
+              </p>
+
+              {tagSuggestionsMessage && (
+                <div style={{ marginBottom: 12, color: tagSuggestionsMessage.toLowerCase().includes('failed') ? '#ff9a9a' : '#79d279' }}>
+                  {tagSuggestionsMessage}
+                </div>
+              )}
+
+              {tagSuggestionsLoading ? (
+                <div style={{ color: '#aaa' }}>Loading suggestions...</div>
+              ) : tagSuggestions.length === 0 ? (
+                <div style={{ color: '#aaa' }}>No pending tag suggestions for this album.</div>
+              ) : (
+                <div style={{ display: 'grid', gap: 10 }}>
+                  {tagSuggestions.map((suggestion) => (
+                    <div
+                      key={suggestion.id}
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '72px 1fr auto',
+                        gap: 10,
+                        alignItems: 'center',
+                        border: '1px solid #2d2b45',
+                        borderRadius: 8,
+                        padding: 10,
+                        background: '#19182a',
+                      }}
+                    >
+                      <img
+                        src={`/api/photos/${suggestion.photoId}/asset?variant=thumbnail`}
+                        alt={suggestion.fileName || `Photo ${suggestion.photoId}`}
+                        style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 6, background: '#111' }}
+                      />
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 700, color: '#fff' }}>{suggestion.playerName}</div>
+                        <div style={{ fontSize: 12, color: '#b9b9c9' }}>
+                          Photo: {suggestion.fileName || `#${suggestion.photoId}`}
+                        </div>
+                        <div style={{ fontSize: 12, color: '#9ca3af' }}>
+                          Submitted {suggestion.submittedAt ? new Date(suggestion.submittedAt).toLocaleString() : 'recently'}
+                          {suggestion.submittedByName ? ` by ${suggestion.submittedByName}` : ''}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <button
+                          type="button"
+                          className="btn"
+                          style={{
+                            background: '#16a34a',
+                            color: '#fff',
+                            border: 'none',
+                            padding: '6px 10px',
+                            opacity: tagSuggestionsActionId === suggestion.id ? 0.7 : 1,
+                            cursor: tagSuggestionsActionId === suggestion.id ? 'not-allowed' : 'pointer',
+                          }}
+                          disabled={tagSuggestionsActionId === suggestion.id}
+                          onClick={() => handleReviewTagSuggestion(suggestion.id, 'approve')}
+                        >
+                          Approve
+                        </button>
+                        <button
+                          type="button"
+                          className="btn"
+                          style={{
+                            background: '#dc2626',
+                            color: '#fff',
+                            border: 'none',
+                            padding: '6px 10px',
+                            opacity: tagSuggestionsActionId === suggestion.id ? 0.7 : 1,
+                            cursor: tagSuggestionsActionId === suggestion.id ? 'not-allowed' : 'pointer',
+                          }}
+                          disabled={tagSuggestionsActionId === suggestion.id}
+                          onClick={() => handleReviewTagSuggestion(suggestion.id, 'reject')}
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal-content admin-modal-content" onClick={(e) => e.stopPropagation()}>

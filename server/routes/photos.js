@@ -227,7 +227,325 @@ import exifReader from 'exif-reader';
 import { createWorker } from 'tesseract.js';
 import { uploadImageBufferToAzure, deleteBlobByUrl, downloadBlob, getSignedReadUrl, getBlobNameFromUrlOrName } from '../services/azureStorage.js';
 import { requireActiveSubscription, enforceStorageQuotaForStudio } from '../middleware/subscription.js';
+import { authRequired } from '../middleware/auth.js';
 import orderReceiptService from '../services/orderReceiptService.js';
+
+const csvToUniqueList = (value) => {
+  if (Array.isArray(value)) {
+    const normalized = value
+      .map((item) => String(item || '').trim())
+      .filter(Boolean);
+    return Array.from(new Set(normalized.map((item) => item.toLowerCase()))).map((lower) =>
+      normalized.find((item) => item.toLowerCase() === lower)
+    ).filter(Boolean);
+  }
+
+  return Array.from(
+    new Set(
+      String(value || '')
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .map((item) => item.toLowerCase())
+    )
+  ).map((lower) =>
+    String(value || '')
+      .split(',')
+      .map((item) => item.trim())
+      .find((item) => item && item.toLowerCase() === lower)
+  ).filter(Boolean);
+};
+
+const appendPlayerNameToCsv = (existingValue, incomingName) => {
+  const nextName = String(incomingName || '').trim();
+  if (!nextName) return String(existingValue || '');
+
+  const existingNames = csvToUniqueList(existingValue);
+  const exists = existingNames.some((name) => String(name).toLowerCase() === nextName.toLowerCase());
+  if (exists) return existingNames.join(', ');
+  return [...existingNames, nextName].join(', ');
+};
+
+const ensureCanReviewAlbumSuggestions = async (req, albumId) => {
+  const album = await queryRow(
+    `SELECT id, studio_id as studioId
+     FROM albums
+     WHERE id = $1`,
+    [albumId]
+  );
+
+  if (!album) {
+    return { ok: false, status: 404, error: 'Album not found' };
+  }
+
+  const role = String(req.user?.role || '');
+  const userStudioId = Number(req.user?.studio_id || 0);
+  const albumStudioId = Number(album.studioId || 0);
+
+  if (!['admin', 'studio_admin', 'super_admin'].includes(role)) {
+    return { ok: false, status: 403, error: 'Admin access required' };
+  }
+
+  if (role !== 'super_admin' && (!userStudioId || userStudioId !== albumStudioId)) {
+    return { ok: false, status: 403, error: 'Unauthorized' };
+  }
+
+  return { ok: true, album };
+};
+
+// Customer submits a player-name suggestion for a photo.
+router.post('/:id/suggest-player-tag', authRequired, async (req, res) => {
+  try {
+    await ensurePhotoTagSuggestionSchema();
+    const photoId = Number(req.params.id);
+    const playerName = String(req.body?.playerName || '').trim();
+    const submittedByName = String(req.user?.email || req.user?.name || '').trim();
+
+    if (!Number.isInteger(photoId) || photoId <= 0) {
+      return res.status(400).json({ error: 'Invalid photo id' });
+    }
+
+    if (!playerName || playerName.length < 2 || playerName.length > 120) {
+      return res.status(400).json({ error: 'Please enter a valid player name' });
+    }
+
+    const photo = await queryRow(
+      `SELECT p.id, p.album_id as albumId, p.player_names as playerNames, a.studio_id as studioId
+       FROM photos p
+       INNER JOIN albums a ON a.id = p.album_id
+       WHERE p.id = $1`,
+      [photoId]
+    );
+
+    if (!photo) {
+      return res.status(404).json({ error: 'Photo not found' });
+    }
+
+    const alreadyTagged = csvToUniqueList(photo.playerNames).some(
+      (name) => String(name).toLowerCase() === playerName.toLowerCase()
+    );
+    if (alreadyTagged) {
+      return res.status(200).json({ success: true, message: 'This player is already tagged on the photo.' });
+    }
+
+    const duplicatePending = await queryRow(
+      `SELECT TOP 1 id
+       FROM photo_tag_suggestions
+       WHERE photo_id = $1
+         AND status = 'pending'
+         AND LOWER(player_name) = LOWER($2)
+       ORDER BY id DESC`,
+      [photoId, playerName]
+    );
+
+    if (duplicatePending?.id) {
+      return res.status(200).json({ success: true, message: 'Thanks! This tag is already pending review.' });
+    }
+
+    await query(
+      `INSERT INTO photo_tag_suggestions (
+        studio_id, album_id, photo_id, player_name, status,
+        submitted_by_user_id, submitted_by_name, submitted_at
+      )
+      VALUES ($1, $2, $3, $4, 'pending', $5, $6, GETDATE())`,
+      [
+        Number(photo.studioId || 0),
+        Number(photo.albumId || 0),
+        photoId,
+        playerName,
+        Number(req.user?.id || 0) || null,
+        submittedByName || null,
+      ]
+    );
+
+    return res.json({ success: true, message: 'Thanks! Your tag suggestion was submitted for studio review.' });
+  } catch (error) {
+    console.error('[SUGGEST-TAG] Error:', error);
+    return res.status(500).json({ error: 'Failed to submit tag suggestion' });
+  }
+});
+
+// Admin: list tag suggestions for an album.
+router.get('/album/:albumId/tag-suggestions', authRequired, async (req, res) => {
+  try {
+    await ensurePhotoTagSuggestionSchema();
+    const albumId = Number(req.params.albumId);
+    if (!Number.isInteger(albumId) || albumId <= 0) {
+      return res.status(400).json({ error: 'Invalid album id' });
+    }
+
+    const access = await ensureCanReviewAlbumSuggestions(req, albumId);
+    if (!access.ok) {
+      return res.status(access.status).json({ error: access.error });
+    }
+
+    const requestedStatus = String(req.query?.status || 'pending').trim().toLowerCase();
+    const status = ['pending', 'approved', 'rejected', 'all'].includes(requestedStatus) ? requestedStatus : 'pending';
+
+    const suggestions = status === 'all'
+      ? await queryRows(
+          `SELECT s.id,
+                  s.photo_id as photoId,
+                  p.file_name as fileName,
+                  s.player_name as playerName,
+                  s.status,
+                  s.submitted_by_name as submittedByName,
+                  s.submitted_at as submittedAt,
+                  s.reviewed_at as reviewedAt,
+                  s.review_note as reviewNote
+           FROM photo_tag_suggestions s
+           INNER JOIN photos p ON p.id = s.photo_id
+           WHERE s.album_id = $1
+           ORDER BY s.status ASC, s.submitted_at DESC`,
+          [albumId]
+        )
+      : await queryRows(
+          `SELECT s.id,
+                  s.photo_id as photoId,
+                  p.file_name as fileName,
+                  s.player_name as playerName,
+                  s.status,
+                  s.submitted_by_name as submittedByName,
+                  s.submitted_at as submittedAt,
+                  s.reviewed_at as reviewedAt,
+                  s.review_note as reviewNote
+           FROM photo_tag_suggestions s
+           INNER JOIN photos p ON p.id = s.photo_id
+           WHERE s.album_id = $1
+             AND s.status = $2
+           ORDER BY s.submitted_at DESC`,
+          [albumId, status]
+        );
+
+    return res.json(Array.isArray(suggestions) ? suggestions : []);
+  } catch (error) {
+    console.error('[TAG-SUGGESTIONS][GET] Error:', error);
+    return res.status(500).json({ error: 'Failed to load tag suggestions' });
+  }
+});
+
+// Admin: pending suggestion counts by album for current studio.
+router.get('/tag-suggestions/pending-counts', authRequired, async (req, res) => {
+  try {
+    await ensurePhotoTagSuggestionSchema();
+    const role = String(req.user?.role || '');
+    if (!['admin', 'studio_admin', 'super_admin'].includes(role)) {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const studioId = Number(req.user?.studio_id || 0);
+    if (role !== 'super_admin' && (!studioId || studioId <= 0)) {
+      return res.json({ counts: {} });
+    }
+
+    const rows = role === 'super_admin'
+      ? await queryRows(
+          `SELECT album_id as albumId, COUNT(*) as pendingCount
+           FROM photo_tag_suggestions
+           WHERE status = 'pending'
+           GROUP BY album_id`
+        )
+      : await queryRows(
+          `SELECT album_id as albumId, COUNT(*) as pendingCount
+           FROM photo_tag_suggestions
+           WHERE status = 'pending'
+             AND studio_id = $1
+           GROUP BY album_id`,
+          [studioId]
+        );
+
+    const counts = {};
+    for (const row of rows || []) {
+      counts[String(row.albumId)] = Number(row.pendingCount || 0);
+    }
+
+    return res.json({ counts });
+  } catch (error) {
+    console.error('[TAG-SUGGESTIONS][COUNTS] Error:', error);
+    return res.status(500).json({ error: 'Failed to load pending counts' });
+  }
+});
+
+// Admin: approve/reject a suggestion.
+router.post('/tag-suggestions/:suggestionId/review', authRequired, async (req, res) => {
+  try {
+    await ensurePhotoTagSuggestionSchema();
+    await ensurePhotoUploadColumns();
+
+    const suggestionId = Number(req.params.suggestionId);
+    const decisionRaw = String(req.body?.decision || '').trim().toLowerCase();
+    const reviewNote = String(req.body?.reviewNote || '').trim().slice(0, 500) || null;
+
+    if (!Number.isInteger(suggestionId) || suggestionId <= 0) {
+      return res.status(400).json({ error: 'Invalid suggestion id' });
+    }
+
+    if (!['approve', 'reject'].includes(decisionRaw)) {
+      return res.status(400).json({ error: 'Invalid decision' });
+    }
+
+    const suggestion = await queryRow(
+      `SELECT id,
+              studio_id as studioId,
+              album_id as albumId,
+              photo_id as photoId,
+              player_name as playerName,
+              status
+       FROM photo_tag_suggestions
+       WHERE id = $1`,
+      [suggestionId]
+    );
+
+    if (!suggestion) {
+      return res.status(404).json({ error: 'Suggestion not found' });
+    }
+
+    const access = await ensureCanReviewAlbumSuggestions(req, Number(suggestion.albumId));
+    if (!access.ok) {
+      return res.status(access.status).json({ error: access.error });
+    }
+
+    if (String(suggestion.status || '').toLowerCase() !== 'pending') {
+      return res.status(400).json({ error: 'Suggestion has already been reviewed' });
+    }
+
+    if (decisionRaw === 'approve') {
+      const photo = await queryRow(
+        `SELECT id, player_names as playerNames
+         FROM photos
+         WHERE id = $1`,
+        [Number(suggestion.photoId)]
+      );
+
+      if (photo?.id) {
+        const nextPlayerNames = appendPlayerNameToCsv(photo.playerNames, suggestion.playerName);
+        await query(
+          `UPDATE photos
+           SET player_names = $1
+           WHERE id = $2`,
+          [nextPlayerNames || null, Number(photo.id)]
+        );
+      }
+    }
+
+    const nextStatus = decisionRaw === 'approve' ? 'approved' : 'rejected';
+    await query(
+      `UPDATE photo_tag_suggestions
+       SET status = $1,
+           reviewed_by_user_id = $2,
+           reviewed_at = GETDATE(),
+           review_note = $3
+       WHERE id = $4`,
+      [nextStatus, Number(req.user?.id || 0) || null, reviewNote, suggestionId]
+    );
+
+    return res.json({ success: true, status: nextStatus });
+  } catch (error) {
+    console.error('[TAG-SUGGESTIONS][REVIEW] Error:', error);
+    return res.status(500).json({ error: 'Failed to review suggestion' });
+  }
+});
+
 // Direct-to-Blob: Record photo metadata and blob URL after upload
 router.post('/record-blob', requireActiveSubscription, async (req, res) => {
   try {
@@ -470,6 +788,8 @@ const csvUpload = multer({
 import { ensurePlayerRecognitionSchema } from './photos.utils.js';
 
 import { ensurePhotoUploadColumns } from './photos.utils.js';
+
+import { ensurePhotoTagSuggestionSchema } from './photos.utils.js';
 
 const normalizeToken = (value) => String(value || '').trim().toLowerCase();
 
@@ -1632,7 +1952,6 @@ router.get('/:id/detections', async (req, res) => {
 });
 
 // Upload photos
-import { authRequired } from '../middleware/auth.js';
 // Use the shared photoUpload instance for uploads
 // Accept JWT or session for upload route, always run authRequired
 router.post(

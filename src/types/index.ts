@@ -499,6 +499,15 @@ export interface ProfileConfig {
   instagramUrl?: string;
   facebookUrl?: string;
   timezone?: string;
+  customDomain?: string;
+}
+
+export interface LandingPage {
+  id?: number;
+  studioId: number;
+  htmlContent: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface AnalyticsData {

@@ -50,6 +50,7 @@ const ensureProfileConfigTable = async () => {
     await query(`IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='profile_config' AND COLUMN_NAME='instagram_url') ALTER TABLE profile_config ADD instagram_url NVARCHAR(500) NULL`);
     await query(`IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='profile_config' AND COLUMN_NAME='facebook_url') ALTER TABLE profile_config ADD facebook_url NVARCHAR(500) NULL`);
     await query(`IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='profile_config' AND COLUMN_NAME='timezone') ALTER TABLE profile_config ADD timezone NVARCHAR(100) NULL`);
+    await query(`IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='profile_config' AND COLUMN_NAME='custom_domain') ALTER TABLE profile_config ADD custom_domain NVARCHAR(255) NULL`);
 
     // Legacy schema could have CHECK constraints forcing id=1. Drop all CHECK constraints on this table.
     await query(`
@@ -139,7 +140,7 @@ router.get('/', authRequired, async (req, res) => {
                  email, receive_order_notifications as receiveOrderNotifications,
                  logo_url as logoUrl,
                  instagram_url as instagramUrl, facebook_url as facebookUrl,
-                 timezone
+                 timezone, custom_domain as customDomain
           FROM profile_config
           WHERE studio_id = $1
         `, [studioId])
@@ -148,7 +149,7 @@ router.get('/', authRequired, async (req, res) => {
                  email, receive_order_notifications as receiveOrderNotifications,
                  logo_url as logoUrl,
                  instagram_url as instagramUrl, facebook_url as facebookUrl,
-                 timezone
+                 timezone, custom_domain as customDomain
           FROM profile_config
           WHERE id = 1
         `);
@@ -180,7 +181,7 @@ router.get('/', authRequired, async (req, res) => {
                    email, receive_order_notifications as receiveOrderNotifications,
                    logo_url as logoUrl,
                    instagram_url as instagramUrl, facebook_url as facebookUrl,
-                   timezone
+                   timezone, custom_domain as customDomain
             FROM profile_config
             WHERE studio_id = $1
           `, [studioId])
@@ -189,7 +190,7 @@ router.get('/', authRequired, async (req, res) => {
                    email, receive_order_notifications as receiveOrderNotifications,
                    logo_url as logoUrl,
                    instagram_url as instagramUrl, facebook_url as facebookUrl,
-                   timezone
+                   timezone, custom_domain as customDomain
             FROM profile_config
             WHERE id = 1
           `);
@@ -222,8 +223,18 @@ router.put('/', authRequired, async (req, res) => {
     if (!studioId) {
       return res.status(403).json({ error: 'Studio ID required' });
     }
-    const { ownerName, businessName, email, receiveOrderNotifications, logoUrl, instagramUrl, facebookUrl } = req.body;
+    const { ownerName, businessName, email, receiveOrderNotifications, logoUrl, instagramUrl, facebookUrl, customDomain } = req.body;
     const timezone = normalizeTimezone(req.body?.timezone);
+    
+    // Validate custom domain if provided (basic validation)
+    if (customDomain && typeof customDomain === 'string') {
+      const customDomainTrimmed = customDomain.trim();
+      const domainRegex = /^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/;
+      if (customDomainTrimmed && !domainRegex.test(customDomainTrimmed)) {
+        return res.status(400).json({ error: 'Invalid domain format. Please enter a valid domain (e.g., labs.example.com)' });
+      }
+    }
+    const finalCustomDomain = customDomain ? customDomain.trim() : null;
     const hasStudioId = await columnExists('profile_config', 'studio_id');
 
     if (hasStudioId) {
@@ -239,16 +250,17 @@ router.put('/', authRequired, async (req, res) => {
               instagram_url = $7,
               facebook_url = $8,
               timezone = $9,
+              custom_domain = $10,
               updated_at = CURRENT_TIMESTAMP
           WHERE studio_id = $1
         END
         ELSE
         BEGIN
-          INSERT INTO profile_config (id, studio_id, owner_name, business_name, email, receive_order_notifications, logo_url, instagram_url, facebook_url, timezone)
-          SELECT ISNULL(MAX(id), 0) + 1, $1, $2, $3, $4, $5, $6, $7, $8, $9
+          INSERT INTO profile_config (id, studio_id, owner_name, business_name, email, receive_order_notifications, logo_url, instagram_url, facebook_url, timezone, custom_domain)
+          SELECT ISNULL(MAX(id), 0) + 1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
           FROM profile_config
         END
-      `, [studioId, ownerName, businessName, email, !!receiveOrderNotifications, logoUrl, instagramUrl || null, facebookUrl || null, timezone]);
+      `, [studioId, ownerName, businessName, email, !!receiveOrderNotifications, logoUrl, instagramUrl || null, facebookUrl || null, timezone, finalCustomDomain]);
     } else {
       // Legacy single-row schema fallback
       await query(`
@@ -263,15 +275,16 @@ router.put('/', authRequired, async (req, res) => {
               instagram_url = $6,
               facebook_url = $7,
               timezone = $8,
+              custom_domain = $9,
               updated_at = CURRENT_TIMESTAMP
           WHERE id = 1
         END
         ELSE
         BEGIN
-          INSERT INTO profile_config (id, owner_name, business_name, email, receive_order_notifications, logo_url, instagram_url, facebook_url, timezone)
-          VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8)
+          INSERT INTO profile_config (id, owner_name, business_name, email, receive_order_notifications, logo_url, instagram_url, facebook_url, timezone, custom_domain)
+          VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9)
         END
-      `, [ownerName, businessName, email, !!receiveOrderNotifications, logoUrl, instagramUrl || null, facebookUrl || null, timezone]);
+      `, [ownerName, businessName, email, !!receiveOrderNotifications, logoUrl, instagramUrl || null, facebookUrl || null, timezone, finalCustomDomain]);
     }
 
     const profile = hasStudioId

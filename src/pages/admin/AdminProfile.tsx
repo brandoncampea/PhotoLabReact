@@ -1,12 +1,14 @@
 
 import React, { useState, useEffect } from 'react';
-import { ProfileConfig } from '../../types';
+import { ProfileConfig, LandingPage } from '../../types';
 import { profileService } from '../../services/profileService';
 import { watermarkService } from '../../services/watermarkService';
 import { useAuth } from '../../contexts/AuthContext';
 import { SUBSCRIPTION_PLANS } from '../../services/subscriptionService';
 import { getAvailableTimezones, getBrowserTimezone, setStudioTimezone, formatDateInStudioTimezone } from '../../utils/studioDateTime';
 import AdminLayout from '../../components/AdminLayout';
+import ReactQuill from 'react-quill';
+import 'react-quill/dist/quill.snow.css';
 
 const AdminProfile: React.FC = () => {
   const { user } = useAuth();
@@ -22,6 +24,7 @@ const AdminProfile: React.FC = () => {
   const [logoPreview, setLogoPreview] = useState('');
   const [instagramUrl, setInstagramUrl] = useState('');
   const [facebookUrl, setFacebookUrl] = useState('');
+  const [customDomain, setCustomDomain] = useState('');
   const [timezone, setTimezoneValue] = useState(getBrowserTimezone());
   const [subscription, setSubscription] = useState<any>(null);
   const [watermarkUrl, setWatermarkUrl] = useState<string>('');
@@ -29,14 +32,40 @@ const AdminProfile: React.FC = () => {
   const [selectedUpgradePlan, setSelectedUpgradePlan] = useState<string>('');
   const [selectedBillingCycle, setSelectedBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
   const [upgrading, setUpgrading] = useState(false);
+  const [landingPage, setLandingPage] = useState<LandingPage | null>(null);
+  const [landingPageHtml, setLandingPageHtml] = useState('');
+  const [showLandingPageEditor, setShowLandingPageEditor] = useState(false);
+  const [savingLandingPage, setSavingLandingPage] = useState(false);
+  const [studioPublicSlug, setStudioPublicSlug] = useState('');
 
   useEffect(() => {
     loadConfig();
     if (user?.studioId) {
       fetchSubscriptionInfo();
       fetchWatermark(user.studioId);
+      fetchLandingPage();
+      fetchStudioPublicSlug(user.studioId);
     }
   }, [user]);
+
+  const fetchStudioPublicSlug = async (studioId: number) => {
+    try {
+      const token = localStorage.getItem('authToken');
+      const response = await fetch(
+        `/api/studios/${studioId}/public-link`,
+        { headers: { 'Authorization': `Bearer ${token}` } }
+      );
+
+      if (!response.ok) {
+        return;
+      }
+
+      const data = await response.json();
+      setStudioPublicSlug(data?.slug || '');
+    } catch (error) {
+      console.error('Failed to load studio public slug:', error);
+    }
+  };
 
   const fetchWatermark = async (studioId: number) => {
     try {
@@ -59,6 +88,7 @@ const AdminProfile: React.FC = () => {
       setLogoPreview(data.logoUrl || '');
       setInstagramUrl(data.instagramUrl || '');
       setFacebookUrl(data.facebookUrl || '');
+      setCustomDomain(data.customDomain || '');
       setTimezoneValue(data.timezone || getBrowserTimezone());
       setStudioTimezone(data.timezone || getBrowserTimezone());
     } catch (error) {
@@ -81,6 +111,16 @@ const AdminProfile: React.FC = () => {
       }
     } catch (err: any) {
       console.error('Failed to load subscription:', err);
+    }
+  };
+
+  const fetchLandingPage = async () => {
+    try {
+      const data = await profileService.getLandingPage();
+      setLandingPage(data);
+      setLandingPageHtml(data.htmlContent || '');
+    } catch (error) {
+      console.error('Failed to load landing page:', error);
     }
   };
 
@@ -184,6 +224,7 @@ const AdminProfile: React.FC = () => {
         logoUrl: finalLogoUrl,
         instagramUrl,
         facebookUrl,
+        customDomain,
         timezone,
       });
       setConfig(updatedConfig);
@@ -218,6 +259,38 @@ const AdminProfile: React.FC = () => {
     }
 
     setShowUpgradeModal(true);
+  };
+
+  const handleSaveLandingPage = async () => {
+    setSavingLandingPage(true);
+    try {
+      const updated = await profileService.updateLandingPage(landingPageHtml);
+      setLandingPage(updated);
+      setShowLandingPageEditor(false);
+      alert('Landing page saved successfully!');
+    } catch (error) {
+      console.error('Failed to save landing page:', error);
+      alert('Failed to save landing page');
+    } finally {
+      setSavingLandingPage(false);
+    }
+  };
+
+  const handleResetLandingPage = async () => {
+    if (!confirm('Reset landing page to default? This cannot be undone.')) return;
+    setSavingLandingPage(true);
+    try {
+      const reset = await profileService.resetLandingPage();
+      setLandingPage(reset);
+      setLandingPageHtml(reset.htmlContent || '');
+      setShowLandingPageEditor(false);
+      alert('Landing page reset to default!');
+    } catch (error) {
+      console.error('Failed to reset landing page:', error);
+      alert('Failed to reset landing page');
+    } finally {
+      setSavingLandingPage(false);
+    }
   };
 
   if (loading) {
@@ -424,6 +497,50 @@ const AdminProfile: React.FC = () => {
           <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
             Your Facebook page link — shown as an icon next to your studio name
           </p>
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="customDomain">Custom Domain <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>(Optional)</span></label>
+          <input
+            type="text"
+            id="customDomain"
+            value={customDomain}
+            onChange={(e) => setCustomDomain(e.target.value)}
+            placeholder="labs.example.com"
+          />
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+            Point your custom domain to your albums page. Example: <code style={{ backgroundColor: 'var(--bg-tertiary)', padding: '2px 4px', borderRadius: '3px' }}>labs.yourstudio.com</code> will redirect to your albums.
+          </p>
+          <div style={{
+            backgroundColor: 'var(--bg-tertiary)',
+            border: '1px solid var(--border-color)',
+            borderRadius: '6px',
+            padding: '12px',
+            marginTop: '0.75rem',
+            fontSize: '0.8rem'
+          }}>
+            <strong style={{ display: 'block', marginBottom: '8px' }}>📌 DNS Configuration Instructions:</strong>
+            <ol style={{ margin: '0 0 0 20px', paddingLeft: '0' }}>
+              <li style={{ marginBottom: '6px' }}>
+                Go to your domain registrar (GoDaddy, Namecheap, etc.)
+              </li>
+              <li style={{ marginBottom: '6px' }}>
+                Find the DNS settings for your domain
+              </li>
+              <li style={{ marginBottom: '6px' }}>
+                Add a CNAME record pointing to: <code style={{ backgroundColor: 'rgba(0,0,0,0.1)', padding: '2px 4px', borderRadius: '3px' }}>labs.campeaphotography.com</code>
+              </li>
+              <li style={{ marginBottom: '6px' }}>
+                Wait 24-48 hours for DNS to propagate
+              </li>
+              <li>
+                Your custom domain will then automatically redirect to your albums
+              </li>
+            </ol>
+            <p style={{ margin: '8px 0 0 0', fontStyle: 'italic', color: 'var(--text-secondary)' }}>
+              💡 <strong>Tip:</strong> Use a subdomain like <code style={{ backgroundColor: 'rgba(0,0,0,0.1)', padding: '2px 4px', borderRadius: '3px' }}>photos.youromain.com</code> or <code style={{ backgroundColor: 'rgba(0,0,0,0.1)', padding: '2px 4px', borderRadius: '3px' }}>gallery.yourdomain.com</code> to keep your main website separate.
+            </p>
+          </div>
         </div>
 
         <div className="form-actions">
@@ -688,6 +805,141 @@ const AdminProfile: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Landing Page Editor Section */}
+      <div style={{ marginTop: '2rem' }}>
+        <div className="page-header">
+          <h2>🎨 Landing Page</h2>
+          <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
+            Customize the landing page that appears when visitors use your custom domain
+          </p>
+        </div>
+
+        {!showLandingPageEditor ? (
+          <div style={{
+            backgroundColor: 'var(--bg-tertiary)',
+            padding: '20px',
+            borderRadius: '8px',
+            marginBottom: '20px'
+          }}>
+            <p style={{ marginTop: 0, marginBottom: '15px', fontSize: '0.95rem' }}>
+              📝 <strong>Your current landing page</strong> will be displayed when visitors access your custom domain.
+            </p>
+            {landingPage && (
+              <p style={{ marginBottom: '15px', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                Last updated: <strong>{new Date(landingPage.updatedAt || '').toLocaleString()}</strong>
+              </p>
+            )}
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+              <button
+                onClick={() => {
+                  setShowLandingPageEditor(true);
+                  setLandingPageHtml(landingPage?.htmlContent || '');
+                }}
+                className="btn btn-primary"
+              >
+                ✏️ Edit Landing Page
+              </button>
+              <button
+                type="button"
+                onClick={() => window.open(`/studio/${encodeURIComponent(studioPublicSlug)}/landing`, '_blank', 'noopener,noreferrer')}
+                disabled={!studioPublicSlug}
+                className="btn"
+                style={{
+                  backgroundColor: 'var(--text-secondary)',
+                  color: 'white',
+                  textDecoration: 'none',
+                  padding: '10px 20px',
+                  borderRadius: '6px',
+                  cursor: studioPublicSlug ? 'pointer' : 'not-allowed',
+                  opacity: studioPublicSlug ? 1 : 0.7,
+                  border: 'none'
+                }}
+              >
+                👁️ Preview
+              </button>
+            </div>
+            {!studioPublicSlug && (
+              <p style={{ marginTop: '10px', marginBottom: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                Preview will be available once your studio public link is ready.
+              </p>
+            )}
+          </div>
+        ) : (
+          <div style={{
+            backgroundColor: 'var(--bg-tertiary)',
+            padding: '20px',
+            borderRadius: '8px',
+            marginBottom: '20px'
+          }}>
+            <h3 style={{ marginTop: 0, marginBottom: '15px' }}>Edit Landing Page</h3>
+            
+            <div style={{ marginBottom: '15px' }}>
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '10px' }}>
+                Use the editor below to customize your landing page. You can add text, images, links, and formatting.
+              </p>
+              <ReactQuill
+                value={landingPageHtml}
+                onChange={setLandingPageHtml}
+                theme="snow"
+                modules={{
+                  toolbar: [
+                    [{ 'header': [1, 2, 3, false] }],
+                    ['bold', 'italic', 'underline', 'strike'],
+                    ['blockquote', 'code-block'],
+                    [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                    [{ 'script': 'sub'}, { 'script': 'super' }],
+                    [{ 'indent': '-1'}, { 'indent': '+1' }],
+                    [{ 'size': ['small', false, 'large', 'huge'] }],
+                    [{ 'color': [] }, { 'background': [] }],
+                    [{ 'font': [] }],
+                    [{ 'align': [] }],
+                    ['link', 'image', 'video'],
+                    ['clean']
+                  ]
+                }}
+                style={{
+                  backgroundColor: 'white',
+                  borderRadius: '6px',
+                  minHeight: '400px',
+                  marginBottom: '15px'
+                }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+              <button
+                onClick={handleSaveLandingPage}
+                disabled={savingLandingPage}
+                className="btn btn-primary"
+              >
+                {savingLandingPage ? '💾 Saving...' : '💾 Save Landing Page'}
+              </button>
+              <button
+                onClick={handleResetLandingPage}
+                disabled={savingLandingPage}
+                className="btn"
+                style={{
+                  backgroundColor: '#fbbf24',
+                  color: '#1f2937',
+                  border: 'none',
+                  cursor: savingLandingPage ? 'not-allowed' : 'pointer',
+                  opacity: savingLandingPage ? 0.7 : 1
+                }}
+              >
+                🔄 Reset to Default
+              </button>
+              <button
+                onClick={() => setShowLandingPageEditor(false)}
+                disabled={savingLandingPage}
+                className="btn btn-secondary"
+              >
+                ✕ Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
       </>
     </AdminLayout>
   );

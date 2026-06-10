@@ -1,5 +1,6 @@
 import api from './api';
 import { setStudioTimezone } from '../utils/studioDateTime';
+import { LandingPage } from '../types';
 
 export const profileService = {
   async getConfig(): Promise<any> {
@@ -24,6 +25,21 @@ export const profileService = {
     const response = await api.post('/profile/upload-logo', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
+    return response.data;
+  },
+
+  async getLandingPage(): Promise<LandingPage> {
+    const response = await api.get('/profile/landing-page');
+    return response.data;
+  },
+
+  async updateLandingPage(htmlContent: string): Promise<LandingPage> {
+    const response = await api.put('/profile/landing-page', { htmlContent });
+    return response.data;
+  },
+
+  async resetLandingPage(): Promise<LandingPage> {
+    const response = await api.post('/profile/landing-page/reset', {});
     return response.data;
   },
 };

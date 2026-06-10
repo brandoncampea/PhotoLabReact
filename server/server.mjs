@@ -69,6 +69,8 @@ import publicSearchRoutes from './routes/publicSearch.js';
 import playerWatchlistRoutes from './routes/playerWatchlist.js';
 import schoolWatchlistRoutes from './routes/schoolWatchlist.js';
 import smugmugRoutes from './routes/smugmug.js';
+import landingPagesRoutes from './routes/landingPages.js';
+import publicLandingRoutes from './routes/publicLanding.js';
 
 
 
@@ -84,6 +86,7 @@ import './startup/ensureOrderApprovalColumns.js';
 import './startup/ensureWhccLabBillingColumns.js';
 
 import '../server/startup/ensureOrderItemAttributesColumn.js';
+import { customDomainRedirect } from './middleware/customDomainRedirect.js';
 
 
 
@@ -141,6 +144,11 @@ const hasClientBuild = fs.existsSync(path.join(clientDistPath, 'index.html'));
 
 // Ensure JSON body parsing is enabled before tax route
 app.use(express.json({ limit: '500mb' }));
+
+// Custom domain redirect middleware - check if request is for a custom domain
+// Must come before API routes and static serving
+app.use(customDomainRedirect);
+
 app.use('/api/tax', taxRoutes);
 
 // request body is available for signature verification.
@@ -169,6 +177,7 @@ app.use('/api', mpixProxyRoutes);
 app.use('/api', whccProxyRoutes);
 app.use('/api/packages', packageRoutes);
 app.use('/api/profile', profileRoutes);
+app.use('/api/profile/landing-page', landingPagesRoutes);
 app.use('/api/cart', cartRoutes);
 app.use('/api/watermarks', watermarkRoutes);
 app.use('/api/discount-codes', discountCodeRoutes);
@@ -193,6 +202,9 @@ app.use('/api/reports', reportsRoutes);
 
 // Notify watchers endpoint
 app.use('/api/notify-watchers', notifyWatchersRoutes);
+
+// Public landing pages
+app.use('/studio', publicLandingRoutes);
 
 // Health check
 // Read version from package.json

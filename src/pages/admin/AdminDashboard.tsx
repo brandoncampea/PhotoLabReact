@@ -4,6 +4,7 @@ import DashboardChart from '../../components/DashboardChart';
 import AdminLayout from '../../components/AdminLayout';
 import './AdminDashboard.css';
 import api from '../../services/api';
+import { photoService } from '../../services/photoService';
 
 type DashboardStats = {
   totalRevenue: number;
@@ -64,6 +65,9 @@ const AdminDashboard: React.FC = () => {
   const [customersWithCart, setCustomersWithCart] = useState<number | null>(null);
   const [customersWithCartLoading, setCustomersWithCartLoading] = useState(false);
   const [customersWithCartError, setCustomersWithCartError] = useState('');
+  const [pendingTagCounts, setPendingTagCounts] = useState<Record<string, number>>({});
+  const [pendingTagCountsLoading, setPendingTagCountsLoading] = useState(false);
+  const [pendingTagCountsError, setPendingTagCountsError] = useState('');
 
   useEffect(() => {
     const fetchCustomersWithCart = async () => {
@@ -78,7 +82,23 @@ const AdminDashboard: React.FC = () => {
         setCustomersWithCartLoading(false);
       }
     };
+
+    const fetchPendingTagCounts = async () => {
+      setPendingTagCountsLoading(true);
+      setPendingTagCountsError('');
+      try {
+        const counts = await photoService.getPendingTagSuggestionCounts();
+        setPendingTagCounts(counts || {});
+      } catch (err) {
+        setPendingTagCounts({});
+        setPendingTagCountsError('Unable to load player tag review queue');
+      } finally {
+        setPendingTagCountsLoading(false);
+      }
+    };
+
     fetchCustomersWithCart();
+    fetchPendingTagCounts();
   }, []);
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -154,6 +174,8 @@ const AdminDashboard: React.FC = () => {
     labels: revenueSeries.labels,
     data: revenueSeries.labels.map((label, idx) => Math.max(0, Number(revenueSeries.data[idx] || 0) - Number(taxByLabelForRevenue.get(label) || 0))),
   };
+  const pendingTagTotal = Object.values(pendingTagCounts).reduce((sum, count) => sum + Number(count || 0), 0);
+  const pendingTagAlbumCount = Object.values(pendingTagCounts).filter((count) => Number(count || 0) > 0).length;
 
   return (
     <AdminLayout>
@@ -162,6 +184,37 @@ const AdminDashboard: React.FC = () => {
         <p className="admin-dashboard-subtitle">
           Business overview, stats, and recent activity for your studio.
         </p>
+      </div>
+
+      <div className="dashboard-widget tallydark-card admin-dashboard-widget" style={{ marginBottom: 18 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
+          <div>
+            <h2 className="admin-dashboard-section-title" style={{ margin: 0 }}>👤 Player Tag Review</h2>
+            <div className="dashboard-card-sub" style={{ marginTop: 4 }}>Customer-submitted player tags waiting for studio review.</div>
+          </div>
+          <a className="dashboard-pill" href="/admin/albums" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>Open Albums Review</a>
+        </div>
+        <div className="admin-dashboard-analytics-stats">
+          <div className="admin-dashboard-analytics-stat">
+            <div className="admin-dashboard-analytics-value" style={{ color: pendingTagTotal > 0 ? '#fbbf24' : undefined }}>
+              {pendingTagCountsLoading ? 'Loading...' : pendingTagCountsError ? '—' : pendingTagTotal}
+            </div>
+            <div className="admin-dashboard-analytics-label">Pending Tags</div>
+          </div>
+          <div className="admin-dashboard-analytics-stat">
+            <div className="admin-dashboard-analytics-value">{pendingTagAlbumCount}</div>
+            <div className="admin-dashboard-analytics-label">Affected Albums</div>
+          </div>
+          <div className="admin-dashboard-analytics-stat" style={{ alignItems: 'flex-start' }}>
+            <div className="admin-dashboard-analytics-value" style={{ fontSize: 18, lineHeight: 1.3, textAlign: 'left' }}>Why it matters</div>
+            <div className="dashboard-card-sub" style={{ textAlign: 'left', marginTop: 6, lineHeight: 1.5 }}>
+              Review suggestions before they’re applied to photos so tag data stays accurate and studio-owned.
+            </div>
+          </div>
+        </div>
+        {pendingTagCountsError && !pendingTagCountsLoading && (
+          <div className="error-message" style={{ marginTop: 12 }}>{pendingTagCountsError}</div>
+        )}
       </div>
 
       <div className="dashboard-metrics tallydark-metrics admin-dashboard-metrics">

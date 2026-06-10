@@ -4,6 +4,7 @@ import { analyticsService } from '../services/analyticsService';
 import { AnalyticsData } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { studioFeatureService } from '../services/studioFeatureService';
+import { photoService } from '../services/photoService';
 import AdminLayout from '../components/AdminLayout';
 
 interface SubscriptionInfo {
@@ -188,6 +189,9 @@ export default function StudioAdminDashboard() {
   const [customersWithCart, setCustomersWithCart] = useState<number | null>(null);
   const [customersWithCartLoading, setCustomersWithCartLoading] = useState(false);
   const [customersWithCartError, setCustomersWithCartError] = useState('');
+  const [pendingTagCounts, setPendingTagCounts] = useState<Record<string, number>>({});
+  const [pendingTagCountsLoading, setPendingTagCountsLoading] = useState(false);
+  const [pendingTagCountsError, setPendingTagCountsError] = useState('');
 
   useEffect(() => {
     // Track site visit and page view for analytics
@@ -201,6 +205,7 @@ export default function StudioAdminDashboard() {
       fetchProfitSummary();
       fetchPayoutHistory();
       fetchPublicStudioLink();
+      fetchPendingTagCounts();
       loadAnalytics(timeRange);
     }
   }, [user, effectiveStudioId]);
@@ -366,6 +371,21 @@ export default function StudioAdminDashboard() {
     }
   };
 
+  const fetchPendingTagCounts = async () => {
+    setPendingTagCountsLoading(true);
+    setPendingTagCountsError('');
+    try {
+      const counts = await photoService.getPendingTagSuggestionCounts();
+      setPendingTagCounts(counts || {});
+    } catch (err: any) {
+      console.error('Failed to load pending tag counts:', err);
+      setPendingTagCounts({});
+      setPendingTagCountsError('Unable to load tag review queue');
+    } finally {
+      setPendingTagCountsLoading(false);
+    }
+  };
+
   const handleCopyPublicLink = async () => {
     if (!publicStudioLink) return;
     try {
@@ -517,10 +537,62 @@ export default function StudioAdminDashboard() {
   };
 
   const showVisitorPageCards = (analytics?.totalVisitors ?? 0) > 0 || (analytics?.totalPageViews ?? 0) > 0;
+  const pendingTagTotal = Object.values(pendingTagCounts).reduce((sum, count) => sum + Number(count || 0), 0);
+  const pendingTagAlbumCount = Object.values(pendingTagCounts).filter((count) => Number(count || 0) > 0).length;
 
   return (
     <AdminLayout>
       <h1>Studio Dashboard</h1>
+
+      {/* Player Tag Review Widget */}
+      <div style={{ background: 'var(--bg-tertiary)', borderRadius: 12, padding: 24, marginBottom: 32, marginTop: 24 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+          <div>
+            <h2 style={{ marginBottom: 8 }}>👤 Player Tag Review</h2>
+            <div style={{ color: 'var(--text-secondary)', fontSize: 14 }}>
+              Review customer-submitted player tag suggestions before they’re applied to photos.
+            </div>
+          </div>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => window.location.href = '/admin/albums'}
+          >
+            Open Albums Review
+          </button>
+        </div>
+
+        <div style={{ marginTop: 18, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16 }}>
+          <div style={{ background: 'var(--bg-primary)', borderRadius: 10, padding: 16, textAlign: 'center' }}>
+            <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6 }}>PENDING TAGS</div>
+            {pendingTagCountsLoading ? (
+              <div style={{ color: 'var(--text-secondary)' }}>Loading...</div>
+            ) : pendingTagCountsError ? (
+              <div style={{ color: 'var(--error-color)' }}>{pendingTagCountsError}</div>
+            ) : (
+              <div style={{ fontSize: 30, fontWeight: 800, color: pendingTagTotal > 0 ? '#fbbf24' : 'var(--text-primary)' }}>
+                {pendingTagTotal}
+              </div>
+            )}
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 6 }}>suggestions waiting for review</div>
+          </div>
+
+          <div style={{ background: 'var(--bg-primary)', borderRadius: 10, padding: 16, textAlign: 'center' }}>
+            <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6 }}>AFFECTED ALBUMS</div>
+            <div style={{ fontSize: 30, fontWeight: 800 }}>{pendingTagAlbumCount}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 6 }}>albums with pending player tags</div>
+          </div>
+
+          <div style={{ background: 'var(--bg-primary)', borderRadius: 10, padding: 16 }}>
+            <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6, textAlign: 'center' }}>WHY IT MATTERS</div>
+            <ul style={{ margin: 0, paddingLeft: 18, color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.5 }}>
+              <li>Protects photo accuracy before tags go live</li>
+              <li>Helps catch misspellings or duplicate suggestions</li>
+              <li>Keeps studio-owned tagging consistent</li>
+            </ul>
+          </div>
+        </div>
+      </div>
 
       {/* Analytics Dashboard Section */}
       <div style={{ background: 'var(--bg-tertiary)', borderRadius: 12, padding: 24, marginBottom: 32, marginTop: 24 }}>

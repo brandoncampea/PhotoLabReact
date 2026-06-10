@@ -139,6 +139,66 @@ export const ensurePhotoUploadColumns = async () => {
   `);
 };
 
+export const ensurePhotoTagSuggestionSchema = async () => {
+  await query(`
+    IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'photo_tag_suggestions')
+    BEGIN
+      CREATE TABLE photo_tag_suggestions (
+        id INT IDENTITY(1,1) PRIMARY KEY,
+        studio_id INT NOT NULL,
+        album_id INT NOT NULL,
+        photo_id INT NOT NULL,
+        player_name NVARCHAR(255) NOT NULL,
+        status NVARCHAR(32) NOT NULL CONSTRAINT DF_photo_tag_suggestions_status DEFAULT 'pending',
+        submitted_by_user_id INT NULL,
+        submitted_by_name NVARCHAR(255) NULL,
+        submitted_at DATETIME2 NOT NULL CONSTRAINT DF_photo_tag_suggestions_submitted_at DEFAULT GETDATE(),
+        reviewed_by_user_id INT NULL,
+        reviewed_at DATETIME2 NULL,
+        review_note NVARCHAR(500) NULL
+      )
+    END
+  `);
+
+  await query(`
+    IF COL_LENGTH('photo_tag_suggestions', 'studio_id') IS NULL
+      ALTER TABLE photo_tag_suggestions ADD studio_id INT NOT NULL CONSTRAINT DF_photo_tag_suggestions_studio_id DEFAULT 0;
+    IF COL_LENGTH('photo_tag_suggestions', 'album_id') IS NULL
+      ALTER TABLE photo_tag_suggestions ADD album_id INT NOT NULL CONSTRAINT DF_photo_tag_suggestions_album_id DEFAULT 0;
+    IF COL_LENGTH('photo_tag_suggestions', 'photo_id') IS NULL
+      ALTER TABLE photo_tag_suggestions ADD photo_id INT NOT NULL CONSTRAINT DF_photo_tag_suggestions_photo_id DEFAULT 0;
+    IF COL_LENGTH('photo_tag_suggestions', 'player_name') IS NULL
+      ALTER TABLE photo_tag_suggestions ADD player_name NVARCHAR(255) NOT NULL CONSTRAINT DF_photo_tag_suggestions_player_name DEFAULT '';
+    IF COL_LENGTH('photo_tag_suggestions', 'status') IS NULL
+      ALTER TABLE photo_tag_suggestions ADD status NVARCHAR(32) NOT NULL CONSTRAINT DF_photo_tag_suggestions_status_legacy DEFAULT 'pending';
+    IF COL_LENGTH('photo_tag_suggestions', 'submitted_by_user_id') IS NULL
+      ALTER TABLE photo_tag_suggestions ADD submitted_by_user_id INT NULL;
+    IF COL_LENGTH('photo_tag_suggestions', 'submitted_by_name') IS NULL
+      ALTER TABLE photo_tag_suggestions ADD submitted_by_name NVARCHAR(255) NULL;
+    IF COL_LENGTH('photo_tag_suggestions', 'submitted_at') IS NULL
+      ALTER TABLE photo_tag_suggestions ADD submitted_at DATETIME2 NOT NULL CONSTRAINT DF_photo_tag_suggestions_submitted_at_legacy DEFAULT GETDATE();
+    IF COL_LENGTH('photo_tag_suggestions', 'reviewed_by_user_id') IS NULL
+      ALTER TABLE photo_tag_suggestions ADD reviewed_by_user_id INT NULL;
+    IF COL_LENGTH('photo_tag_suggestions', 'reviewed_at') IS NULL
+      ALTER TABLE photo_tag_suggestions ADD reviewed_at DATETIME2 NULL;
+    IF COL_LENGTH('photo_tag_suggestions', 'review_note') IS NULL
+      ALTER TABLE photo_tag_suggestions ADD review_note NVARCHAR(500) NULL;
+  `);
+
+  await query(`
+    IF NOT EXISTS (
+      SELECT 1
+      FROM sys.indexes
+      WHERE name = 'IX_photo_tag_suggestions_album_status'
+        AND object_id = OBJECT_ID('photo_tag_suggestions')
+    )
+    BEGIN
+      CREATE INDEX IX_photo_tag_suggestions_album_status
+      ON photo_tag_suggestions (album_id, status, submitted_at)
+    END
+  `);
+};
+
 export const fetchStudioRoster = async (studioId) => {
   if (!studioId) return [];
   return queryRows(

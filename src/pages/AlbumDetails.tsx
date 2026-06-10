@@ -9,6 +9,7 @@ import api from '../services/api';
 import { photoService } from '../services/photoService';
 import { productService } from '../services/productService';
 import { useCart } from '../contexts/CartContext';
+import { useAuth } from '../contexts/AuthContext';
 import { Album, Photo, Product, ProductSize } from '../types';
 import './AlbumDetails.css';
 import { Helmet } from 'react-helmet-async';
@@ -69,6 +70,7 @@ const AlbumDetails: React.FC = () => {
   const [recommendationFilter, setRecommendationFilter] = useState('');
   const { albumId, studioSlug } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const [album, setAlbum] = useState<Album | null>(null);
   const [photos, setPhotos] = useState<Photo[]>([]);
@@ -77,6 +79,9 @@ const AlbumDetails: React.FC = () => {
   const [error, setError] = useState('');
   const [addingKey, setAddingKey] = useState('');
   const [addMessage, setAddMessage] = useState('');
+  const [tagSuggestionName, setTagSuggestionName] = useState('');
+  const [tagSuggestionSubmitting, setTagSuggestionSubmitting] = useState(false);
+  const [tagSuggestionMessage, setTagSuggestionMessage] = useState('');
   const [showCropModal, setShowCropModal] = useState(false);
   const [cropperRef, setCropperRef] = useState<any>(null);
   const [productToCrop, setProductToCrop] = useState<ProductWithMatch | null>(null);
@@ -174,6 +179,11 @@ const AlbumDetails: React.FC = () => {
   );
 
   useEffect(() => {
+    setTagSuggestionName('');
+    setTagSuggestionMessage('');
+  }, [selectedPhotoId]);
+
+  useEffect(() => {
     const id = Number(albumId);
     if (!Number.isInteger(id) || id <= 0) {
       setError('Invalid album id');
@@ -223,6 +233,33 @@ const AlbumDetails: React.FC = () => {
     const url = new URL(window.location.href);
     url.searchParams.set('photo', String(photo.id));
     navigate(url.pathname + url.search, { replace: false });
+  };
+
+  const handleSubmitTagSuggestion = async () => {
+    if (!selectedPhoto) return;
+    if (!user) {
+      setTagSuggestionMessage('Please log in to suggest a player tag.');
+      navigate('/login');
+      return;
+    }
+    const playerName = tagSuggestionName.trim();
+    if (!playerName) {
+      setTagSuggestionMessage('Please enter a player name first.');
+      return;
+    }
+
+    try {
+      setTagSuggestionSubmitting(true);
+      setTagSuggestionMessage('');
+      const response = await photoService.submitPlayerTagSuggestion(selectedPhoto.id, playerName, user.email);
+      setTagSuggestionMessage(response?.message || 'Tag suggestion submitted.');
+      setTagSuggestionName('');
+    } catch (error: any) {
+      const message = error?.response?.data?.error || 'Failed to submit tag suggestion.';
+      setTagSuggestionMessage(message);
+    } finally {
+      setTagSuggestionSubmitting(false);
+    }
   };
 
   const getDigitalScopeValue = (product: any): 'photo' | 'album' => {
@@ -1395,6 +1432,73 @@ const AlbumDetails: React.FC = () => {
                         </div>
                       </div>
                     )}
+
+                    <div
+                      style={{
+                        margin: '0 auto 16px auto',
+                        maxWidth: 540,
+                        border: '1px solid #3a3656',
+                        borderRadius: 10,
+                        padding: 12,
+                        background: '#141320',
+                      }}
+                    >
+                      <div style={{ fontWeight: 700, color: '#ddd7ff', marginBottom: 6 }}>Help tag this photo</div>
+                      <div style={{ fontSize: 12, color: '#aaa', marginBottom: 10 }}>
+                        Know the player in this photo? Log in and submit a name for studio review.
+                      </div>
+                      {!user && (
+                        <div style={{ marginBottom: 10, fontSize: 12, color: '#cbd5e1' }}>
+                          You must be logged in to suggest tags.{' '}
+                          <Link to="/login" style={{ color: '#9f7aea', fontWeight: 700 }}>Log in</Link>
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <input
+                          type="text"
+                          value={tagSuggestionName}
+                          onChange={(e) => setTagSuggestionName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleSubmitTagSuggestion();
+                            }
+                          }}
+                          disabled={!user}
+                          placeholder="Enter player name"
+                          style={{
+                            flex: '1 1 260px',
+                            padding: '10px 12px',
+                            borderRadius: 6,
+                            border: '1px solid #3a3656',
+                            background: '#10101a',
+                            color: '#fff',
+                          }}
+                        />
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          disabled={!user || tagSuggestionSubmitting}
+                          onClick={handleSubmitTagSuggestion}
+                        >
+                          {tagSuggestionSubmitting ? 'Submitting...' : 'Submit Tag'}
+                        </button>
+                      </div>
+                      {!!tagSuggestionMessage && (
+                        <div
+                          style={{
+                            marginTop: 8,
+                            fontSize: 12,
+                            color: tagSuggestionMessage.toLowerCase().includes('failed') || tagSuggestionMessage.toLowerCase().includes('error')
+                              ? '#ff9a9a'
+                              : '#79d279',
+                          }}
+                        >
+                          {tagSuggestionMessage}
+                        </div>
+                      )}
+                    </div>
+
                     {addMessage && <div style={{ marginBottom: 8, color: addMessage.includes('Failed') ? '#ff9a9a' : '#79d279', textAlign: 'center' }}>{addMessage}</div>}
                     <div style={{ marginBottom: 12 }}>
                       <input

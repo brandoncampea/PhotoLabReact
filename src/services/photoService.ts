@@ -110,6 +110,44 @@ const normalizeRecommendations = (data: any) => {
 
 
 export const photoService = {
+  async submitPlayerTagSuggestion(photoId: number, playerName: string, submittedByName?: string): Promise<{ success: boolean; message: string }> {
+    const response = await api.post<{ success: boolean; message: string }>(`/photos/${photoId}/suggest-player-tag`, {
+      playerName,
+      submittedByName,
+    });
+    return response.data;
+  },
+
+  async getAlbumTagSuggestions(albumId: number, status: 'pending' | 'approved' | 'rejected' | 'all' = 'pending'): Promise<Array<{
+    id: number;
+    photoId: number;
+    fileName?: string;
+    playerName: string;
+    status: 'pending' | 'approved' | 'rejected';
+    submittedByName?: string | null;
+    submittedAt?: string;
+    reviewedAt?: string | null;
+    reviewNote?: string | null;
+  }>> {
+    const response = await api.get(`/photos/album/${albumId}/tag-suggestions`, {
+      params: { status },
+    });
+    return Array.isArray(response.data) ? response.data : [];
+  },
+
+  async getPendingTagSuggestionCounts(): Promise<Record<string, number>> {
+    const response = await api.get<{ counts: Record<string, number> }>(`/photos/tag-suggestions/pending-counts`);
+    return response.data?.counts || {};
+  },
+
+  async reviewTagSuggestion(suggestionId: number, decision: 'approve' | 'reject', reviewNote?: string): Promise<{ success: boolean; status: string }> {
+    const response = await api.post<{ success: boolean; status: string }>(`/photos/tag-suggestions/${suggestionId}/review`, {
+      decision,
+      reviewNote,
+    });
+    return response.data;
+  },
+
       async clearAllTagsInAlbum(albumId: number): Promise<{ cleared: number }> {
         const response = await api.post<{ cleared: number }>(`/photos/album/${albumId}/clear-tags`);
         return response.data;
