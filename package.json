@@ -23,6 +23,8 @@
     "whcc:editor:backfill": "node server/scripts/backfillWhccEditorMappings.js --file server/scripts/whcc-editor-mapping.json",
     "whcc:editor:backfill:dry-run": "node server/scripts/backfillWhccEditorMappings.js --file server/scripts/whcc-editor-mapping.json",
     "whcc:editor:backfill:apply": "node server/scripts/backfillWhccEditorMappings.js --file server/scripts/whcc-editor-mapping.json --apply",
+    "orders:snapshot:backfill": "node server/scripts/backfillOrderSnapshots.js",
+    "orders:snapshot:backfill:apply": "node server/scripts/backfillOrderSnapshots.js --apply",
     "clear:test-commerce": "node server/clearTestCommerce.js --apply",
     "clear:test-commerce:dry-run": "node server/clearTestCommerce.js",
     "migrate:sqlite": "node server/migrateSqliteToMssql.js",

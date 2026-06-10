@@ -419,6 +419,7 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
             const studioProfit = studioRevenueNet - baseRevenue - stripeFeeAmount;
             return {
                 ...order,
+                total: Number(order.total || 0),
                 studioProfit,
             };
         });

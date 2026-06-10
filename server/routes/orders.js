@@ -317,63 +317,6 @@ const safeJsonParse = (value, fallback = null) => {
 
 const roundCurrency = (value) => Number((Number(value) || 0).toFixed(2));
 
-const normalizeOrderAmounts = ({ subtotal, shippingCost, taxAmount, totalAmount, itemSubtotal = null }) => {
-  const storedSubtotal = roundCurrency(subtotal);
-  const storedShipping = roundCurrency(shippingCost);
-  const storedTax = roundCurrency(taxAmount);
-  const storedTotal = roundCurrency(totalAmount);
-
-  if (!Number.isFinite(Number(itemSubtotal))) {
-    return {
-      subtotal: storedSubtotal,
-      shippingCost: storedShipping,
-      taxAmount: storedTax,
-      totalAmount: storedTotal,
-    };
-  }
-
-  const expectedSubtotal = roundCurrency(itemSubtotal);
-  const expectedTotal = roundCurrency(expectedSubtotal + storedShipping + storedTax);
-  const looksDoubleShipping =
-    Math.abs(storedSubtotal - roundCurrency(expectedSubtotal + storedShipping)) < 0.01 &&
-    Math.abs(storedTotal - roundCurrency(storedSubtotal + storedShipping + storedTax)) < 0.01;
-  const subtotalMismatch = Math.abs(storedSubtotal - expectedSubtotal) >= 0.01;
-
-  if (looksDoubleShipping || subtotalMismatch) {
-    return {
-      subtotal: expectedSubtotal,
-      shippingCost: storedShipping,
-      taxAmount: storedTax,
-      totalAmount: expectedTotal,
-    };
-  }
-
-  return {
-    subtotal: storedSubtotal,
-    shippingCost: storedShipping,
-    taxAmount: storedTax,
-    totalAmount: storedTotal,
-  };
-};
-
-const resolveOrderDiscountAmount = ({ subtotal, shippingCost, taxAmount, totalAmount }) => {
-  const normalizedSubtotal = roundCurrency(subtotal);
-  const normalizedShipping = roundCurrency(shippingCost);
-  const normalizedTax = roundCurrency(taxAmount);
-  const normalizedTotal = roundCurrency(totalAmount);
-
-  const preferredComputed = roundCurrency((normalizedSubtotal + normalizedTax) - normalizedTotal);
-  const fallbackComputed = roundCurrency((normalizedSubtotal + normalizedTax + normalizedShipping) - normalizedTotal);
-
-  if (Number.isFinite(preferredComputed) && preferredComputed > 0) {
-    return preferredComputed;
-  }
-  if (Number.isFinite(fallbackComputed) && fallbackComputed > 0) {
-    return fallbackComputed;
-  }
-  return 0;
-};
-
 const parseNullableNumber = (value) => {
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
@@ -3294,11 +3237,23 @@ const sendOrderReceipts = async (orderId) => {
     const orderUrl = String(process.env.APP_BASE_URL || '').trim()
       ? `${String(process.env.APP_BASE_URL || '').trim().replace(/\/$/, '')}/admin/orders?orderId=${order.id}`
       : null;
-    const studioEmail = normalizeEmail(studioGroup.studioEmail);
+    let studioEmail = normalizeEmail(studioGroup.studioEmail);
+    if (!studioEmail && studioGroup.items.length > 0 && studioGroup.items[0].studioId) {
+      const studio = await queryRow('SELECT email FROM studios WHERE id = $1', [studioGroup.items[0].studioId]);
+      studioEmail = normalizeEmail(studio?.email);
+      if (studioEmail) {
+        studioGroup.studioEmail = studioEmail;
+      }
+    }
     const filteredBcc = superAdminBcc.filter((email) => email && email !== studioEmail);
 
+    if (!studioEmail) {
+      console.warn(`[RECEIPTS] Skipping studio receipt for order ${order.id}: missing studio email for studioId ${studioGroup.items[0]?.studioId || 'unknown'}`);
+      continue;
+    }
+
     const sent = await orderReceiptService.sendStudioReceipt({
-      to: studioGroup.studioEmail,
+      to: studioEmail,
       bcc: filteredBcc,
       studioName: studioGroup.studioName,
       customerEmail: parsedShippingAddress?.email || order.customerEmail,
@@ -3615,7 +3570,25 @@ router.post('/', requireActiveSubscription, async (req, res) => {
       }
     }
 
-    const total = +(computedSubtotal + computedShipping + computedTax - discountAmount).toFixed(2);
+    const snapshotSubtotal = roundCurrency(computedSubtotal);
+    const snapshotShipping = roundCurrency(computedShipping);
+    const snapshotTax = roundCurrency(computedTax);
+    const snapshotDiscount = roundCurrency(discountAmount);
+    const total = roundCurrency(snapshotSubtotal + snapshotShipping + snapshotTax - snapshotDiscount);
+
+    // Snapshot invariant guardrail:
+    // total must always equal subtotal + shipping + tax - discount.
+    const invariantTotal = roundCurrency(snapshotSubtotal + snapshotShipping + snapshotTax - snapshotDiscount);
+    if (Math.abs(invariantTotal - total) >= 0.01) {
+      console.warn('[ORDER] Snapshot total invariant mismatch. Using invariant value.', {
+        subtotal: snapshotSubtotal,
+        shipping: snapshotShipping,
+        tax: snapshotTax,
+        discount: snapshotDiscount,
+        computedTotal: total,
+        invariantTotal,
+      });
+    }
 
     // --- PATCH: If all items are digital, update Stripe payment intent to correct amount (no shipping) ---
     if (allDigital && paymentIntentId) {
@@ -3697,12 +3670,12 @@ router.post('/', requireActiveSubscription, async (req, res) => {
       nextStatus,
       'pending', // approval_status
       total,
-      computedSubtotal,
-      taxAmount || 0,
+      snapshotSubtotal,
+      snapshotTax,
       taxRate || 0,
       JSON.stringify(shippingAddress),
       normalizedShippingOption,
-      computedShipping,
+      snapshotShipping,
       studioShippingCost,
       shippingMargin,
       discountCode || null,
@@ -4457,13 +4430,6 @@ router.get('/', async (req, res) => {
     const parsedOrders = [];
     for (const order of orders) {
       if (!includeItems) {
-        const normalizedAmounts = normalizeOrderAmounts({
-          subtotal: order.subtotal,
-          shippingCost: order.shippingCost,
-          taxAmount: order.taxAmount,
-          totalAmount: order.totalAmount,
-          itemSubtotal: order.itemSubtotal,
-        });
         parsedOrders.push({
           ...order,
           status: order.status || 'Pending',
@@ -4476,10 +4442,10 @@ router.get('/', async (req, res) => {
           batchLabVendor: order.batchLabVendor,
           labSubmittedAt: order.labSubmittedAt,
           items: [],
-          shippingCost: normalizedAmounts.shippingCost,
-          subtotal: normalizedAmounts.subtotal,
-          totalAmount: normalizedAmounts.totalAmount,
-          taxAmount: normalizedAmounts.taxAmount,
+          shippingCost: Number(order.shippingCost || 0),
+          subtotal: Number(order.subtotal || 0),
+          totalAmount: Number(order.totalAmount || 0),
+          taxAmount: Number(order.taxAmount || 0),
         });
         continue;
       }
@@ -4618,35 +4584,6 @@ router.get('/', async (req, res) => {
         });
       }
 
-      // Normalize displayed amounts from item totals to correct legacy subtotal math.
-      let shippingCostOut = order.shippingCost;
-      let subtotalOut = order.subtotal;
-      let totalAmountOut = order.totalAmount;
-      let taxAmountOut = order.taxAmount;
-      const itemSubtotal = roundCurrency(itemsWithPhotos.reduce((sum, item) => sum + ((Number(item.price) || 0) * (Number(item.quantity) || 0)), 0));
-      const normalizedAmounts = normalizeOrderAmounts({
-        subtotal: subtotalOut,
-        shippingCost: shippingCostOut,
-        taxAmount: taxAmountOut,
-        totalAmount: totalAmountOut,
-        itemSubtotal,
-      });
-      shippingCostOut = normalizedAmounts.shippingCost;
-      subtotalOut = normalizedAmounts.subtotal;
-      totalAmountOut = normalizedAmounts.totalAmount;
-      taxAmountOut = normalizedAmounts.taxAmount;
-      if (itemsWithPhotos.length > 0 && itemsWithPhotos.every((item) => isDigitalDownloadItem(item))) {
-        const discountAmount = resolveOrderDiscountAmount({
-          subtotal: order.subtotal,
-          shippingCost: order.shippingCost,
-          taxAmount: order.taxAmount,
-          totalAmount: order.totalAmount,
-        });
-        shippingCostOut = 0;
-        subtotalOut = itemSubtotal;
-        taxAmountOut = Number(order.taxAmount) || 0;
-        totalAmountOut = roundCurrency(Math.max(0, subtotalOut + taxAmountOut - discountAmount));
-      }
       const parsedWhccImportResponse = canViewWhccFields ? safeJsonParse(order.whccImportResponse) : undefined;
       const parsedWhccSubmitResponse = canViewWhccFields ? safeJsonParse(order.whccSubmitResponse) : undefined;
       const parsedWhccRequestLog = canViewWhccFields
@@ -4684,10 +4621,10 @@ router.get('/', async (req, res) => {
         trackingUrl: canViewWhccFields ? order.trackingUrl : undefined,
         shippedAt: canViewWhccFields ? order.shippedAt : undefined,
         items: itemsWithPhotos,
-        shippingCost: shippingCostOut,
-        subtotal: subtotalOut,
-        totalAmount: totalAmountOut,
-        taxAmount: taxAmountOut,
+        shippingCost: Number(order.shippingCost || 0),
+        subtotal: Number(order.subtotal || 0),
+        totalAmount: Number(order.totalAmount || 0),
+        taxAmount: Number(order.taxAmount || 0),
         // excludedItemsNote removed to fix ReferenceError
       });
     }
@@ -4910,44 +4847,6 @@ router.get('/details/:orderId', async (req, res) => {
 
     // Add digital item flags for admin UI
     const digitalItems = itemsWithPhotos.filter((item) => isDigitalDownloadItem(item));
-    // Normalize displayed amounts from item totals to correct legacy subtotal math.
-    let shippingCostOut = order.shippingCost;
-    let subtotalOut = order.subtotal;
-    let totalAmountOut = order.totalAmount;
-    let taxAmountOut = order.taxAmount;
-    const itemSubtotal = roundCurrency(itemsWithPhotos.reduce((sum, item) => sum + ((Number(item.price) || 0) * (Number(item.quantity) || 0)), 0));
-    const normalizedAmounts = normalizeOrderAmounts({
-      subtotal: subtotalOut,
-      shippingCost: shippingCostOut,
-      taxAmount: taxAmountOut,
-      totalAmount: totalAmountOut,
-      itemSubtotal,
-    });
-    shippingCostOut = normalizedAmounts.shippingCost;
-    subtotalOut = normalizedAmounts.subtotal;
-    totalAmountOut = normalizedAmounts.totalAmount;
-    taxAmountOut = normalizedAmounts.taxAmount;
-    if (itemsWithPhotos.length > 0 && itemsWithPhotos.every((item) => {
-      const options = (() => {
-        try {
-          return typeof item.productOptions === 'string' ? JSON.parse(item.productOptions) : (item.productOptions || {});
-        } catch { return {}; }
-      })();
-      const category = String(item.productCategory || '').toLowerCase();
-      const name = String(item.productName || '').toLowerCase();
-      return options?.isDigital === true || options?.is_digital_only === true || options?.digitalOnly === true || category.includes('digital') || name.includes('digital');
-    })) {
-      const discountAmount = resolveOrderDiscountAmount({
-        subtotal: order.subtotal,
-        shippingCost: order.shippingCost,
-        taxAmount: order.taxAmount,
-        totalAmount: order.totalAmount,
-      });
-      shippingCostOut = 0;
-      subtotalOut = itemSubtotal;
-      taxAmountOut = Number(order.taxAmount) || 0;
-      totalAmountOut = roundCurrency(Math.max(0, subtotalOut + taxAmountOut - discountAmount));
-    }
     const parsedWhccImportResponse = canViewWhccFields ? safeJsonParse(order.whccImportResponse) : undefined;
     const parsedWhccSubmitResponse = canViewWhccFields ? safeJsonParse(order.whccSubmitResponse) : undefined;
     const parsedWhccRequestLog = canViewWhccFields
@@ -4987,10 +4886,10 @@ router.get('/details/:orderId', async (req, res) => {
       hasDigitalItems: digitalItems.length > 0,
       digitalItemCount: digitalItems.length,
       items: itemsWithPhotos,
-      shippingCost: shippingCostOut,
-      subtotal: subtotalOut,
-      totalAmount: totalAmountOut,
-      taxAmount: taxAmountOut,
+      shippingCost: Number(order.shippingCost || 0),
+      subtotal: Number(order.subtotal || 0),
+      totalAmount: Number(order.totalAmount || 0),
+      taxAmount: Number(order.taxAmount || 0),
       // excludedItemsNote removed to fix ReferenceError
     });
   } catch (error) {
@@ -5156,46 +5055,6 @@ router.get('/admin/all-orders', adminRequired, async (req, res) => {
         }
       }
 
-      // Normalize displayed amounts from item totals to correct legacy subtotal math.
-      let shippingCostOut = order.shippingCost;
-      let subtotalOut = order.subtotal;
-      let totalAmountOut = order.totalAmount;
-      let taxAmountOut = order.taxAmount;
-      const itemSubtotal = includeItems
-        ? roundCurrency(itemsWithPhotos.reduce((sum, item) => sum + ((Number(item.price) || 0) * (Number(item.quantity) || 0)), 0))
-        : roundCurrency(order.itemSubtotal);
-      const normalizedAmounts = normalizeOrderAmounts({
-        subtotal: subtotalOut,
-        shippingCost: shippingCostOut,
-        taxAmount: taxAmountOut,
-        totalAmount: totalAmountOut,
-        itemSubtotal,
-      });
-      shippingCostOut = normalizedAmounts.shippingCost;
-      subtotalOut = normalizedAmounts.subtotal;
-      totalAmountOut = normalizedAmounts.totalAmount;
-      taxAmountOut = normalizedAmounts.taxAmount;
-      if (itemsWithPhotos.length > 0 && itemsWithPhotos.every((item) => {
-        const options = (() => {
-          try {
-            return typeof item.productOptions === 'string' ? JSON.parse(item.productOptions) : (item.productOptions || {});
-          } catch { return {}; }
-        })();
-        const category = String(item.productCategory || '').toLowerCase();
-        const name = String(item.productName || '').toLowerCase();
-        return options?.isDigital === true || options?.is_digital_only === true || options?.digitalOnly === true || category.includes('digital') || name.includes('digital');
-      })) {
-        const discountAmount = resolveOrderDiscountAmount({
-          subtotal: order.subtotal,
-          shippingCost: order.shippingCost,
-          taxAmount: order.taxAmount,
-          totalAmount: order.totalAmount,
-        });
-        shippingCostOut = 0;
-        subtotalOut = itemSubtotal;
-        taxAmountOut = Number(order.taxAmount) || 0;
-        totalAmountOut = roundCurrency(Math.max(0, subtotalOut + taxAmountOut - discountAmount));
-      }
       const parsedWhccImportResponse = canViewWhccFields ? safeJsonParse(order.whccImportResponse) : undefined;
       const parsedWhccSubmitResponse = canViewWhccFields ? safeJsonParse(order.whccSubmitResponse) : undefined;
       const parsedWhccRequestLog = canViewWhccFields
@@ -5233,10 +5092,10 @@ router.get('/admin/all-orders', adminRequired, async (req, res) => {
         trackingUrl: canViewWhccFields ? order.trackingUrl : undefined,
         shippedAt: canViewWhccFields ? order.shippedAt : undefined,
         items: itemsWithPhotos,
-        shippingCost: shippingCostOut,
-        subtotal: subtotalOut,
-        totalAmount: totalAmountOut,
-        taxAmount: taxAmountOut,
+        shippingCost: Number(order.shippingCost || 0),
+        subtotal: Number(order.subtotal || 0),
+        totalAmount: Number(order.totalAmount || 0),
+        taxAmount: Number(order.taxAmount || 0),
         excludedItemsNote: includeItems && excludedCount > 0 ? `${excludedCount} product(s) with amount were excluded from profit calculations because they are not linked to a valid product.` : undefined,
       });
     }
@@ -5416,36 +5275,6 @@ router.get('/admin/order-details/:orderId', adminRequired, async (req, res) => {
 
     const digitalItems = itemsWithPhotos.filter((item) => item.isDigital || Boolean(item.digitalDownloadScope));
 
-    // Normalize displayed amounts from item totals to correct legacy subtotal math.
-    let shippingCostOut = order.shippingCost;
-    let subtotalOut = order.subtotal;
-    let totalAmountOut = order.totalAmount;
-    let taxAmountOut = order.taxAmount;
-    const itemSubtotal = roundCurrency(itemsWithPhotos.reduce((sum, item) => sum + ((Number(item.price) || 0) * (Number(item.quantity) || 0)), 0));
-    const normalizedAmounts = normalizeOrderAmounts({
-      subtotal: subtotalOut,
-      shippingCost: shippingCostOut,
-      taxAmount: taxAmountOut,
-      totalAmount: totalAmountOut,
-      itemSubtotal,
-    });
-    shippingCostOut = normalizedAmounts.shippingCost;
-    subtotalOut = normalizedAmounts.subtotal;
-    totalAmountOut = normalizedAmounts.totalAmount;
-    taxAmountOut = normalizedAmounts.taxAmount;
-    if (itemsWithPhotos.length > 0 && itemsWithPhotos.every((item) => item.isDigital)) {
-      const discountAmount = resolveOrderDiscountAmount({
-        subtotal: order.subtotal,
-        shippingCost: order.shippingCost,
-        taxAmount: order.taxAmount,
-        totalAmount: order.totalAmount,
-      });
-      shippingCostOut = 0;
-      subtotalOut = itemSubtotal;
-      taxAmountOut = Number(order.taxAmount) || 0;
-      totalAmountOut = roundCurrency(Math.max(0, subtotalOut + taxAmountOut - discountAmount));
-    }
-
     const parsedWhccImportResponse = canViewWhccFields ? safeJsonParse(order.whccImportResponse) : undefined;
     const parsedWhccSubmitResponse = canViewWhccFields ? safeJsonParse(order.whccSubmitResponse) : undefined;
     const parsedWhccRequestLog = canViewWhccFields
@@ -5486,10 +5315,10 @@ router.get('/admin/order-details/:orderId', adminRequired, async (req, res) => {
       hasDigitalItems: digitalItems.length > 0,
       digitalItemCount: digitalItems.length,
       items: itemsWithPhotos,
-      shippingCost: shippingCostOut,
-      subtotal: subtotalOut,
-      totalAmount: totalAmountOut,
-      taxAmount: taxAmountOut,
+      shippingCost: Number(order.shippingCost || 0),
+      subtotal: Number(order.subtotal || 0),
+      totalAmount: Number(order.totalAmount || 0),
+      taxAmount: Number(order.taxAmount || 0),
     });
   } catch (error) {
     res.status(500).json({ error: error.message });

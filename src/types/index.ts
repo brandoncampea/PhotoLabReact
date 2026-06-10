@@ -185,6 +185,7 @@ export interface Order {
   whccOrderNumber?: string;
   whccWebhookStatus?: string;
   whccWebhookEvent?: string;
+  whccLabTax?: number;
   shippingCarrier?: string;
   trackingNumber?: string;
   trackingUrl?: string;
