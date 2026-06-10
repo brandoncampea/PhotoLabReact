@@ -1245,7 +1245,8 @@ const AdminOrders: React.FC = () => {
         const digitalItemCount = Number(order.digitalItemCount || 0) || digitalItemCountFromItems;
         // Only include uncovered shipping cost (not tax or stripe fees)
         const uncoveredShippingCost = Math.max(0, studioShippingCost - shippingCost);
-        const otherOrderCosts = uncoveredShippingCost;
+        const whccLabTax = Number(order.whccLabTax) || 0;
+        const otherOrderCosts = uncoveredShippingCost + whccLabTax;
         const studioPriceTotal = Math.max(0, studioRevenue - (discount.appliesToItems ? discount.amount : 0));
         // Gross Margin = Studio Price Total - Base Cost Total - Other Order Costs - Stripe Fees
         const grossMargin = studioPriceTotal - baseRevenue - otherOrderCosts - stripeFeeAmount;

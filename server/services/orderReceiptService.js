@@ -526,7 +526,8 @@ const renderInternalAccounting = (order) => {
   const shippingMargin = Number.isFinite(explicitShippingMargin)
     ? Number(explicitShippingMargin.toFixed(2))
     : Number((normalized.shipping - studioShippingCost).toFixed(2));
-  const otherOrderCosts = Number(Math.max(0, studioShippingCost - normalized.shipping).toFixed(2));
+  const whccLabTax = Number(order.whccLabTax ?? order.whcc_lab_tax ?? 0);
+  const otherOrderCosts = Number((Math.max(0, studioShippingCost - normalized.shipping) + whccLabTax).toFixed(2));
   const stripeFeeAmount = Number((Number(order.stripeFeeAmount || 0)).toFixed(2));
   const grossMargin = Number((studioRevenue - baseCostTotal - otherOrderCosts - stripeFeeAmount).toFixed(2));
 
