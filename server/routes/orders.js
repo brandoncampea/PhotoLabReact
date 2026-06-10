@@ -565,43 +565,59 @@ const buildWhccPriceAudit = ({ importResponseData, submitResponseData, resolvedW
 
   if (!expectedItems.length && !rawRows.length) return null;
 
-  const usedRowIndexes = new Set();
-  const productRows = rawRows.filter((row) => /products?\[\d+\]/i.test(row.path) && !row.isShippingRow);
-  const findRowForItem = (expected) => {
-    const tryFind = (predicate) => rawRows.findIndex((row, rowIndex) => !usedRowIndexes.has(rowIndex) && predicate(row));
+  // Track how many times each raw row has been consumed (aggregate WHCC rows can serve multiple local items)
+  const usedRowCounts = new Map(); // rowIndex -> count
+  // An "aggregate row" is a WHCC Products summary row: no lineItemId, quantity > 1.
+  // For these rows, WHCC's "Price" field is per-unit (not a line total).
+  const isAggregateRow = (row) => !row.lineItemId && (row.quantity || 1) > 1;
+  const getEffectiveUnitPrice = (row) => {
+    if (!row) return null;
+    if (row.unitPrice !== null) return row.unitPrice;
+    // Aggregate rows: WHCC Price field = per-unit cost
+    if (isAggregateRow(row)) return row.totalPrice;
+    // Specific line-item rows: totalPrice is the full line cost; derive per-unit
+    return row.totalPrice != null ? roundMoney(row.totalPrice / (row.quantity || 1)) : null;
+  };
 
+  const findRowForItem = (expected) => {
+    const isAvailable = (rowIndex) => {
+      const row = rawRows[rowIndex];
+      const maxUses = isAggregateRow(row) ? (row.quantity || 1) : 1;
+      return (usedRowCounts.get(rowIndex) || 0) < maxUses;
+    };
+    const tryFind = (predicate) => rawRows.findIndex((row, rowIndex) => isAvailable(rowIndex) && predicate(row));
+
+    // 1. Most specific: match by lineItemId
     let index = tryFind((row) => row.lineItemId && expected.localItemId && row.lineItemId === expected.localItemId);
+    // 2. Match by productUID
     if (index < 0 && expected.productUID !== null) {
       index = tryFind((row) => row.productUID !== null && Number(row.productUID) === Number(expected.productUID));
     }
-    if (index < 0 && productRows[expected.index]) {
-      const fallbackRow = productRows[expected.index];
-      const fallbackIndex = rawRows.findIndex((row, rowIndex) => !usedRowIndexes.has(rowIndex) && row.path === fallbackRow.path && row.description === fallbackRow.description);
-      if (fallbackIndex >= 0) {
-        index = fallbackIndex;
-      }
+    // 3. Fallback: any available product row (handles aggregate WHCC rows covering multiple local items)
+    if (index < 0) {
+      index = rawRows.findIndex((row, rowIndex) => isAvailable(rowIndex) && /products?\[\d+\]/i.test(row.path) && !row.isShippingRow);
     }
+    // 4. Last resort: item/line path
     if (index < 0) {
       index = tryFind((row) => /item|line/i.test(row.path));
     }
     if (index < 0) return null;
-    usedRowIndexes.add(index);
+    usedRowCounts.set(index, (usedRowCounts.get(index) || 0) + 1);
     return rawRows[index];
   };
 
   const differences = expectedItems.map((expected) => {
     const matchedRow = findRowForItem(expected);
-    const actualQuantity = matchedRow?.quantity || expected.quantity || 1;
-    const actualUnitCostRaw = matchedRow
-      ? roundMoney(matchedRow.unitPrice ?? (matchedRow.totalPrice != null ? matchedRow.totalPrice / actualQuantity : null))
+    // Each local item represents exactly 1 unit in the matching context.
+    // For aggregate WHCC rows (qty>1, no lineItemId), Price is per-unit — use it directly.
+    const effectiveUnitPrice = getEffectiveUnitPrice(matchedRow);
+    const actualUnitCostRaw = effectiveUnitPrice !== null ? effectiveUnitPrice : null;
+    const actualLineCost = actualUnitCostRaw !== null
+      ? roundMoney(actualUnitCostRaw * (expected.quantity || 1))
       : null;
-    const actualLineCost = matchedRow
-      ? roundMoney(matchedRow.totalPrice ?? (actualUnitCostRaw !== null ? actualUnitCostRaw * actualQuantity : null))
-      : null;
-    // If unit cost couldn't be derived from the response directly, fall back to line cost ÷ qty
     const actualUnitCost = actualUnitCostRaw !== null
       ? actualUnitCostRaw
-      : (actualLineCost !== null ? roundMoney(actualLineCost / actualQuantity) : null);
+      : (actualLineCost !== null ? roundMoney(actualLineCost / (expected.quantity || 1)) : null);
     const differenceAmount = expected.expectedLineCost !== null && actualLineCost !== null
       ? roundMoney(actualLineCost - expected.expectedLineCost)
       : null;
@@ -629,7 +645,10 @@ const buildWhccPriceAudit = ({ importResponseData, submitResponseData, resolvedW
   });
 
   const unmatchedWhccRows = rawRows
-    .filter((_, index) => !usedRowIndexes.has(index))
+    .filter((row, index) => {
+      const maxUses = isAggregateRow(row) ? (row.quantity || 1) : 1;
+      return (usedRowCounts.get(index) || 0) < maxUses;
+    })
     .map((row) => ({
       lineItemId: row.lineItemId,
       productUID: row.productUID,
@@ -645,10 +664,14 @@ const buildWhccPriceAudit = ({ importResponseData, submitResponseData, resolvedW
   const actualTotalCostFromMatches = roundMoney(
     differences.reduce((sum, item) => sum + (parseNullableNumber(item.actualLineCost) || 0), 0)
   ) || 0;
+  // For aggregate rows (WHCC's Price = per-unit), multiply unit price × quantity to get true total
   const actualTotalCostFromProducts = roundMoney(
     rawRows
       .filter((row) => !row.isShippingRow && /products?\[\d+\]/i.test(row.path))
-      .reduce((sum, row) => sum + (parseNullableNumber(row.totalPrice ?? row.unitPrice) || 0), 0)
+      .reduce((sum, row) => {
+        const unitPrice = getEffectiveUnitPrice(row);
+        return sum + ((parseNullableNumber(unitPrice) || 0) * (row.quantity || 1));
+      }, 0)
   ) || 0;
   const actualTotalCost = actualTotalCostFromMatches > 0 ? actualTotalCostFromMatches : actualTotalCostFromProducts;
 
