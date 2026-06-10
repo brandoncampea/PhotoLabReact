@@ -8,6 +8,7 @@ import 'cropperjs/dist/cropper.css';
 import api from '../services/api';
 import { photoService } from '../services/photoService';
 import { productService } from '../services/productService';
+import playerWatchlistService from '../services/playerWatchlistService';
 import { useCart } from '../contexts/CartContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Album, Photo, Product, ProductSize } from '../types';
@@ -82,6 +83,10 @@ const AlbumDetails: React.FC = () => {
   const [tagSuggestionName, setTagSuggestionName] = useState('');
   const [tagSuggestionSubmitting, setTagSuggestionSubmitting] = useState(false);
   const [tagSuggestionMessage, setTagSuggestionMessage] = useState('');
+  const [showTagWatchPrompt, setShowTagWatchPrompt] = useState(false);
+  const [pendingWatchPlayerName, setPendingWatchPlayerName] = useState('');
+  const [pendingTagSuggestionBaseMessage, setPendingTagSuggestionBaseMessage] = useState('');
+  const [addingPendingWatchPlayer, setAddingPendingWatchPlayer] = useState(false);
   const [showCropModal, setShowCropModal] = useState(false);
   const [cropperRef, setCropperRef] = useState<any>(null);
   const [productToCrop, setProductToCrop] = useState<ProductWithMatch | null>(null);
@@ -181,6 +186,9 @@ const AlbumDetails: React.FC = () => {
   useEffect(() => {
     setTagSuggestionName('');
     setTagSuggestionMessage('');
+    setShowTagWatchPrompt(false);
+    setPendingWatchPlayerName('');
+    setPendingTagSuggestionBaseMessage('');
   }, [selectedPhotoId]);
 
   useEffect(() => {
@@ -252,13 +260,49 @@ const AlbumDetails: React.FC = () => {
       setTagSuggestionSubmitting(true);
       setTagSuggestionMessage('');
       const response = await photoService.submitPlayerTagSuggestion(selectedPhoto.id, playerName, user.email);
-      setTagSuggestionMessage(response?.message || 'Tag suggestion submitted.');
+      const baseMessage = response?.message || 'Tag suggestion submitted.';
+      setTagSuggestionMessage(baseMessage);
+      setPendingTagSuggestionBaseMessage(baseMessage);
+      setPendingWatchPlayerName(playerName);
+      setShowTagWatchPrompt(true);
       setTagSuggestionName('');
     } catch (error: any) {
       const message = error?.response?.data?.error || 'Failed to submit tag suggestion.';
       setTagSuggestionMessage(message);
     } finally {
       setTagSuggestionSubmitting(false);
+    }
+  };
+
+  const handleSkipAddToWatchlist = () => {
+    setShowTagWatchPrompt(false);
+    setPendingWatchPlayerName('');
+    setPendingTagSuggestionBaseMessage('');
+  };
+
+  const handleConfirmAddToWatchlist = async () => {
+    if (!pendingWatchPlayerName) {
+      handleSkipAddToWatchlist();
+      return;
+    }
+
+    try {
+      setAddingPendingWatchPlayer(true);
+      const studioId = Number((album as any)?.studioId || 0) || undefined;
+      await playerWatchlistService.addPlayer(pendingWatchPlayerName, null, studioId);
+      setTagSuggestionMessage(`${pendingTagSuggestionBaseMessage || 'Tag suggestion submitted.'} Added to your watch list.`);
+    } catch (watchErr: any) {
+      const status = Number(watchErr?.response?.status || 0);
+      if (status === 409) {
+        setTagSuggestionMessage(`${pendingTagSuggestionBaseMessage || 'Tag suggestion submitted.'} This player is already in your watch list.`);
+      } else {
+        setTagSuggestionMessage(`${pendingTagSuggestionBaseMessage || 'Tag suggestion submitted.'} Could not add to watch list right now.`);
+      }
+    } finally {
+      setAddingPendingWatchPlayer(false);
+      setShowTagWatchPrompt(false);
+      setPendingWatchPlayerName('');
+      setPendingTagSuggestionBaseMessage('');
     }
   };
 
@@ -2021,6 +2065,25 @@ const AlbumDetails: React.FC = () => {
                 </>
               );
             })()}
+          </div>
+        </div>
+      )}
+
+      {showTagWatchPrompt && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.65)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ background: '#1a1a24', borderRadius: 12, border: '1px solid #2a2740', maxWidth: 520, width: '100%', padding: 20 }}>
+            <h3 style={{ marginTop: 0, marginBottom: 10, color: '#fff' }}>Add to watch list?</h3>
+            <p style={{ marginTop: 0, marginBottom: 14, color: '#cfc9f7', lineHeight: 1.45 }}>
+              You suggested <strong>{pendingWatchPlayerName}</strong>. Do you also want to add this player to your watch list to get notified when new photos are added?
+            </p>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button className="btn btn-secondary" onClick={handleSkipAddToWatchlist} disabled={addingPendingWatchPlayer}>
+                Not now
+              </button>
+              <button className="btn btn-primary" onClick={handleConfirmAddToWatchlist} disabled={addingPendingWatchPlayer}>
+                {addingPendingWatchPlayer ? 'Adding...' : 'Add to Watch List'}
+              </button>
+            </div>
           </div>
         </div>
       )}
