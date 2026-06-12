@@ -69,7 +69,7 @@ const mssql = require('../mssql.cjs');
           created_at DATETIME2 NOT NULL CONSTRAINT DF_social_publish_jobs_created_at DEFAULT GETDATE(),
           updated_at DATETIME2 NOT NULL CONSTRAINT DF_social_publish_jobs_updated_at DEFAULT GETDATE(),
           CONSTRAINT FK_social_publish_jobs_studio FOREIGN KEY (studio_id) REFERENCES studios(id) ON DELETE CASCADE,
-          CONSTRAINT FK_social_publish_jobs_integration FOREIGN KEY (integration_id) REFERENCES studio_social_integrations(id) ON DELETE SET NULL
+          CONSTRAINT FK_social_publish_jobs_integration FOREIGN KEY (integration_id) REFERENCES studio_social_integrations(id) ON DELETE NO ACTION
         )
       END
     `);
@@ -104,8 +104,8 @@ const mssql = require('../mssql.cjs');
           created_at DATETIME2 NOT NULL CONSTRAINT DF_social_publish_job_items_created_at DEFAULT GETDATE(),
           updated_at DATETIME2 NOT NULL CONSTRAINT DF_social_publish_job_items_updated_at DEFAULT GETDATE(),
           CONSTRAINT FK_social_publish_job_items_job FOREIGN KEY (job_id) REFERENCES social_publish_jobs(id) ON DELETE CASCADE,
-          CONSTRAINT FK_social_publish_job_items_studio FOREIGN KEY (studio_id) REFERENCES studios(id) ON DELETE CASCADE,
-          CONSTRAINT FK_social_publish_job_items_photo FOREIGN KEY (photo_id) REFERENCES photos(id) ON DELETE SET NULL
+          CONSTRAINT FK_social_publish_job_items_studio FOREIGN KEY (studio_id) REFERENCES studios(id) ON DELETE NO ACTION,
+          CONSTRAINT FK_social_publish_job_items_photo FOREIGN KEY (photo_id) REFERENCES photos(id) ON DELETE NO ACTION
         )
       END
     `);
