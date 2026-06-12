@@ -10,6 +10,63 @@ import AdminLayout from '../../components/AdminLayout';
 import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
 
+const card: React.CSSProperties = {
+  background: '#23232a',
+  border: '1px solid #3a3656',
+  borderRadius: 18,
+  boxShadow: '0 4px 24px rgba(0,0,0,0.3)',
+  padding: '2rem',
+  marginBottom: '1.5rem',
+};
+
+const sectionTitle: React.CSSProperties = {
+  margin: '0 0 0.25rem 0',
+  fontSize: '1.5rem',
+  fontWeight: 800,
+  background: 'linear-gradient(90deg, #a78bfa 0%, #6366f1 100%)',
+  WebkitBackgroundClip: 'text',
+  WebkitTextFillColor: 'transparent',
+  backgroundClip: 'text',
+};
+
+const sectionSubtitle: React.CSSProperties = {
+  color: '#a1a1aa',
+  fontSize: '0.92rem',
+  margin: '0 0 1.5rem 0',
+};
+
+const fieldGroup: React.CSSProperties = {
+  marginBottom: '1.1rem',
+};
+
+const labelStyle: React.CSSProperties = {
+  display: 'block',
+  marginBottom: 5,
+  fontWeight: 600,
+  color: '#bdbdbd',
+  fontSize: '0.9rem',
+};
+
+const helpText: React.CSSProperties = {
+  fontSize: '0.82rem',
+  color: '#6b6b80',
+  marginTop: '0.25rem',
+};
+
+const divider: React.CSSProperties = {
+  borderTop: '1px solid #3a3656',
+  margin: '1.5rem 0',
+};
+
+const statLabel: React.CSSProperties = {
+  fontSize: '0.78rem',
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: '0.07em',
+  color: '#6b6b80',
+  marginBottom: 4,
+};
+
 const AdminProfile: React.FC = () => {
   const { user } = useAuth();
   const [config, setConfig] = useState<ProfileConfig | null>(null);
@@ -55,11 +112,7 @@ const AdminProfile: React.FC = () => {
         `/api/studios/${studioId}/public-link`,
         { headers: { 'Authorization': `Bearer ${token}` } }
       );
-
-      if (!response.ok) {
-        return;
-      }
-
+      if (!response.ok) return;
       const data = await response.json();
       setStudioPublicSlug(data?.slug || '');
     } catch (error) {
@@ -132,9 +185,7 @@ const AdminProfile: React.FC = () => {
         `/api/studios/${user?.studioId}/subscription/cancel`,
         { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } }
       );
-      if (response.ok) {
-        await fetchSubscriptionInfo();
-      }
+      if (response.ok) await fetchSubscriptionInfo();
     } catch (err: any) {
       alert('Failed to cancel subscription');
     }
@@ -147,20 +198,14 @@ const AdminProfile: React.FC = () => {
         `/api/studios/${user?.studioId}/subscription/reactivate`,
         { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } }
       );
-      if (response.ok) {
-        await fetchSubscriptionInfo();
-      }
+      if (response.ok) await fetchSubscriptionInfo();
     } catch (err: any) {
       alert('Failed to reactivate subscription');
     }
   };
 
   const handleUpgrade = async () => {
-    if (!selectedUpgradePlan) {
-      alert('Please select a plan');
-      return;
-    }
-
+    if (!selectedUpgradePlan) { alert('Please select a plan'); return; }
     try {
       setUpgrading(true);
       const token = localStorage.getItem('authToken');
@@ -168,23 +213,13 @@ const AdminProfile: React.FC = () => {
         `/api/studios/${user?.studioId}/subscription/self-service`,
         {
           method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            planId: selectedUpgradePlan,
-            billingCycle: selectedBillingCycle
-          })
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ planId: selectedUpgradePlan, billingCycle: selectedBillingCycle })
         }
       );
-
       if (response.ok) {
         const data = await response.json();
-        if (data.checkoutUrl) {
-          window.location.href = data.checkoutUrl;
-          return;
-        }
+        if (data.checkoutUrl) { window.location.href = data.checkoutUrl; return; }
         setShowUpgradeModal(false);
         await fetchSubscriptionInfo();
       } else {
@@ -201,13 +236,12 @@ const AdminProfile: React.FC = () => {
   const handleSave = async () => {
     setSaving(true);
     try {
-      // If a new logo was uploaded, upload it first to get the URL
       let finalLogoUrl = logoUrl;
       if (logoFile) {
         try {
           const uploadResult = await profileService.uploadLogo(logoFile, user?.studioId);
           finalLogoUrl = uploadResult.logoUrl;
-          setLogoFile(null); // Clear the file after upload
+          setLogoFile(null);
         } catch (uploadError) {
           console.error('Logo upload failed:', uploadError);
           alert('Failed to upload logo');
@@ -215,17 +249,9 @@ const AdminProfile: React.FC = () => {
           return;
         }
       }
-
       const updatedConfig = await profileService.updateConfig({
-        ownerName,
-        businessName,
-        email,
-        receiveOrderNotifications,
-        logoUrl: finalLogoUrl,
-        instagramUrl,
-        facebookUrl,
-        customDomain,
-        timezone,
+        ownerName, businessName, email, receiveOrderNotifications,
+        logoUrl: finalLogoUrl, instagramUrl, facebookUrl, customDomain, timezone,
       });
       setConfig(updatedConfig);
       setLogoUrl(finalLogoUrl);
@@ -245,19 +271,12 @@ const AdminProfile: React.FC = () => {
   const openEditSubscriptionModal = () => {
     const currentPlan = subscription?.studio?.subscription_plan;
     const currentCycle = subscription?.studio?.billing_cycle;
-
     if (currentPlan && SUBSCRIPTION_PLANS[currentPlan as keyof typeof SUBSCRIPTION_PLANS]) {
       setSelectedUpgradePlan(currentPlan);
     } else {
       setSelectedUpgradePlan('');
     }
-
-    if (currentCycle === 'monthly' || currentCycle === 'yearly') {
-      setSelectedBillingCycle(currentCycle);
-    } else {
-      setSelectedBillingCycle('monthly');
-    }
-
+    setSelectedBillingCycle(currentCycle === 'monthly' || currentCycle === 'yearly' ? currentCycle : 'monthly');
     setShowUpgradeModal(true);
   };
 
@@ -296,500 +315,502 @@ const AdminProfile: React.FC = () => {
   if (loading) {
     return (
       <AdminLayout>
-        <div className="loading">Loading profile...</div>
+        <div style={{ minHeight: '100vh', background: '#181a1b', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#a1a1aa' }}>
+          Loading profile...
+        </div>
       </AdminLayout>
     );
   }
 
   return (
     <AdminLayout>
-      <>
-      <div className="page-header">
-        <h1>👤 Profile Settings</h1>
-        <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
-          Manage your business profile and notification preferences
-        </p>
-      </div>
-      <div className="admin-form" style={{ maxWidth: '600px' }}>
-        <div className="form-group">
-          <label>Saved Watermark</label>
-          <div style={{ marginBottom: '1rem' }}>
-            {watermarkUrl ? (
-              <img
-                src={watermarkUrl}
-                alt="Watermark preview"
-                style={{
-                  maxWidth: '200px',
-                  maxHeight: '60px',
-                  objectFit: 'contain',
-                  marginBottom: '0.5rem',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '6px',
-                  background: '#fff',
+      <div style={{ minHeight: '100vh', background: '#181a1b', padding: '2.5rem 1.5rem 4rem' }}>
+        <div style={{ maxWidth: 680, margin: '0 auto' }}>
+
+          {/* Page heading */}
+          <div style={{ marginBottom: '2rem' }}>
+            <h1 style={sectionTitle}>Profile Settings</h1>
+            <p style={sectionSubtitle}>Manage your business profile and notification preferences</p>
+          </div>
+
+          {/* Branding card */}
+          <div style={card}>
+            <h2 style={{ ...sectionTitle, fontSize: '1.15rem', marginBottom: '0.2rem' }}>Branding</h2>
+            <p style={{ ...sectionSubtitle, marginBottom: '1.25rem' }}>Your logo and watermark shown to customers</p>
+
+            <div style={fieldGroup}>
+              <label style={labelStyle}>Watermark</label>
+              {watermarkUrl ? (
+                <img
+                  src={watermarkUrl}
+                  alt="Watermark preview"
+                  style={{ maxWidth: 200, maxHeight: 60, objectFit: 'contain', border: '1px solid #3a3656', borderRadius: 6, background: '#fff', padding: 4 }}
+                />
+              ) : (
+                <span style={{ color: '#6b6b80', fontSize: '0.9rem' }}>No watermark saved</span>
+              )}
+            </div>
+
+            <div style={divider} />
+
+            <div style={fieldGroup}>
+              <label style={labelStyle}>Site Logo</label>
+              {logoPreview && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.75rem', padding: '0.75rem 1rem', background: '#29293a', borderRadius: 10, border: '1px solid #3a3656' }}>
+                  <img src={logoPreview} alt="Logo preview" style={{ maxWidth: 200, maxHeight: 60, objectFit: 'contain' }} />
+                  <button
+                    type="button"
+                    onClick={() => { setLogoFile(null); setLogoPreview(''); setLogoUrl(''); }}
+                    className="btn btn-danger btn-sm"
+                  >
+                    Remove
+                  </button>
+                </div>
+              )}
+              <input
+                type="file"
+                id="logo"
+                accept="image/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    setLogoFile(file);
+                    const reader = new FileReader();
+                    reader.onloadend = () => setLogoPreview(reader.result as string);
+                    reader.readAsDataURL(file);
+                  }
                 }}
               />
-            ) : (
-              <span style={{ color: 'var(--text-secondary)' }}>No watermark saved</span>
-            )}
-          </div>
-          <label htmlFor="logo">Site Logo</label>
-          <div style={{ marginBottom: '1rem' }}>
-            {logoPreview && (
-              <div style={{
-                marginBottom: '1rem',
-                padding: '1rem',
-                backgroundColor: 'var(--bg-tertiary)',
-                borderRadius: '8px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '1rem'
-              }}>
-                <img
-                  src={logoPreview}
-                  alt="Logo preview"
-                  style={{
-                    maxWidth: '200px',
-                    maxHeight: '60px',
-                    objectFit: 'contain'
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    setLogoFile(null);
-                    setLogoPreview('');
-                    setLogoUrl('');
-                  }}
-                  className="btn btn-danger btn-sm"
-                >
-                  Remove Logo
-                </button>
-              </div>
-            )}
-            <input
-              type="file"
-              id="logo"
-              accept="image/*"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) {
-                  setLogoFile(file);
-                  const reader = new FileReader();
-                  reader.onloadend = () => {
-                    setLogoPreview(reader.result as string);
-                  };
-                  reader.readAsDataURL(file);
-                }
-              }}
-            />
-          </div>
-          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
-            Upload a logo image to replace the "📸 Photo Lab" text in the header. Recommended: transparent PNG, max height 60px
-          </p>
-        </div>
-
-        <div className="form-group">
-          <label htmlFor="ownerName">
-            Owner Name <span style={{ color: 'var(--error-color)' }}>*</span>
-          </label>
-          <input
-            type="text"
-            id="ownerName"
-            value={ownerName}
-            onChange={(e) => setOwnerName(e.target.value)}
-            placeholder="John Smith"
-            required
-          />
-          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
-            Your full name
-          </p>
-        </div>
-
-        <div className="form-group">
-          <label htmlFor="businessName">
-            Business Name <span style={{ color: 'var(--error-color)' }}>*</span>
-          </label>
-          <input
-            type="text"
-            id="businessName"
-            value={businessName}
-            onChange={(e) => setBusinessName(e.target.value)}
-            placeholder="PhotoLab Studio"
-            required
-          />
-          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
-            Your business or studio name
-          </p>
-        </div>
-
-        <div className="form-group">
-          <label htmlFor="email">
-            Email Address <span style={{ color: 'var(--error-color)' }}>*</span>
-          </label>
-          <input
-            type="email"
-            id="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="admin@photolab.com"
-            required
-          />
-          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
-            Primary contact email for your business
-          </p>
-        </div>
-
-        <div className="form-group">
-          <label htmlFor="timezone">Timezone</label>
-          <select
-            id="timezone"
-            value={timezone}
-            onChange={(e) => setTimezoneValue(e.target.value)}
-          >
-            {getAvailableTimezones().map((zone) => (
-              <option key={zone} value={zone}>{zone}</option>
-            ))}
-          </select>
-          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
-            All studio-facing date/time values are displayed in this timezone.
-          </p>
-        </div>
-
-        <div className="form-group">
-          <label htmlFor="receiveOrderNotifications">
-            <input
-              type="checkbox"
-              id="receiveOrderNotifications"
-              checked={receiveOrderNotifications}
-              onChange={(e) => setReceiveOrderNotifications(e.target.checked)}
-              style={{ marginRight: '0.5rem' }}
-            />
-            Receive Order Notifications
-          </label>
-          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
-            Get email notifications when new orders are placed
-          </p>
-        </div>
-
-        <div className="form-group">
-          <label htmlFor="instagramUrl">Instagram URL</label>
-          <input
-            type="url"
-            id="instagramUrl"
-            value={instagramUrl}
-            onChange={(e) => setInstagramUrl(e.target.value)}
-            placeholder="https://www.instagram.com/yourstudio"
-          />
-          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
-            Your Instagram profile link — shown as an icon next to your studio name
-          </p>
-        </div>
-
-        <div className="form-group">
-          <label htmlFor="facebookUrl">Facebook URL</label>
-          <input
-            type="url"
-            id="facebookUrl"
-            value={facebookUrl}
-            onChange={(e) => setFacebookUrl(e.target.value)}
-            placeholder="https://www.facebook.com/yourstudio"
-          />
-          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
-            Your Facebook page link — shown as an icon next to your studio name
-          </p>
-        </div>
-
-        <div className="form-group">
-          <label htmlFor="customDomain">Custom Domain <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>(Optional)</span></label>
-          <input
-            type="text"
-            id="customDomain"
-            value={customDomain}
-            onChange={(e) => setCustomDomain(e.target.value)}
-            placeholder="labs.example.com"
-          />
-          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
-            Point your custom domain to your albums page. Example: <code style={{ backgroundColor: 'var(--bg-tertiary)', padding: '2px 4px', borderRadius: '3px' }}>labs.yourstudio.com</code> will redirect to your albums.
-          </p>
-          <div style={{
-            backgroundColor: 'var(--bg-tertiary)',
-            border: '1px solid var(--border-color)',
-            borderRadius: '6px',
-            padding: '12px',
-            marginTop: '0.75rem',
-            fontSize: '0.8rem'
-          }}>
-            <strong style={{ display: 'block', marginBottom: '8px' }}>📌 DNS Configuration Instructions:</strong>
-            <ol style={{ margin: '0 0 0 20px', paddingLeft: '0' }}>
-              <li style={{ marginBottom: '6px' }}>
-                Go to your domain registrar (GoDaddy, Namecheap, etc.)
-              </li>
-              <li style={{ marginBottom: '6px' }}>
-                Find the DNS settings for your domain
-              </li>
-              <li style={{ marginBottom: '6px' }}>
-                Add a CNAME record pointing to: <code style={{ backgroundColor: 'rgba(0,0,0,0.1)', padding: '2px 4px', borderRadius: '3px' }}>labs.campeaphotography.com</code>
-              </li>
-              <li style={{ marginBottom: '6px' }}>
-                Wait 24-48 hours for DNS to propagate
-              </li>
-              <li>
-                Your custom domain will then automatically redirect to your albums
-              </li>
-            </ol>
-            <p style={{ margin: '8px 0 0 0', fontStyle: 'italic', color: 'var(--text-secondary)' }}>
-              💡 <strong>Tip:</strong> Use a subdomain like <code style={{ backgroundColor: 'rgba(0,0,0,0.1)', padding: '2px 4px', borderRadius: '3px' }}>photos.youromain.com</code> or <code style={{ backgroundColor: 'rgba(0,0,0,0.1)', padding: '2px 4px', borderRadius: '3px' }}>gallery.yourdomain.com</code> to keep your main website separate.
-            </p>
-          </div>
-        </div>
-
-        <div className="form-actions">
-          <button 
-            onClick={handleSave} 
-            className="btn btn-primary"
-            disabled={saving || !ownerName || !businessName || !email}
-          >
-            {saving ? 'Saving...' : 'Save Profile'}
-          </button>
-        </div>
-
-        {config && (
-          <div style={{
-            marginTop: '2rem',
-            padding: '1rem',
-            backgroundColor: 'var(--bg-tertiary)',
-            borderRadius: '8px',
-            fontSize: '0.9rem'
-          }}>
-            <h4 style={{ marginTop: 0 }}>Current Configuration:</h4>
-            <ul style={{ marginBottom: 0, paddingLeft: '1.5rem' }}>
-              <li>Owner: <strong>{ownerName}</strong></li>
-              <li>Business: <strong>{businessName}</strong></li>
-              <li>Email: <strong>{email}</strong></li>
-              <li>Timezone: <strong>{timezone}</strong></li>
-              <li>Order Notifications: <strong>{receiveOrderNotifications ? 'Enabled ✓' : 'Disabled'}</strong></li>
-            </ul>
-          </div>
-        )}
-      </div>
-
-      {/* Subscription Section */}
-      {user?.studioId && subscription ? (
-        <div style={{ marginTop: '2rem' }}>
-          <div className="page-header">
-            <h2>📋 Subscription Management</h2>
-            <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
-              View and manage your subscription plan
-            </p>
-          </div>
-
-          {subscription.studio.cancellation_requested ? (
-            <div style={{
-              backgroundColor: 'rgba(251, 191, 36, 0.12)',
-              border: '2px solid rgba(251, 191, 36, 0.5)',
-              borderRadius: '8px',
-              padding: '20px',
-              marginBottom: '20px'
-            }}>
-              <h3 style={{ color: '#fde68a', margin: '0 0 10px 0' }}>
-                ⚠️ Subscription Cancellation Scheduled
-              </h3>
-              <p style={{ color: '#fde68a', margin: '0 0 15px 0' }}>
-                Your subscription will end on {subscription.studio.subscription_end 
-                  ? formatDateInStudioTimezone(subscription.studio.subscription_end, timezone)
-                  : 'the renewal date'}. 
-                You will continue to have full access until then.
-              </p>
-              {user?.role === 'studio_admin' ? (
-                <button
-                  onClick={handleReactivateSubscription}
-                  className="btn btn-success"
-                  style={{ fontSize: '14px', fontWeight: 'bold' }}
-                >
-                  ✓ Reactivate Subscription
-                </button>
-              ) : null}
+              <p style={helpText}>Transparent PNG recommended, max height 60px. Replaces the "Photo Lab" text in the header.</p>
             </div>
+          </div>
+
+          {/* Business info card */}
+          <div style={card}>
+            <h2 style={{ ...sectionTitle, fontSize: '1.15rem', marginBottom: '0.2rem' }}>Business Info</h2>
+            <p style={{ ...sectionSubtitle, marginBottom: '1.25rem' }}>Your studio's public-facing details</p>
+
+            <div style={fieldGroup}>
+              <label htmlFor="ownerName" style={labelStyle}>
+                Owner Name <span style={{ color: '#ff6b6b' }}>*</span>
+              </label>
+              <input type="text" id="ownerName" value={ownerName} onChange={(e) => setOwnerName(e.target.value)} placeholder="John Smith" required />
+            </div>
+
+            <div style={fieldGroup}>
+              <label htmlFor="businessName" style={labelStyle}>
+                Business Name <span style={{ color: '#ff6b6b' }}>*</span>
+              </label>
+              <input type="text" id="businessName" value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="PhotoLab Studio" required />
+            </div>
+
+            <div style={fieldGroup}>
+              <label htmlFor="email" style={labelStyle}>
+                Email Address <span style={{ color: '#ff6b6b' }}>*</span>
+              </label>
+              <input type="email" id="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="admin@photolab.com" required />
+              <p style={helpText}>Primary contact email for your business</p>
+            </div>
+
+            <div style={fieldGroup}>
+              <label htmlFor="timezone" style={labelStyle}>Timezone</label>
+              <select id="timezone" value={timezone} onChange={(e) => setTimezoneValue(e.target.value)}>
+                {getAvailableTimezones().map((zone) => (
+                  <option key={zone} value={zone}>{zone}</option>
+                ))}
+              </select>
+              <p style={helpText}>All date/time values are displayed in this timezone</p>
+            </div>
+
+            <div style={{ ...fieldGroup, display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+              <input
+                type="checkbox"
+                id="receiveOrderNotifications"
+                checked={receiveOrderNotifications}
+                onChange={(e) => setReceiveOrderNotifications(e.target.checked)}
+                style={{ width: 16, height: 16, accentColor: '#7c5cff', flexShrink: 0 }}
+              />
+              <div>
+                <label htmlFor="receiveOrderNotifications" style={{ ...labelStyle, marginBottom: 2, cursor: 'pointer' }}>
+                  Receive Order Notifications
+                </label>
+                <p style={{ ...helpText, marginTop: 0 }}>Get email notifications when new orders are placed</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Social & Domain card */}
+          <div style={card}>
+            <h2 style={{ ...sectionTitle, fontSize: '1.15rem', marginBottom: '0.2rem' }}>Social & Domain</h2>
+            <p style={{ ...sectionSubtitle, marginBottom: '1.25rem' }}>Links and custom domain configuration</p>
+
+            <div style={fieldGroup}>
+              <label htmlFor="instagramUrl" style={labelStyle}>Instagram URL</label>
+              <input type="url" id="instagramUrl" value={instagramUrl} onChange={(e) => setInstagramUrl(e.target.value)} placeholder="https://www.instagram.com/yourstudio" />
+              <p style={helpText}>Shown as an icon next to your studio name</p>
+            </div>
+
+            <div style={fieldGroup}>
+              <label htmlFor="facebookUrl" style={labelStyle}>Facebook URL</label>
+              <input type="url" id="facebookUrl" value={facebookUrl} onChange={(e) => setFacebookUrl(e.target.value)} placeholder="https://www.facebook.com/yourstudio" />
+              <p style={helpText}>Shown as an icon next to your studio name</p>
+            </div>
+
+            <div style={divider} />
+
+            <div style={fieldGroup}>
+              <label htmlFor="customDomain" style={labelStyle}>
+                Custom Domain <span style={{ color: '#6b6b80', fontWeight: 400 }}>(optional)</span>
+              </label>
+              <input type="text" id="customDomain" value={customDomain} onChange={(e) => setCustomDomain(e.target.value)} placeholder="labs.example.com" />
+              <p style={helpText}>
+                Point your custom domain to redirect to your albums. Example:{' '}
+                <code style={{ background: '#29293a', padding: '1px 5px', borderRadius: 4 }}>labs.yourstudio.com</code>
+              </p>
+              <div style={{ background: '#1e1c30', border: '1px solid #3a3656', borderRadius: 10, padding: '14px 16px', marginTop: '0.75rem', fontSize: '0.82rem', color: '#bdbdbd' }}>
+                <strong style={{ display: 'block', marginBottom: 8, color: '#e0e0e0' }}>DNS Configuration</strong>
+                <ol style={{ margin: 0, paddingLeft: 20, lineHeight: 1.7 }}>
+                  <li>Go to your domain registrar (GoDaddy, Namecheap, etc.)</li>
+                  <li>Find the DNS settings for your domain</li>
+                  <li>Add a CNAME record pointing to:{' '}
+                    <code style={{ background: '#29293a', padding: '1px 5px', borderRadius: 4 }}>labs.campeaphotography.com</code>
+                  </li>
+                  <li>Wait 24–48 hours for DNS propagation</li>
+                  <li>Your custom domain will redirect to your albums</li>
+                </ol>
+                <p style={{ margin: '8px 0 0 0', color: '#7c6faa', fontStyle: 'italic' }}>
+                  Tip: Use a subdomain like <code style={{ background: '#29293a', padding: '1px 5px', borderRadius: 4 }}>photos.yourdomain.com</code> to keep your main site separate.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Save button */}
+          <div style={{ marginBottom: '1.5rem' }}>
+            <button
+              onClick={handleSave}
+              disabled={saving || !ownerName || !businessName || !email}
+              style={{
+                display: 'block',
+                width: '100%',
+                padding: '13px 24px',
+                fontSize: '1.05rem',
+                fontWeight: 700,
+                borderRadius: 12,
+                background: saving || !ownerName || !businessName || !email ? '#5a3cff66' : '#7c5cff',
+                color: '#fff',
+                border: 'none',
+                cursor: saving || !ownerName || !businessName || !email ? 'not-allowed' : 'pointer',
+                boxShadow: '0 2px 12px rgba(124,92,255,0.25)',
+                transition: 'background 0.2s',
+              }}
+            >
+              {saving ? 'Saving...' : 'Save Profile'}
+            </button>
+          </div>
+
+          {/* Current config summary */}
+          {config && (
+            <div style={{ ...card, background: '#1e1c30', border: '1px solid #3a3656' }}>
+              <p style={{ ...statLabel, marginBottom: 12 }}>Current Configuration</p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 24px' }}>
+                {[
+                  ['Owner', ownerName],
+                  ['Business', businessName],
+                  ['Email', email],
+                  ['Timezone', timezone],
+                  ['Notifications', receiveOrderNotifications ? 'Enabled' : 'Disabled'],
+                ].map(([k, v]) => (
+                  <div key={k}>
+                    <div style={statLabel}>{k}</div>
+                    <div style={{ color: '#e0e0e0', fontWeight: 600, fontSize: '0.95rem' }}>{v}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Subscription section */}
+          {user?.studioId && subscription ? (
+            <>
+              <div style={{ marginTop: '1rem', marginBottom: '1rem' }}>
+                <h2 style={sectionTitle}>Subscription</h2>
+                <p style={sectionSubtitle}>View and manage your subscription plan</p>
+              </div>
+
+              {subscription.studio.cancellation_requested && (
+                <div style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.35)', borderRadius: 12, padding: '16px 20px', marginBottom: '1.25rem' }}>
+                  <p style={{ color: '#fde68a', fontWeight: 700, margin: '0 0 6px 0' }}>Cancellation Scheduled</p>
+                  <p style={{ color: '#fde68a', margin: '0 0 12px 0', fontSize: '0.9rem' }}>
+                    Your subscription ends on{' '}
+                    {subscription.studio.subscription_end
+                      ? formatDateInStudioTimezone(subscription.studio.subscription_end, timezone)
+                      : 'the renewal date'}.
+                    You'll have full access until then.
+                  </p>
+                  {user?.role === 'studio_admin' && (
+                    <button onClick={handleReactivateSubscription} className="btn btn-success" style={{ fontSize: 14, fontWeight: 700 }}>
+                      Reactivate Subscription
+                    </button>
+                  )}
+                </div>
+              )}
+
+              <div style={card}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1.25rem', marginBottom: '1.5rem' }}>
+                  <div>
+                    <div style={statLabel}>Current Plan</div>
+                    <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#a78bfa' }}>
+                      {subscription.plan?.name || 'No Plan'}
+                    </div>
+                    {subscription.studio.is_free_subscription ? (
+                      <div style={{ color: '#a3ffb3', fontWeight: 600, fontSize: '0.88rem' }}>FREE</div>
+                    ) : subscription.plan ? (
+                      <div style={{ color: '#6b6b80', fontSize: '0.88rem' }}>
+                        ${subscription.studio.billing_cycle === 'yearly'
+                          ? (subscription.plan.yearlyPrice || subscription.plan.monthlyPrice * 10)
+                          : subscription.plan.monthlyPrice}
+                        /{subscription.studio.billing_cycle === 'yearly' ? 'yr' : 'mo'}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div>
+                    <div style={statLabel}>Status</div>
+                    <div style={{
+                      fontSize: '1.1rem',
+                      fontWeight: 700,
+                      color: subscription.studio.cancellation_requested
+                        ? '#fde68a'
+                        : subscription.studio.subscription_status === 'active' ? '#a3ffb3' : '#ff6b6b',
+                    }}>
+                      {subscription.studio.cancellation_requested
+                        ? 'Cancelling'
+                        : subscription.studio.subscription_status}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div style={statLabel}>Renewal Date</div>
+                    <div style={{ color: '#e0e0e0', fontWeight: 600, fontSize: '0.95rem' }}>
+                      {subscription.studio.subscription_end
+                        ? formatDateInStudioTimezone(subscription.studio.subscription_end, timezone)
+                        : 'Not set'}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={divider} />
+
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  {user?.role === 'studio_admin' ? (
+                    <>
+                      <button onClick={openEditSubscriptionModal} className="btn btn-primary" style={{ fontSize: 14, fontWeight: 700 }}>
+                        {subscription.studio.subscription_status === 'active' && !subscription.studio.is_free_subscription
+                          ? 'Edit Subscription'
+                          : 'Subscribe'}
+                      </button>
+                      {subscription.studio.subscription_status === 'active' &&
+                        !subscription.studio.is_free_subscription &&
+                        !subscription.studio.cancellation_requested && (
+                          <button onClick={handleCancelSubscription} className="btn btn-danger" style={{ fontSize: 14, fontWeight: 700 }}>
+                            Cancel Subscription
+                          </button>
+                        )}
+                    </>
+                  ) : (
+                    <p style={{ color: '#6b6b80', fontSize: '0.88rem' }}>Only studio admins can manage subscriptions</p>
+                  )}
+                </div>
+              </div>
+            </>
           ) : null}
 
-          <div style={{
-            backgroundColor: 'var(--bg-tertiary)',
-            padding: '20px',
-            borderRadius: '8px',
-            border: '1px solid var(--border-color)'
-          }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', marginBottom: '20px' }}>
-              <div>
-                <h4>Current Plan</h4>
-                <p style={{ fontSize: '24px', fontWeight: 'bold', color: 'var(--primary-color)' }}>
-                  {subscription.plan?.name || 'No Plan'}
-                </p>
-                {subscription.studio.is_free_subscription ? (
-                  <p style={{ color: '#86efac', fontWeight: 'bold' }}>FREE (No Billing)</p>
-                ) : subscription.plan ? (
-                  <p style={{ color: 'var(--text-secondary)' }}>
-                    ${subscription.studio.billing_cycle === 'yearly' 
-                      ? (subscription.plan.yearlyPrice || subscription.plan.monthlyPrice * 10)
-                      : subscription.plan.monthlyPrice}
-                    /{subscription.studio.billing_cycle === 'yearly' ? 'year' : 'month'}
-                  </p>
-                ) : (
-                  <p style={{ color: 'var(--text-secondary)' }}>Plan info not available</p>
-                )}
-              </div>
-
-              <div>
-                <h4>Status</h4>
-                <p style={{
-                  fontSize: '18px',
-                  fontWeight: 'bold',
-                  color: subscription.studio.cancellation_requested 
-                    ? '#fde68a' 
-                    : subscription.studio.subscription_status === 'active' ? '#86efac' : 'var(--error-color)'
-                }}>
-                  {subscription.studio.cancellation_requested 
-                    ? `Active (Cancels ${subscription.studio.subscription_end 
-                      ? formatDateInStudioTimezone(subscription.studio.subscription_end, timezone)
-                        : 'at renewal'})`
-                    : subscription.studio.subscription_status}
-                </p>
-              </div>
-
-              <div>
-                <h4>Renewal Date</h4>
-                <p style={{ fontSize: '16px' }}>
-                  {subscription.studio.subscription_end 
-                    ? formatDateInStudioTimezone(subscription.studio.subscription_end, timezone)
-                    : 'Not set'}
-                </p>
-              </div>
-            </div>
-
-            <div style={{ paddingTop: '20px', borderTop: '1px solid var(--border-color)' }}>
-              <h4>Actions</h4>
-              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                {user?.role === 'studio_admin' ? (
-                  <>
-                    <button
-                      onClick={openEditSubscriptionModal}
-                      className="btn btn-primary"
-                      style={{ fontSize: '14px', fontWeight: 'bold' }}
-                    >
-                      {subscription.studio.subscription_status === 'active' && !subscription.studio.is_free_subscription ? 'Edit Subscription' : 'Subscribe'}
-                    </button>
-                    {subscription.studio.subscription_status === 'active' && !subscription.studio.is_free_subscription && !subscription.studio.cancellation_requested ? (
-                      <button
-                        onClick={handleCancelSubscription}
-                        className="btn btn-danger"
-                        style={{ fontSize: '14px', fontWeight: 'bold' }}
-                      >
-                        Cancel Subscription
-                      </button>
-                    ) : null}
-                  </>
-                ) : null}
-                {user?.role !== 'studio_admin' ? (
-                  <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginTop: '8px' }}>
-                    Only studio admins can manage subscription settings
-                  </p>
-                ) : null}
-              </div>
-            </div>
+          {/* Landing Page section */}
+          <div style={{ marginTop: '1rem', marginBottom: '1rem' }}>
+            <h2 style={sectionTitle}>Landing Page</h2>
+            <p style={sectionSubtitle}>Customize the page visitors see when they use your custom domain</p>
           </div>
+
+          <div style={card}>
+            {!showLandingPageEditor ? (
+              <>
+                <p style={{ margin: '0 0 6px 0', color: '#e0e0e0', fontSize: '0.95rem' }}>
+                  Your current landing page is displayed when visitors access your custom domain.
+                </p>
+                {landingPage && (
+                  <p style={{ margin: '0 0 1.25rem 0', color: '#6b6b80', fontSize: '0.85rem' }}>
+                    Last updated: <strong style={{ color: '#bdbdbd' }}>{new Date(landingPage.updatedAt || '').toLocaleString()}</strong>
+                  </p>
+                )}
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  <button
+                    onClick={() => { setShowLandingPageEditor(true); setLandingPageHtml(landingPage?.htmlContent || ''); }}
+                    className="btn btn-primary"
+                  >
+                    Edit Landing Page
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => window.open(`/studio/${encodeURIComponent(studioPublicSlug)}/landing`, '_blank', 'noopener,noreferrer')}
+                    disabled={!studioPublicSlug}
+                    className="btn btn-secondary"
+                    style={{ opacity: studioPublicSlug ? 1 : 0.5, cursor: studioPublicSlug ? 'pointer' : 'not-allowed' }}
+                  >
+                    Preview
+                  </button>
+                </div>
+                {!studioPublicSlug && (
+                  <p style={{ marginTop: 10, marginBottom: 0, fontSize: '0.82rem', color: '#6b6b80' }}>
+                    Preview will be available once your studio public link is ready.
+                  </p>
+                )}
+              </>
+            ) : (
+              <>
+                <h3 style={{ margin: '0 0 0.75rem 0', color: '#e0e0e0', fontSize: '1rem', fontWeight: 700 }}>Edit Landing Page</h3>
+                <p style={{ fontSize: '0.85rem', color: '#6b6b80', marginBottom: '1rem' }}>
+                  Customize your landing page with text, images, links, and formatting.
+                </p>
+                <ReactQuill
+                  value={landingPageHtml}
+                  onChange={setLandingPageHtml}
+                  theme="snow"
+                  modules={{
+                    toolbar: [
+                      [{ 'header': [1, 2, 3, false] }],
+                      ['bold', 'italic', 'underline', 'strike'],
+                      ['blockquote', 'code-block'],
+                      [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                      [{ 'script': 'sub' }, { 'script': 'super' }],
+                      [{ 'indent': '-1' }, { 'indent': '+1' }],
+                      [{ 'size': ['small', false, 'large', 'huge'] }],
+                      [{ 'color': [] }, { 'background': [] }],
+                      [{ 'font': [] }],
+                      [{ 'align': [] }],
+                      ['link', 'image', 'video'],
+                      ['clean'],
+                    ],
+                  }}
+                  style={{ backgroundColor: 'white', borderRadius: 6, minHeight: 400, marginBottom: 16 }}
+                />
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  <button onClick={handleSaveLandingPage} disabled={savingLandingPage} className="btn btn-primary">
+                    {savingLandingPage ? 'Saving...' : 'Save Landing Page'}
+                  </button>
+                  <button
+                    onClick={handleResetLandingPage}
+                    disabled={savingLandingPage}
+                    style={{ background: '#fbbf24', color: '#1f2937', border: 'none', borderRadius: 8, padding: '8px 18px', fontWeight: 700, cursor: savingLandingPage ? 'not-allowed' : 'pointer', opacity: savingLandingPage ? 0.7 : 1 }}
+                  >
+                    Reset to Default
+                  </button>
+                  <button onClick={() => setShowLandingPageEditor(false)} disabled={savingLandingPage} className="btn btn-secondary">
+                    Cancel
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+
         </div>
-      ) : null}
+      </div>
 
       {/* Upgrade Modal */}
       {showUpgradeModal && (
-        <div className="modal-overlay">
-          <div className="modal-content admin-modal-content" style={{ padding: '30px', maxWidth: '500px' }}>
-            <h2>Select Your Plan</h2>
-            <p style={{ color: 'var(--text-secondary)', marginBottom: '20px' }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}>
+          <div style={{ background: '#23232a', border: '1px solid #3a3656', borderRadius: 18, boxShadow: '0 8px 40px rgba(0,0,0,0.5)', padding: '2rem', width: '100%', maxWidth: 500 }}>
+            <h2 style={{ ...sectionTitle, fontSize: '1.4rem', marginBottom: '0.3rem' }}>Select Your Plan</h2>
+            <p style={{ color: '#a1a1aa', marginBottom: '1.25rem', fontSize: '0.9rem' }}>
               Choose a plan and billing cycle for your subscription
             </p>
 
-            <div style={{ marginBottom: '20px', display: 'grid', gap: '15px' }}>
-              {Object.entries(SUBSCRIPTION_PLANS).map(([id, plan]) => (
-                <div
-                  key={id}
-                  onClick={() => setSelectedUpgradePlan(id)}
-                  style={{
-                    padding: '15px',
-                    border: selectedUpgradePlan === id ? '2px solid var(--primary-color)' : '1px solid var(--border-color)',
-                    borderRadius: '8px',
-                    cursor: 'pointer',
-                    backgroundColor: selectedUpgradePlan === id ? 'rgba(124, 92, 255, 0.12)' : 'var(--bg-primary)',
-                    transition: 'all 0.2s'
-                  }}
-                >
-                  <h4 style={{ margin: '0 0 8px 0' }}>{plan.name}</h4>
-                  <p style={{ margin: '0 0 8px 0', fontWeight: 'bold', color: 'var(--primary-color)', fontSize: '18px' }}>
-                    ${plan.monthlyPrice}/month
-                  </p>
-                  <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '13px' }}>
-                    {plan.features.slice(0, 3).map((feature, idx) => (
-                      <li key={idx} style={{ color: 'var(--text-secondary)' }}>{feature}</li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
+            <div style={{ display: 'grid', gap: 12, marginBottom: '1.25rem' }}>
+              {Object.entries(SUBSCRIPTION_PLANS).map(([id, plan]) => {
+                const isSelected = selectedUpgradePlan === id;
+                return (
+                  <div
+                    key={id}
+                    onClick={() => setSelectedUpgradePlan(id)}
+                    style={{
+                      padding: '14px 16px',
+                      border: isSelected ? '2px solid #7c5cff' : '1px solid #3a3656',
+                      borderRadius: 10,
+                      cursor: 'pointer',
+                      background: isSelected ? 'rgba(124,92,255,0.12)' : '#29293a',
+                      transition: 'all 0.18s',
+                      boxShadow: isSelected ? '0 0 0 3px rgba(124,92,255,0.15)' : 'none',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <span style={{ fontWeight: 700, color: '#e0e0e0', fontSize: '1rem' }}>{plan.name}</span>
+                      <span style={{ fontWeight: 800, color: '#a78bfa', fontSize: '1.1rem' }}>${plan.monthlyPrice}/mo</span>
+                    </div>
+                    <ul style={{ margin: 0, paddingLeft: 18, fontSize: '0.82rem', color: '#6b6b80' }}>
+                      {plan.features.slice(0, 3).map((feature, idx) => (
+                        <li key={idx}>{feature}</li>
+                      ))}
+                    </ul>
+                  </div>
+                );
+              })}
             </div>
 
-            <div style={{ marginBottom: '20px', marginTop: '20px' }}>
-              <label style={{ display: 'block', marginBottom: '10px', fontWeight: 'bold' }}>
-                Billing Cycle:
-              </label>
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <label style={{
-                  flex: 1,
-                  padding: '10px',
-                  border: `2px solid ${selectedBillingCycle === 'monthly' ? 'var(--primary-color)' : 'var(--border-color)'}`,
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  textAlign: 'center',
-                  backgroundColor: selectedBillingCycle === 'monthly' ? 'rgba(124, 92, 255, 0.12)' : 'var(--bg-primary)'
-                }}>
-                  <input
-                    type="radio"
-                    name="billingCycle"
-                    value="monthly"
-                    checked={selectedBillingCycle === 'monthly'}
-                    onChange={() => setSelectedBillingCycle('monthly')}
-                    style={{ marginRight: '8px' }}
-                  />
-                  Monthly
-                </label>
-                <label style={{
-                  flex: 1,
-                  padding: '10px',
-                  border: `2px solid ${selectedBillingCycle === 'yearly' ? 'var(--primary-color)' : 'var(--border-color)'}`,
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  textAlign: 'center',
-                  backgroundColor: selectedBillingCycle === 'yearly' ? 'rgba(124, 92, 255, 0.12)' : 'var(--bg-primary)'
-                }}>
-                  <input
-                    type="radio"
-                    name="billingCycle"
-                    value="yearly"
-                    checked={selectedBillingCycle === 'yearly'}
-                    onChange={() => setSelectedBillingCycle('yearly')}
-                    style={{ marginRight: '8px' }}
-                  />
-                  Yearly
-                  <div style={{ fontSize: '12px', color: '#86efac', marginTop: '4px' }}>
-                    Save ~17%
-                  </div>
-                </label>
+            <div style={{ marginBottom: '1.5rem' }}>
+              <p style={{ ...labelStyle, marginBottom: 10 }}>Billing Cycle</p>
+              <div style={{ display: 'flex', gap: 10 }}>
+                {(['monthly', 'yearly'] as const).map((cycle) => {
+                  const isSelected = selectedBillingCycle === cycle;
+                  return (
+                    <label
+                      key={cycle}
+                      style={{
+                        flex: 1,
+                        padding: '10px',
+                        border: isSelected ? '2px solid #7c5cff' : '1px solid #3a3656',
+                        borderRadius: 8,
+                        cursor: 'pointer',
+                        textAlign: 'center',
+                        background: isSelected ? 'rgba(124,92,255,0.12)' : '#29293a',
+                        color: '#e0e0e0',
+                        fontWeight: 600,
+                        fontSize: '0.9rem',
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="billingCycle"
+                        value={cycle}
+                        checked={isSelected}
+                        onChange={() => setSelectedBillingCycle(cycle)}
+                        style={{ marginRight: 6 }}
+                      />
+                      {cycle.charAt(0).toUpperCase() + cycle.slice(1)}
+                      {cycle === 'yearly' && (
+                        <div style={{ fontSize: '0.75rem', color: '#a3ffb3', marginTop: 3 }}>Save ~17%</div>
+                      )}
+                    </label>
+                  );
+                })}
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
+            <div style={{ display: 'flex', gap: 10 }}>
               <button
                 onClick={handleUpgrade}
                 disabled={!selectedUpgradePlan || upgrading}
-                className="btn btn-primary"
-                style={{ flex: 1, fontWeight: 'bold', opacity: upgrading ? 0.7 : 1 }}
+                style={{
+                  flex: 1,
+                  padding: '12px',
+                  fontWeight: 700,
+                  fontSize: '1rem',
+                  borderRadius: 10,
+                  background: !selectedUpgradePlan || upgrading ? '#5a3cff66' : '#7c5cff',
+                  color: '#fff',
+                  border: 'none',
+                  cursor: !selectedUpgradePlan || upgrading ? 'not-allowed' : 'pointer',
+                  boxShadow: '0 2px 12px rgba(124,92,255,0.25)',
+                }}
               >
                 {upgrading ? 'Saving...' : 'Save Subscription'}
               </button>
@@ -797,7 +818,7 @@ const AdminProfile: React.FC = () => {
                 onClick={() => setShowUpgradeModal(false)}
                 disabled={upgrading}
                 className="btn btn-secondary"
-                style={{ flex: 1, fontWeight: 'bold', opacity: upgrading ? 0.7 : 1 }}
+                style={{ flex: 1, fontWeight: 700, fontSize: '1rem' }}
               >
                 Cancel
               </button>
@@ -805,142 +826,6 @@ const AdminProfile: React.FC = () => {
           </div>
         </div>
       )}
-
-      {/* Landing Page Editor Section */}
-      <div style={{ marginTop: '2rem' }}>
-        <div className="page-header">
-          <h2>🎨 Landing Page</h2>
-          <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
-            Customize the landing page that appears when visitors use your custom domain
-          </p>
-        </div>
-
-        {!showLandingPageEditor ? (
-          <div style={{
-            backgroundColor: 'var(--bg-tertiary)',
-            padding: '20px',
-            borderRadius: '8px',
-            marginBottom: '20px'
-          }}>
-            <p style={{ marginTop: 0, marginBottom: '15px', fontSize: '0.95rem' }}>
-              📝 <strong>Your current landing page</strong> will be displayed when visitors access your custom domain.
-            </p>
-            {landingPage && (
-              <p style={{ marginBottom: '15px', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-                Last updated: <strong>{new Date(landingPage.updatedAt || '').toLocaleString()}</strong>
-              </p>
-            )}
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-              <button
-                onClick={() => {
-                  setShowLandingPageEditor(true);
-                  setLandingPageHtml(landingPage?.htmlContent || '');
-                }}
-                className="btn btn-primary"
-              >
-                ✏️ Edit Landing Page
-              </button>
-              <button
-                type="button"
-                onClick={() => window.open(`/studio/${encodeURIComponent(studioPublicSlug)}/landing`, '_blank', 'noopener,noreferrer')}
-                disabled={!studioPublicSlug}
-                className="btn"
-                style={{
-                  backgroundColor: 'var(--text-secondary)',
-                  color: 'white',
-                  textDecoration: 'none',
-                  padding: '10px 20px',
-                  borderRadius: '6px',
-                  cursor: studioPublicSlug ? 'pointer' : 'not-allowed',
-                  opacity: studioPublicSlug ? 1 : 0.7,
-                  border: 'none'
-                }}
-              >
-                👁️ Preview
-              </button>
-            </div>
-            {!studioPublicSlug && (
-              <p style={{ marginTop: '10px', marginBottom: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                Preview will be available once your studio public link is ready.
-              </p>
-            )}
-          </div>
-        ) : (
-          <div style={{
-            backgroundColor: 'var(--bg-tertiary)',
-            padding: '20px',
-            borderRadius: '8px',
-            marginBottom: '20px'
-          }}>
-            <h3 style={{ marginTop: 0, marginBottom: '15px' }}>Edit Landing Page</h3>
-            
-            <div style={{ marginBottom: '15px' }}>
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '10px' }}>
-                Use the editor below to customize your landing page. You can add text, images, links, and formatting.
-              </p>
-              <ReactQuill
-                value={landingPageHtml}
-                onChange={setLandingPageHtml}
-                theme="snow"
-                modules={{
-                  toolbar: [
-                    [{ 'header': [1, 2, 3, false] }],
-                    ['bold', 'italic', 'underline', 'strike'],
-                    ['blockquote', 'code-block'],
-                    [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-                    [{ 'script': 'sub'}, { 'script': 'super' }],
-                    [{ 'indent': '-1'}, { 'indent': '+1' }],
-                    [{ 'size': ['small', false, 'large', 'huge'] }],
-                    [{ 'color': [] }, { 'background': [] }],
-                    [{ 'font': [] }],
-                    [{ 'align': [] }],
-                    ['link', 'image', 'video'],
-                    ['clean']
-                  ]
-                }}
-                style={{
-                  backgroundColor: 'white',
-                  borderRadius: '6px',
-                  minHeight: '400px',
-                  marginBottom: '15px'
-                }}
-              />
-            </div>
-
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-              <button
-                onClick={handleSaveLandingPage}
-                disabled={savingLandingPage}
-                className="btn btn-primary"
-              >
-                {savingLandingPage ? '💾 Saving...' : '💾 Save Landing Page'}
-              </button>
-              <button
-                onClick={handleResetLandingPage}
-                disabled={savingLandingPage}
-                className="btn"
-                style={{
-                  backgroundColor: '#fbbf24',
-                  color: '#1f2937',
-                  border: 'none',
-                  cursor: savingLandingPage ? 'not-allowed' : 'pointer',
-                  opacity: savingLandingPage ? 0.7 : 1
-                }}
-              >
-                🔄 Reset to Default
-              </button>
-              <button
-                onClick={() => setShowLandingPageEditor(false)}
-                disabled={savingLandingPage}
-                className="btn btn-secondary"
-              >
-                ✕ Cancel
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-      </>
     </AdminLayout>
   );
 };
