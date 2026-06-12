@@ -49,50 +49,50 @@ const Login: React.FC = () => {
   };
 
   return (
-    <>
-      {/* <TopNavbar /> */}
-      <div className="main-content dark-bg min-vh-100">
-        <div className="auth-container dark-bg">
-          <div className="auth-card dark-card">
-            <h1 className="auth-title gradient-text">Sign In</h1>
-            <p className="auth-subtitle text-secondary">Welcome back to Photo Lab</p>
-            {error && <div className="error-message">{error}</div>}
-            <form onSubmit={handleSubmit} className="auth-form">
-              <div className="form-group">
-                <label htmlFor="email">Email</label>
-                <input
-                  type="email"
-                  id="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  disabled={loading}
-                  className="input-dark"
-                />
-              </div>
-              <div className="form-group">
-                <label htmlFor="password">Password</label>
-                <input
-                  type="password"
-                  id="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  disabled={loading}
-                  className="input-dark"
-                />
-              </div>
-              <button type="submit" className="btn btn-primary dark-btn" disabled={loading}>
-                {loading ? 'Signing in...' : 'Sign In'}
-              </button>
-            </form>
-            <p className="auth-footer">
-              Don't have an account? <Link to="/register">Register</Link>
-            </p>
-          </div>
+    <div className="main-content dark-bg">
+      <div className="auth-container">
+        <div className="auth-card">
+          <h1 className="auth-title gradient-text">Sign In</h1>
+          <p className="auth-subtitle">Welcome back to Photo Lab</p>
+          {error && <div className="error-message">{error}</div>}
+          <form onSubmit={handleSubmit} className="auth-form">
+            <div className="form-row-margin">
+              <label htmlFor="email">Email</label>
+              <input
+                type="email"
+                id="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                disabled={loading}
+              />
+            </div>
+            <div className="form-row-margin">
+              <label htmlFor="password">Password</label>
+              <input
+                type="password"
+                id="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                disabled={loading}
+              />
+            </div>
+            <button
+              type="submit"
+              className="signup-submit-btn"
+              disabled={loading}
+            >
+              {loading ? 'Signing in...' : 'Sign In'}
+            </button>
+          </form>
+          <p className="auth-footer">
+            Don't have an account?{' '}
+            <Link to="/studio-signup">Create a studio</Link>
+          </p>
         </div>
       </div>
-    </>
+    </div>
   );
 };
 
