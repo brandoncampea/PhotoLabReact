@@ -153,6 +153,9 @@ See [README.md](README.md) for complete documentation including:
 - Deployment guide
 - Browser support
 
+Instagram full integration prerequisites:
+- [INSTAGRAM_PHASE1_SETUP.md](INSTAGRAM_PHASE1_SETUP.md)
+
 ---
 
 **Status**: ✅ Project fully configured and ready for development

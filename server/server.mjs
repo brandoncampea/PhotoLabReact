@@ -71,6 +71,7 @@ import schoolWatchlistRoutes from './routes/schoolWatchlist.js';
 import smugmugRoutes from './routes/smugmug.js';
 import landingPagesRoutes from './routes/landingPages.js';
 import publicLandingRoutes from './routes/publicLanding.js';
+import instagramRoutes from './routes/instagram.js';
 
 
 
@@ -84,6 +85,7 @@ import runWhccVariantSchemaMigrations from './startup/runWhccVariantSchemaMigrat
 import './startup/ensureFreeBatchShippingColumn.js';
 import './startup/ensureOrderApprovalColumns.js';
 import './startup/ensureWhccLabBillingColumns.js';
+import './startup/ensureInstagramIntegrationTables.js';
 
 import '../server/startup/ensureOrderItemAttributesColumn.js';
 import { customDomainRedirect } from './middleware/customDomainRedirect.js';
@@ -194,6 +196,7 @@ app.use('/api/player-watchlist', playerWatchlistRoutes);
 app.use('/api/school-watchlist', schoolWatchlistRoutes);
 app.use('/api/blob-sas', blobSasRoutes);
 app.use('/api/smugmug', smugmugRoutes);
+app.use('/api/instagram', instagramRoutes);
 
 
 app.use('/api/whcc-editor', whccEditorRoutes);

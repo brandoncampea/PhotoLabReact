@@ -102,7 +102,10 @@ npm install
    - Copy `.env.local.example` to `.env.local`
    - Set `MSSQL_CONNECTION_STRING` to the same Azure SQL value used in deployment secrets
    - Set `STRIPE_SECRET_KEY` (test key) if you plan to run commerce seed scripts
+   - If enabling Instagram publishing, set `META_APP_ID`, `META_APP_SECRET`, `META_REDIRECT_URI`, and `META_GRAPH_VERSION`
+   - Initial connect should use minimal scopes; publish permission (`instagram_content_publish`) can be enabled later if Meta approves it
    - Update `VITE_API_URL` with your backend URL
+   - If Meta shows `Invalid Scopes`, verify the app is a Business app with Facebook Login + Instagram Graph API added, and make sure the connecting user is an app Admin/Developer/Tester while in Development mode
 
 ```bash
 cp .env.local.example .env.local
@@ -264,6 +267,7 @@ Comprehensive search with support for EXIF metadata filtering and field-specific
 
 ### Documentation
 - See [METADATA_SEARCH_GUIDE.md](./METADATA_SEARCH_GUIDE.md) for complete documentation
+- See [INSTAGRAM_PHASE1_SETUP.md](./INSTAGRAM_PHASE1_SETUP.md) for Instagram full-integration prerequisites
 
 ## Player Names / CSV Tagging Feature
 
