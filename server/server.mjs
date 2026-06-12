@@ -2,6 +2,8 @@ import frontendErrorRoutes from './routes/frontendError.js';
 import { initializeDatabase } from './initializeDatabasePatch.js';
 import cors from 'cors';
 import session from 'express-session';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 console.log('Starting server/server.mjs...');
 import fs from 'fs';
 import express from 'express';
@@ -100,14 +102,62 @@ const app = express();
 // Register frontend error reporting route after app is initialized
 app.use('/api/log-frontend-error', frontendErrorRoutes);
 
+// ========================================
+// SECURITY MIDDLEWARE (must come first)
+// ========================================
+
+// Helmet: Security headers
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", 'data:', 'https:'],
+      connectSrc: ["'self'", 'https:'],
+    },
+  },
+  hsts: { maxAge: 31536000, includeSubDomains: true, preload: true },
+  frameguard: { action: 'deny' },
+  noSniff: true,
+  referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+}));
+
+// Rate limiting
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 requests per windowMs
+  message: 'Too many requests, please try again later.',
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  skip: (req) => req.path === '/health' || req.path === '/api/health', // Skip health checks
+});
+app.use(limiter);
+
+// Strict rate limiting for auth endpoints
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5, // 5 attempts per 15 minutes
+  skipSuccessfulRequests: true,
+  message: 'Too many login attempts, please try again later.'
+});
+
+// Apply stricter limits to auth endpoints
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/register', authLimiter);
+app.use('/api/auth/reset-password', authLimiter);
+
 // CORS: allow frontend dev server and production origin
+const isProduction = process.env.NODE_ENV === 'production';
 const allowedOrigins = [
-  'http://localhost:3004',
-  'http://localhost:3000',
-  'http://localhost:5173',
-  'http://localhost:3004',
-  'http://127.0.0.1:3000',
-  'http://127.0.0.1:3004',
+  // Only include localhost/dev origins if not in production
+  ...(!isProduction ? [
+    'http://localhost:3004',
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'http://127.0.0.1:3000',
+    'http://127.0.0.1:3004',
+  ] : []),
   process.env.FRONTEND_URL,
   process.env.CANONICAL_APP_URL || 'https://labs.campeaphotography.com',
 ].filter(Boolean);
@@ -121,20 +171,25 @@ app.use(cors({
       callback(new Error('Not allowed by CORS'), false);
     }
   },
-  credentials: true
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-acting-studio-id'],
 }));
 
 // Session middleware (must come after CORS)
-const sessionSecret = process.env.SESSION_SECRET || 'dev-secret';
-console.log('[SESSION] Using session secret:', sessionSecret);
+const sessionSecret = process.env.SESSION_SECRET || (isProduction ? undefined : 'dev-secret');
+if (!sessionSecret) {
+  throw new Error('SESSION_SECRET environment variable is required in production');
+}
+console.log('[SESSION] Using session secret from environment');
 app.use(session({
   secret: sessionSecret,
   resave: false,
   saveUninitialized: false,
   cookie: {
     httpOnly: true,
-    secure: false, // set to true if using HTTPS
-    sameSite: 'lax', // 'none' if using HTTPS and cross-origin
+    secure: isProduction, // Only send over HTTPS in production
+    sameSite: isProduction ? 'strict' : 'lax', // Stricter in production
     maxAge: 1000 * 60 * 60 * 24 * 7 // 1 week
     // No domain property for local dev; let browser handle it
   }
