@@ -12,13 +12,14 @@ interface WatermarkedImageProps {
   studioId?: number;
   showWatermark?: boolean;
   imageRef?: React.RefObject<HTMLImageElement>;
+  lazy?: boolean;
 }
 
 
 // Simple in-memory cache for watermark per studioId
 const watermarkCache: Record<string, Watermark | null> = {};
 
-const WatermarkedImage: React.FC<WatermarkedImageProps> = ({ src, alt, className, style, fill = true, studioId, showWatermark = true, imageRef }) => {
+const WatermarkedImage: React.FC<WatermarkedImageProps> = ({ src, alt, className, style, fill = true, studioId, showWatermark = true, imageRef, lazy = true }) => {
   const [watermark, setWatermark] = useState<Watermark | null>(null);
   const [watermarkLoaded, setWatermarkLoaded] = useState(false);
   const [imgError, setImgError] = useState(false);
@@ -177,6 +178,7 @@ const WatermarkedImage: React.FC<WatermarkedImageProps> = ({ src, alt, className
           alt={alt}
           className={className}
           style={imageStyle}
+          loading={lazy ? 'lazy' : 'eager'}
           onContextMenu={e => e.preventDefault()}
           draggable={false}
           onError={() => setImgError(true)}

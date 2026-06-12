@@ -131,13 +131,24 @@ app.use(helmet({
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
+  max: 500, // allow a full album view without hitting the limit
   message: 'Too many requests, please try again later.',
   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
   skip: (req) => req.path === '/health' || req.path === '/api/health', // Skip health checks
 });
+
+// Separate, generous limiter for photo asset binary requests (thumbnails/full images)
+const assetLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 600, // allow large albums to load without throttling
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => !req.path.includes('/asset'),
+});
+
 app.use(limiter);
+app.use('/api/photos', assetLimiter);
 
 // Strict rate limiting for auth endpoints
 const authLimiter = rateLimit({

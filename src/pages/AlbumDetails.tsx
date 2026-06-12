@@ -1470,6 +1470,7 @@ const AlbumDetails: React.FC = () => {
                                 alt={selectedPhoto.fileName}
                                 style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
                                 studioId={studioId}
+                                lazy={false}
                               />
                             );
                           })()}
