@@ -1,7 +1,7 @@
 
 import express from 'express';
 import crypto from 'crypto';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import mssql from '../mssql.cjs';
 const { queryRow, queryRows, query, transaction, tableExists, columnExists } = mssql;
 import { SUBSCRIPTION_PLANS, SUBSCRIPTION_STATUSES } from '../constants/subscriptions.js';

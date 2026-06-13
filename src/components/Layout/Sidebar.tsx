@@ -82,7 +82,7 @@ const Sidebar: React.FC = () => {
 					<li><Link to="#" className={styles.sidebarLink} style={{ pointerEvents: 'none', opacity: 0.5 }}>{collapsed ? '💰' : 'Super Admin Pricing'}</Link></li>
 				)}
 				<li><Link to="/admin/profile" className={styles.sidebarLink}>{collapsed ? '👤' : 'Profile'}</Link></li>
-				{isStudioAdmin && (
+				{inStudioAdminMenu && (
 					<li><Link to="/admin/team" className={styles.sidebarLink}>{collapsed ? '👥' : 'Team'}</Link></li>
 				)}
 			</ul>

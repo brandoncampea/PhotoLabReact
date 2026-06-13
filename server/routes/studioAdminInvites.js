@@ -1,6 +1,6 @@
 import express from 'express';
 import crypto from 'crypto';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import mssql from '../mssql.cjs';
 const { queryRow, queryRows, query } = mssql;
 import { authRequired } from '../middleware/auth.js';
