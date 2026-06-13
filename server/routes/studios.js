@@ -1,6 +1,7 @@
 
 import express from 'express';
 import crypto from 'crypto';
+import bcrypt from 'bcrypt';
 import mssql from '../mssql.cjs';
 const { queryRow, queryRows, query, transaction, tableExists, columnExists } = mssql;
 import { SUBSCRIPTION_PLANS, SUBSCRIPTION_STATUSES } from '../constants/subscriptions.js';
@@ -1840,12 +1841,13 @@ router.post('/:studioId/admins', authRequired, async (req, res) => {
 
     // Create new studio admin user
     const randomPassword = crypto.randomBytes(16).toString('hex');
+    const hashedPassword = await bcrypt.hash(randomPassword, 10);
 
     const newUser = await queryRow(`
       INSERT INTO users (email, password, name, role, studio_id, is_active, created_at)
       VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
       RETURNING id, email, name, role, is_active as isActive, created_at as createdAt
-    `, [email, randomPassword, name || email.split('@')[0], role, studioId, 1]);
+    `, [email, hashedPassword, name || email.split('@')[0], role, studioId, 1]);
 
     res.status(201).json({
       message: `${role} created successfully`,

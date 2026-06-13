@@ -51,6 +51,8 @@ const AdminShipping = lazy(() => import('./pages/admin/AdminShipping'));
 const AdminDiscountCodes = lazy(() => import('./pages/admin/AdminDiscountCodes'));
 const AdminWatermarks = lazy(() => import('./pages/admin/AdminWatermarks'));
 const AdminProfile = lazy(() => import('./pages/admin/AdminProfile'));
+const AdminTeam = lazy(() => import('./pages/admin/AdminTeam'));
+const AcceptInvite = lazy(() => import('./pages/AcceptInvite'));
 const AdminUsers = lazy(() => import('./pages/admin/AdminUsers'));
 const AdminStudioAdmins = lazy(() => import('./pages/admin/AdminStudioAdmins'));
 const AdminLogin = lazy(() => import('./pages/admin/AdminLogin'));
@@ -108,6 +110,8 @@ function App() {
                 <Route path="/admin/discount-codes" element={<AdminProtectedRoute><AdminDiscountCodes /></AdminProtectedRoute>} />
                 <Route path="/admin/watermarks" element={<AdminProtectedRoute><AdminWatermarks /></AdminProtectedRoute>} />
                 <Route path="/admin/profile" element={<AdminProtectedRoute><AdminProfile /></AdminProtectedRoute>} />
+                <Route path="/admin/team" element={<AdminProtectedRoute><AdminTeam /></AdminProtectedRoute>} />
+                <Route path="/accept-invite/:token" element={<AcceptInvite />} />
                 <Route path="/admin/smugmug" element={<AdminProtectedRoute><AdminSmugMug /></AdminProtectedRoute>} />
                 <Route path="/admin/price-lists" element={<AdminProtectedRoute><AdminPriceLists /></AdminProtectedRoute>} />
                 <Route path="/admin/packages" element={<AdminProtectedRoute><AdminPackagesPage /></AdminProtectedRoute>} />
