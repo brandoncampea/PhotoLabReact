@@ -184,10 +184,12 @@ router.post('/admin/:orderId/resend-digital-download', adminRequired, async (req
     if (!order) return res.status(404).json({ success: false, message: 'Order not found', digitalItemCount: 0 });
 
     const items = await queryRows(
-      `SELECT oi.id as id, oi.photo_id as photoId, oi.photo_ids as photoIds, oi.source_album_id as sourceAlbumId, oi.digital_download_scope as digitalDownloadScope, oi.quantity, oi.price as unitPrice, ph.file_name as photoFileName, ph.album_id as photoAlbumId, COALESCE(oi.product_options_snapshot, p.options) as productOptions, oi.attributes as attributes, p.category as productCategory, p.name as productName
+      `SELECT oi.id as id, oi.photo_id as photoId, oi.photo_ids as photoIds, oi.source_album_id as sourceAlbumId, oi.digital_download_scope as digitalDownloadScope, oi.quantity, oi.price as unitPrice, ph.file_name as photoFileName, ph.album_id as photoAlbumId, COALESCE(oi.product_options_snapshot, p.options) as productOptions, oi.attributes as attributes, p.category as productCategory, p.name as productName, a.studio_id as studioId, s.name as studioName, s.email as studioEmail
         FROM order_items oi
         INNER JOIN photos ph ON ph.id = oi.photo_id
         LEFT JOIN products p ON p.id = oi.product_id
+        LEFT JOIN albums a ON a.id = ph.album_id
+        LEFT JOIN studios s ON s.id = a.studio_id
         WHERE oi.order_id = $1`,
       [orderId]
      );
@@ -249,16 +251,13 @@ router.post('/admin/:orderId/resend-digital-download', adminRequired, async (req
     const recipientEmail = parsedShippingAddress?.email || order.customerEmail;
     const customerName = parsedShippingAddress?.fullName || order.customerName;
 
-    // Fetch studio email for Reply-To
-    let studioEmail = null;
-    if (items && items.length > 0) {
-      // Try to get studio email from first item (if available)
-      if (items[0].studioId) {
-        const studio = await queryRow('SELECT email FROM studios WHERE id = $1', [items[0].studioId]);
-        if (studio && studio.email) studioEmail = studio.email;
-      }
+    // Studio email is now included in the items query via the studios join
+    let studioEmail = items.length > 0 ? (items[0].studioEmail || null) : null;
+    if (!studioEmail && items.length > 0 && items[0].studioId) {
+      const studio = await queryRow('SELECT email FROM studios WHERE id = $1', [items[0].studioId]);
+      studioEmail = studio?.email || null;
     }
-    // Send the email
+    // Send customer receipt with download links
     await orderReceiptService.sendCustomerReceipt({
       to: recipientEmail,
       customerName,
@@ -268,11 +267,28 @@ router.post('/admin/:orderId/resend-digital-download', adminRequired, async (req
       replyTo: studioEmail,
     });
 
+    // Also send studio receipt so the studio admin is notified
+    if (studioEmail) {
+      const superAdminBcc = await getSuperAdminReceiptBcc().catch(() => []);
+      const filteredBcc = superAdminBcc.filter(e => e && e !== studioEmail);
+      const studioName = items[0]?.studioName || null;
+      const orderUrl = `${String(process.env.APP_BASE_URL || process.env.CANONICAL_APP_URL || 'https://labs.campeaphotography.com').trim().replace(/\/$/, '')}/admin/orders?orderId=${order.id}`;
+      await orderReceiptService.sendStudioReceipt({
+        to: studioEmail,
+        bcc: filteredBcc,
+        studioName,
+        customerEmail: recipientEmail,
+        order: { ...order, orderUrl },
+        items,
+      }).catch(err => console.error('[resend-digital-download] Studio receipt failed (non-fatal):', err));
+    }
+
     const allItemsDigital = items.length > 0 && items.every((item) => isDigitalDownloadItem(item));
     if (allItemsDigital) {
       await query(
         `UPDATE orders
          SET customer_receipt_sent_at = CURRENT_TIMESTAMP,
+             studio_receipt_sent_at = CURRENT_TIMESTAMP,
              status = 'completed'
          WHERE id = $1`,
         [orderId]
@@ -3276,8 +3292,9 @@ const sendOrderReceipts = async (orderId) => {
   }
 
   if (customerSent || anyStudioSent) {
-    // Auto-complete if we sent digital downloads: if downloads were sent, the order is digital-only
-    const shouldAutoCompleteDigitalOrder = customerSent && digitalDownloads.length > 0;
+    // Auto-complete digital orders when all items have download links, regardless of email send success.
+    // Decoupled from customerSent so a Mailtrap failure doesn't leave the order stuck in Pending.
+    const shouldAutoCompleteDigitalOrder = digitalDownloads.length > 0;
     let updateSql = `UPDATE orders
       SET customer_receipt_sent_at = CASE WHEN $1 = 1 THEN CURRENT_TIMESTAMP ELSE customer_receipt_sent_at END,
           studio_receipt_sent_at = CASE WHEN $2 = 1 THEN CURRENT_TIMESTAMP ELSE studio_receipt_sent_at END`;
@@ -3290,6 +3307,49 @@ const sendOrderReceipts = async (orderId) => {
     await query(updateSql, params);
   }
 };
+
+// Admin: Fix shipping cost for a digital-only order where it was incorrectly stored
+router.post('/admin/:orderId/fix-digital-shipping', adminRequired, async (req, res) => {
+  try {
+    const orderId = Number(req.params.orderId);
+    if (!orderId) return res.status(400).json({ error: 'Invalid orderId' });
+
+    const items = await queryRows(
+      `SELECT oi.id, p.name as productName, p.category as productCategory,
+              COALESCE(oi.product_options_snapshot, p.options) as productOptions
+       FROM order_items oi
+       INNER JOIN products p ON p.id = oi.product_id
+       WHERE oi.order_id = $1`,
+      [orderId]
+    );
+
+    const allItemsDigital = items.length > 0 && items.every(item => isDigitalProductRow(item));
+    if (!allItemsDigital) {
+      return res.status(400).json({ error: 'Order contains non-digital items; shipping cannot be zeroed' });
+    }
+
+    const order = await queryRow(
+      `SELECT id, subtotal, tax_amount, shipping_cost FROM orders WHERE id = $1`,
+      [orderId]
+    );
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    const correctedTotal = roundCurrency(Number(order.subtotal) + Number(order.tax_amount));
+    await query(
+      `UPDATE orders SET shipping_cost = 0, total = $1 WHERE id = $2`,
+      [correctedTotal, orderId]
+    );
+
+    res.json({
+      message: 'Shipping corrected for digital order',
+      previousShipping: Number(order.shipping_cost),
+      correctedTotal,
+    });
+  } catch (err) {
+    console.error('[fix-digital-shipping] Error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // Protect all order routes except tokenized digital download links
 router.use((req, res, next) => {
@@ -3514,16 +3574,27 @@ router.post('/', requireActiveSubscription, async (req, res) => {
       batchLabVendor,
     } = req.body;
 
-    // Determine if all items are digital-only
+    // Determine if all items are digital-only.
+    // The client payload does not include productName/productCategory, so we look them up from the DB
+    // to avoid incorrectly applying fallback shipping costs to digital-only orders.
+    const itemProductIds = [...new Set((items || []).map(i => i.productId).filter(Boolean))];
+    const dbProductsForDigitalCheck = itemProductIds.length > 0
+      ? await queryRows(
+          `SELECT id, name, category FROM products WHERE id IN (${itemProductIds.map((_, i) => `$${i + 1}`).join(',')})`,
+          itemProductIds
+        ).catch(() => [])
+      : [];
+    const dbProductMap = new Map(dbProductsForDigitalCheck.map(p => [p.id, p]));
+
     const allDigital = Array.isArray(items) && items.length > 0 && items.every((item) => {
-      // Use the same logic as isDigitalProductRow
       const options = (() => {
         try {
           return typeof item.productOptions === 'string' ? JSON.parse(item.productOptions) : (item.productOptions || {});
         } catch { return {}; }
       })();
-      const category = String(item.productCategory || '').toLowerCase();
-      const name = String(item.productName || '').toLowerCase();
+      const dbProduct = dbProductMap.get(item.productId);
+      const category = String(dbProduct?.category || item.productCategory || '').toLowerCase();
+      const name = String(dbProduct?.name || item.productName || '').toLowerCase();
       return options?.isDigital === true || options?.is_digital_only === true || options?.digitalOnly === true || category.includes('digital') || name.includes('digital');
     });
 
