@@ -52,6 +52,10 @@ const AdminDiscountCodes = lazy(() => import('./pages/admin/AdminDiscountCodes')
 const AdminWatermarks = lazy(() => import('./pages/admin/AdminWatermarks'));
 const AdminProfile = lazy(() => import('./pages/admin/AdminProfile'));
 const AdminTeam = lazy(() => import('./pages/admin/AdminTeam'));
+const AdminScheduling = lazy(() => import('./pages/admin/AdminScheduling'));
+const SuperAdminScheduling = lazy(() => import('./pages/admin/SuperAdminScheduling'));
+const BookingPage = lazy(() => import('./pages/BookingPage'));
+const BookingConfirmed = lazy(() => import('./pages/BookingConfirmed'));
 const AcceptInvite = lazy(() => import('./pages/AcceptInvite'));
 const AdminUsers = lazy(() => import('./pages/admin/AdminUsers'));
 const AdminStudioAdmins = lazy(() => import('./pages/admin/AdminStudioAdmins'));
@@ -111,6 +115,11 @@ function App() {
                 <Route path="/admin/watermarks" element={<AdminProtectedRoute><AdminWatermarks /></AdminProtectedRoute>} />
                 <Route path="/admin/profile" element={<AdminProtectedRoute><AdminProfile /></AdminProtectedRoute>} />
                 <Route path="/admin/team" element={<AdminProtectedRoute><AdminTeam /></AdminProtectedRoute>} />
+                <Route path="/admin/scheduling" element={<AdminProtectedRoute><AdminScheduling /></AdminProtectedRoute>} />
+                <Route path="/admin/scheduling-fees" element={<AdminProtectedRoute><SuperAdminScheduling /></AdminProtectedRoute>} />
+                <Route path="/studio/:studioSlug/book" element={<BookingPage />} />
+                <Route path="/booking-confirmed" element={<BookingConfirmed />} />
+                <Route path="/booking-payment-cancelled" element={<BookingPage />} />
                 <Route path="/accept-invite/:token" element={<AcceptInvite />} />
                 <Route path="/admin/smugmug" element={<AdminProtectedRoute><AdminSmugMug /></AdminProtectedRoute>} />
                 <Route path="/admin/price-lists" element={<AdminProtectedRoute><AdminPriceLists /></AdminProtectedRoute>} />

@@ -391,6 +391,14 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
+  // Scheduling booking payment completed
+  if (event.type === 'checkout.session.completed') {
+    const { handleSchedulingCheckoutCompleted } = await import('./scheduling.js');
+    await handleSchedulingCheckoutCompleted(event.data.object).catch(err =>
+      console.error('[stripe webhook] scheduling checkout handler error:', err)
+    );
+  }
+
   // Listen for payment_intent.succeeded and charge.succeeded
   if (event.type === 'payment_intent.succeeded' || event.type === 'charge.succeeded') {
     let paymentIntent = event.data.object;

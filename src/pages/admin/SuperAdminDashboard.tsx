@@ -3,6 +3,7 @@
 
 
 import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import DashboardChart from '../../components/DashboardChart';
 import { superAdminService } from '../../services/adminService';
 import api from '../../services/api';
@@ -47,6 +48,14 @@ const SuperAdminDashboard: React.FC = () => {
     totalOrders: 0,
     totalCustomers: 0,
     pendingOrders: 0,
+    schedulingBookings: 0,
+    schedulingPending: 0,
+    schedulingUpcoming: 0,
+    schedulingRevenue: 0,
+    schedulingPlatformFees: 0,
+    schedulingStripeFees: 0,
+    schedulingPayouts: 0,
+    schedulingUpcomingList: [] as { id: number; customerName: string; customerEmail: string; slotDate: string; startTime: string; sessionTypeName: string; paymentStatus: string; paymentAmount: number }[],
   });
 
   useEffect(() => {
@@ -117,6 +126,14 @@ const SuperAdminDashboard: React.FC = () => {
           totalOrders: Number(data.totalOrders || 0),
           totalCustomers: Number(data.totalCustomers || 0),
           pendingOrders: Number(data.pendingOrders || 0),
+          schedulingBookings: Number(data.schedulingStats?.totalBookings || 0),
+          schedulingPending: Number(data.schedulingStats?.pendingBookings || 0),
+          schedulingUpcoming: Number(data.schedulingStats?.upcomingBookings || 0),
+          schedulingRevenue: Number(data.schedulingStats?.bookingRevenue || 0),
+          schedulingPlatformFees: Number(data.schedulingStats?.platformFees || 0),
+          schedulingStripeFees: Number(data.schedulingStats?.bookingStripeFees || 0),
+          schedulingPayouts: Number(data.schedulingStats?.studioPayouts || 0),
+          schedulingUpcomingList: data.schedulingStats?.upcomingBookingsList || [],
         });
 
         setChartLabels(labels);
@@ -156,7 +173,7 @@ const SuperAdminDashboard: React.FC = () => {
         setCustomersSeries({ day: [], week: [], month: [] });
         setPendingSeries({ day: [], week: [], month: [] });
         setProductsSoldSeries({ day: [], week: [], month: [] });
-        setStats({ totalRevenue: 0, totalSuperAdminRevenue: 0, totalProductsSold: 0, avgProfitPerProduct: 0, totalTax: 0, totalGrossMargin: 0, totalOrders: 0, totalCustomers: 0, pendingOrders: 0 });
+        setStats({ totalRevenue: 0, totalSuperAdminRevenue: 0, totalProductsSold: 0, avgProfitPerProduct: 0, totalTax: 0, totalGrossMargin: 0, totalOrders: 0, totalCustomers: 0, pendingOrders: 0, schedulingBookings: 0, schedulingPending: 0, schedulingUpcoming: 0, schedulingRevenue: 0, schedulingPlatformFees: 0, schedulingStripeFees: 0, schedulingPayouts: 0, schedulingUpcomingList: [] });
       }
     };
     fetchChartData();
@@ -381,6 +398,57 @@ const SuperAdminDashboard: React.FC = () => {
             labels={chartLabels[revenueRange]}
             label="Profit"
           />
+        </div>
+
+        {/* Scheduling Bookings Widget */}
+        <div className="dashboard-card tallydark-card">
+          <div className="dashboard-card-label"><Link to="/admin/scheduling" style={{ color: 'inherit', textDecoration: 'none' }}>Bookings (All Studios) ↗</Link></div>
+          <div className="dashboard-card-value">{stats.schedulingBookings}</div>
+          <div className="dashboard-card-sub">{stats.schedulingUpcoming} upcoming · {stats.schedulingBookings - stats.schedulingPending} approved/done</div>
+          {stats.schedulingPending > 0 && (
+            <div style={{ marginTop: 8, background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 8, padding: '6px 10px', fontSize: '0.8rem', color: '#f59e0b', fontWeight: 700 }}>
+              {stats.schedulingPending} pending across all studios
+            </div>
+          )}
+          {stats.schedulingUpcomingList.length > 0 && (
+            <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ fontSize: '0.75rem', color: '#6b6b80', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>Upcoming</div>
+              {stats.schedulingUpcomingList.map(bk => (
+                <div key={bk.id} style={{ background: 'rgba(124,92,255,0.07)', border: '1px solid rgba(124,92,255,0.18)', borderRadius: 8, padding: '7px 10px', fontSize: '0.8rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
+                    <span style={{ color: '#a78bfa', fontWeight: 700 }}>
+                      {bk.slotDate ? new Date(bk.slotDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—'}
+                      {bk.startTime ? ` · ${bk.startTime}` : ''}
+                    </span>
+                    {bk.paymentStatus === 'paid' && <span style={{ fontSize: '0.7rem', background: 'rgba(34,197,94,0.12)', color: '#22c55e', borderRadius: 4, padding: '1px 5px' }}>paid</span>}
+                  </div>
+                  <div style={{ color: '#e0e0f0', marginTop: 2 }}>{bk.customerName}</div>
+                  {bk.sessionTypeName && <div style={{ color: '#6b6b80', fontSize: '0.75rem' }}>{bk.sessionTypeName}</div>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Scheduling Revenue Widget */}
+        <div className="dashboard-card tallydark-card">
+          <div className="dashboard-card-label"><Link to="/admin/scheduling" style={{ color: 'inherit', textDecoration: 'none' }}>Booking Revenue (All Studios) ↗</Link></div>
+          <div className="dashboard-card-value">${stats.schedulingRevenue.toFixed(2)}</div>
+          <div className="dashboard-card-sub">From paid session bookings</div>
+          <div style={{ marginTop: 10, fontSize: '0.8rem', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#6b6b80' }}>
+              <span>Stripe fees (est.)</span>
+              <span style={{ color: '#f59e0b' }}>−${stats.schedulingStripeFees.toFixed(2)}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#6b6b80' }}>
+              <span>Platform fees earned</span>
+              <span style={{ color: '#22c55e' }}>+${stats.schedulingPlatformFees.toFixed(2)}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#6b6b80', borderTop: '1px solid #3a3656', paddingTop: 4 }}>
+              <span>Studio payouts</span>
+              <span style={{ color: '#f59e0b' }}>−${stats.schedulingPayouts.toFixed(2)}</span>
+            </div>
+          </div>
         </div>
       </div>
 

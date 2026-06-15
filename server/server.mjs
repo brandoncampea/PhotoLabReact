@@ -75,6 +75,7 @@ import landingPagesRoutes from './routes/landingPages.js';
 import publicLandingRoutes from './routes/publicLanding.js';
 import instagramRoutes from './routes/instagram.js';
 import { invitesRouter as studioAdminInvitesRouter, acceptRouter as adminInviteAcceptRouter } from './routes/studioAdminInvites.js';
+import schedulingRoutes from './routes/scheduling.js';
 
 
 
@@ -91,6 +92,7 @@ import './startup/ensureWhccLabBillingColumns.js';
 import './startup/ensureInstagramIntegrationTables.js';
 import './startup/ensureStudioAdminInvitesTable.js';
 import './startup/ensureUserReceiveOrderNotifications.js';
+import './startup/ensureSchedulingTables.js';
 
 import '../server/startup/ensureOrderItemAttributesColumn.js';
 import { customDomainRedirect } from './middleware/customDomainRedirect.js';
@@ -250,6 +252,7 @@ app.use('/api/blob-sas', blobSasRoutes);
 app.use('/api/smugmug', smugmugRoutes);
 app.use('/api/instagram', instagramRoutes);
 app.use('/api/studios/:studioId/admin-invites', studioAdminInvitesRouter);
+app.use('/api/scheduling', schedulingRoutes);
 app.use('/api/admin-invites', adminInviteAcceptRouter);
 
 

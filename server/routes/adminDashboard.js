@@ -832,6 +832,69 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
             // Analytics table may not exist yet in some environments.
         }
 
+        // Scheduling stats
+        let schedulingStats = { totalBookings: 0, pendingBookings: 0, approvedBookings: 0, upcomingBookings: 0, bookingRevenue: 0, platformFees: 0, bookingStripeFees: 0, studioPayouts: 0, upcomingBookingsList: [] };
+        try {
+            const schedFilter = studioId ? `AND b.studio_id = ${studioId}` : '';
+            const schedRow = await queryRow(
+                `SELECT
+                    COUNT(*) as totalBookings,
+                    SUM(CASE WHEN b.status = 'pending' THEN 1 ELSE 0 END) as pendingBookings,
+                    SUM(CASE WHEN b.status = 'approved' THEN 1 ELSE 0 END) as approvedBookings,
+                    COALESCE(SUM(CASE WHEN b.payment_status = 'paid' THEN b.payment_amount ELSE 0 END), 0) as bookingRevenue,
+                    COALESCE(SUM(CASE WHEN b.payment_status = 'paid' THEN b.platform_fee_amount ELSE 0 END), 0) as platformFees,
+                    COALESCE(SUM(CASE WHEN b.payment_status = 'paid' THEN b.studio_payout_amount ELSE 0 END), 0) as studioPayouts,
+                    COALESCE(SUM(CASE WHEN b.payment_status = 'paid' THEN ROUND(b.payment_amount * 0.029, 2) + 0.30 ELSE 0 END), 0) as bookingStripeFees
+                 FROM scheduling_bookings b
+                 WHERE b.status NOT IN ('rejected', 'cancelled') ${schedFilter}`
+            );
+            const upcomingRow = await queryRow(
+                `SELECT COUNT(*) as count
+                 FROM scheduling_bookings b
+                 LEFT JOIN scheduling_availability a ON a.id = b.availability_id
+                 WHERE b.status = 'approved'
+                 AND COALESCE(a.slot_date, b.manual_date) >= CAST(GETDATE() AS DATE) ${schedFilter}`
+            );
+            const upcomingBookingsRows = await queryRows(
+                `SELECT TOP 5
+                    b.id,
+                    b.customer_name as customerName,
+                    b.customer_email as customerEmail,
+                    CONVERT(VARCHAR(10), COALESCE(a.slot_date, b.manual_date), 23) as slotDate,
+                    COALESCE(b.booking_start_time, b.manual_start_time) as startTime,
+                    t.name as sessionTypeName,
+                    b.payment_status as paymentStatus,
+                    b.payment_amount as paymentAmount
+                 FROM scheduling_bookings b
+                 LEFT JOIN scheduling_availability a ON a.id = b.availability_id
+                 LEFT JOIN scheduling_session_types t ON t.id = b.session_type_id
+                 WHERE b.status = 'approved'
+                 AND COALESCE(a.slot_date, b.manual_date) >= CAST(GETDATE() AS DATE) ${schedFilter}
+                 ORDER BY COALESCE(a.slot_date, b.manual_date) ASC,
+                          COALESCE(b.booking_start_time, b.manual_start_time) ASC`
+            );
+            schedulingStats = {
+                totalBookings: Number(schedRow?.totalBookings || 0),
+                pendingBookings: Number(schedRow?.pendingBookings || 0),
+                approvedBookings: Number(schedRow?.approvedBookings || 0),
+                upcomingBookings: Number(upcomingRow?.count || 0),
+                bookingRevenue: Number(schedRow?.bookingRevenue || 0),
+                platformFees: Number(schedRow?.platformFees || 0),
+                bookingStripeFees: Number(schedRow?.bookingStripeFees || 0),
+                studioPayouts: Number(schedRow?.studioPayouts || 0),
+                upcomingBookingsList: (upcomingBookingsRows || []).map(r => ({
+                    id: Number(r.id),
+                    customerName: r.customerName || '',
+                    customerEmail: r.customerEmail || '',
+                    slotDate: r.slotDate || '',
+                    startTime: r.startTime || '',
+                    sessionTypeName: r.sessionTypeName || '',
+                    paymentStatus: r.paymentStatus || '',
+                    paymentAmount: Number(r.paymentAmount || 0),
+                })),
+            };
+        } catch { /* scheduling tables may not exist */ }
+
         res.json({
             totalOrders,
             totalRevenue,
@@ -917,6 +980,7 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
                 week: formatSeries(batchWeekRows),
                 month: formatSeries(batchMonthRows),
             },
+            schedulingStats,
         });
     } catch (err) {
         console.error('Error fetching dashboard stats:', err);

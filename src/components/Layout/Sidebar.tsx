@@ -18,6 +18,7 @@ const superAdminLinks = [
 	{ to: '/admin/stripe', label: 'Payment Methods' },
 	{ to: '/admin/subscription-gateway', label: 'Studio Subscription Payment Gateway' },
 	{ to: '/admin/subscription', label: 'Subscription Pricing' },
+	{ to: '/admin/scheduling-fees', label: 'Scheduling Fees' },
 	{ to: '/admin/configuration', label: 'Lab Configuration' },
 ];
 
@@ -84,6 +85,9 @@ const Sidebar: React.FC = () => {
 				<li><Link to="/admin/profile" className={styles.sidebarLink}>{collapsed ? '👤' : 'Profile'}</Link></li>
 				{inStudioAdminMenu && (
 					<li><Link to="/admin/team" className={styles.sidebarLink}>{collapsed ? '👥' : 'Team'}</Link></li>
+				)}
+				{inStudioAdminMenu && (
+					<li><Link to="/admin/scheduling" className={styles.sidebarLink}>{collapsed ? '📅' : 'Scheduling'}</Link></li>
 				)}
 			</ul>
 			{isSuperAdmin && (

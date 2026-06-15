@@ -209,6 +209,7 @@ const Navbar: React.FC = () => {
         <Link to={studioNavSlug ? `/albums?studioSlug=${encodeURIComponent(studioNavSlug)}` : '/albums'} className={styles.navbarLink}>Albums</Link>
         <Link to={studioNavSlug ? `/studio/${encodeURIComponent(studioNavSlug)}/deals` : '/deals'} className={styles.navbarLink}>Deals</Link>
         <Link to="/orders" className={styles.navbarLink}>Orders</Link>
+        {studioNavSlug && <Link to={`/studio/${encodeURIComponent(studioNavSlug)}/book`} className={styles.navbarLink}>Book</Link>}
         <div className={styles.cartIconWrapper + ' ' + styles.desktopOnly}>
           <Link to="/cart" aria-label="Cart" className={styles.cartIcon} style={{ textDecoration: 'none', position: 'relative' }}>
             <span className="material-icons">shopping_cart</span>
@@ -260,6 +261,7 @@ const Navbar: React.FC = () => {
           <Link to={studioNavSlug ? `/albums?studioSlug=${encodeURIComponent(studioNavSlug)}` : '/albums'} className={styles.navbarLink}>Albums</Link>
           <Link to={studioNavSlug ? `/studio/${encodeURIComponent(studioNavSlug)}/deals` : '/deals'} className={styles.navbarLink}>Deals</Link>
           <Link to="/orders" className={styles.navbarLink}>Orders</Link>
+          {studioNavSlug && <Link to={`/studio/${encodeURIComponent(studioNavSlug)}/book`} className={styles.navbarLink}>Book</Link>}
           {isLoggedIn ? (
             <>
               <Link to={studioSlug ? `/account?studioSlug=${encodeURIComponent(studioSlug)}` : '/account'} className={styles.navbarLink}>

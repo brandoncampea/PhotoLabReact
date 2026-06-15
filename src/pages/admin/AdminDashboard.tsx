@@ -58,6 +58,26 @@ type DashboardStats = {
   customersSeries?: Record<'day' | 'week' | 'month', { data: number[]; labels: string[] }>;
   pendingOrdersSeries?: Record<'day' | 'week' | 'month', { data: number[]; labels: string[] }>;
   batchOrdersSeries?: Record<'day' | 'week' | 'month', { data: number[]; labels: string[] }>;
+  schedulingStats?: {
+    totalBookings: number;
+    pendingBookings: number;
+    approvedBookings: number;
+    upcomingBookings: number;
+    bookingRevenue: number;
+    platformFees: number;
+    bookingStripeFees: number;
+    studioPayouts: number;
+    upcomingBookingsList: {
+      id: number;
+      customerName: string;
+      customerEmail: string;
+      slotDate: string;
+      startTime: string;
+      sessionTypeName: string;
+      paymentStatus: string;
+      paymentAmount: number;
+    }[];
+  };
 };
 
 const AdminDashboard: React.FC = () => {
@@ -157,11 +177,15 @@ const AdminDashboard: React.FC = () => {
   const totalTax = Number(stats.revenueComposition?.totalTax || 0);
   const totalRevenue = Number(stats.totalRevenue || 0);
   const totalRevenueExTax = Math.max(0, totalRevenue - totalTax);
+  const bookingRevenue = Number(stats.schedulingStats?.bookingRevenue ?? 0);
+  const bookingStripeFees = Number(stats.schedulingStats?.bookingStripeFees ?? 0);
+  const bookingPlatformFees = Number(stats.schedulingStats?.platformFees ?? 0);
+  const totalCombinedRevenue = totalRevenueExTax + bookingRevenue;
   const totalBaseCost = Number(stats.grossMarginBreakdown?.totalBaseRevenue || 0);
   const totalShippingMargin = Number(stats.grossMarginBreakdown?.totalShippingMargin || 0);
   const totalStripeFees = Number(stats.grossMarginBreakdown?.totalStripeFees || 0);
-  // New margin logic: (revenue (gross-tax)) - base cost + shipping margin - stripe fees
-  const totalMargin = totalRevenueExTax - totalBaseCost + totalShippingMargin - totalStripeFees;
+  const totalMargin = totalRevenueExTax - totalBaseCost + totalShippingMargin - totalStripeFees
+    + bookingRevenue - bookingStripeFees - bookingPlatformFees;
   const avgRevenuePerOrder = stats.totalOrders ? (totalRevenueExTax / stats.totalOrders) : 0;
   const avgMarginPerOrder = stats.totalOrders ? (totalMargin / stats.totalOrders) : 0;
   const revenueSeries = stats.revenueSeries?.[revenueRange] || { labels: [], data: [] };
@@ -238,7 +262,7 @@ const AdminDashboard: React.FC = () => {
         <div className="dashboard-card tallydark-card admin-dashboard-card admin-dashboard-card--revenue" role="region" tabIndex={0}>
           <div className="dashboard-card-label">Total Revenue</div>
           <div className="dashboard-card-value revenue admin-dashboard-revenue-value">
-            <span className="admin-dashboard-revenue-total">${totalRevenueExTax.toFixed(2)}</span>
+            <span className="admin-dashboard-revenue-total">${totalCombinedRevenue.toFixed(2)}</span>
             <span className="admin-dashboard-revenue-separator">|</span>
             <span className={`admin-dashboard-revenue-margin ${totalMargin >= 0 ? 'positive' : 'negative'}`}>
               Margin: ${totalMargin.toFixed(2)}
@@ -259,6 +283,7 @@ const AdminDashboard: React.FC = () => {
                   <div>- Discounts: ${Number(stats.revenueComposition.totalDiscounts || 0).toFixed(2)}</div>
                   <div style={{ marginTop: 2 }}>= Gross: ${Number(stats.revenueComposition.recomputedTotal || 0).toFixed(2)}</div>
                   <div style={{ marginTop: 2 }}>= Revenue (ex Tax): ${totalRevenueExTax.toFixed(2)}</div>
+                  {bookingRevenue > 0 && <div style={{ marginTop: 2 }}>+ Booking revenue: ${bookingRevenue.toFixed(2)}</div>}
                 </div>
               )}
               {!!stats.grossMarginBreakdown && (
@@ -267,7 +292,8 @@ const AdminDashboard: React.FC = () => {
                   <div>Revenue (ex Tax): ${totalRevenueExTax.toFixed(2)}</div>
                   <div>- Base Cost: ${totalBaseCost.toFixed(2)}</div>
                   <div>+ Shipping Margin: ${totalShippingMargin.toFixed(2)}</div>
-                  <div>- Stripe Fees: ${totalStripeFees.toFixed(2)}</div>
+                  <div>- Stripe Fees: ${totalStripeFees.toFixed(2)} (orders)</div>
+                  {bookingRevenue > 0 && <div>+ Bookings: ${bookingRevenue.toFixed(2)} − ${bookingStripeFees.toFixed(2)} stripe − ${bookingPlatformFees.toFixed(2)} platform</div>}
                   <div style={{ marginTop: 2 }}>= Margin: ${totalMargin.toFixed(2)}</div>
                 </div>
               )}
@@ -400,6 +426,55 @@ const AdminDashboard: React.FC = () => {
             labels={stats.batchOrdersSeries?.[batchRange]?.labels || []}
             label="Batch Orders"
           />
+        </div>
+
+        <div className="dashboard-card tallydark-card admin-dashboard-card">
+          <div className="dashboard-card-label"><Link to="/admin/scheduling" style={{ color: 'inherit', textDecoration: 'none' }}>📅 Bookings ↗</Link></div>
+          <div className="dashboard-card-value">{stats.schedulingStats?.totalBookings ?? 0}</div>
+          <div className="dashboard-card-sub">{stats.schedulingStats?.upcomingBookings ?? 0} upcoming · {stats.schedulingStats?.approvedBookings ?? 0} approved</div>
+          {(stats.schedulingStats?.pendingBookings ?? 0) > 0 && (
+            <div style={{ marginTop: 8, background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 8, padding: '6px 10px', fontSize: '0.8rem', color: '#f59e0b', fontWeight: 700 }}>
+              {stats.schedulingStats!.pendingBookings} pending review
+            </div>
+          )}
+          {(stats.schedulingStats?.upcomingBookingsList?.length ?? 0) > 0 && (
+            <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ fontSize: '0.75rem', color: '#6b6b80', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>Upcoming</div>
+              {stats.schedulingStats!.upcomingBookingsList.map(bk => (
+                <div key={bk.id} style={{ background: 'rgba(124,92,255,0.07)', border: '1px solid rgba(124,92,255,0.18)', borderRadius: 8, padding: '7px 10px', fontSize: '0.8rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
+                    <span style={{ color: '#a78bfa', fontWeight: 700 }}>
+                      {bk.slotDate ? new Date(bk.slotDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—'}
+                      {bk.startTime ? ` · ${bk.startTime}` : ''}
+                    </span>
+                    {bk.paymentStatus === 'paid' && <span style={{ fontSize: '0.7rem', background: 'rgba(34,197,94,0.12)', color: '#22c55e', borderRadius: 4, padding: '1px 5px' }}>paid</span>}
+                  </div>
+                  <div style={{ color: '#e0e0f0', marginTop: 2 }}>{bk.customerName}</div>
+                  {bk.sessionTypeName && <div style={{ color: '#6b6b80', fontSize: '0.75rem' }}>{bk.sessionTypeName}</div>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="dashboard-card tallydark-card admin-dashboard-card">
+          <div className="dashboard-card-label"><Link to="/admin/scheduling" style={{ color: 'inherit', textDecoration: 'none' }}>💳 Booking Revenue ↗</Link></div>
+          <div className="dashboard-card-value">${bookingRevenue.toFixed(2)}</div>
+          <div className="dashboard-card-sub">From paid session bookings</div>
+          <div style={{ marginTop: 10, fontSize: '0.8rem', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#6b6b80' }}>
+              <span>Stripe fees (est.)</span>
+              <span style={{ color: '#f59e0b' }}>−${bookingStripeFees.toFixed(2)}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#6b6b80' }}>
+              <span>Platform fees</span>
+              <span style={{ color: '#f59e0b' }}>−${bookingPlatformFees.toFixed(2)}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#bdbdbd', fontWeight: 700, borderTop: '1px solid #3a3656', paddingTop: 4 }}>
+              <span>Studio payout</span>
+              <span style={{ color: '#22c55e' }}>${Number(stats.schedulingStats?.studioPayouts ?? 0).toFixed(2)}</span>
+            </div>
+          </div>
         </div>
       </div>
 
