@@ -184,12 +184,13 @@ router.post('/admin/:orderId/resend-digital-download', adminRequired, async (req
     if (!order) return res.status(404).json({ success: false, message: 'Order not found', digitalItemCount: 0 });
 
     const items = await queryRows(
-      `SELECT oi.id as id, oi.photo_id as photoId, oi.photo_ids as photoIds, oi.source_album_id as sourceAlbumId, oi.digital_download_scope as digitalDownloadScope, oi.quantity, oi.price as unitPrice, ph.file_name as photoFileName, ph.album_id as photoAlbumId, COALESCE(oi.product_options_snapshot, p.options) as productOptions, oi.attributes as attributes, p.category as productCategory, p.name as productName, a.studio_id as studioId, s.name as studioName, s.email as studioEmail
+      `SELECT oi.id as id, oi.photo_id as photoId, oi.photo_ids as photoIds, oi.source_album_id as sourceAlbumId, oi.digital_download_scope as digitalDownloadScope, oi.quantity, oi.price as unitPrice, ph.file_name as photoFileName, ph.album_id as photoAlbumId, COALESCE(oi.product_options_snapshot, p.options) as productOptions, oi.attributes as attributes, p.category as productCategory, p.name as productName, a.studio_id as studioId, s.name as studioName, COALESCE(NULLIF(s.email, ''), pc.email) as studioEmail
         FROM order_items oi
         INNER JOIN photos ph ON ph.id = oi.photo_id
         LEFT JOIN products p ON p.id = oi.product_id
         LEFT JOIN albums a ON a.id = ph.album_id
         LEFT JOIN studios s ON s.id = a.studio_id
+        LEFT JOIN profile_config pc ON pc.studio_id = a.studio_id
         WHERE oi.order_id = $1`,
       [orderId]
      );
@@ -251,11 +252,16 @@ router.post('/admin/:orderId/resend-digital-download', adminRequired, async (req
     const recipientEmail = parsedShippingAddress?.email || order.customerEmail;
     const customerName = parsedShippingAddress?.fullName || order.customerName;
 
-    // Studio email is now included in the items query via the studios join
-    let studioEmail = items.length > 0 ? (items[0].studioEmail || null) : null;
+    // Studio email from items query (already falls back to profile_config.email via COALESCE in the SQL)
+    let studioEmail = items.length > 0 ? normalizeEmail(items[0].studioEmail) : null;
     if (!studioEmail && items.length > 0 && items[0].studioId) {
-      const studio = await queryRow('SELECT email FROM studios WHERE id = $1', [items[0].studioId]);
-      studioEmail = studio?.email || null;
+      const studio = await queryRow(
+        `SELECT COALESCE(NULLIF(s.email, ''), pc.email) as email
+         FROM studios s LEFT JOIN profile_config pc ON pc.studio_id = s.id
+         WHERE s.id = $1`,
+        [items[0].studioId]
+      );
+      studioEmail = normalizeEmail(studio?.email);
     }
     // Send customer receipt with download links
     await orderReceiptService.sendCustomerReceipt({
@@ -3056,9 +3062,9 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
 };
 
 const sendOrderReceipts = async (orderId) => {
-  if (!orderReceiptService.isConfigured()) {
+  const emailConfigured = orderReceiptService.isConfigured();
+  if (!emailConfigured) {
     console.warn('SMTP is not configured; skipping order receipts for order', orderId);
-    return;
   }
 
   const order = await queryRow(
@@ -3151,7 +3157,7 @@ const sendOrderReceipts = async (orderId) => {
             p.name as productName,
             a.studio_id as studioId,
             s.name as studioName,
-            s.email as studioEmail,
+            COALESCE(NULLIF(s.email, ''), pc.email) as studioEmail,
             COALESCE(NULLIF(oi.base_revenue_amount / NULLIF(oi.quantity, 0), 0), COALESCE(ps.price, p.price, 0)) as basePrice,
             COALESCE(NULLIF(oi.production_cost_amount / NULLIF(oi.quantity, 0), 0), COALESCE(ps.cost, p.cost, 0)) as cost,
             oi.studio_payout_amount as studioPayoutAmount,
@@ -3164,6 +3170,7 @@ const sendOrderReceipts = async (orderId) => {
      LEFT JOIN photos ph ON ph.id = oi.photo_id
      LEFT JOIN albums a ON a.id = ph.album_id
      LEFT JOIN studios s ON s.id = a.studio_id
+     LEFT JOIN profile_config pc ON pc.studio_id = a.studio_id
      WHERE oi.order_id = $1`,
     [orderId]
   );
@@ -3194,107 +3201,121 @@ const sendOrderReceipts = async (orderId) => {
 
   const parsedShippingAddress = safeJsonParse(order.shippingAddress, {});
   const superAdminBcc = await getSuperAdminReceiptBcc();
-  // Fetch studio email for Reply-To
-  let studioEmail = null;
-  if (items && items.length > 0) {
-    if (items[0].studioId) {
-      const studio = await queryRow('SELECT email FROM studios WHERE id = $1', [items[0].studioId]);
-      if (studio && studio.email) studioEmail = studio.email;
-    }
-  }
-  const customerSent = await orderReceiptService.sendCustomerReceipt({
-    to: parsedShippingAddress?.email || order.customerEmail,
-    customerName: parsedShippingAddress?.fullName || order.customerName,
-    order,
-    items,
-    digitalDownloads,
-    replyTo: studioEmail,
-  });
 
-  // Add delay to avoid Mailtrap rate limiting (free tier: too many emails per second)
-  await new Promise(resolve => setTimeout(resolve, 1500));
+  // Auto-complete determination is independent of email — compute before sending anything
+  const shouldAutoCompleteDigitalOrder = digitalDownloads.length > 0;
 
-  const totalItemRevenue = items.reduce((sum, item) => sum + ((Number(item.unitPrice) || 0) * (Number(item.quantity) || 0)), 0);
-  const studioGroups = new Map();
-  for (const item of items) {
-    const studioId = Number(item.studioId) || 0;
-    if (!studioId) continue;
-    if (!studioGroups.has(studioId)) {
-      studioGroups.set(studioId, {
-        studioName: item.studioName,
-        studioEmail: item.studioEmail,
-        items: [],
-      });
-    }
-    studioGroups.get(studioId).items.push(item);
-  }
-
+  let customerSent = false;
   let anyStudioSent = false;
-  for (const [, studioGroup] of studioGroups) {
-    const studioRevenue = studioGroup.items.reduce((sum, item) => sum + ((Number(item.unitPrice) || 0) * (Number(item.quantity) || 0)), 0);
-    const baseRevenue = studioGroup.items.reduce((sum, item) => sum + ((Number(item.basePrice) || 0) * (Number(item.quantity) || 0)), 0);
-    const productionCost = studioGroup.items.reduce((sum, item) => sum + ((Number(item.cost) || 0) * (Number(item.quantity) || 0)), 0);
-    const superAdminProfit = studioGroup.items.reduce((sum, item) => sum + (Number(item.superAdminShareAmount) || 0), 0);
-    let stripeFeeAmount = studioGroup.items.reduce((sum, item) => sum + (Number(item.stripeFeeAllocatedAmount) || 0), 0);
-    // Fallback: if all items are digital and allocated fee is zero but order-level fee exists, use it
-    const allDigital = studioGroup.items.length > 0 && studioGroup.items.every(item => {
-      const options = (() => {
-        try {
-          return typeof item.productOptions === 'string' ? JSON.parse(item.productOptions) : (item.productOptions || {});
-        } catch { return {}; }
-      })();
-      const category = String(item.productCategory || '').toLowerCase();
-      const name = String(item.productName || '').toLowerCase();
-      return options?.isDigital === true || options?.is_digital_only === true || options?.digitalOnly === true || category.includes('digital') || name.includes('digital');
-    });
-    if (allDigital && stripeFeeAmount === 0 && Number(order.stripeFeeAmount) > 0) {
-      stripeFeeAmount = Number(order.stripeFeeAmount);
+
+  if (emailConfigured) {
+    // Fetch studio email for Reply-To on customer receipt (prefer studios.email, fall back to profile_config.email)
+    let replyToStudioEmail = items.length > 0 ? normalizeEmail(items[0].studioEmail) : null;
+    if (!replyToStudioEmail && items.length > 0 && items[0].studioId) {
+      const studio = await queryRow(
+        `SELECT COALESCE(NULLIF(s.email, ''), pc.email) as email
+         FROM studios s LEFT JOIN profile_config pc ON pc.studio_id = s.id
+         WHERE s.id = $1`,
+        [items[0].studioId]
+      );
+      replyToStudioEmail = normalizeEmail(studio?.email);
     }
-    const orderUrl = String(process.env.APP_BASE_URL || '').trim()
-      ? `${String(process.env.APP_BASE_URL || '').trim().replace(/\/$/, '')}/admin/orders?orderId=${order.id}`
-      : null;
-    let studioEmail = normalizeEmail(studioGroup.studioEmail);
-    if (!studioEmail && studioGroup.items.length > 0 && studioGroup.items[0].studioId) {
-      const studio = await queryRow('SELECT email FROM studios WHERE id = $1', [studioGroup.items[0].studioId]);
-      studioEmail = normalizeEmail(studio?.email);
-      if (studioEmail) {
-        studioGroup.studioEmail = studioEmail;
+    customerSent = await orderReceiptService.sendCustomerReceipt({
+      to: parsedShippingAddress?.email || order.customerEmail,
+      customerName: parsedShippingAddress?.fullName || order.customerName,
+      order,
+      items,
+      digitalDownloads,
+      replyTo: replyToStudioEmail,
+    });
+
+    // Add delay to avoid Mailtrap rate limiting (free tier: too many emails per second)
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+    const studioGroups = new Map();
+    for (const item of items) {
+      const studioId = Number(item.studioId) || 0;
+      if (!studioId) continue;
+      if (!studioGroups.has(studioId)) {
+        studioGroups.set(studioId, {
+          studioName: item.studioName,
+          studioEmail: item.studioEmail,
+          items: [],
+        });
       }
-    }
-    const filteredBcc = superAdminBcc.filter((email) => email && email !== studioEmail);
-
-    if (!studioEmail) {
-      console.warn(`[RECEIPTS] Skipping studio receipt for order ${order.id}: missing studio email for studioId ${studioGroup.items[0]?.studioId || 'unknown'}`);
-      continue;
+      studioGroups.get(studioId).items.push(item);
     }
 
-    const sent = await orderReceiptService.sendStudioReceipt({
-      to: studioEmail,
-      bcc: filteredBcc,
-      studioName: studioGroup.studioName,
-      customerEmail: parsedShippingAddress?.email || order.customerEmail,
-      order: {
-        ...order,
-        orderUrl,
-        studioRevenue,
-        baseRevenue,
-        productionCost,
-        grossStudioMarkup: studioGroup.items.reduce((sum, item) => sum + (Number(item.studioPayoutAmount) || 0), 0),
-        stripeFeeAmount,
-        studioProfitNet: studioGroup.items.reduce((sum, item) => sum + (Number(item.studioNetPayoutAmount) || 0), 0),
-        superAdminProfit,
-      },
-      items: studioGroup.items,
-    });
-    anyStudioSent = anyStudioSent || sent;
-    // Small delay between studio emails to avoid rate limits
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    for (const [, studioGroup] of studioGroups) {
+      const studioRevenue = studioGroup.items.reduce((sum, item) => sum + ((Number(item.unitPrice) || 0) * (Number(item.quantity) || 0)), 0);
+      const baseRevenue = studioGroup.items.reduce((sum, item) => sum + ((Number(item.basePrice) || 0) * (Number(item.quantity) || 0)), 0);
+      const productionCost = studioGroup.items.reduce((sum, item) => sum + ((Number(item.cost) || 0) * (Number(item.quantity) || 0)), 0);
+      const superAdminProfit = studioGroup.items.reduce((sum, item) => sum + (Number(item.superAdminShareAmount) || 0), 0);
+      let stripeFeeAmount = studioGroup.items.reduce((sum, item) => sum + (Number(item.stripeFeeAllocatedAmount) || 0), 0);
+      // Fallback: if all items are digital and allocated fee is zero but order-level fee exists, use it
+      const allDigital = studioGroup.items.length > 0 && studioGroup.items.every(item => {
+        const options = (() => {
+          try {
+            return typeof item.productOptions === 'string' ? JSON.parse(item.productOptions) : (item.productOptions || {});
+          } catch { return {}; }
+        })();
+        const category = String(item.productCategory || '').toLowerCase();
+        const name = String(item.productName || '').toLowerCase();
+        return options?.isDigital === true || options?.is_digital_only === true || options?.digitalOnly === true || category.includes('digital') || name.includes('digital');
+      });
+      if (allDigital && stripeFeeAmount === 0 && Number(order.stripeFeeAmount) > 0) {
+        stripeFeeAmount = Number(order.stripeFeeAmount);
+      }
+      const orderUrl = String(process.env.APP_BASE_URL || '').trim()
+        ? `${String(process.env.APP_BASE_URL || '').trim().replace(/\/$/, '')}/admin/orders?orderId=${order.id}`
+        : null;
+      let studioEmail = normalizeEmail(studioGroup.studioEmail);
+      if (!studioEmail && studioGroup.items.length > 0 && studioGroup.items[0].studioId) {
+        const studio = await queryRow(
+          `SELECT COALESCE(NULLIF(s.email, ''), pc.email) as email
+           FROM studios s LEFT JOIN profile_config pc ON pc.studio_id = s.id
+           WHERE s.id = $1`,
+          [studioGroup.items[0].studioId]
+        );
+        studioEmail = normalizeEmail(studio?.email);
+        if (studioEmail) {
+          studioGroup.studioEmail = studioEmail;
+        }
+      }
+      const filteredBcc = superAdminBcc.filter((email) => email && email !== studioEmail);
+
+      if (!studioEmail) {
+        console.warn(`[RECEIPTS] Skipping studio receipt for order ${order.id}: missing studio email for studioId ${studioGroup.items[0]?.studioId || 'unknown'}`);
+        continue;
+      }
+
+      const sent = await orderReceiptService.sendStudioReceipt({
+        to: studioEmail,
+        bcc: filteredBcc,
+        studioName: studioGroup.studioName,
+        customerEmail: parsedShippingAddress?.email || order.customerEmail,
+        order: {
+          ...order,
+          orderUrl,
+          studioRevenue,
+          baseRevenue,
+          productionCost,
+          grossStudioMarkup: studioGroup.items.reduce((sum, item) => sum + (Number(item.studioPayoutAmount) || 0), 0),
+          stripeFeeAmount,
+          studioProfitNet: studioGroup.items.reduce((sum, item) => sum + (Number(item.studioNetPayoutAmount) || 0), 0),
+          superAdminProfit,
+        },
+        items: studioGroup.items,
+      });
+      anyStudioSent = anyStudioSent || sent;
+      // Small delay between studio emails to avoid rate limits
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
   }
 
-  if (customerSent || anyStudioSent) {
-    // Auto-complete digital orders when all items have download links, regardless of email send success.
-    // Decoupled from customerSent so a Mailtrap failure doesn't leave the order stuck in Pending.
-    const shouldAutoCompleteDigitalOrder = digitalDownloads.length > 0;
+  // Always update receipt timestamps and auto-complete digital orders, regardless of email outcome.
+  // This ensures digital orders complete even when Mailtrap is unconfigured or emails fail.
+  if (customerSent || anyStudioSent || shouldAutoCompleteDigitalOrder) {
     let updateSql = `UPDATE orders
       SET customer_receipt_sent_at = CASE WHEN $1 = 1 THEN CURRENT_TIMESTAMP ELSE customer_receipt_sent_at END,
           studio_receipt_sent_at = CASE WHEN $2 = 1 THEN CURRENT_TIMESTAMP ELSE studio_receipt_sent_at END`;
@@ -5650,7 +5671,12 @@ router.patch('/admin/:orderId/status', adminRequired, async (req, res) => {
         console.log('[CANCEL EMAIL] Fetched', items?.length || 0, 'items for order:', orderId);
         
         if (items && items.length > 0 && items[0].studioId) {
-          const studio = await queryRow('SELECT email FROM studios WHERE id = $1', [items[0].studioId]);
+          const studio = await queryRow(
+            `SELECT COALESCE(NULLIF(s.email, ''), pc.email) as email
+             FROM studios s LEFT JOIN profile_config pc ON pc.studio_id = s.id
+             WHERE s.id = $1`,
+            [items[0].studioId]
+          );
           if (studio && studio.email) studioEmail = studio.email;
         }
         
