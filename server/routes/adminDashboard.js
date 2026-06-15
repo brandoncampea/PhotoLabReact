@@ -355,14 +355,14 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
                 const breakdownStudioRevenue = Number(revenueBreakdownRow?.totalStudioRevenue || 0);
                 const breakdownBaseRevenue = Number(revenueBreakdownRow?.totalBaseRevenue || 0);
                 // Super Admin Revenue = base price × qty (what studios pay the platform)
-                const breakdownSuperAdminRevenue = breakdownBaseRevenue;
+                // Super admin revenue = what customers actually paid (studio markup price)
+                const breakdownSuperAdminRevenue = breakdownStudioRevenue;
                 const breakdownWhccCost = Number(revenueBreakdownRow?.totalWhccCost || 0);
                 const totalProductsSold = Number(revenueBreakdownRow?.totalProductsSold || 0);
                 const breakdownShippingMargin = Number(revenueBreakdownRow?.totalShippingMargin || 0);
                 const breakdownStripeFees = Number(revenueBreakdownRow?.totalStripeFees || 0);
-                // Total profit = (base price - WHCC cost) × qty - Stripe fees
-                // Total profit = (base price - WHCC cost) × qty — Stripe fees paid by studio
-                const totalGrossMargin = breakdownBaseRevenue - breakdownWhccCost;
+                // Total profit = (markup price - WHCC cost) × qty
+                const totalGrossMargin = breakdownStudioRevenue - breakdownWhccCost;
                 const avgProfitPerProduct = totalProductsSold > 0 ? (totalGrossMargin / totalProductsSold) : 0;
 
         // Always count unique user_id from orders for total customers (active customers)

@@ -260,9 +260,9 @@ const SuperAdminDashboard: React.FC = () => {
       <div className="dashboard-metrics tallydark-metrics">
         {/* Revenue Widget */}
         <div className="dashboard-card tallydark-card">
-          <div className="dashboard-card-label">Super Admin Revenue</div>
+          <div className="dashboard-card-label">Gross Revenue</div>
           <div className="dashboard-card-value">${stats.totalSuperAdminRevenue.toFixed(2)}</div>
-          <div className="dashboard-card-sub">Base Price × Qty · all studios</div>
+          <div className="dashboard-card-sub">Markup × Qty · all studios</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '10px 0 0 0' }}>
             <button className="dashboard-pill" style={{ padding: '3px 12px', fontSize: '0.98rem' }} onClick={() => setRevenueRange('day')} disabled={revenueRange === 'day'}>Day</button>
             <button className="dashboard-pill" style={{ padding: '3px 12px', fontSize: '0.98rem' }} onClick={() => setRevenueRange('week')} disabled={revenueRange === 'week'}>Week</button>
@@ -359,7 +359,7 @@ const SuperAdminDashboard: React.FC = () => {
         <div className="dashboard-card tallydark-card">
           <div className="dashboard-card-label">Avg Profit / Product</div>
           <div className="dashboard-card-value">${stats.avgProfitPerProduct.toFixed(2)}</div>
-          <div className="dashboard-card-sub">(Base − WHCC Cost) ÷ Products Sold</div>
+          <div className="dashboard-card-sub">(Markup − WHCC Cost) ÷ Products Sold</div>
           <DashboardChart
             data={(revenueSeries[productsRange] || []).map((value, idx) => {
               const qty = Number(productsSoldSeries[productsRange]?.[idx] || 0);
@@ -374,7 +374,7 @@ const SuperAdminDashboard: React.FC = () => {
           <div className="dashboard-card-label">Total Profit</div>
           <div className="dashboard-card-value">${stats.totalGrossMargin.toFixed(2)}</div>
           <div className="dashboard-card-sub">
-            {stats.totalSuperAdminRevenue > 0 ? `${((stats.totalGrossMargin / stats.totalSuperAdminRevenue) * 100).toFixed(1)}% margin · Base − WHCC Cost` : '0% margin'}
+            {stats.totalSuperAdminRevenue > 0 ? `${((stats.totalGrossMargin / stats.totalSuperAdminRevenue) * 100).toFixed(1)}% margin · Markup − WHCC Cost` : '0% margin'}
           </div>
           <DashboardChart
             data={revenueSeries[revenueRange]?.map((v) => v * (stats.totalSuperAdminRevenue > 0 ? (stats.totalGrossMargin / stats.totalSuperAdminRevenue) : 0)) || []}
