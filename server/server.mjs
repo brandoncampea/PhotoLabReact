@@ -90,6 +90,7 @@ import './startup/ensureOrderApprovalColumns.js';
 import './startup/ensureWhccLabBillingColumns.js';
 import './startup/ensureInstagramIntegrationTables.js';
 import './startup/ensureStudioAdminInvitesTable.js';
+import './startup/ensureUserReceiveOrderNotifications.js';
 
 import '../server/startup/ensureOrderItemAttributesColumn.js';
 import { customDomainRedirect } from './middleware/customDomainRedirect.js';

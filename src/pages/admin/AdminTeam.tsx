@@ -47,6 +47,7 @@ type Admin = {
   isActive: boolean;
   createdAt: string;
   lastLoginAt: string | null;
+  receiveOrderNotifications: boolean;
 };
 
 type Invite = {
@@ -132,6 +133,25 @@ const AdminTeam: React.FC = () => {
       }
     } catch (e) {
       alert('Failed to remove admin');
+    }
+  };
+
+  const handleToggleNotifications = async (adminId: number, current: boolean) => {
+    const next = !current;
+    setAdmins(prev => prev.map(a => a.id === adminId ? { ...a, receiveOrderNotifications: next } : a));
+    try {
+      const res = await fetch(`/api/studios/${studioId}/admins/${adminId}/notifications`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ receiveOrderNotifications: next }),
+      });
+      if (!res.ok) {
+        setAdmins(prev => prev.map(a => a.id === adminId ? { ...a, receiveOrderNotifications: current } : a));
+        setError('Failed to update notification preference');
+      }
+    } catch {
+      setAdmins(prev => prev.map(a => a.id === adminId ? { ...a, receiveOrderNotifications: current } : a));
+      setError('Failed to update notification preference');
     }
   };
 
@@ -291,7 +311,7 @@ const AdminTeam: React.FC = () => {
                       gap: 12,
                     }}
                   >
-                    <div style={{ minWidth: 0 }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
                       <div style={{ fontWeight: 700, color: '#e0e0e0', fontSize: '0.95rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {admin.name || admin.email}
                         {admin.id === user?.id && (
@@ -306,24 +326,45 @@ const AdminTeam: React.FC = () => {
                         {admin.lastLoginAt && ` · Last login ${new Date(admin.lastLoginAt).toLocaleDateString()}`}
                       </div>
                     </div>
-                    {admin.id !== user?.id && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
                       <button
-                        onClick={() => handleRemoveAdmin(admin.id, admin.email)}
+                        onClick={() => handleToggleNotifications(admin.id, admin.receiveOrderNotifications)}
+                        title={admin.receiveOrderNotifications ? 'Receiving order emails — click to turn off' : 'Not receiving order emails — click to turn on'}
                         style={{
-                          padding: '6px 14px',
-                          background: 'rgba(255,107,107,0.12)',
-                          color: '#ff6b6b',
-                          border: '1px solid rgba(255,107,107,0.3)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 5,
+                          padding: '5px 11px',
+                          background: admin.receiveOrderNotifications ? 'rgba(124,92,255,0.15)' : 'rgba(100,100,120,0.12)',
+                          color: admin.receiveOrderNotifications ? '#a78bfa' : '#6b6b80',
+                          border: `1px solid ${admin.receiveOrderNotifications ? 'rgba(124,92,255,0.35)' : '#3a3656'}`,
                           borderRadius: 8,
                           fontWeight: 600,
-                          fontSize: '0.82rem',
+                          fontSize: '0.78rem',
                           cursor: 'pointer',
-                          flexShrink: 0,
                         }}
                       >
-                        Remove
+                        <span style={{ fontSize: '0.85rem' }}>{admin.receiveOrderNotifications ? '✉' : '✉'}</span>
+                        {admin.receiveOrderNotifications ? 'Emails on' : 'Emails off'}
                       </button>
-                    )}
+                      {admin.id !== user?.id && (
+                        <button
+                          onClick={() => handleRemoveAdmin(admin.id, admin.email)}
+                          style={{
+                            padding: '6px 14px',
+                            background: 'rgba(255,107,107,0.12)',
+                            color: '#ff6b6b',
+                            border: '1px solid rgba(255,107,107,0.3)',
+                            borderRadius: 8,
+                            fontWeight: 600,
+                            fontSize: '0.82rem',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>

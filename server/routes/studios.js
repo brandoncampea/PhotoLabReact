@@ -1786,7 +1786,7 @@ router.get('/:studioId/admins', authRequired, async (req, res) => {
 
     // Get all studio admins for this studio
     const admins = await queryRows(`
-      SELECT 
+      SELECT
         u.id,
         u.email,
         u.name,
@@ -1794,6 +1794,7 @@ router.get('/:studioId/admins', authRequired, async (req, res) => {
         u.is_active as isActive,
         u.created_at as createdAt,
         u.last_login_at as lastLoginAt,
+        COALESCE(u.receive_order_notifications, 1) as receiveOrderNotifications,
         s.id as studioId,
         s.name as studioName
       FROM users u
@@ -1865,6 +1866,35 @@ router.post('/:studioId/admins', authRequired, async (req, res) => {
 });
 
 // Delete a studio admin
+router.patch('/:studioId/admins/:userId/notifications', authRequired, async (req, res) => {
+  try {
+    const { studioId, userId } = req.params;
+    const { receiveOrderNotifications } = req.body;
+
+    if (req.user.role === 'studio_admin' && req.user.studio_id !== parseInt(studioId)) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    if (req.user.role !== 'studio_admin' && req.user.role !== 'super_admin') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    const admin = await queryRow(
+      'SELECT id FROM users WHERE id = $1 AND studio_id = $2 AND role IN (\'studio_admin\', \'super_admin\')',
+      [userId, studioId]
+    );
+    if (!admin) return res.status(404).json({ error: 'Admin not found in this studio' });
+
+    await query(
+      'UPDATE users SET receive_order_notifications = $1 WHERE id = $2',
+      [receiveOrderNotifications ? 1 : 0, userId]
+    );
+    res.json({ success: true, receiveOrderNotifications: !!receiveOrderNotifications });
+  } catch (error) {
+    console.error('Error updating admin notifications:', error);
+    res.status(500).json({ error: 'Failed to update notification preference' });
+  }
+});
+
 router.delete('/:studioId/admins/:userId', authRequired, async (req, res) => {
   try {
     const { studioId, userId } = req.params;

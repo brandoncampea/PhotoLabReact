@@ -3269,28 +3269,39 @@ const sendOrderReceipts = async (orderId) => {
       const orderUrl = String(process.env.APP_BASE_URL || '').trim()
         ? `${String(process.env.APP_BASE_URL || '').trim().replace(/\/$/, '')}/admin/orders?orderId=${order.id}`
         : null;
-      let studioEmail = normalizeEmail(studioGroup.studioEmail);
-      if (!studioEmail && studioGroup.items.length > 0 && studioGroup.items[0].studioId) {
-        const studio = await queryRow(
-          `SELECT COALESCE(NULLIF(s.email, ''), pc.email) as email
-           FROM studios s LEFT JOIN profile_config pc ON pc.studio_id = s.id
-           WHERE s.id = $1`,
-          [studioGroup.items[0].studioId]
-        );
-        studioEmail = normalizeEmail(studio?.email);
-        if (studioEmail) {
-          studioGroup.studioEmail = studioEmail;
-        }
-      }
-      const filteredBcc = superAdminBcc.filter((email) => email && email !== studioEmail);
 
-      if (!studioEmail) {
-        console.warn(`[RECEIPTS] Skipping studio receipt for order ${order.id}: missing studio email for studioId ${studioGroup.items[0]?.studioId || 'unknown'}`);
+      // Collect all opted-in admin emails for this studio
+      const studioAdminRows = studioGroup.items[0]?.studioId
+        ? await queryRows(
+            `SELECT u.email FROM users u
+             WHERE u.studio_id = $1
+               AND u.role IN ('studio_admin', 'super_admin')
+               AND COALESCE(u.receive_order_notifications, 1) = 1
+               AND u.is_active = 1
+               AND u.email IS NOT NULL`,
+            [studioGroup.items[0].studioId]
+          ).catch(() => [])
+        : [];
+      let adminEmails = studioAdminRows.map(r => normalizeEmail(r.email)).filter(Boolean);
+
+      // Fall back to the studio profile email if no admins have notifications on
+      if (adminEmails.length === 0) {
+        const fallbackEmail = normalizeEmail(studioGroup.studioEmail) || (() => {
+          // studioEmail already resolved via COALESCE in the items query
+          return null;
+        })();
+        if (fallbackEmail) adminEmails = [fallbackEmail];
+      }
+
+      const filteredBcc = superAdminBcc.filter((email) => email && !adminEmails.includes(email));
+
+      if (adminEmails.length === 0) {
+        console.warn(`[RECEIPTS] Skipping studio receipt for order ${order.id}: no opted-in admins and no fallback email for studioId ${studioGroup.items[0]?.studioId || 'unknown'}`);
         continue;
       }
 
       const sent = await orderReceiptService.sendStudioReceipt({
-        to: studioEmail,
+        to: adminEmails,
         bcc: filteredBcc,
         studioName: studioGroup.studioName,
         customerEmail: parsedShippingAddress?.email || order.customerEmail,
