@@ -1,0 +1,259 @@
+/*
+ * Design Tokens — single source of truth for all visual values.
+ *
+ * Usage:
+ *   color: var(--color-text-primary);
+ *   background: var(--color-bg-surface);
+ *   border-radius: var(--radius-lg);
+ *
+ * Theming: set data-theme="light" on <html> (or <body>) to switch themes.
+ * Studio templates: set data-theme="ocean" / "warm" / etc. for custom palettes.
+ */
+
+/* ============================================================
+   DARK THEME (default)
+   ============================================================ */
+:root,
+[data-theme="dark"] {
+
+  /* --- Background layers --- */
+  --color-bg-base:      #181c24;   /* page background */
+  --color-bg-surface:   #23273a;   /* cards, panels */
+  --color-bg-elevated:  #2a2d42;   /* hover states, nested panels */
+  --color-bg-overlay:   rgba(0, 0, 0, 0.85);  /* modal backdrops */
+  --color-bg-success:   #1a3326;
+  --color-bg-error:     #2d1a1a;
+  --color-bg-warning:   #2d2010;
+  --color-bg-info:      #1a232d;
+
+  /* --- Text --- */
+  --color-text-primary:   #e0e0f0;
+  --color-text-secondary: #a1a1aa;
+  --color-text-muted:     #6b6b80;
+  --color-text-faint:     #4a4a6a;
+  --color-text-inverse:   #0f0f1a;
+
+  /* --- Purple / brand --- */
+  --color-purple:         #7c5cff;
+  --color-purple-light:   #a78bfa;
+  --color-purple-dim:     rgba(124, 92, 255, 0.12);
+  --color-purple-border:  rgba(124, 92, 255, 0.25);
+  --color-purple-hover:   rgba(124, 92, 255, 0.18);
+  --color-purple-gradient: linear-gradient(90deg, #a78bfa 0%, #6366f1 100%);
+
+  /* --- Status / semantic colors --- */
+  --color-green:          #7ee787;
+  --color-green-dim:      rgba(126, 231, 135, 0.12);
+  --color-red:            #f87171;
+  --color-red-dim:        rgba(248, 113, 113, 0.12);
+  --color-orange:         #ffa657;
+  --color-orange-dim:     rgba(255, 166, 87, 0.12);
+  --color-blue:           #79c0ff;
+  --color-blue-dim:       rgba(121, 192, 255, 0.12);
+  --color-yellow:         #fde68a;
+
+  /* --- Borders --- */
+  --color-border:         rgba(124, 92, 255, 0.15);
+  --color-border-strong:  rgba(124, 92, 255, 0.35);
+  --color-border-subtle:  rgba(255, 255, 255, 0.07);
+  --color-border-input:   rgba(124, 92, 255, 0.25);
+
+  /* --- Shadows --- */
+  --shadow-sm:    0 1px 4px rgba(0, 0, 0, 0.18);
+  --shadow-md:    0 2px 12px rgba(0, 0, 0, 0.25);
+  --shadow-lg:    0 4px 24px rgba(0, 0, 0, 0.35);
+  --shadow-card:  0 2px 12px rgba(0, 0, 0, 0.25);
+  --shadow-btn:   0 2px 8px rgba(0, 0, 0, 0.18);
+  --shadow-purple: 0 4px 20px rgba(124, 92, 255, 0.2);
+
+  /* --- Border radii --- */
+  --radius-xs:   4px;
+  --radius-sm:   6px;
+  --radius-md:   8px;
+  --radius-lg:   12px;
+  --radius-xl:   14px;
+  --radius-2xl:  16px;
+  --radius-full: 999px;
+
+  /* --- Spacing scale --- */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* --- Typography --- */
+  --font-sans: 'Inter', 'Roboto', 'Segoe UI', Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --text-xs:   0.72rem;
+  --text-sm:   0.82rem;
+  --text-base: 0.9rem;
+  --text-md:   1rem;
+  --text-lg:   1.1rem;
+  --text-xl:   1.25rem;
+  --text-2xl:  1.5rem;
+  --text-3xl:  2rem;
+  --font-normal:  400;
+  --font-medium:  500;
+  --font-semibold: 600;
+  --font-bold:    700;
+  --font-black:   800;
+
+  /* --- Transitions --- */
+  --transition-fast:   0.12s ease;
+  --transition-base:   0.18s ease;
+  --transition-slow:   0.3s ease;
+
+  /* ============================================================
+     BACKWARD-COMPATIBILITY ALIASES
+     Keep old variable names working so existing CSS/components
+     don't break. New code should use the canonical names above.
+     ============================================================ */
+
+  /* TallyDark.css aliases */
+  --bg-main:         var(--color-bg-base);
+  --bg-secondary:    var(--color-bg-surface);
+  --bg-tertiary:     var(--color-bg-elevated);
+  --bg-gradient:     linear-gradient(135deg, var(--color-bg-surface) 0%, var(--color-bg-base) 100%);
+  --card-bg:         var(--color-bg-surface);
+  --card-radius:     var(--radius-2xl);
+  --card-shadow:     var(--shadow-card);
+  --primary-color:   var(--color-purple-light);
+  --primary-gradient: var(--color-purple-gradient);
+  --accent-green:    var(--color-blue);   /* TallyDark used cyan for accent-green */
+  --accent-blue:     var(--color-blue);
+  --accent-purple:   var(--color-purple-light);
+  --accent-pink:     #f472b6;
+  --accent-yellow:   var(--color-yellow);
+  --text-main:       var(--color-text-primary);
+  --text-secondary:  var(--color-text-secondary);
+  --text-muted:      var(--color-text-muted);
+  --border-color:    var(--color-border);
+  --badge-radius:    var(--radius-full);
+  --badge-bg:        var(--color-bg-surface);
+  --badge-shadow:    var(--shadow-sm);
+  --input-bg:        var(--color-bg-surface);
+  --input-border:    var(--color-border-input);
+  --input-focus:     var(--color-purple-light);
+  --btn-radius:      var(--radius-full);
+  --btn-shadow:      var(--shadow-btn);
+  --btn-hover:       #312e81;
+  --progress-bg:     var(--color-bg-surface);
+  --progress-bar:    var(--color-purple-light);
+
+  /* PhotoLabStyles.css aliases */
+  --bg-primary:      var(--color-bg-base);
+  --bg-card:         var(--color-bg-surface);
+  --bg-modal:        var(--color-bg-surface);
+  --bg-accent:       #3a2c7a;
+  --bg-hover:        var(--color-bg-elevated);
+  --bg-success:      var(--color-bg-success);
+  --bg-error:        var(--color-bg-error);
+  --bg-warning:      var(--color-bg-warning);
+  --bg-info:         var(--color-bg-info);
+  --text-primary:    var(--color-text-primary);
+  --text-accent:     var(--color-purple-light);
+  --text-error:      #ffb3b3;
+  --text-success:    #a3ffb3;
+  --text-warning:    #ffe082;
+  --border-accent:   var(--color-purple);
+  --shadow:          var(--shadow-md);
+  --radius:          var(--radius-lg);
+  --radius-lg:       var(--radius-2xl);
+  --radius-sm:       var(--radius-sm);
+  --accent:          var(--color-purple);
+  --accent-hover:    var(--color-purple-light);
+  --error:           var(--color-red);
+  --success:         var(--color-green);
+  --warning:         var(--color-orange);
+
+  /* PhotoLabStyles one-off aliases */
+  --error-color:     var(--color-red);
+  --muted-color:     var(--color-text-muted);
+}
+
+/* ============================================================
+   LIGHT THEME
+   ============================================================ */
+[data-theme="light"] {
+
+  /* --- Background layers --- */
+  --color-bg-base:      #f5f5fa;
+  --color-bg-surface:   #ffffff;
+  --color-bg-elevated:  #ededf5;
+  --color-bg-overlay:   rgba(0, 0, 0, 0.5);
+  --color-bg-success:   #e8f5e9;
+  --color-bg-error:     #fdecea;
+  --color-bg-warning:   #fff8e1;
+  --color-bg-info:      #e3f2fd;
+
+  /* --- Text --- */
+  --color-text-primary:   #1a1a2e;
+  --color-text-secondary: #4a4a6a;
+  --color-text-muted:     #7a7a9a;
+  --color-text-faint:     #b0b0c8;
+  --color-text-inverse:   #f5f5fa;
+
+  /* --- Purple / brand --- */
+  --color-purple:         #6d48e8;
+  --color-purple-light:   #8b5cf6;
+  --color-purple-dim:     rgba(109, 72, 232, 0.08);
+  --color-purple-border:  rgba(109, 72, 232, 0.2);
+  --color-purple-hover:   rgba(109, 72, 232, 0.12);
+  --color-purple-gradient: linear-gradient(90deg, #8b5cf6 0%, #6d48e8 100%);
+
+  /* --- Status colors --- */
+  --color-green:          #16a34a;
+  --color-green-dim:      rgba(22, 163, 74, 0.1);
+  --color-red:            #dc2626;
+  --color-red-dim:        rgba(220, 38, 38, 0.1);
+  --color-orange:         #ea580c;
+  --color-orange-dim:     rgba(234, 88, 12, 0.1);
+  --color-blue:           #2563eb;
+  --color-blue-dim:       rgba(37, 99, 235, 0.1);
+  --color-yellow:         #d97706;
+
+  /* --- Borders --- */
+  --color-border:         rgba(109, 72, 232, 0.15);
+  --color-border-strong:  rgba(109, 72, 232, 0.3);
+  --color-border-subtle:  rgba(0, 0, 0, 0.08);
+  --color-border-input:   rgba(109, 72, 232, 0.25);
+
+  /* --- Shadows --- */
+  --shadow-sm:    0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-md:    0 2px 8px rgba(0, 0, 0, 0.1);
+  --shadow-lg:    0 4px 16px rgba(0, 0, 0, 0.12);
+  --shadow-card:  0 2px 8px rgba(0, 0, 0, 0.08);
+  --shadow-btn:   0 2px 6px rgba(109, 72, 232, 0.2);
+  --shadow-purple: 0 4px 16px rgba(109, 72, 232, 0.2);
+
+  /* Backward-compat aliases for light theme */
+  --bg-main:         var(--color-bg-base);
+  --bg-secondary:    var(--color-bg-surface);
+  --bg-tertiary:     var(--color-bg-elevated);
+  --bg-gradient:     linear-gradient(135deg, #ffffff 0%, #f5f5fa 100%);
+  --card-bg:         var(--color-bg-surface);
+  --card-shadow:     var(--shadow-card);
+  --primary-color:   var(--color-purple-light);
+  --primary-gradient: var(--color-purple-gradient);
+  --text-main:       var(--color-text-primary);
+  --text-muted:      var(--color-text-muted);
+  --border-color:    var(--color-border);
+  --input-bg:        var(--color-bg-surface);
+  --input-border:    var(--color-border-input);
+  --input-focus:     var(--color-purple);
+  --bg-primary:      var(--color-bg-base);
+  --bg-card:         var(--color-bg-surface);
+  --text-primary:    var(--color-text-primary);
+  --text-secondary:  var(--color-text-secondary);
+  --accent:          var(--color-purple);
+  --accent-hover:    var(--color-purple-light);
+  --border-accent:   var(--color-purple);
+  --radius:          var(--radius-lg);
+  --radius-lg:       var(--radius-2xl);
+  --radius-sm:       var(--radius-sm);
+}

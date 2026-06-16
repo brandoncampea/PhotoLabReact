@@ -282,37 +282,7 @@ table {
 	box-shadow: var(--shadow);
 	margin-bottom: 2rem;
 }
-/* --- Unified Modern Dark Mode Variables --- */
-:root {
-	--bg-primary: #181a1b;
-	--bg-secondary: #23232a;
-	--bg-tertiary: #29293a;
-	--bg-card: #23232a;
-	--bg-modal: #23232a;
-	--bg-accent: #3a2c7a;
-	--bg-hover: #23232a;
-	--bg-success: #223524;
-	--bg-error: #2d1a1a;
-	--bg-warning: #332a1a;
-	--bg-info: #1a232d;
-	--text-primary: #e0e0e0;
-	--text-secondary: #bdbdbd;
-	--text-accent: #a78bfa;
-	--text-error: #ffb3b3;
-	--text-success: #a3ffb3;
-	--text-warning: #ffe082;
-	--border-color: #33364a;
-	--border-accent: #7c5cff;
-	--shadow: 0 2px 16px rgba(0,0,0,0.18);
-	--radius: 12px;
-	--radius-lg: 16px;
-	--radius-sm: 6px;
-	--accent: #7c5cff;
-	--accent-hover: #a78bfa;
-	--error: #e53935;
-	--success: #4caf50;
-	--warning: #ff9800;
-}
+/* Design tokens defined in styles/tokens.css */
 /* Sidebar */
 .sidebar {
 	width: 220px;
@@ -536,38 +506,6 @@ button:hover {
 	background: var(--accent-hover);
 	color: #fff;
 }
-/* --- Unified Modern Dark Mode Variables --- */
-:root {
-	--bg-primary: #181a1b;
-	--bg-secondary: #23232a;
-	--bg-tertiary: #29293a;
-	--bg-card: #23232a;
-	--bg-modal: #23232a;
-	--bg-accent: #3a2c7a;
-	--bg-hover: #23232a;
-	--bg-success: #223524;
-	--bg-error: #2d1a1a;
-	--bg-warning: #332a1a;
-	--bg-info: #1a232d;
-	--text-primary: #e0e0e0;
-	--text-secondary: #bdbdbd;
-	--text-accent: #a78bfa;
-	--text-error: #ffb3b3;
-	--text-success: #a3ffb3;
-	--text-warning: #ffe082;
-	--border-color: #33364a;
-	--border-accent: #7c5cff;
-	--shadow: 0 2px 16px rgba(0,0,0,0.18);
-	--radius: 12px;
-	--radius-lg: 16px;
-	--radius-sm: 6px;
-	--accent: #7c5cff;
-	--accent-hover: #a78bfa;
-	--error: #e53935;
-	--success: #4caf50;
-	--warning: #ff9800;
-}
-
 body, html {
 	font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
 	font-size: 16px;
@@ -2588,11 +2526,7 @@ html, body {
 	cursor: pointer;
 	transition: all 0.2s;
 }
-/* CSS Variables */
-:root {
-	--error-color: #d32f2f;
-	--muted-color: #888;
-}
+/* --error-color and --muted-color defined in styles/tokens.css as --color-red and --color-text-muted */
 
 /* Standardized error message styling */
 .error-message {

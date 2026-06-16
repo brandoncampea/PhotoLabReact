@@ -26,37 +26,7 @@ img {
   Applies a modern, elegant, dark UI with accent colors and card-based layout
 */
 
-:root {
-  --bg-main: #181c24;
-  --bg-secondary: #23273a;
-  --bg-tertiary: #23263a;
-  --bg-gradient: linear-gradient(90deg, #23273a 0%, #181c24 100%);
-  --card-bg: #23273a;
-  --card-radius: 16px;
-  --card-shadow: 0 4px 24px rgba(0,0,0,0.18);
-  --primary-color: #a78bfa;
-  --primary-gradient: linear-gradient(90deg, #a78bfa 0%, #6366f1 100%);
-  --accent-green: #22d3ee;
-  --accent-blue: #60a5fa;
-  --accent-purple: #a78bfa;
-  --accent-pink: #f472b6;
-  --accent-yellow: #fde68a;
-  --text-main: #f3f4f6;
-  --text-secondary: #a1a1aa;
-  --text-muted: #6b7280;
-  --border-color: #2d3146;
-  --badge-radius: 999px;
-  --badge-bg: #23273a;
-  --badge-shadow: 0 2px 8px rgba(0,0,0,0.10);
-  --input-bg: #23273a;
-  --input-border: #353a50;
-  --input-focus: #a78bfa;
-  --btn-radius: 999px;
-  --btn-shadow: 0 2px 8px rgba(0,0,0,0.10);
-  --btn-hover: #312e81;
-  --progress-bg: #23273a;
-  --progress-bar: #a78bfa;
-}
+/* Design tokens are defined in styles/tokens.css — imported before this file in main.tsx */
 
 body {
   background: var(--bg-main);
