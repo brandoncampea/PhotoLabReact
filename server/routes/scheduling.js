@@ -328,6 +328,10 @@ router.get('/studios/:studioId/bookings', authRequired, async (req, res) => {
               b.approved_at as approvedAt, b.rejected_at as rejectedAt, b.created_at as createdAt,
               b.platform_fee_amount as platformFeeAmount, b.stripe_fee_amount as stripeFeeAmount,
               b.studio_payout_amount as studioPayoutAmount,
+              b.session_type_id as sessionTypeId,
+              b.manual_date as manualDate, b.manual_start_time as manualStartTime,
+              b.manual_end_time as manualEndTime, b.manual_location as manualLocation,
+              b.manual_staff_name as manualStaffName,
               COALESCE(a.slot_date, b.manual_date) as slotDate,
               COALESCE(b.booking_start_time, b.manual_start_time) as startTime,
               COALESCE(b.booking_end_time, b.manual_end_time) as endTime,
@@ -791,6 +795,95 @@ router.post('/studios/:studioId/bookings/:id/check-payment', authRequired, async
   } catch (err) {
     console.error('[scheduling] check-payment error:', err);
     res.status(500).json({ error: 'Failed to check payment' });
+  }
+});
+
+// ─── BOOKING EDIT / CANCEL / MARK-PAID ───────────────────────────────────────
+
+router.put('/studios/:studioId/bookings/:id', authRequired, async (req, res) => {
+  const { studioId, id } = req.params;
+  if (!canManageStudio(req.user, studioId)) return res.status(403).json({ error: 'Unauthorized' });
+  const { customerName, customerEmail, customerPhone, customerNotes,
+          sessionTypeId, bookingDate, startTime, endTime, location, staffName } = req.body;
+  if (!customerName || !customerEmail) return res.status(400).json({ error: 'Customer name and email are required' });
+  try {
+    await query(
+      `UPDATE scheduling_bookings SET
+         customer_name = $1, customer_email = $2, customer_phone = $3, customer_notes = $4,
+         session_type_id = $5,
+         manual_date = $6, manual_start_time = $7, manual_end_time = $8,
+         manual_location = $9, manual_staff_name = $10
+       WHERE id = $11 AND studio_id = $12`,
+      [customerName, customerEmail, customerPhone || null, customerNotes || null,
+       sessionTypeId || null,
+       bookingDate || null, startTime || null, endTime || null,
+       location || null, staffName || null,
+       Number(id), Number(studioId)]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[scheduling] booking edit:', err);
+    res.status(500).json({ error: 'Failed to update booking' });
+  }
+});
+
+router.post('/studios/:studioId/bookings/:id/cancel', authRequired, async (req, res) => {
+  const { studioId, id } = req.params;
+  if (!canManageStudio(req.user, studioId)) return res.status(403).json({ error: 'Unauthorized' });
+  try {
+    const booking = await queryRow(
+      `SELECT status FROM scheduling_bookings WHERE id = $1 AND studio_id = $2`,
+      [id, studioId]
+    );
+    if (!booking) return res.status(404).json({ error: 'Booking not found' });
+    if (booking.status === 'cancelled') return res.status(400).json({ error: 'Already cancelled' });
+    await query(
+      `UPDATE scheduling_bookings SET status = 'cancelled' WHERE id = $1 AND studio_id = $2`,
+      [Number(id), Number(studioId)]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[scheduling] booking cancel:', err);
+    res.status(500).json({ error: 'Failed to cancel booking' });
+  }
+});
+
+// Ensure payment_method column exists for cash/check tracking
+let paymentMethodColumnReady = false;
+(async () => {
+  try {
+    const exists = await columnExists('scheduling_bookings', 'payment_method');
+    if (!exists) {
+      await query(`ALTER TABLE scheduling_bookings ADD payment_method NVARCHAR(50) NULL`);
+      console.log('[scheduling] payment_method column added');
+    }
+    paymentMethodColumnReady = true;
+  } catch (e) {
+    console.warn('[scheduling] payment_method migration failed:', e.message);
+  }
+})();
+
+router.post('/studios/:studioId/bookings/:id/mark-paid', authRequired, async (req, res) => {
+  const { studioId, id } = req.params;
+  if (!canManageStudio(req.user, studioId)) return res.status(403).json({ error: 'Unauthorized' });
+  const { paymentMethod, amount } = req.body;
+  if (!['cash', 'check'].includes(paymentMethod)) return res.status(400).json({ error: 'paymentMethod must be cash or check' });
+  const paidAmount = Number(amount) || 0;
+  try {
+    const methodCol = paymentMethodColumnReady ? ', payment_method = $5' : '';
+    const params = [paidAmount, paidAmount, Number(id), Number(studioId)];
+    if (paymentMethodColumnReady) params.splice(4, 0, paymentMethod);
+    await query(
+      `UPDATE scheduling_bookings SET
+         payment_status = 'paid', payment_amount = $1,
+         platform_fee_amount = 0, stripe_fee_amount = 0, studio_payout_amount = $2${methodCol}
+       WHERE id = $3 AND studio_id = $4`,
+      params
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[scheduling] mark-paid:', err);
+    res.status(500).json({ error: 'Failed to mark as paid' });
   }
 });
 

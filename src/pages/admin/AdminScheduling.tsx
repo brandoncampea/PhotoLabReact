@@ -16,7 +16,7 @@ const badge = (color: string): React.CSSProperties => ({ display: 'inline-block'
 type SessionType = { id: number; name: string; description: string | null; durationMinutes: number; price: number; isActive: boolean; imageUrl?: string };
 type AvailWindow = { from: string; to: string; lastStart: string };
 type Slot = { id: number; date: string; startTime: string; endTime: string; location: string | null; staffName: string | null; notes: string | null; isActive: boolean; sessionTypeId: number | null; sessionTypeName: string | null; sessionTypeDuration: number | null; bufferBeforeMinutes: number; bufferAfterMinutes: number; availableWindows: AvailWindow[] };
-type Booking = { id: number; customerName: string; customerEmail: string; customerPhone: string | null; customerNotes: string | null; status: string; requiresPayment: boolean; paymentAmount: number | null; paymentStatus: string | null; slotDate: string | null; startTime: string | null; endTime: string | null; location: string | null; staffName: string | null; sessionTypeName: string | null; sessionTypePrice: number | null; durationMinutes: number | null; rejectionReason: string | null; approvedAt: string | null; createdAt: string; studioPayoutAmount: number | null; platformFeeAmount: number | null; stripeFeeAmount: number | null };
+type Booking = { id: number; customerName: string; customerEmail: string; customerPhone: string | null; customerNotes: string | null; status: string; requiresPayment: boolean; paymentAmount: number | null; paymentStatus: string | null; slotDate: string | null; startTime: string | null; endTime: string | null; location: string | null; staffName: string | null; sessionTypeName: string | null; sessionTypePrice: number | null; sessionTypeId: number | null; durationMinutes: number | null; rejectionReason: string | null; approvedAt: string | null; createdAt: string; studioPayoutAmount: number | null; platformFeeAmount: number | null; stripeFeeAmount: number | null; manualDate: string | null; manualStartTime: string | null; manualEndTime: string | null; manualLocation: string | null; manualStaffName: string | null };
 
 
 const TABS = ['Session Types', 'Availability', 'Bookings'] as const;
@@ -66,6 +66,14 @@ export default function AdminScheduling() {
   const [rejecting, setRejecting] = useState<number | null>(null);
   const [rejectReason, setRejectReason] = useState('');
   const [bookingFilter, setBookingFilter] = useState<string>('all');
+
+  // Edit / cancel / mark-paid
+  const [editingBooking, setEditingBooking] = useState<number | null>(null);
+  const emptyEditForm = { customerName: '', customerEmail: '', customerPhone: '', customerNotes: '', sessionTypeId: '', bookingDate: '', startTime: '', endTime: '', location: '', staffName: '' };
+  const [editBookingForm, setEditBookingForm] = useState(emptyEditForm);
+  const [cancelConfirm, setCancelConfirm] = useState<number | null>(null);
+  const [markingPaid, setMarkingPaid] = useState<number | null>(null);
+  const [markPaidForm, setMarkPaidForm] = useState({ amount: '', method: 'cash' as 'cash' | 'check' });
 
   // Calendar state
   const now = new Date();
@@ -232,6 +240,58 @@ export default function AdminScheduling() {
     });
     if (res.ok) { flash('Booking rejected'); setRejecting(null); setRejectReason(''); load(); }
     else { const d = await res.json(); flash(d.error || 'Failed to reject', true); }
+  };
+
+  const openEditBooking = (bk: Booking) => {
+    setEditingBooking(bk.id);
+    setEditBookingForm({
+      customerName: bk.customerName,
+      customerEmail: bk.customerEmail,
+      customerPhone: bk.customerPhone || '',
+      customerNotes: bk.customerNotes || '',
+      sessionTypeId: bk.sessionTypeId ? String(bk.sessionTypeId) : '',
+      bookingDate: bk.manualDate ? bk.manualDate.split('T')[0] : (bk.slotDate ? bk.slotDate.split('T')[0] : ''),
+      startTime: bk.manualStartTime || bk.startTime || '',
+      endTime: bk.manualEndTime || bk.endTime || '',
+      location: bk.manualLocation || bk.location || '',
+      staffName: bk.manualStaffName || bk.staffName || '',
+    });
+    setApproving(null); setRejecting(null); setCancelConfirm(null); setMarkingPaid(null);
+  };
+
+  const saveBookingEdit = async (id: number) => {
+    const res = await fetch(`/api/scheduling/studios/${studioId}/bookings/${id}`, {
+      method: 'PUT', headers,
+      body: JSON.stringify({
+        customerName: editBookingForm.customerName,
+        customerEmail: editBookingForm.customerEmail,
+        customerPhone: editBookingForm.customerPhone || null,
+        customerNotes: editBookingForm.customerNotes || null,
+        sessionTypeId: editBookingForm.sessionTypeId || null,
+        bookingDate: editBookingForm.bookingDate || null,
+        startTime: editBookingForm.startTime || null,
+        endTime: editBookingForm.endTime || null,
+        location: editBookingForm.location || null,
+        staffName: editBookingForm.staffName || null,
+      }),
+    });
+    if (res.ok) { flash('Booking updated'); setEditingBooking(null); load(); }
+    else { const d = await res.json(); flash(d.error || 'Failed to update booking', true); }
+  };
+
+  const cancelBooking = async (id: number) => {
+    const res = await fetch(`/api/scheduling/studios/${studioId}/bookings/${id}/cancel`, { method: 'POST', headers });
+    if (res.ok) { flash('Booking cancelled'); setCancelConfirm(null); load(); }
+    else { const d = await res.json(); flash(d.error || 'Failed to cancel', true); }
+  };
+
+  const markPaidCash = async (id: number) => {
+    const res = await fetch(`/api/scheduling/studios/${studioId}/bookings/${id}/mark-paid`, {
+      method: 'POST', headers,
+      body: JSON.stringify({ paymentMethod: markPaidForm.method, amount: Number(markPaidForm.amount) || 0 }),
+    });
+    if (res.ok) { flash(`Marked as paid (${markPaidForm.method})`); setMarkingPaid(null); load(); }
+    else { const d = await res.json(); flash(d.error || 'Failed to mark as paid', true); }
   };
 
   const filteredBookings = bookingFilter === 'all' ? bookings : bookings.filter(b => b.status === bookingFilter);
@@ -584,12 +644,24 @@ export default function AdminScheduling() {
                               <div style={{ color: '#4a4a5a', fontSize: '0.72rem', marginTop: 4 }}>Requested {fmt(bk.createdAt)}</div>
                             </div>
 
-                            {bk.status === 'pending' && (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0 }}>
-                                <button style={btn('#22c55e')} onClick={() => { setApproving(bk.id); setApproveForm({ requiresPayment: false, paymentAmount: String(bk.sessionTypePrice || '') }); setRejecting(null); }}>Approve</button>
-                                <button style={dangerBtn} onClick={() => { setRejecting(bk.id); setApproving(null); setRejectReason(''); }}>Reject</button>
-                              </div>
-                            )}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0 }}>
+                              {bk.status === 'pending' && <>
+                                <button style={btn('#22c55e')} onClick={() => { setApproving(bk.id); setApproveForm({ requiresPayment: false, paymentAmount: String(bk.sessionTypePrice || '') }); setRejecting(null); setEditingBooking(null); setCancelConfirm(null); setMarkingPaid(null); }}>Approve</button>
+                                <button style={dangerBtn} onClick={() => { setRejecting(bk.id); setApproving(null); setEditingBooking(null); setCancelConfirm(null); setMarkingPaid(null); setRejectReason(''); }}>Reject</button>
+                              </>}
+                              <button style={btn('#3a3656')} onClick={() => { openEditBooking(bk); }}>Edit</button>
+                              {bk.status !== 'cancelled' && (
+                                <button style={{ ...btn('#444'), background: 'rgba(107,107,128,0.15)', color: '#a1a1aa', border: '1px solid rgba(107,107,128,0.3)' }}
+                                  onClick={() => { setCancelConfirm(bk.id); setApproving(null); setRejecting(null); setEditingBooking(null); setMarkingPaid(null); }}>
+                                  Cancel
+                                </button>
+                              )}
+                              {bk.paymentStatus !== 'paid' && (
+                                <button style={btn('#0ea5e9')} onClick={() => { setMarkingPaid(bk.id); setMarkPaidForm({ amount: String(bk.paymentAmount || bk.sessionTypePrice || ''), method: 'cash' }); setApproving(null); setRejecting(null); setEditingBooking(null); setCancelConfirm(null); }}>
+                                  Mark Paid
+                                </button>
+                              )}
+                            </div>
                           </div>
 
                           {/* Approve panel */}
@@ -622,6 +694,74 @@ export default function AdminScheduling() {
                               <div style={{ display: 'flex', gap: 8 }}>
                                 <button style={btn('#ef4444')} onClick={() => rejectBooking(bk.id)}>Confirm Reject</button>
                                 <button style={btn('#444')} onClick={() => setRejecting(null)}>Cancel</button>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Edit panel */}
+                          {editingBooking === bk.id && (
+                            <div style={{ marginTop: 14, background: '#1a1a2d', border: '1px solid #7c5cff44', borderRadius: 10, padding: '1rem' }}>
+                              <div style={{ fontWeight: 700, color: '#a78bfa', marginBottom: 12 }}>Edit Booking</div>
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 12px' }}>
+                                <div><label style={label}>Name *</label><input style={inputStyle} value={editBookingForm.customerName} onChange={e => setEditBookingForm(f => ({ ...f, customerName: e.target.value }))} /></div>
+                                <div><label style={label}>Email *</label><input style={inputStyle} type="email" value={editBookingForm.customerEmail} onChange={e => setEditBookingForm(f => ({ ...f, customerEmail: e.target.value }))} /></div>
+                                <div><label style={label}>Phone</label><input style={inputStyle} value={editBookingForm.customerPhone} onChange={e => setEditBookingForm(f => ({ ...f, customerPhone: e.target.value }))} /></div>
+                                <div><label style={label}>Session Type</label>
+                                  <select style={inputStyle} value={editBookingForm.sessionTypeId} onChange={e => setEditBookingForm(f => ({ ...f, sessionTypeId: e.target.value }))}>
+                                    <option value="">— None —</option>
+                                    {sessionTypes.map(st => <option key={st.id} value={st.id}>{st.name}</option>)}
+                                  </select>
+                                </div>
+                                <div><label style={label}>Date</label><input style={inputStyle} type="date" value={editBookingForm.bookingDate} onChange={e => setEditBookingForm(f => ({ ...f, bookingDate: e.target.value }))} /></div>
+                                <div style={{ display: 'flex', gap: 8 }}>
+                                  <div style={{ flex: 1 }}><label style={label}>Start</label><input style={inputStyle} type="time" value={editBookingForm.startTime} onChange={e => setEditBookingForm(f => ({ ...f, startTime: e.target.value }))} /></div>
+                                  <div style={{ flex: 1 }}><label style={label}>End</label><input style={inputStyle} type="time" value={editBookingForm.endTime} onChange={e => setEditBookingForm(f => ({ ...f, endTime: e.target.value }))} /></div>
+                                </div>
+                                <div><label style={label}>Location</label><input style={inputStyle} value={editBookingForm.location} onChange={e => setEditBookingForm(f => ({ ...f, location: e.target.value }))} /></div>
+                                <div><label style={label}>Staff</label><input style={inputStyle} value={editBookingForm.staffName} onChange={e => setEditBookingForm(f => ({ ...f, staffName: e.target.value }))} /></div>
+                              </div>
+                              <div style={{ marginTop: 8 }}><label style={label}>Notes</label><input style={inputStyle} value={editBookingForm.customerNotes} onChange={e => setEditBookingForm(f => ({ ...f, customerNotes: e.target.value }))} /></div>
+                              <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                                <button style={btn()} onClick={() => saveBookingEdit(bk.id)}>Save Changes</button>
+                                <button style={btn('#444')} onClick={() => setEditingBooking(null)}>Cancel</button>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Cancel confirm panel */}
+                          {cancelConfirm === bk.id && (
+                            <div style={{ marginTop: 14, background: '#2a2a2a', border: '1px solid #6b6b8044', borderRadius: 10, padding: '1rem' }}>
+                              <div style={{ fontWeight: 700, color: '#a1a1aa', marginBottom: 8 }}>Cancel this booking?</div>
+                              <div style={{ color: '#6b6b80', fontSize: '0.85rem', marginBottom: 12 }}>This will mark the booking as cancelled. The customer will not be automatically notified.</div>
+                              <div style={{ display: 'flex', gap: 8 }}>
+                                <button style={{ ...btn(), background: '#6b6b80' }} onClick={() => cancelBooking(bk.id)}>Yes, Cancel Booking</button>
+                                <button style={btn('#444')} onClick={() => setCancelConfirm(null)}>Keep</button>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Mark paid panel */}
+                          {markingPaid === bk.id && (
+                            <div style={{ marginTop: 14, background: '#0c1f2d', border: '1px solid #0ea5e944', borderRadius: 10, padding: '1rem' }}>
+                              <div style={{ fontWeight: 700, color: '#0ea5e9', marginBottom: 10 }}>Mark as Paid</div>
+                              <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                                <div>
+                                  <label style={label}>Amount ($)</label>
+                                  <input style={{ ...inputStyle, width: 120 }} type="number" min="0" step="0.01" value={markPaidForm.amount} onChange={e => setMarkPaidForm(f => ({ ...f, amount: e.target.value }))} />
+                                </div>
+                                <div>
+                                  <label style={label}>Method</label>
+                                  <div style={{ display: 'flex', gap: 8 }}>
+                                    {(['cash', 'check'] as const).map(m => (
+                                      <button key={m} style={{ ...btn(markPaidForm.method === m ? '#0ea5e9' : '#3a3656'), textTransform: 'capitalize' }} onClick={() => setMarkPaidForm(f => ({ ...f, method: m }))}>{m}</button>
+                                    ))}
+                                  </div>
+                                </div>
+                              </div>
+                              <div style={{ color: '#6b6b80', fontSize: '0.78rem', marginTop: 8 }}>No Stripe or platform fees — full amount goes to studio payout.</div>
+                              <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                                <button style={btn('#0ea5e9')} onClick={() => markPaidCash(bk.id)}>Confirm Payment</button>
+                                <button style={btn('#444')} onClick={() => setMarkingPaid(null)}>Cancel</button>
                               </div>
                             </div>
                           )}
