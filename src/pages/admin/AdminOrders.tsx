@@ -619,6 +619,7 @@ const AdminOrders: React.FC = () => {
   // const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null); // Duplicate, removed
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState(''); // Empty string = show all
+  const [ordersPage, setOrdersPage] = useState(1);
   const [whccRetrying, setWhccRetrying] = useState<number | null>(null);
   const [whccRetryMessageByOrder, setWhccRetryMessageByOrder] = useState<Record<number, { tone: 'info' | 'error'; text: string }>>({});
   const [digitalResendingOrderId, setDigitalResendingOrderId] = useState<number | null>(null);
@@ -933,6 +934,25 @@ const AdminOrders: React.FC = () => {
     [filteredRecentOrders]
   );
 
+  const ORDERS_PAGE_SIZE = 25;
+  React.useEffect(() => { setOrdersPage(1); }, [searchQuery, statusFilter]);
+  const totalOrderPages = Math.max(1, Math.ceil(filteredRecentOrders.length / ORDERS_PAGE_SIZE));
+  const safeOrdersPage = Math.min(ordersPage, totalOrderPages);
+  const pagedOrders = filteredRecentOrders.slice((safeOrdersPage - 1) * ORDERS_PAGE_SIZE, safeOrdersPage * ORDERS_PAGE_SIZE);
+
+  const pagedNonSubmittedBatchOrders = React.useMemo(
+    () => pagedOrders.filter((order) => !(order.isBatch && order.labSubmitted) && String(order.status).toLowerCase() !== 'cancelled'),
+    [pagedOrders]
+  );
+  const pagedSubmittedBatchOrders = React.useMemo(
+    () => pagedOrders.filter((order) => order.isBatch && order.labSubmitted && String(order.status).toLowerCase() !== 'cancelled'),
+    [pagedOrders]
+  );
+  const pagedCancelledOrders = React.useMemo(
+    () => pagedOrders.filter((order) => String(order.status).toLowerCase() === 'cancelled'),
+    [pagedOrders]
+  );
+
   const shippingReport = React.useMemo(
     () => filteredRecentOrders.reduce(
       (acc, order) => {
@@ -1001,6 +1021,30 @@ const AdminOrders: React.FC = () => {
     }, new Map<string, { key: string; confirmationId: string | null; orders: Order[]; total: number; latestOrderDate: string }>() )
       .values()
   ).sort((a, b) => new Date(b.latestOrderDate).getTime() - new Date(a.latestOrderDate).getTime()), [submittedBatchOrders]);
+
+  const pagedSubmittedBatchGroups = React.useMemo(() => Array.from(
+    pagedSubmittedBatchOrders.reduce((map, order) => {
+      const key = order.whccConfirmationId || `batch-${order.id}`;
+      const existing = map.get(key);
+      if (existing) {
+        existing.orders.push(order);
+        existing.total += Number(order.totalAmount) || 0;
+        if (new Date(order.orderDate).getTime() > new Date(existing.latestOrderDate).getTime()) {
+          existing.latestOrderDate = order.orderDate;
+        }
+      } else {
+        map.set(key, {
+          key,
+          confirmationId: order.whccConfirmationId || null,
+          orders: [order],
+          total: Number(order.totalAmount) || 0,
+          latestOrderDate: order.orderDate,
+        });
+      }
+      return map;
+    }, new Map<string, { key: string; confirmationId: string | null; orders: Order[]; total: number; latestOrderDate: string }>())
+      .values()
+  ).sort((a, b) => new Date(b.latestOrderDate).getTime() - new Date(a.latestOrderDate).getTime()), [pagedSubmittedBatchOrders]);
 
   const formatWhccPayload = (value: unknown) => {
     if (value == null) return null;
@@ -2079,6 +2123,7 @@ const AdminOrders: React.FC = () => {
           ) : filteredRecentOrders.length === 0 ? (
             <p className="empty-state">No orders match your search.</p>
           ) : (
+            <>
             <div className="orders-table-container">
               <table className="orders-table">
                 <thead>
@@ -2095,7 +2140,7 @@ const AdminOrders: React.FC = () => {
                 <tbody>
 
                   {/* Render non-submitted batch orders */}
-                  {nonSubmittedBatchOrders.map((order) => (
+                  {pagedNonSubmittedBatchOrders.map((order) => (
                     <React.Fragment key={order.id}>
                       {/* ...existing code for nonSubmittedBatchOrders row rendering... */}
                       <tr
@@ -2176,7 +2221,7 @@ const AdminOrders: React.FC = () => {
                   ))}
 
                   {/* Render cancelled orders */}
-                  {cancelledRecentOrders.map((order) => (
+                  {pagedCancelledOrders.map((order) => (
                     <React.Fragment key={order.id}>
                       <tr
                         className={`admin-order-row ${selectedOrderId === order.id ? 'admin-order-row-selected' : ''}`}
@@ -2246,7 +2291,7 @@ const AdminOrders: React.FC = () => {
                   ))}
 
 
-                  {submittedBatchGroups.map((group) => {
+                  {pagedSubmittedBatchGroups.map((group) => {
                     const isExpanded = Boolean(expandedBatchGroups[group.key]);
                     return (
                       <React.Fragment key={group.key}>
@@ -2401,6 +2446,29 @@ const AdminOrders: React.FC = () => {
                 </tbody>
               </table>
             </div>
+            {totalOrderPages > 1 && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, marginTop: 16, paddingBottom: 8 }}>
+                <button
+                  onClick={() => setOrdersPage(p => Math.max(1, p - 1))}
+                  disabled={safeOrdersPage <= 1}
+                  style={{ padding: '6px 14px', borderRadius: 7, border: '1.5px solid rgba(124,92,255,0.35)', background: safeOrdersPage <= 1 ? 'rgba(255,255,255,0.04)' : 'rgba(124,92,255,0.12)', color: safeOrdersPage <= 1 ? '#4a4a6a' : '#a78bfa', fontWeight: 700, fontSize: '0.82rem', cursor: safeOrdersPage <= 1 ? 'default' : 'pointer' }}
+                >
+                  ← Prev
+                </button>
+                <span style={{ fontSize: '0.82rem', color: '#6b6b80', minWidth: 90, textAlign: 'center' }}>
+                  Page {safeOrdersPage} of {totalOrderPages}
+                  <span style={{ marginLeft: 8, color: '#4a4a6a' }}>({filteredRecentOrders.length} orders)</span>
+                </span>
+                <button
+                  onClick={() => setOrdersPage(p => Math.min(totalOrderPages, p + 1))}
+                  disabled={safeOrdersPage >= totalOrderPages}
+                  style={{ padding: '6px 14px', borderRadius: 7, border: '1.5px solid rgba(124,92,255,0.35)', background: safeOrdersPage >= totalOrderPages ? 'rgba(255,255,255,0.04)' : 'rgba(124,92,255,0.12)', color: safeOrdersPage >= totalOrderPages ? '#4a4a6a' : '#a78bfa', fontWeight: 700, fontSize: '0.82rem', cursor: safeOrdersPage >= totalOrderPages ? 'default' : 'pointer' }}
+                >
+                  Next →
+                </button>
+              </div>
+            )}
+            </>
           )}
         </div>
       </div>

@@ -53,6 +53,7 @@ const detectFaceBoxesInBrowser = async (photo: Photo): Promise<{ faceBoxes: Face
 const setImageRef = (_photoId: number, _el: HTMLImageElement | null) => {};
 import React, { useState, useEffect } from 'react';
 import './AdminPhotos.css';
+import AdminLayout from '../../components/AdminLayout';
 import UploadPanel from '../../components/UploadPanel';
 import { useUploadContext } from '../../contexts/UploadContext';
 
@@ -306,6 +307,7 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
       loadRoster();
     }
   }, [albumId]);
+
 
   const loadAlbums = async () => {
     try {
@@ -815,6 +817,18 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
         [photo.id]: mergedFaceBoxes[0]?.id || null,
       }));
 
+      // Persist face box positions so overlays survive page reload
+      if (mergedFaceBoxes.length > 0) {
+        try {
+          const currentMetadata = parsePhotoMetadata(photo);
+          await photoService.updatePhoto(photo.id, {
+            metadata: { ...currentMetadata, faceTags: mergedFaceBoxes },
+          });
+        } catch (err) {
+          console.warn('Failed to save face boxes to metadata:', err);
+        }
+      }
+
       // --- Persist detected player names to backend ---
       // Collect all unique detected player names from faceMatches and/or mergedFaceBoxes
       const detectedNames = new Set<string>();
@@ -992,322 +1006,387 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
     setInfoPhoto(null);
   };
 
-  if (earlyReturn) return earlyReturn;
+  const photoActionBtn = (label: string, color: string, onClick: () => void, disabled?: boolean): React.ReactNode => (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        flex: 1,
+        padding: '5px 0',
+        fontSize: '0.68rem',
+        fontWeight: 700,
+        borderRadius: 6,
+        border: `1.5px solid ${color}33`,
+        background: `${color}12`,
+        color: disabled ? '#3a3a50' : color,
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.5 : 1,
+        transition: 'background 0.15s',
+        whiteSpace: 'nowrap',
+        minWidth: 0,
+      }}
+    >
+      {label}
+    </button>
+  );
+
+  if (earlyReturn) return <AdminLayout>{earlyReturn}</AdminLayout>;
+
+  const dedupedPhotos = Array.from(
+    photos.reduce((map, photo) => {
+      if (!map.has(photo.fileName)) map.set(photo.fileName, photo);
+      return map;
+    }, new Map<string, Photo>()),
+    ([, photo]) => photo
+  );
+
   return (
-    <div className="admin-page">
-      <div className="page-header">
-        <h1>Manage Photos</h1>
-        <div style={{ marginTop: 8 }}>
-          <label htmlFor="album-select">Album:</label>{' '}
-          <select id="album-select" value={albumId ?? ''} onChange={handleAlbumChange}>
-            {albums.map((album) => (
-              <option key={album.id} value={album.id}>{album.name}</option>
-            ))}
-          </select>
+    <AdminLayout>
+      <div style={{ padding: '0 1rem 2rem' }}>
+
+        {/* Page header */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.25rem' }}>
+          <div>
+            <h1 style={{ fontSize: '1.65rem', fontWeight: 800, color: '#fff', margin: '0 0 0.25rem', letterSpacing: '-0.01em' }}>
+              {currentAlbum?.name || 'Photos'}
+            </h1>
+            <p style={{ color: '#6b6b80', fontSize: '0.9rem', margin: 0 }}>
+              {photos.length} photo{photos.length !== 1 ? 's' : ''} · Manage, tag, and upload photos for this album
+            </p>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+            <span style={{ fontSize: '0.8rem', color: '#5a5a72', fontWeight: 600 }}>Album</span>
+            <select
+              id="album-select"
+              value={albumId ?? ''}
+              onChange={handleAlbumChange}
+              style={{ padding: '7px 10px', borderRadius: 8, border: '1.5px solid rgba(124,92,255,0.3)', background: 'rgba(22,22,35,0.9)', color: '#d4d4e8', fontSize: '0.85rem', outline: 'none' }}
+            >
+              {albums.map((album) => (
+                <option key={album.id} value={album.id}>{album.name}</option>
+              ))}
+            </select>
+          </div>
         </div>
-      </div>
-      <div className="admin-photos-controls">
-        <button className="btn btn-danger" onClick={handleDeleteAll} disabled={photos.length === 0}>Delete All Photos</button>
-        <button className="btn btn-secondary" onClick={handleDetectAll} disabled={photos.length === 0 || detectAllProgress.running}>Detect All Faces/Players</button>
-        {(detectAllProgress.running || (detectAllProgress.total > 0 && detectAllProgress.current < detectAllProgress.total)) && (
-          <span style={{ marginLeft: 12, color: '#7b61ff', fontWeight: 500 }}>
-            Detecting faces: {detectAllProgress.current} / {detectAllProgress.total}
-            <span style={{ display: 'inline-block', width: 80, marginLeft: 8, verticalAlign: 'middle' }}>
-              <div style={{ height: 8, background: '#eee', borderRadius: 4, overflow: 'hidden' }}>
-                <div style={{ width: `${(detectAllProgress.current / detectAllProgress.total) * 100}%`, height: '100%', background: '#7b61ff', transition: 'width 0.2s' }} />
-              </div>
-            </span>
-          </span>
+
+        {/* Status messages */}
+        {uploadMessage && (
+          <div className={`upload-message-bar ${uploadMessage.type}`}>{uploadMessage.text}</div>
         )}
-        <button className="btn btn-secondary" style={{ marginLeft: 8 }} onClick={handleDetectNamesFromFilenames} disabled={photos.length === 0 || loading}>Detect Names from Filenames</button>
-        <button className="btn btn-info" onClick={handleNotifyWatchers} disabled={notifyLoading || !watchedTaggedPlayers.length}>Notify Watchers</button>
-        {/* Test Name Extraction button removed */}
-        <input type="file" accept=".csv" onChange={handleRosterCsvUpload} disabled={rosterUploading} style={{ marginLeft: 12 }} />
-        {rosterUploading && <span style={{ marginLeft: 8 }}>Uploading roster…</span>}
-        {rosterMessage && <span style={{ marginLeft: 8 }}>{rosterMessage}</span>}
-        {notifyResult && <span style={{ marginLeft: 8 }}>{notifyResult}</span>}
-      </div>
-      {showUploadPanel ? (
-        <div className="admin-photos-upload-panel" style={{ padding: 0, margin: '24px 0', background: 'none', boxShadow: 'none' }}>
-          <UploadPanel
-            files={uploadFilesCtx}
-            onCancel={clearFiles}
-            overallProgress={overallProgress}
-            visible={showUploadPanel}
-          />
+        {rosterMessage && (
+          <div className={`upload-message-bar ${rosterMessage.startsWith('Failed') ? 'error' : 'success'}`}>{rosterMessage}</div>
+        )}
+        {notifyResult && (
+          <div className={`upload-message-bar ${notifyResult.startsWith('Failed') ? 'error' : 'success'}`}>{notifyResult}</div>
+        )}
+
+        {/* Detect-all progress bar */}
+        {detectAllProgress.running && (
+          <div style={{ marginBottom: '1rem', background: 'rgba(22,22,35,0.9)', border: '1px solid rgba(124,92,255,0.2)', borderRadius: 10, padding: '10px 14px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#a78bfa', fontWeight: 700, marginBottom: 6 }}>
+              <span>Detecting faces &amp; players…</span>
+              <span>{detectAllProgress.current} / {detectAllProgress.total}</span>
+            </div>
+            <div style={{ height: 6, background: 'rgba(124,92,255,0.15)', borderRadius: 3, overflow: 'hidden' }}>
+              <div style={{ width: `${(detectAllProgress.current / detectAllProgress.total) * 100}%`, height: '100%', background: 'linear-gradient(90deg,#7c5cff,#6366f1)', transition: 'width 0.3s' }} />
+            </div>
+          </div>
+        )}
+
+        {/* Toolbar */}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: '1.25rem', alignItems: 'center' }}>
+          {/* Batch actions */}
+          <button
+            onClick={handleDetectAll}
+            disabled={photos.length === 0 || detectAllProgress.running}
+            style={{ padding: '7px 14px', borderRadius: 8, border: '1.5px solid rgba(124,92,255,0.4)', background: 'rgba(124,92,255,0.1)', color: '#a78bfa', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', opacity: (photos.length === 0 || detectAllProgress.running) ? 0.5 : 1 }}
+          >
+            Detect All Faces
+          </button>
+          <button
+            onClick={handleDetectNamesFromFilenames}
+            disabled={photos.length === 0 || loading}
+            style={{ padding: '7px 14px', borderRadius: 8, border: '1.5px solid rgba(124,92,255,0.3)', background: 'none', color: '#7c5cff', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', opacity: (photos.length === 0 || loading) ? 0.5 : 1 }}
+          >
+            Tag from Filenames
+          </button>
+          <button
+            onClick={handleNotifyWatchers}
+            disabled={notifyLoading || !watchedTaggedPlayers.length}
+            style={{ padding: '7px 14px', borderRadius: 8, border: '1.5px solid rgba(121,192,255,0.3)', background: 'none', color: '#79c0ff', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', opacity: (!watchedTaggedPlayers.length || notifyLoading) ? 0.5 : 1 }}
+          >
+            {notifyLoading ? 'Notifying…' : `Notify Watchers${watchedTaggedPlayers.length ? ` (${watchedTaggedPlayers.length})` : ''}`}
+          </button>
+
+          {/* Roster CSV */}
+          <label style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '7px 14px', borderRadius: 8, border: '1.5px solid rgba(126,231,135,0.3)', background: 'none', color: '#7ee787', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', opacity: rosterUploading ? 0.6 : 1 }}>
+            {rosterUploading ? 'Uploading…' : 'Upload Roster CSV'}
+            <input type="file" accept=".csv" onChange={handleRosterCsvUpload} disabled={rosterUploading} style={{ display: 'none' }} />
+          </label>
+
+          {/* Danger zone */}
+          <button
+            onClick={handleDeleteAll}
+            disabled={photos.length === 0}
+            style={{ padding: '7px 14px', borderRadius: 8, border: '1.5px solid rgba(248,113,113,0.3)', background: 'none', color: '#f87171', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', opacity: photos.length === 0 ? 0.4 : 1, marginLeft: 'auto' }}
+          >
+            Delete All
+          </button>
         </div>
-      ) : (
-        <div className="admin-photos-upload-panel" {...getRootProps()} style={{ padding: 24, margin: '24px 0', background: isDragActive ? '#23234a' : undefined, cursor: uploading ? 'not-allowed' : 'pointer' }}>
-          <input {...getInputProps()} />
-          <p>{uploading ? 'Uploading photos…' : 'Drag and drop photos here, or click to select files.'}</p>
-        </div>
-      )}
-      {/* Photo grid */}
-      <div className="admin-photos-grid">
-          {photos.length === 0 ? (
-            <div className="empty-state">No photos in this album.</div>
+
+        {/* Upload zone */}
+        {showUploadPanel ? (
+          <div className="admin-photos-upload-panel" style={{ padding: 0, background: 'none', border: 'none' }}>
+            <UploadPanel
+              files={uploadFilesCtx}
+              onCancel={clearFiles}
+              overallProgress={overallProgress}
+              visible={showUploadPanel}
+            />
+          </div>
+        ) : (
+          <div
+            className={`admin-photos-upload-panel${isDragActive ? ' drag-active' : ''}`}
+            {...getRootProps()}
+            style={{ padding: '1.5rem', cursor: uploading ? 'not-allowed' : 'pointer' }}
+          >
+            <input {...getInputProps()} />
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '1.5rem', marginBottom: '0.4rem' }}>📸</div>
+              <div style={{ fontWeight: 600, marginBottom: '0.2rem' }}>
+                {isDragActive ? 'Drop photos here' : 'Drag & drop photos, or click to select'}
+              </div>
+              <div style={{ fontSize: '0.75rem', color: '#4a4a6a' }}>JPG, PNG, HEIC supported</div>
+            </div>
+          </div>
+        )}
+
+        {/* Photo grid */}
+        <div className="admin-photos-grid">
+          {dedupedPhotos.length === 0 ? (
+            <div className="empty-state">No photos in this album yet.</div>
           ) : (
-            // Filter out duplicate file names, only show the latest photo for each name
-            Array.from(
-              photos.reduce((map, photo) => {
-                if (!map.has(photo.fileName)) {
-                  map.set(photo.fileName, photo);
-                }
-                return map;
-              }, new Map()),
-              ([, photo]) => photo
-            ).map((photo) => (
-              <div key={photo.id} className="admin-photo-card">
-                <div style={{ position: 'relative', width: '100%', height: 'auto' }}>
-                  <img
-                    src={`/api/photos/${photo.id}/asset?variant=thumbnail`}
-                    alt={photo.fileName}
-                    className="admin-photo-img"
-                    style={{ display: 'block', width: '100%', height: 'auto', borderRadius: 8 }}
-                  />
-                  {/* Face Box Overlays */}
-                  {detectionByPhotoId[photo.id]?.faceBoxes?.length > 0 && (
-                    detectionByPhotoId[photo.id].faceBoxes.map((box, i) => (
+            dedupedPhotos.map((photo) => {
+              const taggedNames = getSelectedPlayerNamesForPhoto(photo);
+              const detection = detectionByPhotoId[photo.id];
+              const isDetecting = detectingPhotoId === photo.id;
+              const isCover = coverSuccessId === photo.id || currentAlbum?.coverPhotoId === photo.id;
+
+              return (
+                <div key={photo.id} className="admin-photo-card">
+                  {/* Image with overlays */}
+                  <div className="admin-photo-img-wrap">
+                    <img
+                      ref={(el) => setImageRef(photo.id, el)}
+                      src={`/api/photos/${photo.id}/asset?variant=thumbnail`}
+                      alt={photo.fileName}
+                      className="admin-photo-img"
+                    />
+
+                    {/* Stored face box overlays */}
+                    {detection?.faceBoxes?.map((box, i) => (
                       <div
-                        key={box.id ? `${box.id}-${i}` : `facebox-${photo.id}-${i}`}
+                        key={box.id ? `${box.id}-${i}` : `fb-${photo.id}-${i}`}
                         style={{
                           position: 'absolute',
                           left: `${box.leftPct}%`,
                           top: `${box.topPct}%`,
                           width: `${box.widthPct}%`,
                           height: `${box.heightPct}%`,
-                          border: '2px solid #7b61ff',
-                          borderRadius: 6,
-                          background: 'rgba(123,97,255,0.10)',
-                          pointerEvents: 'auto',
+                          border: `2px solid ${box.playerName ? '#22c55e' : '#f59e0b'}`,
+                          borderRadius: 4,
+                          background: box.playerName ? 'rgba(34,197,94,0.08)' : 'rgba(245,158,11,0.08)',
+                          boxShadow: `0 0 0 1px rgba(0,0,0,0.5), 0 0 6px ${box.playerName ? 'rgba(34,197,94,0.4)' : 'rgba(245,158,11,0.4)'}`,
                           zIndex: 2,
+                          cursor: 'pointer',
                           display: 'flex',
                           alignItems: 'flex-end',
                           justifyContent: 'center',
+                          pointerEvents: 'auto',
                         }}
-                        title={box.playerName ? `Tagged: ${box.playerName}` : 'Click to tag face'}
+                        title={box.playerName ? `Tagged: ${box.playerName}` : 'Untagged face — click to tag'}
                         onClick={() => {
-                          const playerName = prompt('Tag this face with a player name:', box.playerName || '');
-                          if (playerName && playerName.trim()) {
+                          const name = prompt('Tag this face with a player name:', box.playerName || '');
+                          if (name !== null) {
                             setDetectionByPhotoId(prev => ({
                               ...prev,
                               [photo.id]: {
                                 ...prev[photo.id],
                                 faceBoxes: prev[photo.id].faceBoxes.map((fb, idx) =>
-                                  idx === i ? { ...fb, playerName: playerName.trim() } : fb
+                                  idx === i ? { ...fb, playerName: name.trim() || null } : fb
                                 ),
                               },
                             }));
                           }
                         }}
                       >
-                        <span
-                          style={{
-                            background: '#7b61ff',
-                            color: '#fff',
-                            fontSize: 12,
-                            padding: '2px 6px',
-                            borderRadius: 4,
-                            marginBottom: 2,
-                            marginTop: 'auto',
-                            cursor: 'pointer',
-                            userSelect: 'none',
-                          }}
-                        >
-                          {box.playerName ? box.playerName : 'Tag'}
+                        <span style={{
+                          background: box.playerName ? 'rgba(22,101,52,0.92)' : 'rgba(120,53,15,0.92)',
+                          color: '#fff',
+                          fontSize: '0.65rem',
+                          padding: '2px 6px',
+                          borderRadius: '0 0 3px 3px',
+                          fontWeight: 700,
+                          maxWidth: '100%',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                          lineHeight: 1.4,
+                        }}>
+                          {box.playerName || '?'}
                         </span>
                       </div>
-                    ))
-                  )}
-                </div>
-                {/* Player name pills and tag input stacked */}
-                <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
-                  <div className="admin-photo-player-pills" style={{ marginBottom: '1.1rem', width: '100%', alignItems: 'flex-start', display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
-                    {getSelectedPlayerNamesForPhoto(photo).map((playerName) => (
-                      <span
-                        key={playerName}
-                        style={{
-                          background: '#7b61ff',
-                          color: '#fff',
-                          fontSize: 12,
-                          padding: '2px 10px',
-                          borderRadius: 12,
-                          userSelect: 'none',
-                          fontWeight: 500,
-                          letterSpacing: 0.2,
-                          marginRight: 4,
-                          marginBottom: 2,
-                          minHeight: '24px',
-                          alignItems: 'center',
-                          display: 'inline-flex',
-                        }}
-                      >
-                        {playerName}
-                      </span>
                     ))}
-                  </div>
-                  <div className="admin-photo-tag-input-row" style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
-                    <input
-                      type="text"
-                      placeholder="Tag player name"
-                      style={{ flex: 1, minWidth: 0, padding: '2px 6px', borderRadius: 4, border: '1px solid #7b61ff', fontSize: 13 }}
-                      value={photo._manualTagInput || ''}
-                      onChange={e => {
-                        const value = e.target.value;
-                        setPhotos(prev => prev.map(p => p.id === photo.id ? { ...p, _manualTagInput: value } : p));
-                      }}
-                      onKeyDown={e => {
-                        if (e.key === 'Enter') {
-                          const value = (photo as any)._manualTagInput;
-                          if (value && value.trim()) {
-                            handleManualTagPlayer(photo, value.trim());
-                          }
-                        }
-                      }}
-                    />
-                    <button
-                      className="btn btn-primary"
-                      style={{ fontSize: 13, padding: '2px 10px' }}
-                      onClick={() => {
-                        const value = (photo as any)._manualTagInput;
-                        if (value && value.trim()) {
-                          handleManualTagPlayer(photo, value.trim());
-                        }
-                      }}
-                    >Tag</button>
-                  </div>
-                </div>
-                <div className="admin-photo-meta">
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <strong>{photo.fileName}</strong>
-                    <button
-                      title="Show photo info"
-                      style={{ background: 'none', border: 'none', color: '#7b61ff', cursor: 'pointer', fontSize: 18, marginLeft: 6 }}
-                      onClick={() => openInfoModal(photo)}
-                    >
-                      <span style={{ fontWeight: 700, fontSize: 18, display: 'inline-block', lineHeight: 1 }}>i</span>
-                    </button>
-                  </div>
-                  <div>ID: {photo.id}</div>
-                  <div>
-                    Players:{' '}
-                    {photo.playerNames && photo.playerNames.trim() ? (
-                      photo.playerNames.split(',').map((n: string, i: number) => (
-                        <span key={i} style={{ display: 'inline-block', marginRight: 4 }}>{n.trim()}</span>
-                      ))
-                    ) : '—'}
-                  </div>
-                  <div>Views: {typeof photo.viewCount === 'number' ? photo.viewCount : '—'}</div>
-                  <div>Orders: {typeof photo.orderCount === 'number' ? photo.orderCount : '—'}</div>
-                  {/* Detection Results */}
-                  {detectionByPhotoId[photo.id] && (
-                    <div style={{ margin: '8px 0', fontSize: 13, color: '#4caf50' }}>
-                      {detectionByPhotoId[photo.id].faceBoxes.length > 0 ? (
-                        <>
-                          <div>Detected Faces: {detectionByPhotoId[photo.id].faceBoxes.length}</div>
-                          {detectionByPhotoId[photo.id].faceBoxes.map((box, i) => (
-                            <div key={box.id ? `${box.id}-${i}` : `facebox-${photo.id}-${i}`}>
-                              {box.playerName ? `Player: ${box.playerName}` : 'Face detected'}
-                              {box.playerNumber ? ` (#${box.playerNumber})` : ''}
-                            </div>
-                          ))}
-                        </>
-                      ) : detectionByPhotoId[photo.id].faceDetectionError ? (
-                        <div style={{ color: '#ff5252' }}>Detection error: {detectionByPhotoId[photo.id].faceDetectionError}</div>
-                      ) : (
-                        <div>No faces detected</div>
+
+                    {/* Status badge */}
+                    <div style={{ position: 'absolute', top: 6, right: 6, display: 'flex', gap: 4 }}>
+                      {isCover && (
+                        <span style={{ fontSize: '0.6rem', fontWeight: 800, padding: '2px 6px', borderRadius: 999, background: 'rgba(34,197,94,0.9)', color: '#fff' }}>Cover</span>
+                      )}
+                      {taggedNames.length > 0 && (
+                        <span style={{ fontSize: '0.6rem', fontWeight: 800, padding: '2px 6px', borderRadius: 999, background: 'rgba(124,92,255,0.85)', color: '#fff' }}>
+                          {taggedNames.length} tagged
+                        </span>
                       )}
                     </div>
-                  )}
-                  <button className="btn btn-danger" onClick={() => handleDelete(photo.id)}>Delete</button>
-                  <button className="btn btn-secondary" onClick={() => handleSetCover(photo)}>Set as Cover</button>
-                  <button className="btn btn-info" onClick={() => handleDetectPlayers(photo)}>Detect Players/Faces</button>
-                  <button className="btn btn-warning" onClick={() => handleClearPhotoTags(photo)}>Clear Tags</button>
+
+                    {/* Info button */}
+                    <button
+                      onClick={() => openInfoModal(photo)}
+                      style={{ position: 'absolute', top: 6, left: 6, width: 22, height: 22, borderRadius: '50%', background: 'rgba(0,0,0,0.55)', border: 'none', color: '#a78bfa', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
+                      title="Photo info"
+                    >
+                      i
+                    </button>
+                  </div>
+
+                  {/* Card body */}
+                  <div className="admin-photo-body">
+                    <div className="admin-photo-filename" title={photo.fileName}>{photo.fileName}</div>
+
+                    {/* Player tag pills */}
+                    <div className="admin-photo-player-pills">
+                      {taggedNames.map((name) => (
+                        <span
+                          key={name}
+                          style={{ background: 'rgba(124,92,255,0.2)', border: '1px solid rgba(124,92,255,0.4)', color: '#c4b5fd', fontSize: '0.68rem', padding: '2px 8px', borderRadius: 999, fontWeight: 600 }}
+                        >
+                          {name}
+                        </span>
+                      ))}
+                    </div>
+
+                    {/* Tag input */}
+                    <div className="admin-photo-tag-input-row">
+                      <input
+                        type="text"
+                        placeholder="Add player tag…"
+                        style={{ flex: 1, minWidth: 0, padding: '4px 8px', borderRadius: 6, border: '1.5px solid rgba(124,92,255,0.25)', background: 'rgba(0,0,0,0.3)', color: '#e0e0f0', fontSize: '0.75rem', outline: 'none' }}
+                        value={(photo as any)._manualTagInput || ''}
+                        onChange={e => {
+                          const value = e.target.value;
+                          setPhotos(prev => prev.map(p => p.id === photo.id ? { ...p, _manualTagInput: value } : p));
+                        }}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') {
+                            const value = (photo as any)._manualTagInput;
+                            if (value && value.trim()) handleManualTagPlayer(photo, value.trim());
+                          }
+                        }}
+                      />
+                      <button
+                        onClick={() => {
+                          const value = (photo as any)._manualTagInput;
+                          if (value && value.trim()) handleManualTagPlayer(photo, value.trim());
+                        }}
+                        style={{ padding: '4px 10px', borderRadius: 6, border: '1.5px solid rgba(124,92,255,0.4)', background: 'rgba(124,92,255,0.15)', color: '#a78bfa', fontWeight: 700, fontSize: '0.72rem', cursor: 'pointer' }}
+                      >
+                        Tag
+                      </button>
+                    </div>
+
+                    {/* Stats */}
+                    <div className="admin-photo-stats">
+                      <span>👁 {typeof photo.viewCount === 'number' ? photo.viewCount : 0}</span>
+                      <span>🛒 {typeof photo.orderCount === 'number' ? photo.orderCount : 0}</span>
+                      {detection && detection.faceBoxes.length > 0 && (
+                        <span style={{ color: '#7ee787' }}>🔍 {detection.faceBoxes.length} face{detection.faceBoxes.length !== 1 ? 's' : ''}</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Action buttons */}
+                  <div className="admin-photo-actions">
+                    {photoActionBtn(coverLoadingId === photo.id ? '…' : 'Cover', '#7ee787', () => handleSetCover(photo), coverLoadingId === photo.id)}
+                    {photoActionBtn(isDetecting ? '…' : 'Detect', '#79c0ff', () => handleDetectPlayers(photo), isDetecting)}
+                    {photoActionBtn('Clear', '#fbbf24', () => handleClearPhotoTags(photo))}
+                    {photoActionBtn('Delete', '#f87171', () => handleDelete(photo.id))}
+                  </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
+        </div>
+
+        {/* Info Modal */}
+        {showInfoModal && infoPhoto && (
+          <div
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
+            onClick={closeInfoModal}
+          >
+            <div
+              style={{ background: 'rgba(20,20,35,0.99)', border: '1px solid rgba(124,92,255,0.25)', color: '#fff', borderRadius: 12, padding: '1.5rem', width: 'min(480px,96vw)', maxHeight: '80vh', overflow: 'auto', boxShadow: '0 16px 44px rgba(0,0,0,0.5)' }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700 }}>Photo Info</h3>
+                <button onClick={closeInfoModal} style={{ background: 'none', border: 'none', color: '#6b6b80', fontSize: '1.4rem', cursor: 'pointer', lineHeight: 1 }}>&times;</button>
+              </div>
+              <div style={{ fontSize: '0.8rem', lineHeight: 1.7, display: 'grid', gap: '0.1rem' }}>
+                {Object.entries(getMetadataForDisplay(infoPhoto)).map(([key, value]) => (
+                  <div key={key} style={{ display: 'flex', gap: '0.5rem', borderBottom: '1px solid rgba(255,255,255,0.04)', paddingBottom: '0.15rem' }}>
+                    <span style={{ color: '#5a5a72', fontWeight: 600, minWidth: 120, flexShrink: 0 }}>{key}</span>
+                    <span style={{ color: '#d4d4e8', wordBreak: 'break-all' }}>{value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Duplicate Upload Modal */}
+        {pendingDuplicateFiles && pendingDuplicateFiles.length > 0 && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+            <div style={{ background: 'rgba(20,20,35,0.99)', border: '1px solid rgba(124,92,255,0.25)', borderRadius: 12, padding: '1.5rem', width: 'min(420px,96vw)', boxShadow: '0 16px 44px rgba(0,0,0,0.5)', color: '#fff' }}>
+              <h3 style={{ margin: '0 0 0.75rem', fontSize: '1.1rem', fontWeight: 700 }}>Duplicate Photos Detected</h3>
+              <p style={{ color: '#6b6b80', fontSize: '0.85rem', margin: '0 0 1rem' }}>
+                {pendingDuplicateCount} duplicate photo{pendingDuplicateCount === 1 ? '' : 's'} detected. How would you like to handle them?
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: '1.25rem' }}>
+                {(['skip', 'overwrite', 'allow'] as DuplicateMode[]).map((mode) => {
+                  const labels: Record<DuplicateMode, string> = {
+                    skip: 'Skip duplicates — upload only new photos',
+                    overwrite: 'Overwrite — replace existing photos with same name',
+                    allow: 'Allow — upload all, including duplicates',
+                  };
+                  return (
+                    <label key={mode} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '8px 12px', borderRadius: 8, border: `1.5px solid ${duplicateModeSelection === mode ? 'rgba(124,92,255,0.5)' : 'rgba(255,255,255,0.06)'}`, background: duplicateModeSelection === mode ? 'rgba(124,92,255,0.1)' : 'transparent' }}>
+                      <input type="radio" name="duplicateMode" value={mode} checked={duplicateModeSelection === mode} onChange={() => setDuplicateModeSelection(mode)} style={{ accentColor: '#7c5cff' }} />
+                      <span style={{ fontSize: '0.85rem', color: '#c9c9e0' }}>{labels[mode]}</span>
+                    </label>
+                  );
+                })}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                <button onClick={handleCancelDuplicateMode} style={{ padding: '8px 18px', borderRadius: 8, border: '1.5px solid rgba(255,255,255,0.1)', background: 'none', color: '#6b6b80', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }}>Cancel</button>
+                <button onClick={handleConfirmDuplicateMode} style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: 'linear-gradient(135deg,#7c5cff,#6366f1)', color: '#fff', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }}>Continue</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
-
-      {/* Info Modal */}
-      {showInfoModal && infoPhoto && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
-          background: 'rgba(0,0,0,0.45)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center'
-        }}>
-          <div style={{ background: '#23234a', color: '#fff', borderRadius: 10, padding: 28, minWidth: 340, maxWidth: 480, maxHeight: '80vh', overflow: 'auto', boxShadow: '0 4px 32px rgba(30,20,60,0.18)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <h3 style={{ margin: 0, fontSize: 20 }}>Photo Info</h3>
-              <button onClick={closeInfoModal} style={{ background: 'none', border: 'none', color: '#fff', fontSize: 22, cursor: 'pointer', marginLeft: 12 }} title="Close">&times;</button>
-            </div>
-            <div style={{ fontSize: 13, lineHeight: 1.6 }}>
-              {Object.entries(getMetadataForDisplay(infoPhoto)).map(([key, value]) => (
-                <div key={key} style={{ marginBottom: 4 }}>
-                  <span style={{ color: '#bdbdfc', fontWeight: 500 }}>{key}:</span> <span style={{ color: '#fff' }}>{value}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Duplicate Upload Modal */}
-      {pendingDuplicateFiles && pendingDuplicateFiles.length > 0 && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
-          background: 'rgba(0,0,0,0.45)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center'
-        }}>
-          <div style={{ background: '#fff', color: '#23234a', borderRadius: 10, padding: 28, minWidth: 340, maxWidth: 420, boxShadow: '0 4px 32px rgba(30,20,60,0.18)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <h3 style={{ margin: 0, fontSize: 20 }}>Duplicate Photos Detected</h3>
-            </div>
-            <div style={{ fontSize: 15, marginBottom: 16 }}>
-              {pendingDuplicateCount} duplicate photo{pendingDuplicateCount === 1 ? '' : 's'} detected.<br />
-              How would you like to handle them?
-            </div>
-            <div style={{ marginBottom: 18 }}>
-              <label style={{ display: 'block', marginBottom: 8 }}>
-                <input
-                  type="radio"
-                  name="duplicateMode"
-                  value="skip"
-                  checked={duplicateModeSelection === 'skip'}
-                  onChange={() => setDuplicateModeSelection('skip')}
-                  style={{ marginRight: 8 }}
-                />
-                Skip duplicates (upload only new photos)
-              </label>
-              <label style={{ display: 'block', marginBottom: 8 }}>
-                <input
-                  type="radio"
-                  name="duplicateMode"
-                  value="overwrite"
-                  checked={duplicateModeSelection === 'overwrite'}
-                  onChange={() => setDuplicateModeSelection('overwrite')}
-                  style={{ marginRight: 8 }}
-                />
-                Overwrite existing photos with same name
-              </label>
-              <label style={{ display: 'block', marginBottom: 8 }}>
-                <input
-                  type="radio"
-                  name="duplicateMode"
-                  value="allow"
-                  checked={duplicateModeSelection === 'allow'}
-                  onChange={() => setDuplicateModeSelection('allow')}
-                  style={{ marginRight: 8 }}
-                />
-                Allow duplicates (upload all)
-              </label>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
-              <button className="btn btn-secondary" onClick={handleCancelDuplicateMode}>Cancel</button>
-              <button className="btn btn-primary" onClick={handleConfirmDuplicateMode}>Continue</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+    </AdminLayout>
   );
 }
 

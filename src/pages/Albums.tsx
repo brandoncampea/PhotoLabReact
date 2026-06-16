@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState, useRef } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import AlbumCoverCarousel from '../components/AlbumCoverCarousel';
 import { analyticsService } from '../services/analyticsService';
 import { formatDateInStudioTimezone, formatDateTimeInStudioTimezone, setStudioTimezone } from '../utils/studioDateTime';
@@ -56,8 +56,11 @@ const hasBatchDeadlinePassed = (deadline?: string) => {
 
 
 const Albums: React.FC = () => {
-    const [searchPlayerNames, setSearchPlayerNames] = useState(false);
+  const navigate = useNavigate();
+  const [searchPlayerNames, setSearchPlayerNames] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
+  const PAGE_SIZE = 12;
+  const [page, setPage] = useState(1);
   const [studios, setStudios] = useState<PublicStudio[]>([]);
   const [selectedStudio, setSelectedStudio] = useState<PublicStudio | null>(null);
   const [albums, setAlbums] = useState<PublicAlbum[]>([]);
@@ -280,6 +283,27 @@ const Albums: React.FC = () => {
     return filtered;
   }, [albums, albumQuery, albumSort, selectedCategory, showHidden]);
 
+  const totalPages = Math.max(1, Math.ceil(filteredAlbums.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const pagedAlbums = filteredAlbums.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+
+  const goToAlbum = (albumId: number) => {
+    analyticsService.trackAlbumCardClick(albumId, '', selectedStudio?.id ?? 0);
+    navigate(`/albums/${albumId}?studioSlug=${encodeURIComponent(selectedStudio?.publicSlug ?? '')}`);
+  };
+
+  const pageBtnStyle = (active: boolean, disabled?: boolean): React.CSSProperties => ({
+    padding: '5px 10px',
+    borderRadius: 7,
+    border: '1.5px solid rgba(124,92,255,0.25)',
+    background: active ? 'rgba(124,92,255,0.25)' : 'none',
+    color: disabled ? '#3a3a50' : active ? '#c4b5fd' : '#7c5cff',
+    fontWeight: 700,
+    fontSize: '0.8rem',
+    cursor: disabled ? 'default' : 'pointer',
+    minWidth: 32,
+  });
+
   if (loading) {
     return <div className="loading">Loading...</div>;
   }
@@ -293,9 +317,10 @@ const Albums: React.FC = () => {
       {shareNotification && (
         <div className="success-message fixed-notification">✓ {shareNotification}</div>
       )}
+
       <div className="page-header">
         <h1 className="gradient-text">Photo Albums</h1>
-        <p className="albums-description">Browse and select photos from our collection</p>
+        <p className="albums-description">Browse and purchase photos from your session</p>
       </div>
 
       {!selectedStudio ? (
@@ -323,175 +348,259 @@ const Albums: React.FC = () => {
         </div>
       ) : (
         <>
-          <div className={styles.albumsFlexRow}>
-            <h2 className={styles.albumsH2}>{selectedStudio.name} Albums</h2>
-          </div>
-          <div className={styles.albumsDealsPanel}>
-            <div className={styles.albumsDealsPanelHeader}>
-              <h3 className={styles.albumsDealsTitle}>Current Deals</h3>
-              <Link to={`/studio/${encodeURIComponent(selectedStudio.publicSlug)}/deals`} className="btn btn-outline">
-                View All Deals
-              </Link>
-            </div>
-
-            {loadingDeals ? (
-              <p className={styles.albumsDealsMuted}>Loading deals...</p>
-            ) : deals.length === 0 ? (
-              <p className={styles.albumsDealsMuted}>No active deals right now.</p>
-            ) : (
-              <div className={styles.albumsDealsGrid}>
-                {deals.slice(0, 3).map((deal) => (
-                  <div key={deal.id} className={styles.albumsDealCard}>
-                    <div className={styles.albumsDealTopRow}>
-                      <span className={styles.albumsDealHeadline}>{formatDealHeadline(deal)}</span>
-                      <span className={styles.albumsDealCode}>{deal.code}</span>
-                    </div>
-                    <p className={styles.albumsDealDescription}>{deal.description || 'Limited-time studio promotion.'}</p>
-                    {deal.expirationDate && (
-                      <span className={styles.albumsDealMeta}>Ends {formatDateInStudioTimezone(deal.expirationDate)}</span>
-                    )}
-                  </div>
-                ))}
+          {/* Deals panel */}
+          {(deals.length > 0 || loadingDeals) && (
+            <div className={styles.albumsDealsPanel} style={{ marginBottom: 20 }}>
+              <div className={styles.albumsDealsPanelHeader}>
+                <h3 className={styles.albumsDealsTitle}>🏷️ Current Deals</h3>
+                <Link to={`/studio/${encodeURIComponent(selectedStudio.publicSlug)}/deals`} className="btn btn-outline">
+                  View All
+                </Link>
               </div>
-            )}
-          </div>
-          {/* Filtering and sorting UI */}
-          <div style={{ display: 'flex', gap: 12, marginBottom: 18, alignItems: 'center', flexWrap: 'wrap' }}>
-            <input
-              type="text"
-              value={albumQuery}
-              onChange={e => setAlbumQuery(e.target.value)}
-              placeholder="Filter albums by name, description, school, or player..."
-              style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #3a3656', background: '#141320', color: '#fff', minWidth: 220 }}
-              autoComplete="off"
-            />
-            <label style={{ color: '#fff', fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
-              <input
-                type="checkbox"
-                checked={searchPlayerNames}
-                onChange={e => setSearchPlayerNames(e.target.checked)}
-                style={{ marginRight: 4 }}
-              />
-              Search player names
-            </label>
-            <select
-              value={selectedCategory}
-              onChange={e => setSelectedCategory(e.target.value)}
-              style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #3a3656', background: '#141320', color: '#fff', minWidth: 140 }}
-            >
-              <option value="">All Categories</option>
-              {albumCategories.map((cat) => (
-                <option key={cat} value={cat}>{cat}</option>
-              ))}
-            </select>
-            <select
-              value={albumSort}
-              onChange={e => setAlbumSort(e.target.value as 'recent' | 'oldest')}
-              style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #3a3656', background: '#141320', color: '#fff', minWidth: 140 }}
-            >
-              <option value="recent">Most Recent First</option>
-              <option value="oldest">Oldest First</option>
-            </select>
-            <span style={{ color: '#aaa', fontSize: 13 }}>
-              Showing {filteredAlbums.length} of {albums.length} album{albums.length === 1 ? '' : 's'}
-            </span>
-          </div>
+              {loadingDeals ? (
+                <p className={styles.albumsDealsMuted}>Loading deals...</p>
+              ) : (
+                <div className={styles.albumsDealsGrid}>
+                  {deals.slice(0, 3).map((deal) => (
+                    <div key={deal.id} className={styles.albumsDealCard}>
+                      <div className={styles.albumsDealTopRow}>
+                        <span className={styles.albumsDealHeadline}>{formatDealHeadline(deal)}</span>
+                        <span className={styles.albumsDealCode}>{deal.code}</span>
+                      </div>
+                      <p className={styles.albumsDealDescription}>{deal.description || 'Limited-time studio promotion.'}</p>
+                      {deal.expirationDate && (
+                        <span className={styles.albumsDealMeta}>Ends {formatDateInStudioTimezone(deal.expirationDate)}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Batch shipping notice */}
           {Boolean(activeStudioBatchAlbum) && (
-            <div className={styles.albumsBatchNotice}>
-              <strong>Batch shipping is available for this studio.</strong>
+            <div className={styles.albumsBatchNotice} style={{ marginBottom: 20 }}>
+              <strong>📦 Batch shipping available</strong>
               <span>
-                Batch shipping can only be used for albums marked with the “Batch Shipping Available” badge.
+                Order from any album marked with "Batch Shipping Available" to qualify.
                 {activeStudioBatchAlbum?.batchDeadline
-                  ? ` Current release deadline: ${formatDateTimeInStudioTimezone(activeStudioBatchAlbum.batchDeadline)}.`
+                  ? ` Deadline: ${formatDateTimeInStudioTimezone(activeStudioBatchAlbum.batchDeadline)}.`
                   : ''}
               </span>
             </div>
           )}
+
+          {/* Filter + sort bar */}
+          <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+            <input
+              type="text"
+              value={albumQuery}
+              onChange={e => { setAlbumQuery(e.target.value); setPage(1); }}
+              placeholder="Search by name, school, or player…"
+              autoComplete="off"
+              style={{ flex: '1 1 220px', padding: '9px 14px', borderRadius: 9, border: '1.5px solid rgba(124,92,255,0.25)', background: 'rgba(10,10,20,0.8)', color: '#fff', fontSize: '0.9rem', outline: 'none' }}
+            />
+            {albumCategories.length > 0 && (
+              <select
+                value={selectedCategory}
+                onChange={e => { setSelectedCategory(e.target.value); setPage(1); }}
+                style={{ padding: '9px 12px', borderRadius: 9, border: '1.5px solid rgba(124,92,255,0.2)', background: 'rgba(10,10,20,0.8)', color: '#d4d4e8', fontSize: '0.85rem', outline: 'none' }}
+              >
+                <option value="">All Categories</option>
+                {albumCategories.map((cat) => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+            )}
+            <select
+              value={albumSort}
+              onChange={e => { setAlbumSort(e.target.value as 'recent' | 'oldest'); setPage(1); }}
+              style={{ padding: '9px 12px', borderRadius: 9, border: '1.5px solid rgba(124,92,255,0.2)', background: 'rgba(10,10,20,0.8)', color: '#d4d4e8', fontSize: '0.85rem', outline: 'none' }}
+            >
+              <option value="recent">Most Recent</option>
+              <option value="oldest">Oldest First</option>
+            </select>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 7, color: '#6b6b80', fontSize: '0.85rem', cursor: 'pointer', userSelect: 'none' }}>
+              <input
+                type="checkbox"
+                checked={searchPlayerNames}
+                onChange={e => setSearchPlayerNames(e.target.checked)}
+                style={{ accentColor: '#7c5cff', width: 15, height: 15 }}
+              />
+              Include player names
+            </label>
+          </div>
+
+          {/* Count + pagination top */}
+          {filteredAlbums.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+              <div style={{ fontSize: '0.78rem', color: '#4a4a6a', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+                {filteredAlbums.length} album{filteredAlbums.length !== 1 ? 's' : ''}
+                {albumQuery ? ` for "${albumQuery}"` : ''}
+                {totalPages > 1 && ` · page ${safePage} of ${totalPages}`}
+              </div>
+              {totalPages > 1 && (
+                <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+                  <button onClick={() => setPage(1)} disabled={safePage === 1} style={pageBtnStyle(false, safePage === 1)}>«</button>
+                  <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={safePage === 1} style={pageBtnStyle(false, safePage === 1)}>‹</button>
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .filter(p => p === 1 || p === totalPages || Math.abs(p - safePage) <= 1)
+                    .reduce<(number | '…')[]>((acc, p, i, arr) => {
+                      if (i > 0 && p - (arr[i - 1] as number) > 1) acc.push('…');
+                      acc.push(p);
+                      return acc;
+                    }, [])
+                    .map((p, i) =>
+                      p === '…' ? (
+                        <span key={`el-${i}`} style={{ color: '#3a3a50', fontSize: '0.8rem' }}>…</span>
+                      ) : (
+                        <button key={p} onClick={() => setPage(p as number)} style={pageBtnStyle(safePage === p)}>{p}</button>
+                      )
+                    )}
+                  <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={safePage === totalPages} style={pageBtnStyle(false, safePage === totalPages)}>›</button>
+                  <button onClick={() => setPage(totalPages)} disabled={safePage === totalPages} style={pageBtnStyle(false, safePage === totalPages)}>»</button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Album grid */}
           <div className="albums-grid">
             {albums.length === 0 ? (
-              <p className="empty-state">No albums available for this studio</p>
+              <p className="empty-state">No albums available for this studio yet.</p>
             ) : filteredAlbums.length === 0 ? (
-              <p className="empty-state">No albums match your filter.</p>
+              <p className="empty-state">No albums match your search.</p>
             ) : (
-              filteredAlbums.map((album) => (
-                <Link
-                  to={`/albums/${album.id}?studioSlug=${encodeURIComponent(selectedStudio.publicSlug)}`}
-                  key={album.id}
-                  className="album-card"
-                  onClick={() => analyticsService.trackAlbumCardClick(album.id, album.name, selectedStudio.id)}
-                >
-                  <div className="album-cover">
-                    <AlbumCoverCarousel
-                      albumId={album.id}
-                      albumName={album.name}
-                      coverImageUrl={
+              pagedAlbums.map((album) => {
+                const albumUrl = `/albums/${album.id}?studioSlug=${encodeURIComponent(selectedStudio.publicSlug)}`;
+                return (
+                  <div
+                    key={album.id}
+                    className="album-card"
+                    onClick={() => goToAlbum(album.id)}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    {/* Cover image */}
+                    <div className="album-cover">
+                      <AlbumCoverCarousel
+                        albumId={album.id}
+                        albumName={album.name}
+                        coverImageUrl={
                           album.coverImageUrl && String(album.coverImageUrl).match(/^\d+$/)
                             ? `/api/photos/${album.coverImageUrl}/asset?variant=thumbnail`
                             : album.coverImageUrl || undefined
-                      }
-                      previewImageUrls={
-                        Array.isArray(album.previewImageUrls)
-                          ? album.previewImageUrls
-                              .filter(pid => String(pid).match(/^\d+$/))
-                              .map(pid => `/api/photos/${pid}/asset?variant=thumbnail`)
-                          : undefined
-                      }
-                      studioId={selectedStudio?.id}
-                    />
-                    <div className="album-overlay">
-                      <span className="photo-count">{album.photoCount} photos</span>
+                        }
+                        previewImageUrls={
+                          Array.isArray(album.previewImageUrls)
+                            ? album.previewImageUrls
+                                .filter(pid => String(pid).match(/^\d+$/))
+                                .map(pid => `/api/photos/${pid}/asset?variant=thumbnail`)
+                            : undefined
+                        }
+                        studioId={selectedStudio?.id}
+                      />
+                      <div className="album-overlay">
+                        <span className="photo-count">{album.photoCount} photos</span>
+                      </div>
                     </div>
-                  </div>
-                  <div className="album-info">
-                    <h3>{album.name}</h3>
-                    {isBatchEnabledForAlbum(album) && (
-                      <div className={styles.albumsBatchBadge}>Batch Shipping Available</div>
-                    )}
-                    {Array.isArray(album.schoolTags) && album.schoolTags.length > 0 && (
-                      <div className={styles.albumSchoolsSection}>
-                        <span className={styles.albumSchoolsLabel}>Schools</span>
-                        <div className={styles.albumSchoolsList}>
-                          {album.schoolTags.slice(0, 4).map((school) => (
-                            <span key={school} className={styles.albumSchoolChip}>{school}</span>
-                          ))}
-                          {album.schoolTags.length > 4 && (
-                            <span className={styles.albumSchoolChip}>+{album.schoolTags.length - 4} more</span>
+
+                    {/* Card info */}
+                    <div className="album-info">
+                      {/* Title — own Link so keyboard/right-click still works */}
+                      <h3>
+                        <a
+                          href={albumUrl}
+                          onClick={e => e.stopPropagation()}
+                          style={{ color: 'inherit', textDecoration: 'none' }}
+                        >
+                          {album.name}
+                        </a>
+                      </h3>
+
+                      {album.category && (
+                        <div style={{ fontSize: '0.75rem', color: '#7c5cff', fontWeight: 600, marginTop: -2, marginBottom: 2 }}>{album.category}</div>
+                      )}
+
+                      {isBatchEnabledForAlbum(album) && (
+                        <div className={styles.albumsBatchBadge}>📦 Batch Shipping Available</div>
+                      )}
+
+                      {Array.isArray(album.schoolTags) && album.schoolTags.length > 0 && (
+                        <div className={styles.albumSchoolsSection}>
+                          <div className={styles.albumSchoolsList}>
+                            {album.schoolTags.slice(0, 3).map((school) => (
+                              <span key={school} className={styles.albumSchoolChip}>{school}</span>
+                            ))}
+                            {album.schoolTags.length > 3 && (
+                              <span className={styles.albumSchoolChip}>+{album.schoolTags.length - 3}</span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {album.description && (
+                        <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: '#6b6b80', lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                          {album.description}
+                        </p>
+                      )}
+
+                      {/* Footer row */}
+                      <div className="album-info-row" style={{ marginTop: 8 }}>
+                        <span className="album-date" style={{ fontSize: '0.78rem' }}>
+                          {formatDateInStudioTimezone(album.createdDate)}
+                        </span>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          {album.albumPurchaseEnabled !== false && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleBuyEntireAlbum(e, album); }}
+                              className={styles.buyEntireAlbumButton}
+                              title="Buy entire album"
+                            >
+                              Buy Album
+                            </button>
                           )}
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleShare(e, album); }}
+                            className={styles.shareButton}
+                            title="Share album"
+                          >
+                            <span className={styles.shareIcon}>🔗</span> Share
+                          </button>
                         </div>
                       </div>
-                    )}
-                    <p>{album.description}</p>
-                    <div className="album-info-row">
-                      <span className="album-date">
-                        {formatDateInStudioTimezone(album.createdDate)}
-                      </span>
-                      <div className={styles.albumInfoActions}>
-                        {album.albumPurchaseEnabled !== false && (
-                          <button
-                            onClick={(e) => handleBuyEntireAlbum(e, album)}
-                            className={styles.buyEntireAlbumButton}
-                            title="Buy entire album"
-                          >
-                            Buy Entire Album
-                          </button>
-                        )}
-                        <button
-                          onClick={(e) => handleShare(e, album)}
-                          className={styles.shareButton}
-                          title="Share album"
-                        >
-                          <span className={styles.shareIcon}>🔗</span> Share
-                        </button>
-                      </div>
                     </div>
                   </div>
-                </Link>
-              ))
+                );
+              })
             )}
           </div>
+
+          {/* Pagination bottom */}
+          {totalPages > 1 && (
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginTop: 28, paddingBottom: 8 }}>
+              <button onClick={() => setPage(1)} disabled={safePage === 1} style={pageBtnStyle(false, safePage === 1)}>«</button>
+              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={safePage === 1} style={pageBtnStyle(false, safePage === 1)}>‹</button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter(p => p === 1 || p === totalPages || Math.abs(p - safePage) <= 1)
+                .reduce<(number | '…')[]>((acc, p, i, arr) => {
+                  if (i > 0 && p - (arr[i - 1] as number) > 1) acc.push('…');
+                  acc.push(p);
+                  return acc;
+                }, [])
+                .map((p, i) =>
+                  p === '…' ? (
+                    <span key={`elb-${i}`} style={{ color: '#3a3a50', fontSize: '0.8rem', padding: '5px 2px' }}>…</span>
+                  ) : (
+                    <button key={p} onClick={() => setPage(p as number)} style={pageBtnStyle(safePage === p)}>{p}</button>
+                  )
+                )}
+              <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={safePage === totalPages} style={pageBtnStyle(false, safePage === totalPages)}>›</button>
+              <button onClick={() => setPage(totalPages)} disabled={safePage === totalPages} style={pageBtnStyle(false, safePage === totalPages)}>»</button>
+            </div>
+          )}
         </>
       )}
-
     </div>
   );
 }

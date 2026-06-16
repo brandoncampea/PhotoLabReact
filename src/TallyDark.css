@@ -72,7 +72,7 @@ body {
   padding: 32px 0 0 0;
 }
 
-.card, .albums-grid, .studios-list-container, .albums-full-height {
+.card, .studios-list-container, .albums-full-height {
   background: var(--card-bg);
   border-radius: var(--card-radius);
   box-shadow: var(--card-shadow);
@@ -133,66 +133,95 @@ body {
 
 .albums-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 0.5rem !important;
-  margin-bottom: 0 !important;
-  padding-bottom: 0 !important;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 1.25rem;
   width: 100%;
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
   padding: 0;
-  margin: 0;
+  margin-bottom: 0;
+  box-sizing: border-box;
 }
 
 .album-card {
-  background: var(--card-bg);
-  border-radius: var(--card-radius);
-  box-shadow: var(--card-shadow);
+  background: rgba(22, 22, 35, 0.95);
+  border-radius: 14px;
+  border: 1.5px solid rgba(124, 92, 255, 0.15);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
   padding: 0;
   display: flex;
   flex-direction: column;
   text-decoration: none;
   color: var(--text-main);
-  transition: box-shadow 0.2s, transform 0.2s;
+  transition: box-shadow 0.2s, transform 0.2s, border-color 0.2s;
+  overflow: hidden;
 }
 .album-card:hover {
-  box-shadow: 0 8px 32px rgba(80, 70, 255, 0.18);
-  transform: translateY(-4px) scale(1.02);
+  box-shadow: 0 8px 28px rgba(124, 92, 255, 0.2);
+  border-color: rgba(124, 92, 255, 0.45);
+  transform: translateY(-3px);
 }
 
 .album-cover {
-  border-radius: var(--card-radius) var(--card-radius) 0 0;
+  border-radius: 14px 14px 0 0;
   overflow: hidden;
   position: relative;
-  min-height: 180px;
-  background: #222;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  background: #1a1a2e;
+  flex-shrink: 0;
 }
 .album-overlay {
   position: absolute;
   bottom: 0;
   left: 0;
   right: 0;
-  background: rgba(24,28,36,0.85);
-  color: var(--accent-blue);
-  font-size: 1rem;
-  font-weight: 600;
-  padding: 0.5rem 1rem;
-  border-radius: 0 0 var(--card-radius) var(--card-radius);
+  background: linear-gradient(0deg, rgba(18, 18, 30, 0.9) 0%, transparent 100%);
+  padding: 18px 12px 8px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-start;
+  pointer-events: none;
+}
+.photo-count {
+  display: inline-block;
+  background: rgba(124, 92, 255, 0.85);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  border-radius: 6px;
+  padding: 2px 8px;
+  letter-spacing: 0.02em;
 }
 
 .album-info {
-  padding: 1.25rem 1.5rem 1.5rem 1.5rem;
+  padding: 14px 16px 14px;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 4px;
+  flex: 1;
+}
+.album-info h3 {
+  margin: 0 0 2px;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #e0e0ff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .album-info-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-top: 0.5rem;
+  margin-top: 8px;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 .album-date {
-  color: var(--text-muted);
-  font-size: 0.95rem;
+  color: #6b6b80;
+  font-size: 0.78rem;
 }
 
 .btn, .btn-icon {

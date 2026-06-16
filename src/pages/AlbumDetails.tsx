@@ -83,6 +83,7 @@ const AlbumDetails: React.FC = () => {
   const [tagSuggestionName, setTagSuggestionName] = useState('');
   const [tagSuggestionSubmitting, setTagSuggestionSubmitting] = useState(false);
   const [tagSuggestionMessage, setTagSuggestionMessage] = useState('');
+  const [tagPanelOpen, setTagPanelOpen] = useState(false);
   const [showTagWatchPrompt, setShowTagWatchPrompt] = useState(false);
   const [pendingWatchPlayerName, setPendingWatchPlayerName] = useState('');
   const [pendingTagSuggestionBaseMessage, setPendingTagSuggestionBaseMessage] = useState('');
@@ -430,16 +431,17 @@ const AlbumDetails: React.FC = () => {
   }, [orderedProducts, hasStudioRecommendedProducts, studioRecommendedProductIds]);
 
   const productsBySection = useMemo(() => {
-    const albumPurchaseEnabled = album?.albumPurchaseEnabled !== false;
-    const digital = orderedProducts.filter((p) => p.isDigital && (albumPurchaseEnabled || getDigitalScopeValue(p) !== 'album'));
+    const digital = orderedProducts.filter((p) => p.isDigital && getDigitalScopeValue(p) !== 'album');
     const recommended = orderedProducts.filter((p) => !p.isDigital && recommendedProductIds.has(p.id));
     const remaining = orderedProducts.filter((p) => !p.isDigital && !recommendedProductIds.has(p.id));
     return { digital, recommended, remaining };
   }, [orderedProducts, recommendedProductIds, album]);
 
   const albumPurchaseProducts = useMemo(
-    () => (orderedProducts || []).filter((p) => !!p.isDigital && getDigitalScopeValue(p) === 'album'),
-    [orderedProducts]
+    () => (products || [])
+      .filter((p) => !!p.isDigital && getDigitalScopeValue(p) === 'album')
+      .map((p) => ({ ...p, ratioDiff: 0, isRecommended: false, studioIsRecommended: false }) as ProductWithMatch),
+    [products]
   );
 
   const recommendedGrouped = useMemo(() => {
@@ -989,17 +991,24 @@ const AlbumDetails: React.FC = () => {
     const shouldAutoBuyAlbum = String(searchParams.get('buyAlbum') || '').trim() === '1';
     if (!shouldAutoBuyAlbum) return;
     if (autoBuyAttemptedRef.current) return;
-    if (!albumPurchaseProducts.length) return;
-
-    autoBuyAttemptedRef.current = true;
-    const firstProduct = albumPurchaseProducts[0] as ProductWithMatch;
-    void handleAddToCart(firstProduct);
+    // Wait until products are loaded before deciding
+    if (loading || !products.length) return;
 
     const nextParams = new URLSearchParams(searchParams);
     nextParams.delete('buyAlbum');
     const query = nextParams.toString();
+
+    if (!albumPurchaseProducts.length) {
+      // Products loaded but none have album scope — land on the album normally
+      navigate(`${window.location.pathname}${query ? `?${query}` : ''}`, { replace: true });
+      return;
+    }
+
+    autoBuyAttemptedRef.current = true;
+    const firstProduct = albumPurchaseProducts[0] as ProductWithMatch;
+    void handleAddToCart(firstProduct);
     navigate(`${window.location.pathname}${query ? `?${query}` : ''}`, { replace: true });
-  }, [albumPurchaseProducts, navigate, searchParams]);
+  }, [albumPurchaseProducts, loading, products, navigate, searchParams]);
 
   const handleCropConfirm = async () => {
     if (!selectedPhoto || !productToCrop) return;
@@ -1274,11 +1283,6 @@ const AlbumDetails: React.FC = () => {
         </div>
       )}
 
-      {album?.albumPurchaseEnabled !== false && albumPurchaseProducts.length === 0 && (
-        <div style={{ marginBottom: 14, border: '1px solid #3a3656', borderRadius: 8, padding: 10, background: '#161526', color: '#aaa', fontSize: 12 }}>
-          Album purchase is enabled, but no full-album digital product is currently offered for this album.
-        </div>
-      )}
 
 
 
@@ -1488,58 +1492,62 @@ const AlbumDetails: React.FC = () => {
                         background: '#141320',
                       }}
                     >
-                      <div style={{ fontWeight: 700, color: '#ddd7ff', marginBottom: 6 }}>Help tag this photo</div>
-                      <div style={{ fontSize: 12, color: '#aaa', marginBottom: 10 }}>
-                        Know the player in this photo? Log in and submit a name for studio review.
-                      </div>
-                      {!user && (
-                        <div style={{ marginBottom: 10, fontSize: 12, color: '#cbd5e1' }}>
-                          You must be logged in to suggest tags.{' '}
-                          <Link to="/login" style={{ color: '#9f7aea', fontWeight: 700 }}>Log in</Link>
-                        </div>
-                      )}
-                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                        <input
-                          type="text"
-                          value={tagSuggestionName}
-                          onChange={(e) => setTagSuggestionName(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              handleSubmitTagSuggestion();
-                            }
-                          }}
-                          disabled={!user}
-                          placeholder="Enter player name"
-                          style={{
-                            flex: '1 1 260px',
-                            padding: '10px 12px',
-                            borderRadius: 6,
-                            border: '1px solid #3a3656',
-                            background: '#10101a',
-                            color: '#fff',
-                          }}
-                        />
-                        <button
-                          type="button"
-                          className="btn btn-primary"
-                          disabled={!user || tagSuggestionSubmitting}
-                          onClick={handleSubmitTagSuggestion}
-                        >
-                          {tagSuggestionSubmitting ? 'Submitting...' : 'Submit Tag'}
-                        </button>
-                      </div>
-                      {!!tagSuggestionMessage && (
-                        <div
-                          style={{
-                            marginTop: 8,
-                            fontSize: 12,
-                            color: tagSuggestionMessage.toLowerCase().includes('failed') || tagSuggestionMessage.toLowerCase().includes('error')
-                              ? '#ff9a9a'
-                              : '#79d279',
-                          }}
-                        >
-                          {tagSuggestionMessage}
+                      <button
+                        onClick={() => setTagPanelOpen(v => !v)}
+                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: 0, gap: 8 }}
+                      >
+                        <span style={{ fontWeight: 700, color: '#ddd7ff', fontSize: 13 }}>🏷️ Help tag this photo</span>
+                        <span style={{ color: '#6b6b80', fontSize: 11, transition: 'transform 0.18s', display: 'inline-block', transform: tagPanelOpen ? 'rotate(180deg)' : 'none' }}>▼</span>
+                      </button>
+                      {tagPanelOpen && (
+                        <div style={{ marginTop: 10 }}>
+                          <div style={{ fontSize: 12, color: '#aaa', marginBottom: 10 }}>
+                            Know the player in this photo? Log in and submit a name for studio review.
+                          </div>
+                          {!user && (
+                            <div style={{ marginBottom: 10, fontSize: 12, color: '#cbd5e1' }}>
+                              You must be logged in to suggest tags.{' '}
+                              <Link to="/login" style={{ color: '#9f7aea', fontWeight: 700 }}>Log in</Link>
+                            </div>
+                          )}
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            <input
+                              type="text"
+                              value={tagSuggestionName}
+                              onChange={(e) => setTagSuggestionName(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  handleSubmitTagSuggestion();
+                                }
+                              }}
+                              disabled={!user}
+                              placeholder="Enter player name"
+                              style={{
+                                flex: '1 1 200px',
+                                padding: '8px 10px',
+                                borderRadius: 6,
+                                border: '1px solid #3a3656',
+                                background: '#10101a',
+                                color: '#fff',
+                                fontSize: 13,
+                              }}
+                            />
+                            <button
+                              type="button"
+                              className="btn btn-primary"
+                              disabled={!user || tagSuggestionSubmitting}
+                              onClick={handleSubmitTagSuggestion}
+                              style={{ fontSize: 13, padding: '8px 14px' }}
+                            >
+                              {tagSuggestionSubmitting ? 'Submitting...' : 'Submit Tag'}
+                            </button>
+                          </div>
+                          {!!tagSuggestionMessage && (
+                            <div style={{ marginTop: 8, fontSize: 12, color: tagSuggestionMessage.toLowerCase().includes('failed') || tagSuggestionMessage.toLowerCase().includes('error') ? '#ff9a9a' : '#79d279' }}>
+                              {tagSuggestionMessage}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>

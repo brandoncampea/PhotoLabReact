@@ -181,30 +181,31 @@ const SuperAdminDashboard: React.FC = () => {
 
   const drilldownStyles = {
     title: {
-      marginBottom: 12,
-      color: '#f8fafc',
-      fontWeight: 700,
-      letterSpacing: '0.01em',
+      margin: 0,
+      color: '#fff',
+      fontWeight: 800,
+      fontSize: '1.1rem',
+      letterSpacing: '-0.01em',
     } as React.CSSProperties,
     table: {
-      fontSize: 15,
+      fontSize: 13,
       width: '100%',
       borderCollapse: 'separate',
       borderSpacing: 0,
-      color: '#e2e8f0',
-      background: 'rgba(15, 23, 42, 0.65)',
-      border: '1px solid rgba(148, 163, 184, 0.28)',
+      color: '#d4d4e8',
+      background: 'rgba(12,12,20,0.6)',
+      border: '1px solid rgba(124,92,255,0.18)',
       borderRadius: 10,
       overflow: 'hidden',
     } as React.CSSProperties,
     nestedTable: {
-      fontSize: 14,
+      fontSize: 12,
       width: '100%',
       borderCollapse: 'separate',
       borderSpacing: 0,
-      color: '#e2e8f0',
-      background: 'rgba(15, 23, 42, 0.82)',
-      border: '1px solid rgba(148, 163, 184, 0.28)',
+      color: '#d4d4e8',
+      background: 'rgba(10,10,18,0.7)',
+      border: '1px solid rgba(124,92,255,0.15)',
       borderRadius: 8,
       overflow: 'hidden',
     } as React.CSSProperties,
@@ -213,32 +214,35 @@ const SuperAdminDashboard: React.FC = () => {
       top: 0,
       zIndex: 2,
       textAlign: 'left',
-      padding: '10px 12px',
+      padding: '9px 12px',
       fontWeight: 700,
-      color: '#f8fafc',
-      background: '#0f172a',
-      borderBottom: '1px solid rgba(148, 163, 184, 0.32)',
+      fontSize: 11,
+      textTransform: 'uppercase' as const,
+      letterSpacing: '0.05em',
+      color: '#6b6b80',
+      background: 'rgba(10,10,20,0.95)',
+      borderBottom: '1px solid rgba(124,92,255,0.18)',
       whiteSpace: 'nowrap',
     } as React.CSSProperties,
     td: {
       padding: '9px 12px',
-      borderBottom: '1px solid rgba(148, 163, 184, 0.18)',
-      color: '#e2e8f0',
+      borderBottom: '1px solid rgba(255,255,255,0.04)',
+      color: '#c9c9e0',
       verticalAlign: 'top',
       whiteSpace: 'nowrap',
     } as React.CSSProperties,
     expandedRow: {
-      background: 'rgba(99, 102, 241, 0.20)',
+      background: 'rgba(124,92,255,0.10)',
     } as React.CSSProperties,
     normalRow: {
-      background: 'rgba(15, 23, 42, 0.35)',
+      background: 'transparent',
     } as React.CSSProperties,
     actionButton: {
-      fontSize: 13,
+      fontSize: 12,
       fontWeight: 700,
-      color: '#e2e8f0',
-      background: 'rgba(51, 65, 85, 0.9)',
-      border: '1px solid rgba(148, 163, 184, 0.34)',
+      color: '#a78bfa',
+      background: 'rgba(124,92,255,0.12)',
+      border: '1.5px solid rgba(124,92,255,0.3)',
       borderRadius: 6,
       padding: '4px 10px',
       cursor: 'pointer',
@@ -246,21 +250,21 @@ const SuperAdminDashboard: React.FC = () => {
     nestedWrap: {
       maxHeight: 320,
       overflow: 'auto',
-      background: 'rgba(2, 6, 23, 0.55)',
+      background: 'rgba(8,8,16,0.6)',
       borderRadius: 8,
       padding: 8,
-      border: '1px solid rgba(148, 163, 184, 0.22)',
+      border: '1px solid rgba(124,92,255,0.15)',
     } as React.CSSProperties,
     summary: {
       cursor: 'pointer',
-      color: '#cbd5e1',
+      color: '#a78bfa',
       fontWeight: 600,
     } as React.CSSProperties,
     list: {
       margin: 0,
       paddingLeft: 18,
-      color: '#cbd5e1',
-      lineHeight: 1.35,
+      color: '#8b8ba8',
+      lineHeight: 1.5,
     } as React.CSSProperties,
   };
 
@@ -454,29 +458,26 @@ const SuperAdminDashboard: React.FC = () => {
 
 
       {/* Studio Revenue/Cost Drill-down */}
-      <div className="dashboard-card tallydark-card" style={{ marginTop: 32, width: '100%' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 14 }}>
-          <h2 style={drilldownStyles.title}>Studio Revenue & Cost Drill-down</h2>
+      <div style={{ marginTop: 32, width: '100%', background: 'rgba(22,22,35,0.95)', border: '1px solid rgba(124,92,255,0.15)', borderRadius: 14, padding: '1.25rem 1.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
+          <div>
+            <h2 style={drilldownStyles.title}>Studio Revenue & Cost Drill-down</h2>
+            <p style={{ margin: '3px 0 0', fontSize: '0.78rem', color: '#5a5a72' }}>Per-studio financial breakdown with payout tracking</p>
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <label style={{ color: '#94a3b8', fontSize: 13, fontWeight: 600 }}>Filter by min. current profit:</label>
-            <span style={{ color: '#94a3b8', fontSize: 14, fontWeight: 700 }}>$</span>
-            <input
-              type="number"
-              min={0}
-              step={1}
-              value={profitThreshold}
-              onChange={e => setProfitThreshold(Number(e.target.value))}
-              style={{
-                width: 90,
-                padding: '4px 8px',
-                borderRadius: 6,
-                border: '1px solid rgba(148,163,184,0.35)',
-                background: 'rgba(15,23,42,0.7)',
-                color: '#f1f5f9',
-                fontSize: 14,
-              }}
-              placeholder="0"
-            />
+            <label style={{ color: '#6b6b80', fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Min. profit</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 0, border: '1.5px solid rgba(124,92,255,0.25)', borderRadius: 8, overflow: 'hidden', background: 'rgba(0,0,0,0.3)' }}>
+              <span style={{ padding: '5px 8px', color: '#6b6b80', fontSize: 13, fontWeight: 700, borderRight: '1px solid rgba(124,92,255,0.15)' }}>$</span>
+              <input
+                type="number"
+                min={0}
+                step={1}
+                value={profitThreshold}
+                onChange={e => setProfitThreshold(Number(e.target.value))}
+                style={{ width: 80, padding: '5px 8px', border: 'none', background: 'transparent', color: '#e0e0f0', fontSize: 13, outline: 'none' }}
+                placeholder="0"
+              />
+            </div>
           </div>
         </div>
         {payoutSuccess && (
@@ -491,179 +492,182 @@ const SuperAdminDashboard: React.FC = () => {
             <button onClick={() => setPayoutError('')} style={{ marginLeft: 12, background: 'none', border: 'none', color: '#fca5a5', cursor: 'pointer', fontSize: 13 }}>✕</button>
           </div>
         )}
-        <table className="admin-table" style={drilldownStyles.table}>
-          <thead>
-            <tr>
-              <th style={drilldownStyles.th}>Studio</th>
-              <th style={drilldownStyles.th}>Orders</th>
-              <th style={drilldownStyles.th}>Revenue (ex Tax)</th>
-              <th style={drilldownStyles.th}>Subtotal</th>
-              <th style={drilldownStyles.th}>Tax</th>
-              <th style={drilldownStyles.th}>Shipping</th>
-              <th style={drilldownStyles.th}>Studio Shipping</th>
-              <th style={drilldownStyles.th}>Shipping Margin</th>
-              <th style={drilldownStyles.th}>Stripe Fees</th>
-              <th style={drilldownStyles.th}>Total Profit</th>
-              <th style={drilldownStyles.th}>Current Profit</th>
-              <th style={drilldownStyles.th}>Total Paid Out</th>
-              <th style={drilldownStyles.th}>Discounts</th>
-              <th style={drilldownStyles.th}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {studioDetails
-              .filter(({ summary }: any) => Number(summary.currentStudioProfit || 0) >= profitThreshold)
-              .map(({ studio, summary, orders, payoutHistory }: any) => (
-              <React.Fragment key={studio.id}>
-                <tr style={expandedStudio === studio.id ? drilldownStyles.expandedRow : drilldownStyles.normalRow}>
-                  <td style={drilldownStyles.td}><b>{studio.name}</b></td>
-                  <td style={drilldownStyles.td}>{summary.orderCount}</td>
-                  <td style={drilldownStyles.td}>${Math.max(0, Number(summary.totalRevenue) - Number(summary.totalTax || 0)).toFixed(2)}</td>
-                  <td style={drilldownStyles.td}>${Number(summary.totalSubtotal).toFixed(2)}</td>
-                  <td style={drilldownStyles.td}>${Number(summary.totalTax).toFixed(2)}</td>
-                  <td style={drilldownStyles.td}>${Number(summary.totalShipping).toFixed(2)}</td>
-                  <td style={drilldownStyles.td}>${Number(summary.totalStudioShipping).toFixed(2)}</td>
-                  <td style={drilldownStyles.td}>${Number(summary.totalShippingMargin).toFixed(2)}</td>
-                  <td style={drilldownStyles.td}>${Number(summary.totalStripeFees).toFixed(2)}</td>
-                  <td style={{ ...drilldownStyles.td, color: '#86efac', fontWeight: 700 }}>${Number(summary.totalStudioProfit || 0).toFixed(2)}</td>
-                  <td style={{ ...drilldownStyles.td, color: Number(summary.currentStudioProfit || 0) > 0 ? '#fbbf24' : '#94a3b8', fontWeight: 700 }}>
-                    ${Number(summary.currentStudioProfit || 0).toFixed(2)}
-                  </td>
-                  <td style={{ ...drilldownStyles.td, color: '#94a3b8' }}>${Number(summary.totalPayouts || 0).toFixed(2)}</td>
-                  <td style={drilldownStyles.td}>${Number(summary.totalDiscounts).toFixed(2)}</td>
-                  <td style={{ ...drilldownStyles.td, whiteSpace: 'nowrap' }}>
-                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                      <button onClick={() => setExpandedStudio(expandedStudio === studio.id ? null : studio.id)} style={drilldownStyles.actionButton}>
-                        {expandedStudio === studio.id ? 'Hide' : 'Drill Down'}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {studioDetails
+            .filter(({ summary }: any) => Number(summary.currentStudioProfit || 0) >= profitThreshold)
+            .map(({ studio, summary, orders, payoutHistory }: any) => {
+              const isExpanded = expandedStudio === studio.id;
+              const currentProfit = Number(summary.currentStudioProfit || 0);
+              const totalProfit = Number(summary.totalStudioProfit || 0);
+              const revenue = Math.max(0, Number(summary.totalRevenue) - Number(summary.totalTax || 0));
+
+              const statCell = (label: string, value: string, color?: string) => (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: '0.05em', color: '#5a5a72' }}>{label}</span>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: color || '#d4d4e8' }}>{value}</span>
+                </div>
+              );
+
+              return (
+                <div
+                  key={studio.id}
+                  style={{
+                    background: isExpanded ? 'rgba(124,92,255,0.06)' : 'rgba(14,14,24,0.7)',
+                    border: `1px solid ${isExpanded ? 'rgba(124,92,255,0.3)' : 'rgba(124,92,255,0.12)'}`,
+                    borderRadius: 10,
+                    overflow: 'hidden',
+                    transition: 'border-color 0.2s',
+                  }}
+                >
+                  {/* Card header row */}
+                  <div style={{ padding: '0.8rem 1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', flex: 1 }}>
+                      <span style={{ fontWeight: 800, fontSize: '0.95rem', color: '#fff' }}>{studio.name}</span>
+                      <span style={{ fontSize: 11, color: '#6b6b80' }}>{summary.orderCount} order{summary.orderCount !== 1 ? 's' : ''}</span>
+
+                      {/* Primary stats inline */}
+                      <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', marginLeft: 8 }}>
+                        {statCell('Revenue', `$${revenue.toFixed(2)}`)}
+                        {statCell('Total Profit', `$${totalProfit.toFixed(2)}`, '#7ee787')}
+                        {statCell('Current Profit', `$${currentProfit.toFixed(2)}`, currentProfit > 0 ? '#fbbf24' : '#5a5a72')}
+                        {statCell('Paid Out', `$${Number(summary.totalPayouts || 0).toFixed(2)}`)}
+                      </div>
+
+                      {/* Secondary stats */}
+                      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', fontSize: 11, color: '#4a4a6a', marginLeft: 4 }}>
+                        <span>Tax ${Number(summary.totalTax).toFixed(2)}</span>
+                        <span>Stripe ${Number(summary.totalStripeFees).toFixed(2)}</span>
+                        <span>Ship margin ${Number(summary.totalShippingMargin).toFixed(2)}</span>
+                        <span>Discounts ${Number(summary.totalDiscounts).toFixed(2)}</span>
+                      </div>
+                    </div>
+
+                    {/* Action buttons */}
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+                      <button
+                        onClick={() => setExpandedStudio(isExpanded ? null : studio.id)}
+                        style={drilldownStyles.actionButton}
+                      >
+                        {isExpanded ? 'Hide' : 'View Orders'}
                       </button>
-                      {Number(summary.currentStudioProfit || 0) > 0 && (
+                      {currentProfit > 0 && (
                         <button
                           onClick={() => { setPayingStudio(studio.id); setPayoutNotes(''); setPayoutError(''); setPayoutSuccess(''); }}
-                          style={{ ...drilldownStyles.actionButton, background: 'rgba(34,197,94,0.18)', border: '1px solid #22c55e', color: '#86efac' }}
+                          style={{ ...drilldownStyles.actionButton, background: 'rgba(34,197,94,0.12)', border: '1.5px solid rgba(34,197,94,0.35)', color: '#7ee787' }}
                         >
                           Mark as Paid
                         </button>
                       )}
                     </div>
-                    {payingStudio === studio.id && (
-                      <div style={{ marginTop: 8, background: 'rgba(15,23,42,0.9)', border: '1px solid rgba(34,197,94,0.4)', borderRadius: 8, padding: 10, minWidth: 240 }}>
-                        <div style={{ color: '#86efac', fontWeight: 700, marginBottom: 6, fontSize: 13 }}>
-                          Pay ${Number(summary.currentStudioProfit || 0).toFixed(2)} for {orders.filter((o: any) => !o.is_paid).length} unpaid order(s)
-                        </div>
+                  </div>
+
+                  {/* Payout confirmation form */}
+                  {payingStudio === studio.id && (
+                    <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid rgba(255,255,255,0.04)', background: 'rgba(34,197,94,0.05)' }}>
+                      <div style={{ color: '#7ee787', fontWeight: 700, marginBottom: 8, fontSize: 12 }}>
+                        Pay ${currentProfit.toFixed(2)} for {orders.filter((o: any) => !o.is_paid).length} unpaid order(s)
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                         <input
                           type="text"
                           placeholder="Notes (optional)"
                           value={payoutNotes}
                           onChange={e => setPayoutNotes(e.target.value)}
-                          style={{ width: '100%', padding: '4px 8px', borderRadius: 5, border: '1px solid rgba(148,163,184,0.3)', background: 'rgba(15,23,42,0.7)', color: '#f1f5f9', fontSize: 12, marginBottom: 6, boxSizing: 'border-box' }}
+                          style={{ flex: 1, minWidth: 180, padding: '5px 8px', borderRadius: 6, border: '1.5px solid rgba(124,92,255,0.25)', background: 'rgba(0,0,0,0.3)', color: '#e0e0f0', fontSize: 12, outline: 'none', boxSizing: 'border-box' }}
                         />
-                        <div style={{ display: 'flex', gap: 6 }}>
-                          <button
-                            onClick={() => handleMarkAsPaid(studio.id)}
-                            style={{ ...drilldownStyles.actionButton, background: 'rgba(34,197,94,0.28)', border: '1px solid #22c55e', color: '#86efac', flex: 1 }}
-                          >
-                            Confirm
-                          </button>
-                          <button
-                            onClick={() => setPayingStudio(null)}
-                            style={{ ...drilldownStyles.actionButton, flex: 1 }}
-                          >
-                            Cancel
-                          </button>
-                        </div>
+                        <button onClick={() => handleMarkAsPaid(studio.id)} style={{ ...drilldownStyles.actionButton, background: 'rgba(34,197,94,0.15)', border: '1.5px solid rgba(34,197,94,0.4)', color: '#7ee787' }}>Confirm</button>
+                        <button onClick={() => setPayingStudio(null)} style={drilldownStyles.actionButton}>Cancel</button>
                       </div>
-                    )}
-                  </td>
-                </tr>
-                {expandedStudio === studio.id && (
-                  <tr>
-                    <td colSpan={14} style={drilldownStyles.td}>
-                      <div style={drilldownStyles.nestedWrap}>
-                        {/* Payout history */}
-                        {payoutHistory && payoutHistory.length > 0 && (
-                          <div style={{ marginBottom: 12 }}>
-                            <button
-                              onClick={() => setExpandedPayout(expandedPayout === studio.id ? null : studio.id)}
-                              style={{ ...drilldownStyles.actionButton, marginBottom: 6 }}
-                            >
-                              {expandedPayout === studio.id ? 'Hide' : 'Show'} Payout History ({payoutHistory.length})
-                            </button>
-                            {expandedPayout === studio.id && (
-                              <table className="admin-table" style={{ ...drilldownStyles.nestedTable, marginBottom: 8 }}>
+                    </div>
+                  )}
+
+                  {/* Expanded order details */}
+                  {isExpanded && (
+                    <div style={{ padding: '0.75rem 1rem' }}>
+                      {/* Payout history */}
+                      {payoutHistory && payoutHistory.length > 0 && (
+                        <div style={{ marginBottom: 12 }}>
+                          <button
+                            onClick={() => setExpandedPayout(expandedPayout === studio.id ? null : studio.id)}
+                            style={{ ...drilldownStyles.actionButton, marginBottom: 8 }}
+                          >
+                            {expandedPayout === studio.id ? 'Hide' : 'Show'} Payout History ({payoutHistory.length})
+                          </button>
+                          {expandedPayout === studio.id && (
+                            <div style={{ overflowX: 'auto' }}>
+                              <table style={{ ...drilldownStyles.nestedTable, marginBottom: 8 }}>
                                 <thead>
                                   <tr>
                                     <th style={drilldownStyles.th}>Payout #</th>
                                     <th style={drilldownStyles.th}>Date</th>
                                     <th style={drilldownStyles.th}>Amount</th>
-                                    <th style={drilldownStyles.th}>Orders Included</th>
+                                    <th style={drilldownStyles.th}>Orders</th>
                                     <th style={drilldownStyles.th}>Recorded By</th>
                                     <th style={drilldownStyles.th}>Notes</th>
                                   </tr>
                                 </thead>
                                 <tbody>
                                   {payoutHistory.map((payout: any) => (
-                                    <tr key={payout.id} style={drilldownStyles.normalRow}>
+                                    <tr key={payout.id}>
                                       <td style={drilldownStyles.td}>#{payout.id}</td>
                                       <td style={drilldownStyles.td}>{payout.createdAt ? new Date(payout.createdAt).toLocaleString() : ''}</td>
-                                      <td style={{ ...drilldownStyles.td, color: '#86efac', fontWeight: 700 }}>${Number(payout.amount || 0).toFixed(2)}</td>
-                                      <td style={drilldownStyles.td}>{payout.orderCount} order(s)</td>
+                                      <td style={{ ...drilldownStyles.td, color: '#7ee787', fontWeight: 700 }}>${Number(payout.amount || 0).toFixed(2)}</td>
+                                      <td style={drilldownStyles.td}>{payout.orderCount}</td>
                                       <td style={drilldownStyles.td}>{payout.createdByName || '—'}</td>
                                       <td style={drilldownStyles.td}>{payout.notes || '—'}</td>
                                     </tr>
                                   ))}
                                 </tbody>
                               </table>
-                            )}
-                          </div>
-                        )}
-                        <table className="admin-table" style={drilldownStyles.nestedTable}>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Orders table */}
+                      <div style={{ overflowX: 'auto' }}>
+                        <table style={drilldownStyles.nestedTable}>
                           <thead>
                             <tr>
-                              <th style={drilldownStyles.th}>Order ID</th>
+                              <th style={drilldownStyles.th}>Order</th>
                               <th style={drilldownStyles.th}>Date</th>
                               <th style={drilldownStyles.th}>Status</th>
                               <th style={drilldownStyles.th}>Paid?</th>
-                              <th style={drilldownStyles.th}>Total (ex Tax)</th>
-                              <th style={drilldownStyles.th}>Subtotal</th>
+                              <th style={drilldownStyles.th}>Revenue</th>
                               <th style={drilldownStyles.th}>Tax</th>
                               <th style={drilldownStyles.th}>Shipping</th>
-                              <th style={drilldownStyles.th}>Studio Shipping</th>
-                              <th style={drilldownStyles.th}>Shipping Margin</th>
                               <th style={drilldownStyles.th}>Stripe Fee</th>
-                              <th style={drilldownStyles.th}>Studio Profit</th>
-                              <th style={drilldownStyles.th}>Discount Code</th>
+                              <th style={drilldownStyles.th}>Profit</th>
+                              <th style={drilldownStyles.th}>Discount</th>
                               <th style={drilldownStyles.th}>Items</th>
                             </tr>
                           </thead>
                           <tbody>
                             {orders.map((order: any) => (
-                              <tr key={order.id} style={{ ...(order.is_paid ? { background: 'rgba(34,197,94,0.06)' } : drilldownStyles.normalRow) }}>
-                                <td style={drilldownStyles.td}>{order.id}</td>
-                                <td style={drilldownStyles.td}>{order.created_at ? new Date(order.created_at).toLocaleString() : ''}</td>
+                              <tr key={order.id} style={order.is_paid ? { background: 'rgba(34,197,94,0.05)' } : {}}>
+                                <td style={drilldownStyles.td}>#{order.id}</td>
+                                <td style={drilldownStyles.td}>{order.created_at ? new Date(order.created_at).toLocaleDateString() : ''}</td>
                                 <td style={drilldownStyles.td}>{order.status}</td>
                                 <td style={drilldownStyles.td}>
                                   {order.is_paid
-                                    ? <span style={{ color: '#86efac', fontWeight: 700, fontSize: 12 }}>✅ Paid</span>
-                                    : <span style={{ color: '#fbbf24', fontWeight: 700, fontSize: 12 }}>⏳ Unpaid</span>
+                                    ? <span style={{ color: '#7ee787', fontWeight: 700, fontSize: 11 }}>Paid</span>
+                                    : <span style={{ color: '#fbbf24', fontWeight: 700, fontSize: 11 }}>Unpaid</span>
                                   }
                                 </td>
                                 <td style={drilldownStyles.td}>${Math.max(0, Number(order.total) - Number(order.tax_amount || 0)).toFixed(2)}</td>
-                                <td style={drilldownStyles.td}>${Number(order.subtotal).toFixed(2)}</td>
                                 <td style={drilldownStyles.td}>${Number(order.tax_amount).toFixed(2)}</td>
                                 <td style={drilldownStyles.td}>${Number(order.shipping_cost).toFixed(2)}</td>
-                                <td style={drilldownStyles.td}>${Number(order.studio_shipping_cost).toFixed(2)}</td>
-                                <td style={drilldownStyles.td}>${Number(order.shipping_margin).toFixed(2)}</td>
                                 <td style={drilldownStyles.td}>${Number(order.stripe_fee_amount).toFixed(2)}</td>
-                                <td style={{ ...drilldownStyles.td, fontWeight: 700, color: order.is_paid ? '#86efac' : '#fbbf24' }}>${Number(order.studio_profit || 0).toFixed(2)}</td>
-                                <td style={drilldownStyles.td}>{order.discount_code || ''}</td>
+                                <td style={{ ...drilldownStyles.td, fontWeight: 700, color: order.is_paid ? '#7ee787' : '#fbbf24' }}>${Number(order.studio_profit || 0).toFixed(2)}</td>
+                                <td style={drilldownStyles.td}>{order.discount_code || '—'}</td>
                                 <td style={drilldownStyles.td}>
                                   {order.items && order.items.length > 0 ? (
                                     <details>
-                                      <summary style={drilldownStyles.summary}>{order.items.length} item(s)</summary>
+                                      <summary style={drilldownStyles.summary}>{order.items.length} item{order.items.length !== 1 ? 's' : ''}</summary>
                                       <ul style={drilldownStyles.list}>
                                         {order.items.map((item: any) => (
                                           <li key={item.id}>
-                                            Product: {item.product_id}, Size: {item.product_size_id}, Qty: {item.quantity}, Price: ${Number(item.price).toFixed(2)}
+                                            Product {item.product_id}, Size {item.product_size_id}, Qty {item.quantity} — ${Number(item.price).toFixed(2)}
                                           </li>
                                         ))}
                                       </ul>
@@ -675,13 +679,12 @@ const SuperAdminDashboard: React.FC = () => {
                           </tbody>
                         </table>
                       </div>
-                    </td>
-                  </tr>
-                )}
-              </React.Fragment>
-            ))}
-          </tbody>
-        </table>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+        </div>
       </div>
     </div>
   );

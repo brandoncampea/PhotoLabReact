@@ -2167,6 +2167,14 @@ router.put('/:id', async (req, res) => {
     // Fix: ensure nextMetadata is defined
     const nextMetadata = metadata || currentPhoto.metadata;
 
+    // Persist metadata when provided (e.g. face box coordinates from client-side detection)
+    if (metadata) {
+      await query(
+        `UPDATE photos SET metadata = $1 WHERE id = $2`,
+        [JSON.stringify(nextMetadata), req.params.id]
+      );
+    }
+
     if (hasAnyTag) {
       // Log before update
       console.log('[PHOTO PUT] Updating photo:', req.params.id, 'Saving playerNames:', taggedNames.join(', '), 'playerNumbers:', taggedNumbers.join(', '));
