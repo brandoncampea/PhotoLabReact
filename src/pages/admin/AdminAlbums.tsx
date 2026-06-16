@@ -57,13 +57,12 @@ function AlbumSasCover({ src, alt }: { src: string, alt: string }) {
   // If src is an API endpoint, use it directly. Otherwise, use SAS if blobName is valid.
   const isApiEndpoint = src && src.startsWith('/api/photos/');
   const sasUrl = blobName && !isApiEndpoint ? useSasUrl(blobName) : null;
-  // Show a small square thumbnail (original admin style)
   return (
     <img
       src={isApiEndpoint ? src : (sasUrl || src)}
       alt={alt}
-      className="table-thumbnail"
-      style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 6, background: '#222' }}
+      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', background: '#222' }}
+      onError={e => { (e.target as HTMLImageElement).style.opacity = '0'; }}
     />
   );
 }
@@ -348,6 +347,9 @@ const AdminAlbums: React.FC = () => {
     loadPendingTagCounts();
   }, [effectiveStudioId]);
 
+  const PAGE_SIZE = 12;
+  const [page, setPage] = useState(1);
+
   const normalizedSearch = albumSearch.trim().toLowerCase();
   const filteredAlbums = normalizedSearch
     ? albums.filter((album) => {
@@ -361,6 +363,10 @@ const AdminAlbums: React.FC = () => {
           || schools.includes(normalizedSearch);
       })
     : albums;
+
+  const totalPages = Math.max(1, Math.ceil(filteredAlbums.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const pagedAlbums = filteredAlbums.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   const schoolSuggestions = newSchoolTag.trim()
     ? studioSchoolRoster.filter((school) => {
@@ -376,194 +382,244 @@ const AdminAlbums: React.FC = () => {
   const pendingTagReviewTotal = Object.values(pendingTagCounts).reduce((total, count) => total + Number(count || 0), 0);
   const hasPendingTagReviews = pendingTagReviewTotal > 0;
 
+  const actionBtn = (label: string, color: string, onClick: () => void, title?: string): React.ReactNode => (
+    <button
+      type="button"
+      title={title}
+      onClick={onClick}
+      style={{
+        flex: 1,
+        padding: '6px 0',
+        fontSize: '0.75rem',
+        fontWeight: 700,
+        borderRadius: 7,
+        border: `1.5px solid ${color}33`,
+        background: `${color}12`,
+        color,
+        cursor: 'pointer',
+        transition: 'background 0.15s, border 0.15s',
+        minWidth: 0,
+        whiteSpace: 'nowrap',
+      }}
+      onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = `${color}22`; (e.currentTarget as HTMLButtonElement).style.borderColor = `${color}66`; }}
+      onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = `${color}12`; (e.currentTarget as HTMLButtonElement).style.borderColor = `${color}33`; }}
+    >
+      {label}
+    </button>
+  );
+
   return (
     <AdminLayout>
-      <div className="admin-albums-page">
+      <div className="admin-albums-page" style={{ padding: '0 1rem 2rem' }}>
+
+        {/* Page header */}
+        <div style={{ marginBottom: '1.25rem' }}>
+          <h1 style={{ fontSize: '1.65rem', fontWeight: 800, color: '#fff', margin: '0 0 0.3rem', letterSpacing: '-0.01em' }}>Albums</h1>
+          <p style={{ color: '#6b6b80', fontSize: '0.9rem', margin: 0 }}>
+            Manage your photo albums — publish, hide, tag, and share sessions with customers
+          </p>
+        </div>
+
+        {/* Pending tag review banner */}
         {hasPendingTagReviews && (
-          <div
-            style={{
-              marginBottom: 16,
-              padding: '12px 14px',
-              borderRadius: 10,
-              border: '1px solid rgba(251, 191, 36, 0.5)',
-              background: 'linear-gradient(135deg, rgba(251, 191, 36, 0.16), rgba(249, 115, 22, 0.08))',
-              color: '#fff7d6',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 12,
-              flexWrap: 'wrap',
-              boxShadow: '0 8px 24px rgba(251, 191, 36, 0.12)',
-            }}
-          >
-            <div style={{ display: 'grid', gap: 4 }}>
-              <div style={{ fontWeight: 800, fontSize: '1rem' }}>
+          <div style={{ marginBottom: 16, padding: '12px 16px', borderRadius: 10, border: '1px solid rgba(251,191,36,0.4)', background: 'rgba(251,191,36,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: '0.95rem', color: '#fde68a' }}>
                 ⚠️ {pendingTagReviewTotal} player tag suggestion{pendingTagReviewTotal === 1 ? '' : 's'} need review
               </div>
-              <div style={{ fontSize: 13, color: '#ffe8a3' }}>
-                Open an album’s review panel to approve or reject suggested player tags.
+              <div style={{ fontSize: '0.8rem', color: '#ca8a04', marginTop: 2 }}>
+                Open an album's review panel to approve or reject suggested player tags.
               </div>
             </div>
             <button
               type="button"
-              className="btn btn-primary"
               onClick={() => {
-                const firstAlbumWithPending = filteredAlbums.find((album) => Number(pendingTagCounts[String(album.id)] || 0) > 0);
-                if (firstAlbumWithPending) {
-                  openTagReviewModal(firstAlbumWithPending);
-                }
+                const first = filteredAlbums.find((a) => Number(pendingTagCounts[String(a.id)] || 0) > 0);
+                if (first) openTagReviewModal(first);
               }}
-              disabled={!filteredAlbums.some((album) => Number(pendingTagCounts[String(album.id)] || 0) > 0)}
-              style={{ whiteSpace: 'nowrap' }}
+              disabled={!filteredAlbums.some((a) => Number(pendingTagCounts[String(a.id)] || 0) > 0)}
+              style={{ padding: '7px 18px', borderRadius: 8, background: 'rgba(251,191,36,0.2)', border: '1.5px solid rgba(251,191,36,0.5)', color: '#fde68a', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', whiteSpace: 'nowrap' }}
             >
               Review now
             </button>
           </div>
         )}
 
-        {/* Search + Create Album */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+        {/* Search + Create */}
+        <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
           <input
             type="text"
-            placeholder="Search albums by name, category, description, or school"
+            placeholder="Search albums by name, category, description, or school…"
             value={albumSearch}
-            onChange={(e) => setAlbumSearch(e.target.value)}
-            style={{ minWidth: 320, flex: '1 1 420px' }}
+            onChange={(e) => { setAlbumSearch(e.target.value); setPage(1); }}
+            style={{ flex: '1 1 300px', padding: '9px 14px', borderRadius: 9, border: '1.5px solid rgba(124,92,255,0.25)', background: 'rgba(22,22,35,0.9)', color: '#fff', fontSize: '0.9rem', outline: 'none' }}
           />
-          <button className="btn btn-primary" onClick={handleCreate}>+ Create Album</button>
+          <button
+            onClick={handleCreate}
+            style={{ padding: '9px 22px', borderRadius: 9, background: 'linear-gradient(135deg,#7c5cff,#6366f1)', border: 'none', color: '#fff', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer', whiteSpace: 'nowrap' }}
+          >
+            + Create Album
+          </button>
         </div>
 
-        {/* Albums Table Card */}
-        <div className="dashboard-card tallydark-card admin-orders-card">
-          <div className="admin-table" style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0 }}>
-              <thead>
-                <tr style={{ background: 'transparent', color: '#fff', fontWeight: 700, fontSize: 16 }}>
-                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Actions</th>
-                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Cover</th>
-                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Name</th>
-                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Category</th>
-                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Price List</th>
-                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Description</th>
-                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Protected</th>
-                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Photos</th>
-                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Engagement</th>
-                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Products Ordered</th>
-                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Est. Net Revenue</th>
-                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Tag Reviews</th>
-                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>Created</th>
-                </tr>
-              </thead>
-            <tbody>
-              {filteredAlbums.length === 0 ? (
-                <tr>
-                  <td colSpan={13} style={{ textAlign: 'center', padding: '2rem', color: '#aaa', fontSize: '1.1rem' }}>
-                    {albums.length === 0 ? 'No albums found.' : 'No matching albums found.'}
-                  </td>
-                </tr>
-              ) : (
-                filteredAlbums.map((album) => {
-                  // Always link directly to the customer album page
-                  // Use the real public_slug from the studio (returned by the API)
-                  const studioSlug = (album as any).studioPublicSlug || localStorage.getItem('studioSlug') || '';
-                  const shareUrl = studioSlug
-                    ? `${window.location.origin}/albums/${album.id}?studioSlug=${encodeURIComponent(studioSlug)}`
-                    : `${window.location.origin}/albums/${album.id}`;
-                  // Use the same logic as public albums for cover image
-                  const coverSrc =
-                    album.coverImageUrl && String(album.coverImageUrl).match(/^\d+$/)
-                      ? `/api/photos/${album.coverImageUrl}/asset?variant=thumbnail`
-                      : album.coverImageUrl || '/default-cover.png';
-                  return (
-                    <tr key={album.id} style={{ borderBottom: '1px solid #29294a' }}>
-                      <td style={{ padding: '8px 12px' }}>
-                        <div className="action-buttons" style={{ display: 'flex', gap: 8 }}>
-                          <button onClick={() => handleEdit(album)} className="btn-icon">✏️</button>
-                          <button onClick={() => handleDelete(album.id)} className="btn-icon">🗑️</button>
-                          <button
-                            onClick={() => window.location.href = `/admin/photos?album=${album.id}`}
-                            className="btn-icon"
-                            title="View Photos"
-                          >
-                            📷
-                          </button>
-                          <button
-                            className="btn-icon"
-                            title="Copy Share Link"
-                            onClick={() => {
-                              navigator.clipboard.writeText(shareUrl);
-                              alert('Share link copied to clipboard!');
-                            }}
-                          >🔗</button>
- 
-                        </div>
-                      </td>
-                      <td style={{ padding: '8px 12px' }}>
-                        <AlbumSasCover src={coverSrc} alt={album.name} />
-                      </td>
-                      <td style={{ fontWeight: 500, padding: '8px 12px', color: '#fff' }}>{album.name}</td>
-                      <td style={{ padding: '8px 12px', color: '#fff' }}>{album.category || '-'}</td>
-                      <td style={{ padding: '8px 12px', color: '#fff' }}>{priceLists.find(pl => pl.id === album.priceListId)?.name || 'Default'}</td>
-                      <td style={{ padding: '8px 12px', color: '#fff' }}>{album.description}</td>
-                      <td style={{ padding: '8px 12px', color: '#fff' }}>{album.isPasswordProtected ? 'Yes' : 'No'}</td>
-                      <td style={{ padding: '8px 12px', color: '#fff' }}>{album.photoCount}</td>
-                      <td style={{ padding: '8px 12px', color: '#fff', minWidth: 140 }}>
-                        <div style={{ display: 'grid', gap: 2 }}>
-                          <span>Opens: {Number(album.viewOpenCount || 0).toLocaleString()}</span>
-                          <span>Clicks: {Number(album.viewClickCount || 0).toLocaleString()}</span>
-                          <strong>Total: {Number(album.viewCount || 0).toLocaleString()}</strong>
-                        </div>
-                      </td>
-                      <td style={{ padding: '8px 12px', color: '#fff' }}>{album.productCount ?? 0}</td>
-                      <td style={{ padding: '8px 12px', color: '#fff' }}>
-                        {typeof album.netRevenue === 'number' ? `$${album.netRevenue.toFixed(2)}` : '$0.00'}
-                      </td>
-                      <td style={{ padding: '8px 12px', color: '#fff', minWidth: 160 }}>
-                        {(() => {
-                          const pendingCount = Number(pendingTagCounts[String(album.id)] || 0);
-                          return (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                              <span
-                                style={{
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  minWidth: 26,
-                                  height: 22,
-                                  padding: '0 8px',
-                                  borderRadius: 999,
-                                  fontSize: 12,
-                                  fontWeight: 700,
-                                  background: pendingCount > 0 ? 'rgba(251, 191, 36, 0.22)' : 'rgba(148, 163, 184, 0.2)',
-                                  color: pendingCount > 0 ? '#fde68a' : '#cbd5e1',
-                                  border: pendingCount > 0 ? '1px solid rgba(251, 191, 36, 0.55)' : '1px solid rgba(148, 163, 184, 0.45)',
-                                }}
-                                title={pendingCount > 0 ? `${pendingCount} pending tag suggestion(s)` : 'No pending tag suggestions'}
-                              >
-                                {pendingCount}
-                              </span>
-                              <button
-                                type="button"
-                                className="btn"
-                                style={{ padding: '4px 10px', fontSize: 12 }}
-                                onClick={() => openTagReviewModal(album)}
-                              >
-                                Review
-                              </button>
-                            </div>
-                          );
-                        })()}
-                      </td>
-                      <td style={{ padding: '8px 12px', color: '#fff' }}>{new Date(album.createdDate).toLocaleDateString()}</td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+        {/* Album count + pagination top */}
+        {filteredAlbums.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+            <div style={{ fontSize: '0.78rem', color: '#4a4a6a', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+              {filteredAlbums.length} album{filteredAlbums.length !== 1 ? 's' : ''}
+              {albumSearch ? ` matching "${albumSearch}"` : ''}
+              {totalPages > 1 && ` · page ${safePage} of ${totalPages}`}
+            </div>
+            {totalPages > 1 && (
+              <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+                <button
+                  onClick={() => setPage(1)}
+                  disabled={safePage === 1}
+                  style={{ padding: '4px 9px', borderRadius: 6, border: '1.5px solid rgba(124,92,255,0.25)', background: 'none', color: safePage === 1 ? '#3a3a50' : '#7c5cff', fontWeight: 700, fontSize: '0.75rem', cursor: safePage === 1 ? 'default' : 'pointer' }}
+                >«</button>
+                <button
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  disabled={safePage === 1}
+                  style={{ padding: '4px 9px', borderRadius: 6, border: '1.5px solid rgba(124,92,255,0.25)', background: 'none', color: safePage === 1 ? '#3a3a50' : '#7c5cff', fontWeight: 700, fontSize: '0.75rem', cursor: safePage === 1 ? 'default' : 'pointer' }}
+                >‹</button>
+                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                  .filter(p => p === 1 || p === totalPages || Math.abs(p - safePage) <= 1)
+                  .reduce<(number | '…')[]>((acc, p, i, arr) => {
+                    if (i > 0 && p - (arr[i - 1] as number) > 1) acc.push('…');
+                    acc.push(p);
+                    return acc;
+                  }, [])
+                  .map((p, i) =>
+                    p === '…' ? (
+                      <span key={`ellipsis-${i}`} style={{ color: '#3a3a50', fontSize: '0.75rem', padding: '0 2px' }}>…</span>
+                    ) : (
+                      <button
+                        key={p}
+                        onClick={() => setPage(p as number)}
+                        style={{ padding: '4px 9px', borderRadius: 6, border: '1.5px solid rgba(124,92,255,0.25)', background: safePage === p ? 'rgba(124,92,255,0.25)' : 'none', color: safePage === p ? '#c4b5fd' : '#7c5cff', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer', minWidth: 30 }}
+                      >
+                        {p}
+                      </button>
+                    )
+                  )}
+                <button
+                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                  disabled={safePage === totalPages}
+                  style={{ padding: '4px 9px', borderRadius: 6, border: '1.5px solid rgba(124,92,255,0.25)', background: 'none', color: safePage === totalPages ? '#3a3a50' : '#7c5cff', fontWeight: 700, fontSize: '0.75rem', cursor: safePage === totalPages ? 'default' : 'pointer' }}
+                >›</button>
+                <button
+                  onClick={() => setPage(totalPages)}
+                  disabled={safePage === totalPages}
+                  style={{ padding: '4px 9px', borderRadius: 6, border: '1.5px solid rgba(124,92,255,0.25)', background: 'none', color: safePage === totalPages ? '#3a3a50' : '#7c5cff', fontWeight: 700, fontSize: '0.75rem', cursor: safePage === totalPages ? 'default' : 'pointer' }}
+                >»</button>
+              </div>
+            )}
+          </div>
+        )}
 
+        {/* Album cards grid */}
+        {filteredAlbums.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '3rem', color: '#4a4a6a', fontSize: '1rem' }}>
+            {albums.length === 0 ? 'No albums yet. Create your first album above.' : 'No albums match your search.'}
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(270px, 1fr))', gap: '1rem' }}>
+            {pagedAlbums.map((album) => {
+              const studioSlug = (album as any).studioPublicSlug || localStorage.getItem('studioSlug') || '';
+              const shareUrl = studioSlug
+                ? `${window.location.origin}/albums/${album.id}?studioSlug=${encodeURIComponent(studioSlug)}`
+                : `${window.location.origin}/albums/${album.id}`;
+              const coverSrc =
+                album.coverImageUrl && String(album.coverImageUrl).match(/^\d+$/)
+                  ? `/api/photos/${album.coverImageUrl}/asset?variant=thumbnail`
+                  : album.coverImageUrl || '/default-cover.png';
+              const pendingCount = Number(pendingTagCounts[String(album.id)] || 0);
+              const priceListName = priceLists.find(pl => pl.id === album.priceListId)?.name;
+
+              return (
+                <div
+                  key={album.id}
+                  style={{ background: 'rgba(22,22,35,0.95)', border: '1px solid rgba(124,92,255,0.15)', borderRadius: 14, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
+                >
+                  {/* Cover image — click navigates to photos */}
+                  <div
+                    onClick={() => { window.location.href = `/admin/photos?album=${album.id}`; }}
+                    style={{ position: 'relative', height: 160, background: '#111', overflow: 'hidden', flexShrink: 0, cursor: 'pointer' }}
+                    title="View photos in this album"
+                  >
+                    <AlbumSasCover src={coverSrc} alt={album.name} />
+                    {/* Status badges overlay */}
+                    <div style={{ position: 'absolute', top: 8, left: 8, display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '0.65rem', fontWeight: 800, padding: '2px 7px', borderRadius: 999, ...(album.published ? { background: 'rgba(34,197,94,0.85)', color: '#fff' } : { background: 'rgba(245,158,11,0.85)', color: '#fff' }) }}>
+                        {album.published ? 'Published' : 'Draft'}
+                      </span>
+                      {album.hidden && <span style={{ fontSize: '0.65rem', fontWeight: 800, padding: '2px 7px', borderRadius: 999, background: 'rgba(0,0,0,0.7)', color: '#9ca3af' }}>Hidden</span>}
+                      {album.isPasswordProtected && <span style={{ fontSize: '0.65rem', fontWeight: 800, padding: '2px 7px', borderRadius: 999, background: 'rgba(99,102,241,0.85)', color: '#fff' }}>🔒</span>}
+                    </div>
+                    {/* Pending tag badge */}
+                    {pendingCount > 0 && (
+                      <div style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(251,191,36,0.9)', color: '#1a1a00', borderRadius: 999, fontSize: '0.7rem', fontWeight: 800, padding: '2px 8px' }}>
+                        {pendingCount} tag{pendingCount !== 1 ? 's' : ''}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Card body */}
+                  <div style={{ padding: '0.9rem 1rem', flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    <div>
+                      <div style={{ fontSize: '0.98rem', fontWeight: 700, color: '#fff', lineHeight: 1.3, marginBottom: '0.15rem' }}>{album.name}</div>
+                      {album.category && (
+                        <div style={{ fontSize: '0.75rem', color: '#7c5cff', fontWeight: 600 }}>{album.category}</div>
+                      )}
+                      {album.description && (
+                        <div style={{ fontSize: '0.78rem', color: '#5a5a72', marginTop: '0.2rem', lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                          {album.description}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Stats row */}
+                    <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '0.5rem' }}>
+                      <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#a78bfa' }}>{album.photoCount ?? 0}</div>
+                        <div style={{ fontSize: '0.65rem', color: '#4a4a6a', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Photos</div>
+                      </div>
+                      <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#79c0ff' }}>{Number(album.viewCount || 0).toLocaleString()}</div>
+                        <div style={{ fontSize: '0.65rem', color: '#4a4a6a', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Views</div>
+                      </div>
+                      <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#7ee787' }}>${typeof album.netRevenue === 'number' ? album.netRevenue.toFixed(2) : '0.00'}</div>
+                        <div style={{ fontSize: '0.65rem', color: '#4a4a6a', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Revenue</div>
+                      </div>
+                      <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#fbbf24' }}>{album.productCount ?? 0}</div>
+                        <div style={{ fontSize: '0.65rem', color: '#4a4a6a', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Orders</div>
+                      </div>
+                    </div>
+
+                    {/* Price list + created */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.73rem', color: '#4a4a6a' }}>
+                      <span>Price list: <span style={{ color: '#6b6b80' }}>{priceListName || 'Default'}</span></span>
+                      <span>{new Date(album.createdDate).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+
+                  {/* Action buttons */}
+                  <div style={{ padding: '0.65rem 1rem 0.85rem', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', gap: 6 }}>
+                    {actionBtn('Edit', '#a78bfa', () => handleEdit(album))}
+                    {actionBtn('Photos', '#79c0ff', () => { window.location.href = `/admin/photos?album=${album.id}`; }, 'View Photos')}
+                    {actionBtn('Share', '#7ee787', () => { navigator.clipboard.writeText(shareUrl); alert('Link copied!'); }, 'Copy Share Link')}
+                    {pendingCount > 0
+                      ? actionBtn(`Tags (${pendingCount})`, '#fbbf24', () => openTagReviewModal(album), 'Review tag suggestions')
+                      : actionBtn('Tags', '#4a4a6a', () => openTagReviewModal(album), 'Review tag suggestions')}
+                    {actionBtn('Delete', '#f87171', () => handleDelete(album.id))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
       {tagReviewAlbum && (
         <div className="modal-overlay" onClick={closeTagReviewModal}>

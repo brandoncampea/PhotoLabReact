@@ -73,22 +73,40 @@ function canManageStudio(user, studioId) {
 
 // ─── SESSION TYPES ────────────────────────────────────────────────────────────
 
-// Module-level flag; set to true once image_url column is confirmed to exist
+// Module-level flags for optional columns
 let imageUrlColumnReady = false;
+let retainerColumnsReady = false;
 
-// Ensure image_url column exists — uses columnExists (sys.columns) for reliability
 (async () => {
+  // image_url on session types
   try {
-    const exists = await columnExists('scheduling_session_types', 'image_url');
-    if (!exists) {
+    if (!await columnExists('scheduling_session_types', 'image_url')) {
       await query(`ALTER TABLE scheduling_session_types ADD image_url NVARCHAR(1024) NULL`);
       console.log('[scheduling] image_url column added');
     }
     imageUrlColumnReady = true;
-    console.log('[scheduling] image_url column ready');
-  } catch (e) {
-    console.warn('[scheduling] image_url migration failed:', e.message);
-  }
+  } catch (e) { console.warn('[scheduling] image_url migration failed:', e.message); }
+
+  // Fix: re-activate session types accidentally set to is_active=0
+  try {
+    await query(`UPDATE scheduling_session_types SET is_active = 1 WHERE is_active = 0 OR is_active IS NULL`);
+  } catch (e) { console.warn('[scheduling] session type reactivation skipped:', e.message); }
+
+  // Retainer / balance columns
+  try {
+    if (!await columnExists('scheduling_session_types', 'retainer_amount'))
+      await query(`ALTER TABLE scheduling_session_types ADD retainer_amount DECIMAL(10,2) NULL`);
+    if (!await columnExists('scheduling_bookings', 'balance_amount'))
+      await query(`ALTER TABLE scheduling_bookings ADD balance_amount DECIMAL(10,2) NULL`);
+    if (!await columnExists('scheduling_bookings', 'balance_payment_status'))
+      await query(`ALTER TABLE scheduling_bookings ADD balance_payment_status NVARCHAR(50) NULL`);
+    if (!await columnExists('scheduling_bookings', 'balance_payment_method'))
+      await query(`ALTER TABLE scheduling_bookings ADD balance_payment_method NVARCHAR(50) NULL`);
+    if (!await columnExists('scheduling_bookings', 'balance_stripe_session_id'))
+      await query(`ALTER TABLE scheduling_bookings ADD balance_stripe_session_id NVARCHAR(255) NULL`);
+    retainerColumnsReady = true;
+    console.log('[scheduling] retainer columns ready');
+  } catch (e) { console.warn('[scheduling] retainer migrations failed:', e.message); }
 })();
 
 router.get('/studios/:studioId/session-types', authRequired, async (req, res) => {
@@ -96,8 +114,9 @@ router.get('/studios/:studioId/session-types', authRequired, async (req, res) =>
   if (!canManageStudio(req.user, studioId)) return res.status(403).json({ error: 'Unauthorized' });
   try {
     const imgCol = imageUrlColumnReady ? ', image_url as imageUrl' : ', NULL as imageUrl';
+    const retCol = retainerColumnsReady ? ', retainer_amount as retainerAmount' : ', NULL as retainerAmount';
     const types = await queryRows(
-      `SELECT id, name, description, duration_minutes as durationMinutes, price, is_active as isActive${imgCol}, created_at as createdAt
+      `SELECT id, name, description, duration_minutes as durationMinutes, price, is_active as isActive${imgCol}${retCol}, created_at as createdAt
        FROM scheduling_session_types WHERE studio_id = $1 ORDER BY name`,
       [studioId]
     );
@@ -111,15 +130,19 @@ router.get('/studios/:studioId/session-types', authRequired, async (req, res) =>
 router.post('/studios/:studioId/session-types', authRequired, async (req, res) => {
   const { studioId } = req.params;
   if (!canManageStudio(req.user, studioId)) return res.status(403).json({ error: 'Unauthorized' });
-  const { name, description, durationMinutes, price } = req.body;
+  const { name, description, durationMinutes, price, retainerAmount } = req.body;
   if (!name) return res.status(400).json({ error: 'Name is required' });
   try {
+    const retCol = retainerColumnsReady ? ', retainer_amount' : '';
+    const retVal = retainerColumnsReady ? ', $6' : '';
+    const params = [studioId, name, description || null, durationMinutes || 60, price || 0];
+    if (retainerColumnsReady) params.push(retainerAmount > 0 ? retainerAmount : null);
     const row = await queryRow(
-      `INSERT INTO scheduling_session_types (studio_id, name, description, duration_minutes, price)
-       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-      [studioId, name, description || null, durationMinutes || 60, price || 0]
+      `INSERT INTO scheduling_session_types (studio_id, name, description, duration_minutes, price${retCol})
+       VALUES ($1, $2, $3, $4, $5${retVal}) RETURNING id`,
+      params
     );
-    res.status(201).json({ id: row.id, name, description, durationMinutes: durationMinutes || 60, price: price || 0, isActive: true });
+    res.status(201).json({ id: row.id, name, description, durationMinutes: durationMinutes || 60, price: price || 0, isActive: true, retainerAmount: retainerAmount || null });
   } catch (err) {
     console.error('[scheduling] session-type create:', err);
     res.status(500).json({ error: 'Failed to create session type' });
@@ -129,13 +152,16 @@ router.post('/studios/:studioId/session-types', authRequired, async (req, res) =
 router.put('/studios/:studioId/session-types/:id', authRequired, async (req, res) => {
   const { studioId, id } = req.params;
   if (!canManageStudio(req.user, studioId)) return res.status(403).json({ error: 'Unauthorized' });
-  const { name, description, durationMinutes, price, isActive } = req.body;
+  const { name, description, durationMinutes, price, isActive, retainerAmount } = req.body;
   if (!name) return res.status(400).json({ error: 'Name is required' });
   try {
+    const retSet = retainerColumnsReady ? ', retainer_amount = $8' : '';
+    const params = [name, description || null, Number(durationMinutes) || 60, Number(price) || 0, isActive ? 1 : 0, id, studioId];
+    if (retainerColumnsReady) params.push(retainerAmount > 0 ? Number(retainerAmount) : null);
     await query(
-      `UPDATE scheduling_session_types SET name = $1, description = $2, duration_minutes = $3, price = $4, is_active = $5
+      `UPDATE scheduling_session_types SET name = $1, description = $2, duration_minutes = $3, price = $4, is_active = $5${retSet}
        WHERE id = $6 AND studio_id = $7`,
-      [name, description || null, Number(durationMinutes) || 60, Number(price) || 0, isActive ? 1 : 0, id, studioId]
+      params
     );
     res.json({ success: true });
   } catch (err) {
@@ -337,7 +363,8 @@ router.get('/studios/:studioId/bookings', authRequired, async (req, res) => {
               COALESCE(b.booking_end_time, b.manual_end_time) as endTime,
               COALESCE(a.location, b.manual_location) as location,
               COALESCE(a.staff_name, b.manual_staff_name) as staffName,
-              t.name as sessionTypeName, t.price as sessionTypePrice, t.duration_minutes as durationMinutes
+              t.name as sessionTypeName, t.price as sessionTypePrice, t.duration_minutes as durationMinutes,
+              ${retainerColumnsReady ? 't.retainer_amount as retainerAmount, b.balance_amount as balanceAmount, b.balance_payment_status as balancePaymentStatus, b.balance_payment_method as balancePaymentMethod' : 'NULL as retainerAmount, NULL as balanceAmount, NULL as balancePaymentStatus, NULL as balancePaymentMethod'}
        FROM scheduling_bookings b
        LEFT JOIN scheduling_availability a ON a.id = b.availability_id
        LEFT JOIN scheduling_session_types t ON t.id = b.session_type_id
@@ -382,7 +409,7 @@ router.post('/studios/:studioId/bookings', authRequired, async (req, res) => {
 router.post('/studios/:studioId/bookings/:id/approve', authRequired, async (req, res) => {
   const { studioId, id } = req.params;
   if (!canManageStudio(req.user, studioId)) return res.status(403).json({ error: 'Unauthorized' });
-  const { requiresPayment, paymentAmount } = req.body;
+  const { requiresPayment, paymentAmount, balanceAmount } = req.body;
 
   try {
     const booking = await queryRow(
@@ -448,23 +475,30 @@ router.post('/studios/:studioId/bookings/:id/approve', authRequired, async (req,
       stripeSessionId = session.id;
     }
 
+    const storedBalance = retainerColumnsReady && Number(balanceAmount) > 0 ? Number(balanceAmount) : null;
+    const balanceCol = retainerColumnsReady ? ', balance_amount = $9, balance_payment_status = $10' : '';
+    const baseParams = [
+      requiresPayment ? 1 : 0,
+      amount || null,
+      stripeSessionId || null,
+      requiresPayment && amount > 0 ? 'pending' : null,
+      platformFeeAmount || null,
+      stripeFeeAmount || null,
+      studioPayout || null,
+      id,
+    ];
+    if (retainerColumnsReady) {
+      baseParams.push(storedBalance);
+      baseParams.push(storedBalance ? 'pending' : null);
+    }
     await query(
       `UPDATE scheduling_bookings
        SET status = 'approved', requires_payment = $1, payment_amount = $2,
            stripe_checkout_session_id = $3, payment_status = $4,
-           platform_fee_amount = $5, stripe_fee_amount = $6, studio_payout_amount = $7,
+           platform_fee_amount = $5, stripe_fee_amount = $6, studio_payout_amount = $7${balanceCol},
            approved_at = CURRENT_TIMESTAMP
        WHERE id = $8`,
-      [
-        requiresPayment ? 1 : 0,
-        amount || null,
-        stripeSessionId || null,
-        requiresPayment && amount > 0 ? 'pending' : null,
-        platformFeeAmount || null,
-        stripeFeeAmount || null,
-        studioPayout || null,
-        id,
-      ]
+      baseParams
     );
 
     const dateLabel = booking.slotDate
@@ -482,9 +516,10 @@ router.post('/studios/:studioId/bookings/:id/approve', authRequired, async (req,
           ${dateLabel ? `<p style="color:#bdbdbd"><strong style="color:#e0e0e0">Date:</strong> ${dateLabel}</p>` : ''}
           ${booking.startTime ? `<p style="color:#bdbdbd"><strong style="color:#e0e0e0">Time:</strong> ${booking.startTime}</p>` : ''}
           ${requiresPayment && checkoutUrl
-            ? `<p style="color:#bdbdbd">To confirm your session, please complete your payment of <strong style="color:#e0e0e0">$${amount.toFixed(2)}</strong>:</p>
-               <a href="${checkoutUrl}" style="display:inline-block;padding:12px 28px;background:#7c5cff;color:#fff;border-radius:10px;text-decoration:none;font-weight:700;font-size:1rem;margin:8px 0">Pay Now</a>
-               <p style="color:#6b6b80;font-size:0.85rem;margin-top:8px">This link expires after payment or after 24 hours.</p>`
+            ? `<p style="color:#bdbdbd">To confirm your session, please pay your <strong style="color:#e0e0e0">${storedBalance ? 'retainer/deposit' : 'session fee'} of $${amount.toFixed(2)}</strong>:</p>
+               <a href="${checkoutUrl}" style="display:inline-block;padding:12px 28px;background:#7c5cff;color:#fff;border-radius:10px;text-decoration:none;font-weight:700;font-size:1rem;margin:8px 0">Pay ${storedBalance ? 'Retainer' : 'Now'}</a>
+               ${storedBalance ? `<p style="color:#6b6b80;font-size:0.85rem;margin-top:4px">Remaining balance of <strong style="color:#bdbdbd">$${storedBalance.toFixed(2)}</strong> is due before your session.</p>` : ''}
+               <p style="color:#6b6b80;font-size:0.85rem;margin-top:4px">This link expires after payment or after 24 hours.</p>`
             : `<p style="color:#a3ffb3;font-weight:700;margin-top:12px">Your session is confirmed — no payment required.</p>`
           }
         </div>
@@ -553,20 +588,20 @@ router.get('/public/:studioSlug/info', async (req, res) => {
     let sessionTypes = [];
     if (imageUrlColumnReady) {
       try {
+        const retCol2 = retainerColumnsReady ? ', retainer_amount as retainerAmount' : ', NULL as retainerAmount';
         const rows = await queryRows(
-          `SELECT id, name, description, duration_minutes as durationMinutes, price, image_url as imageUrl
+          `SELECT id, name, description, duration_minutes as durationMinutes, price, image_url as imageUrl${retCol2}
            FROM scheduling_session_types WHERE studio_id = $1 AND is_active = 1 ORDER BY name`,
           [studio.id]
         );
         sessionTypes = rows.map(t => ({ ...t, imageUrl: resolveImageUrl(t.imageUrl) }));
       } catch {
-        // Column check said ready but query failed — fall through to no-imageUrl query
         const rows = await queryRows(
           `SELECT id, name, description, duration_minutes as durationMinutes, price
            FROM scheduling_session_types WHERE studio_id = $1 AND is_active = 1 ORDER BY name`,
           [studio.id]
         );
-        sessionTypes = rows.map(t => ({ ...t, imageUrl: null }));
+        sessionTypes = rows.map(t => ({ ...t, imageUrl: null, retainerAmount: null }));
       }
     } else {
       const rows = await queryRows(
@@ -574,7 +609,7 @@ router.get('/public/:studioSlug/info', async (req, res) => {
          FROM scheduling_session_types WHERE studio_id = $1 AND is_active = 1 ORDER BY name`,
         [studio.id]
       );
-      sessionTypes = rows.map(t => ({ ...t, imageUrl: null }));
+      sessionTypes = rows.map(t => ({ ...t, imageUrl: null, retainerAmount: null }));
     }
 
     res.json({ id: studio.id, name: studio.name, sessionTypes });
@@ -884,6 +919,103 @@ router.post('/studios/:studioId/bookings/:id/mark-paid', authRequired, async (re
   } catch (err) {
     console.error('[scheduling] mark-paid:', err);
     res.status(500).json({ error: 'Failed to mark as paid' });
+  }
+});
+
+// ─── BALANCE PAYMENT ─────────────────────────────────────────────────────────
+
+router.post('/studios/:studioId/bookings/:id/request-balance', authRequired, async (req, res) => {
+  const { studioId, id } = req.params;
+  if (!canManageStudio(req.user, studioId)) return res.status(403).json({ error: 'Unauthorized' });
+  if (!retainerColumnsReady) return res.status(503).json({ error: 'Balance feature not ready — restart server' });
+  try {
+    const booking = await queryRow(
+      `SELECT b.*, b.balance_amount as balanceAmount,
+              COALESCE(a.slot_date, b.manual_date) as slotDate,
+              COALESCE(b.booking_start_time, b.manual_start_time) as startTime,
+              t.name as sessionTypeName,
+              s.name as studioName
+       FROM scheduling_bookings b
+       LEFT JOIN scheduling_availability a ON a.id = b.availability_id
+       LEFT JOIN scheduling_session_types t ON t.id = b.session_type_id
+       LEFT JOIN studios s ON s.id = b.studio_id
+       WHERE b.id = $1 AND b.studio_id = $2`,
+      [id, studioId]
+    );
+    if (!booking) return res.status(404).json({ error: 'Booking not found' });
+    const balance = Number(booking.balanceAmount || 0);
+    if (balance <= 0) return res.status(400).json({ error: 'No balance amount set on this booking' });
+    if (booking.balance_payment_status === 'paid') return res.status(400).json({ error: 'Balance already paid' });
+
+    const stripeKey = process.env.STRIPE_SECRET_KEY;
+    if (!stripeKey) return res.status(503).json({ error: 'Stripe not configured' });
+    const stripe = (await import('stripe')).default(stripeKey);
+
+    const dateLabel = booking.slotDate
+      ? new Date(booking.slotDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+      : '';
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items: [{
+        price_data: {
+          currency: 'usd',
+          product_data: {
+            name: `Balance — ${booking.sessionTypeName || 'Photography Session'}`,
+            description: [dateLabel, booking.startTime].filter(Boolean).join(' · '),
+          },
+          unit_amount: Math.round(balance * 100),
+        },
+        quantity: 1,
+      }],
+      mode: 'payment',
+      customer_email: booking.customer_email,
+      success_url: `${APP_URL()}/booking-confirmed?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${APP_URL()}/booking-payment-cancelled`,
+      metadata: { booking_id: String(booking.id), studio_id: String(studioId), payment_type: 'balance' },
+    });
+
+    await query(
+      `UPDATE scheduling_bookings SET balance_payment_status = 'pending', balance_stripe_session_id = $1 WHERE id = $2`,
+      [session.id, Number(id)]
+    );
+
+    await sendEmail({
+      to: booking.customer_email,
+      subject: `Balance payment request — ${booking.studioName || 'Photo Session'}`,
+      html: `
+        <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;background:#181a1b;color:#e0e0e0;border-radius:12px">
+          <h2 style="color:#a78bfa;margin:0 0 12px 0">Balance Payment Request</h2>
+          <p style="color:#bdbdbd">Hi ${booking.customer_name},</p>
+          <p style="color:#bdbdbd">The remaining balance of <strong style="color:#e0e0e0">$${balance.toFixed(2)}</strong> for your session with <strong style="color:#e0e0e0">${booking.studioName || 'the studio'}</strong> is now due.</p>
+          ${dateLabel ? `<p style="color:#bdbdbd"><strong style="color:#e0e0e0">Date:</strong> ${dateLabel}</p>` : ''}
+          <a href="${session.url}" style="display:inline-block;padding:12px 28px;background:#7c5cff;color:#fff;border-radius:10px;text-decoration:none;font-weight:700;font-size:1rem;margin:12px 0">Pay Balance $${balance.toFixed(2)}</a>
+        </div>
+      `,
+      text: `Balance of $${balance.toFixed(2)} due for your session with ${booking.studioName || 'the studio'}.${dateLabel ? `\nDate: ${dateLabel}` : ''}\nPay here: ${session.url}`,
+    }).catch(err => console.error('[scheduling] balance email failed:', err));
+
+    res.json({ success: true, checkoutUrl: session.url });
+  } catch (err) {
+    console.error('[scheduling] request-balance:', err);
+    res.status(500).json({ error: err.message || 'Failed to create balance payment request' });
+  }
+});
+
+router.post('/studios/:studioId/bookings/:id/mark-balance-paid', authRequired, async (req, res) => {
+  const { studioId, id } = req.params;
+  if (!canManageStudio(req.user, studioId)) return res.status(403).json({ error: 'Unauthorized' });
+  if (!retainerColumnsReady) return res.status(503).json({ error: 'Balance feature not ready — restart server' });
+  const { paymentMethod } = req.body;
+  if (!['cash', 'check'].includes(paymentMethod)) return res.status(400).json({ error: 'paymentMethod must be cash or check' });
+  try {
+    await query(
+      `UPDATE scheduling_bookings SET balance_payment_status = 'paid', balance_payment_method = $1 WHERE id = $2 AND studio_id = $3`,
+      [paymentMethod, Number(id), Number(studioId)]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[scheduling] mark-balance-paid:', err);
+    res.status(500).json({ error: 'Failed to mark balance as paid' });
   }
 });
 

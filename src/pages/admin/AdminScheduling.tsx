@@ -13,10 +13,10 @@ const btn = (color = '#7c5cff', disabled = false): React.CSSProperties => ({
 const dangerBtn: React.CSSProperties = { ...btn(), background: 'rgba(255,107,107,0.15)', color: '#ff6b6b', border: '1px solid rgba(255,107,107,0.3)' };
 const badge = (color: string): React.CSSProperties => ({ display: 'inline-block', padding: '2px 9px', borderRadius: 20, fontSize: '0.75rem', fontWeight: 700, background: color + '22', color });
 
-type SessionType = { id: number; name: string; description: string | null; durationMinutes: number; price: number; isActive: boolean; imageUrl?: string };
+type SessionType = { id: number; name: string; description: string | null; durationMinutes: number; price: number; isActive: boolean; imageUrl?: string; retainerAmount?: number | null };
 type AvailWindow = { from: string; to: string; lastStart: string };
 type Slot = { id: number; date: string; startTime: string; endTime: string; location: string | null; staffName: string | null; notes: string | null; isActive: boolean; sessionTypeId: number | null; sessionTypeName: string | null; sessionTypeDuration: number | null; bufferBeforeMinutes: number; bufferAfterMinutes: number; availableWindows: AvailWindow[] };
-type Booking = { id: number; customerName: string; customerEmail: string; customerPhone: string | null; customerNotes: string | null; status: string; requiresPayment: boolean; paymentAmount: number | null; paymentStatus: string | null; slotDate: string | null; startTime: string | null; endTime: string | null; location: string | null; staffName: string | null; sessionTypeName: string | null; sessionTypePrice: number | null; sessionTypeId: number | null; durationMinutes: number | null; rejectionReason: string | null; approvedAt: string | null; createdAt: string; studioPayoutAmount: number | null; platformFeeAmount: number | null; stripeFeeAmount: number | null; manualDate: string | null; manualStartTime: string | null; manualEndTime: string | null; manualLocation: string | null; manualStaffName: string | null };
+type Booking = { id: number; customerName: string; customerEmail: string; customerPhone: string | null; customerNotes: string | null; status: string; requiresPayment: boolean; paymentAmount: number | null; paymentStatus: string | null; slotDate: string | null; startTime: string | null; endTime: string | null; location: string | null; staffName: string | null; sessionTypeName: string | null; sessionTypePrice: number | null; sessionTypeId: number | null; durationMinutes: number | null; rejectionReason: string | null; approvedAt: string | null; createdAt: string; studioPayoutAmount: number | null; platformFeeAmount: number | null; stripeFeeAmount: number | null; manualDate: string | null; manualStartTime: string | null; manualEndTime: string | null; manualLocation: string | null; manualStaffName: string | null; retainerAmount: number | null; balanceAmount: number | null; balancePaymentStatus: string | null; balancePaymentMethod: string | null };
 
 
 const TABS = ['Session Types', 'Availability', 'Bookings'] as const;
@@ -42,7 +42,7 @@ export default function AdminScheduling() {
   const [success, setSuccess] = useState('');
 
   // Session type form
-  const [stForm, setStForm] = useState({ name: '', description: '', durationMinutes: 60, price: 0, imageUrl: '' });
+  const [stForm, setStForm] = useState({ name: '', description: '', durationMinutes: 60, price: 0, imageUrl: '', isActive: true, retainerAmount: 0 });
   const [editingSt, setEditingSt] = useState<SessionType | null>(null);
   const [showStForm, setShowStForm] = useState(false);
   const [imageUploading, setImageUploading] = useState(false);
@@ -62,7 +62,7 @@ export default function AdminScheduling() {
 
   // Booking actions
   const [approving, setApproving] = useState<number | null>(null);
-  const [approveForm, setApproveForm] = useState({ requiresPayment: false, paymentAmount: '' });
+  const [approveForm, setApproveForm] = useState({ requiresPayment: false, paymentAmount: '', balanceAmount: '' });
   const [rejecting, setRejecting] = useState<number | null>(null);
   const [rejectReason, setRejectReason] = useState('');
   const [bookingFilter, setBookingFilter] = useState<string>('all');
@@ -74,6 +74,11 @@ export default function AdminScheduling() {
   const [cancelConfirm, setCancelConfirm] = useState<number | null>(null);
   const [markingPaid, setMarkingPaid] = useState<number | null>(null);
   const [markPaidForm, setMarkPaidForm] = useState({ amount: '', method: 'cash' as 'cash' | 'check' });
+
+  // Balance payment
+  const [requestingBalance, setRequestingBalance] = useState<number | null>(null);
+  const [markingBalancePaid, setMarkingBalancePaid] = useState<number | null>(null);
+  const [balancePaidMethod, setBalancePaidMethod] = useState<'cash' | 'check'>('cash');
 
   // Calendar state
   const now = new Date();
@@ -133,7 +138,7 @@ export default function AdminScheduling() {
     flash('Session type saved');
     setShowStForm(false);
     setEditingSt(null);
-    setStForm({ name: '', description: '', durationMinutes: 60, price: 0, imageUrl: '' });
+    setStForm({ name: '', description: '', durationMinutes: 60, price: 0, imageUrl: '', isActive: true, retainerAmount: 0 });
     setPendingImageFile(null);
     load();
   };
@@ -146,7 +151,7 @@ export default function AdminScheduling() {
 
   const editSt = (st: SessionType & { imageUrl?: string }) => {
     setEditingSt(st);
-    setStForm({ name: st.name, description: st.description || '', durationMinutes: st.durationMinutes, price: st.price, imageUrl: (st as any).imageUrl || '' });
+    setStForm({ name: st.name, description: st.description || '', durationMinutes: st.durationMinutes, price: st.price, imageUrl: (st as any).imageUrl || '', isActive: st.isActive ?? true, retainerAmount: st.retainerAmount || 0 });
     setPendingImageFile(null);
     setShowStForm(true);
   };
@@ -227,7 +232,11 @@ export default function AdminScheduling() {
   const approveBooking = async (id: number) => {
     const res = await fetch(`/api/scheduling/studios/${studioId}/bookings/${id}/approve`, {
       method: 'POST', headers,
-      body: JSON.stringify({ requiresPayment: approveForm.requiresPayment, paymentAmount: approveForm.requiresPayment ? Number(approveForm.paymentAmount) : 0 }),
+      body: JSON.stringify({
+        requiresPayment: approveForm.requiresPayment,
+        paymentAmount: approveForm.requiresPayment ? Number(approveForm.paymentAmount) : 0,
+        balanceAmount: approveForm.balanceAmount ? Number(approveForm.balanceAmount) : null,
+      }),
     });
     const d = await res.json();
     if (res.ok) { flash('Booking approved' + (d.checkoutUrl ? ' — payment link sent to customer' : '')); setApproving(null); load(); }
@@ -294,6 +303,22 @@ export default function AdminScheduling() {
     else { const d = await res.json(); flash(d.error || 'Failed to mark as paid', true); }
   };
 
+  const closeAllPanels = () => { setApproving(null); setRejecting(null); setEditingBooking(null); setCancelConfirm(null); setMarkingPaid(null); setRequestingBalance(null); setMarkingBalancePaid(null); };
+
+  const requestBalancePayment = async (id: number) => {
+    const res = await fetch(`/api/scheduling/studios/${studioId}/bookings/${id}/request-balance`, { method: 'POST', headers });
+    if (res.ok) { flash('Balance payment request sent to customer'); setRequestingBalance(null); load(); }
+    else { const d = await res.json(); flash(d.error || 'Failed to send balance request', true); }
+  };
+
+  const markBalancePaid = async (id: number) => {
+    const res = await fetch(`/api/scheduling/studios/${studioId}/bookings/${id}/mark-balance-paid`, {
+      method: 'POST', headers, body: JSON.stringify({ paymentMethod: balancePaidMethod }),
+    });
+    if (res.ok) { flash(`Balance marked as paid (${balancePaidMethod})`); setMarkingBalancePaid(null); load(); }
+    else { const d = await res.json(); flash(d.error || 'Failed to mark balance paid', true); }
+  };
+
   const filteredBookings = bookingFilter === 'all' ? bookings : bookings.filter(b => b.status === bookingFilter);
   const pendingCount = bookings.filter(b => b.status === 'pending').length;
 
@@ -354,7 +379,7 @@ export default function AdminScheduling() {
                       <div style={{ fontWeight: 800, color: '#e0e0e0', fontSize: '1.05rem' }}>Session Types</div>
                       <div style={{ color: '#6b6b80', fontSize: '0.82rem' }}>Define what kinds of sessions you offer</div>
                     </div>
-                    <button style={btn()} onClick={() => { setEditingSt(null); setStForm({ name: '', description: '', durationMinutes: 60, price: 0, imageUrl: '' }); setPendingImageFile(null); setShowStForm(v => !v); }}>
+                    <button style={btn()} onClick={() => { setEditingSt(null); setStForm({ name: '', description: '', durationMinutes: 60, price: 0, imageUrl: '', isActive: true, retainerAmount: 0 }); setPendingImageFile(null); setShowStForm(v => !v); }}>
                       + Add Type
                     </button>
                   </div>
@@ -367,6 +392,11 @@ export default function AdminScheduling() {
                         <div><label style={label}>Price ($)</label><input style={inputStyle} type="number" min="0" step="0.01" value={stForm.price} onChange={e => setStForm(f => ({ ...f, price: Number(e.target.value) }))} /></div>
                         <div><label style={label}>Duration (min)</label><input style={inputStyle} type="number" min="15" value={stForm.durationMinutes} onChange={e => setStForm(f => ({ ...f, durationMinutes: Number(e.target.value) }))} /></div>
                         <div><label style={label}>Description</label><input style={inputStyle} value={stForm.description} onChange={e => setStForm(f => ({ ...f, description: e.target.value }))} /></div>
+                        <div><label style={label}>Retainer / Deposit ($)</label><input style={inputStyle} type="number" min="0" step="0.01" value={stForm.retainerAmount} onChange={e => setStForm(f => ({ ...f, retainerAmount: Number(e.target.value) }))} placeholder="0 = full amount due at approval" /></div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingTop: 22 }}>
+                          <input type="checkbox" id="st-active" checked={stForm.isActive} onChange={e => setStForm(f => ({ ...f, isActive: e.target.checked }))} style={{ width: 16, height: 16, cursor: 'pointer' }} />
+                          <label htmlFor="st-active" style={{ ...label, marginBottom: 0, cursor: 'pointer' }}>Active (visible to customers)</label>
+                        </div>
                       </div>
                       {/* Image upload */}
                       <div style={{ marginBottom: 12 }}>
@@ -439,7 +469,7 @@ export default function AdminScheduling() {
                                   {!st.isActive && <span style={{ ...badge('#6b6b80'), marginLeft: 8 }}>Inactive</span>}
                                 </div>
                                 <div style={{ color: '#6b6b80', fontSize: '0.8rem', marginTop: 2 }}>
-                                  {st.durationMinutes} min · ${Number(st.price).toFixed(2)}{st.description && ` · ${st.description}`}
+                                  {st.durationMinutes} min · ${Number(st.price).toFixed(2)}{st.retainerAmount ? ` · $${Number(st.retainerAmount).toFixed(2)} retainer` : ''}{st.description && ` · ${st.description}`}
                                 </div>
                               </div>
                             </div>
@@ -610,6 +640,11 @@ export default function AdminScheduling() {
                                 <span style={{ fontWeight: 800, color: '#e0e0e0', fontSize: '1rem' }}>{bk.customerName}</span>
                                 <span style={badge(statusColor[bk.status] || '#a1a1aa')}>{bk.status}</span>
                                 {bk.paymentStatus && <span style={badge(bk.paymentStatus === 'paid' ? '#22c55e' : '#f59e0b')}>{bk.paymentStatus}</span>}
+                                {bk.balanceAmount != null && bk.balanceAmount > 0 && (
+                                  <span style={badge(bk.balancePaymentStatus === 'paid' ? '#22c55e' : '#a78bfa')}>
+                                    bal ${Number(bk.balanceAmount).toFixed(2)}{bk.balancePaymentStatus ? ` · ${bk.balancePaymentStatus}` : ''}
+                                  </span>
+                                )}
                                 {bk.requiresPayment && bk.paymentStatus === 'pending' && (
                                   <button style={{ background: 'none', border: '1px solid #3a3656', borderRadius: 6, color: '#6b6b80', fontSize: '0.72rem', padding: '2px 8px', cursor: 'pointer' }}
                                     onClick={async () => {
@@ -646,7 +681,15 @@ export default function AdminScheduling() {
 
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0 }}>
                               {bk.status === 'pending' && <>
-                                <button style={btn('#22c55e')} onClick={() => { setApproving(bk.id); setApproveForm({ requiresPayment: false, paymentAmount: String(bk.sessionTypePrice || '') }); setRejecting(null); setEditingBooking(null); setCancelConfirm(null); setMarkingPaid(null); }}>Approve</button>
+                                <button style={btn('#22c55e')} onClick={() => {
+                                  const st = sessionTypes.find(s => s.id === bk.sessionTypeId);
+                                  const retainer = st?.retainerAmount || 0;
+                                  const price = bk.sessionTypePrice || 0;
+                                  const balance = retainer > 0 ? Math.max(0, price - retainer) : 0;
+                                  setApproving(bk.id);
+                                  setApproveForm({ requiresPayment: retainer > 0, paymentAmount: retainer > 0 ? String(retainer) : String(price), balanceAmount: balance > 0 ? String(balance) : '' });
+                                  setRejecting(null); setEditingBooking(null); setCancelConfirm(null); setMarkingPaid(null);
+                                }}>Approve</button>
                                 <button style={dangerBtn} onClick={() => { setRejecting(bk.id); setApproving(null); setEditingBooking(null); setCancelConfirm(null); setMarkingPaid(null); setRejectReason(''); }}>Reject</button>
                               </>}
                               <button style={btn('#3a3656')} onClick={() => { openEditBooking(bk); }}>Edit</button>
@@ -661,6 +704,14 @@ export default function AdminScheduling() {
                                   Mark Paid
                                 </button>
                               )}
+                              {bk.balanceAmount != null && bk.balanceAmount > 0 && bk.balancePaymentStatus !== 'paid' && bk.status === 'approved' && <>
+                                <button style={btn('#7c5cff')} onClick={() => { setRequestingBalance(bk.id); closeAllPanels(); setRequestingBalance(bk.id); }}>
+                                  Request Balance
+                                </button>
+                                <button style={btn('#0ea5e9')} onClick={() => { setMarkingBalancePaid(bk.id); setBalancePaidMethod('cash'); closeAllPanels(); setMarkingBalancePaid(bk.id); }}>
+                                  Balance Paid
+                                </button>
+                              </>}
                             </div>
                           </div>
 
@@ -670,12 +721,23 @@ export default function AdminScheduling() {
                               <div style={{ fontWeight: 700, color: '#22c55e', marginBottom: 10 }}>Approve Booking</div>
                               <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: 10 }}>
                                 <input type="checkbox" checked={approveForm.requiresPayment} onChange={e => setApproveForm(f => ({ ...f, requiresPayment: e.target.checked }))} />
-                                <span style={{ color: '#bdbdbd', fontSize: '0.9rem' }}>Require payment before confirming</span>
+                                <span style={{ color: '#bdbdbd', fontSize: '0.9rem' }}>Require payment (retainer/deposit) before confirming</span>
                               </label>
                               {approveForm.requiresPayment && (
-                                <div style={{ marginBottom: 10 }}>
-                                  <label style={label}>Payment Amount ($)</label>
-                                  <input style={{ ...inputStyle, width: 160 }} type="number" min="0" step="0.01" value={approveForm.paymentAmount} onChange={e => setApproveForm(f => ({ ...f, paymentAmount: e.target.value }))} />
+                                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
+                                  <div>
+                                    <label style={label}>Retainer / Deposit ($)</label>
+                                    <input style={{ ...inputStyle, width: 140 }} type="number" min="0" step="0.01" value={approveForm.paymentAmount} onChange={e => setApproveForm(f => ({ ...f, paymentAmount: e.target.value }))} />
+                                  </div>
+                                  <div>
+                                    <label style={label}>Remaining Balance ($)</label>
+                                    <input style={{ ...inputStyle, width: 140 }} type="number" min="0" step="0.01" value={approveForm.balanceAmount} onChange={e => setApproveForm(f => ({ ...f, balanceAmount: e.target.value }))} placeholder="0 = no balance" />
+                                  </div>
+                                </div>
+                              )}
+                              {approveForm.requiresPayment && approveForm.balanceAmount && Number(approveForm.balanceAmount) > 0 && (
+                                <div style={{ background: '#13281a', border: '1px solid #22c55e22', borderRadius: 8, padding: '8px 12px', marginBottom: 10, fontSize: '0.82rem', color: '#6b6b80' }}>
+                                  Customer pays <span style={{ color: '#22c55e', fontWeight: 700 }}>${Number(approveForm.paymentAmount || 0).toFixed(2)}</span> retainer now · <span style={{ color: '#a78bfa', fontWeight: 700 }}>${Number(approveForm.balanceAmount).toFixed(2)}</span> remaining balance to collect later
                                 </div>
                               )}
                               <div style={{ display: 'flex', gap: 8 }}>
@@ -762,6 +824,42 @@ export default function AdminScheduling() {
                               <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
                                 <button style={btn('#0ea5e9')} onClick={() => markPaidCash(bk.id)}>Confirm Payment</button>
                                 <button style={btn('#444')} onClick={() => setMarkingPaid(null)}>Cancel</button>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Request balance panel */}
+                          {requestingBalance === bk.id && (
+                            <div style={{ marginTop: 14, background: '#1a1430', border: '1px solid #7c5cff44', borderRadius: 10, padding: '1rem' }}>
+                              <div style={{ fontWeight: 700, color: '#a78bfa', marginBottom: 8 }}>Send Balance Payment Request</div>
+                              <div style={{ color: '#6b6b80', fontSize: '0.85rem', marginBottom: 12 }}>
+                                A Stripe payment link for the remaining balance of <span style={{ color: '#a78bfa', fontWeight: 700 }}>${Number(bk.balanceAmount).toFixed(2)}</span> will be emailed to {bk.customerEmail}.
+                              </div>
+                              <div style={{ display: 'flex', gap: 8 }}>
+                                <button style={btn('#7c5cff')} onClick={() => requestBalancePayment(bk.id)}>Send Payment Link</button>
+                                <button style={btn('#444')} onClick={() => setRequestingBalance(null)}>Cancel</button>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Mark balance paid panel */}
+                          {markingBalancePaid === bk.id && (
+                            <div style={{ marginTop: 14, background: '#0c1f2d', border: '1px solid #0ea5e944', borderRadius: 10, padding: '1rem' }}>
+                              <div style={{ fontWeight: 700, color: '#0ea5e9', marginBottom: 10 }}>Mark Balance as Paid</div>
+                              <div style={{ color: '#6b6b80', fontSize: '0.85rem', marginBottom: 10 }}>
+                                Mark <span style={{ color: '#a78bfa', fontWeight: 700 }}>${Number(bk.balanceAmount).toFixed(2)}</span> balance as received (no Stripe or platform fees).
+                              </div>
+                              <div>
+                                <label style={label}>Method</label>
+                                <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                                  {(['cash', 'check'] as const).map(m => (
+                                    <button key={m} style={{ ...btn(balancePaidMethod === m ? '#0ea5e9' : '#3a3656'), textTransform: 'capitalize' }} onClick={() => setBalancePaidMethod(m)}>{m}</button>
+                                  ))}
+                                </div>
+                              </div>
+                              <div style={{ display: 'flex', gap: 8 }}>
+                                <button style={btn('#0ea5e9')} onClick={() => markBalancePaid(bk.id)}>Confirm</button>
+                                <button style={btn('#444')} onClick={() => setMarkingBalancePaid(null)}>Cancel</button>
                               </div>
                             </div>
                           )}

@@ -158,6 +158,13 @@ const CustomerAccount: React.FC = () => {
           </div>
         )}
 
+        {/* ── Orders ─────────────────────────────────────────────────── */}
+        <section className="account-section">
+          <h2 className="account-section-title">🛒 My Orders</h2>
+          <p className="account-section-desc">View your photo print and product orders.</p>
+          <a href="/orders" style={{ display: 'inline-block', padding: '8px 20px', background: '#7c5cff', color: '#fff', borderRadius: 8, fontWeight: 700, fontSize: '0.92rem', textDecoration: 'none' }}>View Orders</a>
+        </section>
+
         {/* ── Current Player Watchlist ─────────────────────────────── */}
                 {/* ── Current School Watchlist ─────────────────────────────── */}
                 <section className="account-section">

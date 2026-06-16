@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import api from '../../services/api';
 import { setStudioTimezone } from '../../utils/studioDateTime';
 import styles from './Navbar.module.css';
+import { useSidebar } from '../../contexts/SidebarContext';
 
 type StudioBrand = {
   name: string;
@@ -157,8 +158,39 @@ const Navbar: React.FC = () => {
   const brandLogoUrl = publicStudioBrand?.logoUrl || null;
   const shouldShowBrandLogo = Boolean(brandLogoUrl) && !brandLogoFailed;
 
+  const isAdmin = user?.role === 'super_admin' || user?.role === 'studio_admin';
+  const { open: sidebarOpen, toggle: sidebarToggle } = useSidebar();
+
   return (
     <nav className={styles.navbar}>
+      {isAdmin && (
+        <button
+          id="hamburger-btn"
+          onClick={sidebarToggle}
+          aria-label={sidebarOpen ? 'Close menu' : 'Open menu'}
+          style={{
+            flexShrink: 0,
+            width: 38,
+            height: 38,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 5,
+            background: sidebarOpen ? 'rgba(124,92,255,0.2)' : 'rgba(255,255,255,0.05)',
+            border: `1px solid ${sidebarOpen ? 'rgba(124,92,255,0.45)' : 'rgba(255,255,255,0.1)'}`,
+            borderRadius: 9,
+            cursor: 'pointer',
+            padding: 0,
+            marginRight: '0.75rem',
+            transition: 'background 0.18s, border-color 0.18s',
+          }}
+        >
+          <span style={{ display: 'block', width: 16, height: 2, background: sidebarOpen ? '#a78bfa' : '#c4c4de', borderRadius: 2, transition: 'transform 0.2s', transform: sidebarOpen ? 'translateY(7px) rotate(45deg)' : 'none' }} />
+          <span style={{ display: 'block', width: 16, height: 2, background: sidebarOpen ? '#a78bfa' : '#c4c4de', borderRadius: 2, transition: 'opacity 0.2s', opacity: sidebarOpen ? 0 : 1 }} />
+          <span style={{ display: 'block', width: 16, height: 2, background: sidebarOpen ? '#a78bfa' : '#c4c4de', borderRadius: 2, transition: 'transform 0.2s', transform: sidebarOpen ? 'translateY(-7px) rotate(-45deg)' : 'none' }} />
+        </button>
+      )}
       <div className={styles.navbarBrand}>
         {shouldShowBrandLogo ? (
           <img
@@ -208,7 +240,6 @@ const Navbar: React.FC = () => {
       <div className={styles.navbarLinks + ' ' + styles.desktopOnly}>
         <Link to={studioNavSlug ? `/albums?studioSlug=${encodeURIComponent(studioNavSlug)}` : '/albums'} className={styles.navbarLink}>Albums</Link>
         <Link to={studioNavSlug ? `/studio/${encodeURIComponent(studioNavSlug)}/deals` : '/deals'} className={styles.navbarLink}>Deals</Link>
-        <Link to="/orders" className={styles.navbarLink}>Orders</Link>
         {studioNavSlug && <Link to={`/studio/${encodeURIComponent(studioNavSlug)}/book`} className={styles.navbarLink}>Book</Link>}
         <div className={styles.cartIconWrapper + ' ' + styles.desktopOnly}>
           <Link to="/cart" aria-label="Cart" className={styles.cartIcon} style={{ textDecoration: 'none', position: 'relative' }}>
@@ -247,52 +278,54 @@ const Navbar: React.FC = () => {
         </div>
       </div>
 
-      <div className={styles.mobileMenuWrapper + ' ' + styles.mobileOnly}>
-        <button
-          className={styles.navbarToggle}
-          aria-label={menuOpen ? 'Close menu' : 'Open menu'}
-          aria-expanded={menuOpen}
-          onClick={() => setMenuOpen((v) => !v)}
-          type="button"
-        >
-          {menuOpen ? <span>&#x2715;</span> : <span>&#9776;</span>}
-        </button>
-        <div className={styles.navbarLinks + (menuOpen ? ' ' + styles.open : '')}>
-          <Link to={studioNavSlug ? `/albums?studioSlug=${encodeURIComponent(studioNavSlug)}` : '/albums'} className={styles.navbarLink}>Albums</Link>
-          <Link to={studioNavSlug ? `/studio/${encodeURIComponent(studioNavSlug)}/deals` : '/deals'} className={styles.navbarLink}>Deals</Link>
-          <Link to="/orders" className={styles.navbarLink}>Orders</Link>
-          {studioNavSlug && <Link to={`/studio/${encodeURIComponent(studioNavSlug)}/book`} className={styles.navbarLink}>Book</Link>}
-          {isLoggedIn ? (
-            <>
-              <Link to={studioSlug ? `/account?studioSlug=${encodeURIComponent(studioSlug)}` : '/account'} className={styles.navbarLink}>
-                My Account
-              </Link>
-              {user?.role === 'customer' && (
-                <Link to="/account/tickets" className={styles.navbarLink}>My Tickets</Link>
-              )}
-              <button
-                className={styles.navbarLink}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, font: 'inherit', color: 'inherit' }}
-                onClick={logout}
-              >
-                Logout
-              </button>
-            </>
-          ) : (
-            <>
-              <Link to="/login" className={styles.navbarLink}>Login</Link>
-              <Link to="/register" className={styles.navbarLink}>Register</Link>
-            </>
-          )}
-          <div className={styles.navbarUser}>
-            {isLoggedIn && user ? (
-              <span className={styles.navbarUserInfo}>
-                {user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : user.email}
-              </span>
-            ) : null}
+      {!isAdmin && (
+        <div className={styles.mobileMenuWrapper + ' ' + styles.mobileOnly}>
+          <button
+            className={styles.navbarToggle}
+            aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((v) => !v)}
+            type="button"
+          >
+            {menuOpen ? <span>&#x2715;</span> : <span>&#9776;</span>}
+          </button>
+          <div className={styles.navbarLinks + (menuOpen ? ' ' + styles.open : '')}>
+            <Link to={studioNavSlug ? `/albums?studioSlug=${encodeURIComponent(studioNavSlug)}` : '/albums'} className={styles.navbarLink}>Albums</Link>
+            <Link to={studioNavSlug ? `/studio/${encodeURIComponent(studioNavSlug)}/deals` : '/deals'} className={styles.navbarLink}>Deals</Link>
+            <Link to="/orders" className={styles.navbarLink}>Orders</Link>
+            {studioNavSlug && <Link to={`/studio/${encodeURIComponent(studioNavSlug)}/book`} className={styles.navbarLink}>Book</Link>}
+            {isLoggedIn ? (
+              <>
+                <Link to={studioSlug ? `/account?studioSlug=${encodeURIComponent(studioSlug)}` : '/account'} className={styles.navbarLink}>
+                  My Account
+                </Link>
+                {user?.role === 'customer' && (
+                  <Link to="/account/tickets" className={styles.navbarLink}>My Tickets</Link>
+                )}
+                <button
+                  className={styles.navbarLink}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, font: 'inherit', color: 'inherit' }}
+                  onClick={logout}
+                >
+                  Logout
+                </button>
+              </>
+            ) : (
+              <>
+                <Link to="/login" className={styles.navbarLink}>Login</Link>
+                <Link to="/register" className={styles.navbarLink}>Register</Link>
+              </>
+            )}
+            <div className={styles.navbarUser}>
+              {isLoggedIn && user ? (
+                <span className={styles.navbarUserInfo}>
+                  {user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : user.email}
+                </span>
+              ) : null}
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </nav>
   );
 };

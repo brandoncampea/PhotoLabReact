@@ -243,50 +243,50 @@ export default function BookingPage() {
     );
   }
 
-  // Step 1: session type grid — light Pixieset-style
+  // Step 1: session type grid — dark mode
   if (step === 'type' && sessionTypes.length > 0) {
     return (
-      <div style={{ minHeight: '100vh', background: '#f0eeeb', padding: '3.5rem 2rem 5rem' }}>
+      <div style={{ minHeight: '100vh', background: '#13131c', padding: '3.5rem 2rem 5rem' }}>
         <div style={{ maxWidth: 1200, margin: '0 auto' }}>
           <div style={{ marginBottom: '2.5rem' }}>
-            <h1 style={{ fontSize: '2rem', fontWeight: 300, color: '#1a1a1a', margin: '0 0 0.25rem', letterSpacing: '-0.01em' }}>{studioName}</h1>
-            <p style={{ color: '#888', fontSize: '0.95rem', margin: 0 }}>Choose a session type to get started</p>
+            <h1 style={{ fontSize: '2rem', fontWeight: 700, background: 'linear-gradient(90deg, #a78bfa 0%, #6366f1 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text', margin: '0 0 0.25rem' }}>{studioName}</h1>
+            <p style={{ color: '#6b6b80', fontSize: '0.95rem', margin: 0 }}>Choose a session type to get started</p>
           </div>
-          {error && <div style={{ background: '#fff0f0', color: '#c0392b', borderRadius: 6, padding: '10px 14px', marginBottom: 20, fontSize: '0.9rem' }}>{error}</div>}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 28 }}>
+          {error && <div style={{ background: '#2d1a1a', color: '#ffb3b3', borderRadius: 8, padding: '10px 14px', marginBottom: 20, fontSize: '0.9rem' }}>{error}</div>}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 24 }}>
             {sessionTypes.map(st => (
               <button key={st.id} onClick={() => selectType(st)} style={{
-                background: '#fff', border: 'none', borderRadius: 4,
+                background: '#1e1e28', border: '1px solid #2e2e3e', borderRadius: 12,
                 cursor: 'pointer', textAlign: 'left', padding: 0, overflow: 'hidden',
-                boxShadow: '0 2px 16px rgba(0,0,0,0.09)',
-                transition: 'transform 0.18s, box-shadow 0.18s',
+                boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
+                transition: 'transform 0.18s, box-shadow 0.18s, border-color 0.18s',
                 display: 'flex', flexDirection: 'column',
               }}
-              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-4px)'; (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 8px 28px rgba(0,0,0,0.15)'; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.transform = ''; (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 2px 16px rgba(0,0,0,0.09)'; }}
+              onMouseEnter={e => { const b = e.currentTarget as HTMLButtonElement; b.style.transform = 'translateY(-4px)'; b.style.boxShadow = '0 10px 36px rgba(124,92,255,0.25)'; b.style.borderColor = '#7c5cff'; }}
+              onMouseLeave={e => { const b = e.currentTarget as HTMLButtonElement; b.style.transform = ''; b.style.boxShadow = '0 4px 24px rgba(0,0,0,0.4)'; b.style.borderColor = '#2e2e3e'; }}
               >
                 {/* Photo */}
-                <div style={{ width: '100%', aspectRatio: '4/3', background: '#e8e4df', overflow: 'hidden', flexShrink: 0 }}>
+                <div style={{ width: '100%', aspectRatio: '4/3', background: '#0e0e18', overflow: 'hidden', flexShrink: 0 }}>
                   {st.imageUrl
                     ? <img src={st.imageUrl} alt={st.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                    : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#bbb', fontSize: '3rem' }}>📷</div>
+                    : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3a3656', fontSize: '2.5rem' }}>📷</div>
                   }
                 </div>
                 {/* Info */}
-                <div style={{ padding: '20px 22px 22px', display: 'flex', flexDirection: 'column', flexGrow: 1 }}>
-                  <div style={{ fontWeight: 600, color: '#1a1a1a', fontSize: '1.1rem', marginBottom: 8, letterSpacing: '-0.01em' }}>{st.name}</div>
+                <div style={{ padding: '18px 20px 20px', display: 'flex', flexDirection: 'column', flexGrow: 1 }}>
+                  <div style={{ fontWeight: 700, color: '#e0e0f0', fontSize: '1.05rem', marginBottom: st.description ? 6 : 0 }}>{st.name}</div>
                   {st.description && (
-                    <div style={{ color: '#777', fontSize: '0.84rem', lineHeight: 1.6, marginBottom: 'auto', paddingBottom: 16, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                    <div style={{ color: '#8888a0', fontSize: '0.83rem', lineHeight: 1.6, marginBottom: 14, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                       {st.description}
                     </div>
                   )}
-                  <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', paddingTop: st.description ? 0 : 8, borderTop: '1px solid #f0eeeb', marginTop: 12 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#666', fontSize: '0.82rem' }}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                      <span>{st.durationMinutes < 60 ? `${st.durationMinutes} minutes` : st.durationMinutes === 60 ? '1 hour' : `${(st.durationMinutes / 60).toFixed(st.durationMinutes % 60 === 0 ? 0 : 1)} hours`}</span>
+                  <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', borderTop: '1px solid #2e2e3e', paddingTop: 14, marginTop: 'auto' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#7070a0', fontSize: '0.82rem' }}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                      <span>{st.durationMinutes < 60 ? `${st.durationMinutes} min` : st.durationMinutes === 60 ? '1 hour' : `${(st.durationMinutes / 60).toFixed(st.durationMinutes % 60 === 0 ? 0 : 1)} hr`}</span>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#666', fontSize: '0.82rem' }}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 7v10M9.5 9.5c0-1.1.9-2 2.5-2s2.5.9 2.5 2-.9 2-2.5 2-2.5.9-2.5 2 .9 2 2.5 2 2.5-.9 2.5-2"/></svg>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#7070a0', fontSize: '0.82rem' }}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 7v10M9.5 9.5c0-1.1.9-2 2.5-2s2.5.9 2.5 2-.9 2-2.5 2-2.5.9-2.5 2 .9 2 2.5 2 2.5-.9 2.5-2"/></svg>
                       <span>{Number(st.price) > 0 ? `$${Number(st.price).toLocaleString('en-US', { minimumFractionDigits: 2 })}` : 'Free'}</span>
                     </div>
                   </div>
@@ -295,16 +295,16 @@ export default function BookingPage() {
             ))}
             {/* Show all times option */}
             <button onClick={() => selectType(null)} style={{
-              background: '#fff', border: '2px dashed #d0ccc8', borderRadius: 4,
+              background: 'transparent', border: '2px dashed #2e2e3e', borderRadius: 12,
               cursor: 'pointer', textAlign: 'center', padding: '3rem 1.5rem',
-              color: '#aaa', fontSize: '0.88rem', fontWeight: 500,
+              color: '#4a4a6a', fontSize: '0.88rem', fontWeight: 500,
               display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10,
-              boxShadow: 'none', transition: 'color 0.15s, border-color 0.15s',
+              transition: 'color 0.15s, border-color 0.15s',
             }}
-            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = '#555'; (e.currentTarget as HTMLButtonElement).style.borderColor = '#999'; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = '#aaa'; (e.currentTarget as HTMLButtonElement).style.borderColor = '#d0ccc8'; }}
+            onMouseEnter={e => { const b = e.currentTarget as HTMLButtonElement; b.style.color = '#a78bfa'; b.style.borderColor = '#7c5cff'; }}
+            onMouseLeave={e => { const b = e.currentTarget as HTMLButtonElement; b.style.color = '#4a4a6a'; b.style.borderColor = '#2e2e3e'; }}
             >
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
               Not sure? Show all available times
             </button>
           </div>
