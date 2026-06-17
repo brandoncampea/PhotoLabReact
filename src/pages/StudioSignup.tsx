@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 type Plan = { id: string | number; name: string; monthly_price: number; nickname?: string };
 
@@ -34,6 +35,7 @@ const sectionHeadingStyle: React.CSSProperties = {
 };
 
 const StudioSignup: React.FC = () => {
+  const navigate = useNavigate();
   const [plans, setPlans] = useState<Plan[]>([]);
   const [plansLoading, setPlansLoading] = useState(true);
   const [selectedPlan, setSelectedPlan] = useState('');
@@ -68,13 +70,41 @@ const StudioSignup: React.FC = () => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
+
+    if (formData.adminPassword !== formData.confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+    if (formData.adminPassword.length < 8) {
+      setError('Password must be at least 8 characters');
+      return;
+    }
+
     setLoading(true);
-    setTimeout(() => {
+    try {
+      const apiUrl = (import.meta as any).env?.VITE_API_URL || '/api';
+      const res = await fetch(`${apiUrl}/studios/signup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          studioName: formData.studioName,
+          studioEmail: formData.studioEmail,
+          adminName: formData.adminName,
+          adminEmail: formData.adminEmail,
+          adminPassword: formData.adminPassword,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to create studio');
+      navigate('/login');
+    } catch (err: any) {
+      setError(err.message || 'An error occurred');
+    } finally {
       setLoading(false);
-      setError('');
-    }, 1000);
+    }
   };
 
   const freePlan: Plan = { id: '', name: 'Free', monthly_price: 0 };

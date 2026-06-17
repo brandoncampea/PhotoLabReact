@@ -29,12 +29,9 @@ const Sidebar: React.FC = () => {
   const inStudioAdminMenu = isStudioAdmin || isActingAsStudio;
   const dashboardPath = isSuperAdmin && !isActingAsStudio ? '/super-admin' : '/admin/dashboard';
 
-  if (!isSuperAdmin && !isStudioAdmin) return null;
-
-  // Close on route change
+  // Hooks must come before any conditional return
   useEffect(() => { close(); }, [location.pathname]);
 
-  // Close on outside click
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
@@ -47,6 +44,8 @@ const Sidebar: React.FC = () => {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
+
+  if (!isSuperAdmin && !isStudioAdmin) return null;
 
   const isActive = (path: string) => location.pathname === path;
 

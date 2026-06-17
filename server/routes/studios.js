@@ -266,6 +266,8 @@ router.post('/signup', async (req, res) => {
       return res.status(409).json({ error: 'Email already registered' });
     }
 
+    const hashedPassword = await bcrypt.hash(adminPassword, 10);
+
     // Begin transaction
     const { studioId, userId } = await transaction(async (client) => {
       const studioResult = await client.query(`
@@ -280,7 +282,7 @@ router.post('/signup', async (req, res) => {
         INSERT INTO users (email, password, name, role, studio_id, is_active, created_at)
         VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
         RETURNING id
-      `, [adminEmail, adminPassword, adminName, 'studio_admin', createdStudioId, 1]);
+      `, [adminEmail, hashedPassword, adminName, 'studio_admin', createdStudioId, 1]);
 
       return { studioId: createdStudioId, userId: userResult.rows[0].id };
     });

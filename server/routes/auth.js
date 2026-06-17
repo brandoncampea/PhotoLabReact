@@ -76,15 +76,19 @@ router.post('/login', async (req, res) => {
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
-
     // Check password
-    const validPassword = await bcrypt.compare(password, user.password);
+    let validPassword;
+    try {
+      validPassword = await bcrypt.compare(password, user.password);
+    } catch {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
     if (!validPassword) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    // Update last login timestamp
-    await query('UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = $1', [user.id]);
+    // Update last login timestamp (non-fatal — column may not exist on all deployments)
+    query('UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = $1', [user.id]).catch(() => {});
 
     // Split stored name into first/last for the frontend
     const nameParts = (user.name || '').trim().split(' ');

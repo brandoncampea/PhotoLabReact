@@ -160,6 +160,10 @@ const Login: React.FC = () => {
 
         <p style={{ marginTop: 16, textAlign: 'center', color: '#a1a1aa', fontSize: '0.95rem' }}>
           Don't have an account?{' '}
+          <Link to="/register" style={{ color: '#a78bfa', fontWeight: 600, textDecoration: 'none' }}>
+            Sign up
+          </Link>
+          {' · '}
           <Link to="/studio-signup" style={{ color: '#a78bfa', fontWeight: 600, textDecoration: 'none' }}>
             Create a studio
           </Link>
