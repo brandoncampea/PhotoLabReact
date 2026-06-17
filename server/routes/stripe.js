@@ -200,8 +200,20 @@ router.post('/create-payment-intent', authRequired, async (req, res) => {
       return res.status(400).json({ error: 'Invalid or empty cart items' });
     }
 
-    // Calculate total amount from items
-    const itemsTotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    // Calculate total amount from items — count packagePrice once per group for package items
+    const itemsTotal = (() => {
+      const seenGroups = new Set();
+      return items.reduce((sum, item) => {
+        if (item.packageGroupId) {
+          if (!seenGroups.has(item.packageGroupId)) {
+            seenGroups.add(item.packageGroupId);
+            return sum + (Number(item.packagePrice) || 0);
+          }
+          return sum;
+        }
+        return sum + (Number(item.price) || 0) * (Number(item.quantity) || 0);
+      }, 0);
+    })();
     // If all items are digital, force shipping to 0
     const allDigital = Array.isArray(items) && items.length > 0 && items.every((item) => {
       const options = (() => {
