@@ -31,7 +31,7 @@ const Cart: React.FC = () => {
         // ...existing code...
         // ...
         // ...existing code...
-    const { items, getTotalPrice, getTotalItems, clearCart } = useCart();
+    const { items, getTotalPrice, getTotalItems, clearCart, removePackageFromCart } = useCart();
     const navigate = useNavigate();
 
     // Debug log: show cart items and their attributeUIDs/productOptions on every render
@@ -1010,31 +1010,106 @@ const Cart: React.FC = () => {
 
       <div className="cart-content cart-layout">
         <div className="cart-items">
-          {items.map((item) => {
-            const resolvedItem = getResolvedCartItem(item);
-            const photo = item.photo || item;
-            // Add cropData hash to key to force re-render on crop change
-            const cropKey = item.cropData ? `${item.cropData.x}-${item.cropData.y}-${item.cropData.width}-${item.cropData.height}` : 'nocrop';
+          {(() => {
+            // Separate package groups from standalone items
+            const packageGroups = new Map<string, CartItemType[]>();
+            const standaloneItems: CartItemType[] = [];
+            for (const item of items) {
+              if (item.packageGroupId) {
+                const group = packageGroups.get(item.packageGroupId) || [];
+                group.push(item);
+                packageGroups.set(item.packageGroupId, group);
+              } else {
+                standaloneItems.push(item);
+              }
+            }
+
             return (
-              <CartItem
-                key={item.photoId + '-' + (item.productId || '') + '-' + (item.productSizeId || '') + '-' + cropKey}
-                item={resolvedItem}
-                photo={photo}
-                onEditCrop={(editItem, _editPhoto, drawnSize) => {
-                  // Merge latest cropData from raw cart state into the enriched resolved item
-                  // so CropperModal has both fresh cropData and productSize dimensions.
-                  const latest = items.find(
-                    (i) => i.photoId === editItem.photoId && i.productId === editItem.productId && i.productSizeId === editItem.productSizeId
+              <>
+                {/* Package groups */}
+                {Array.from(packageGroups.entries()).map(([groupId, groupItems]) => (
+                  <div key={groupId} className="package-cart-group">
+                    <div className="pcg-header">
+                      <span className="pcg-icon">📦</span>
+                      <div className="pcg-info">
+                        <span className="pcg-name">{groupItems[0].packageName || 'Package'}</span>
+                        <span className="pcg-count">{groupItems.length} {groupItems.length === 1 ? 'item' : 'items'}</span>
+                      </div>
+                      <span className="pcg-price">${(groupItems[0].packagePrice ?? 0).toFixed(2)}</span>
+                      <button
+                        className="pcg-remove"
+                        onClick={() => removePackageFromCart(groupId)}
+                        aria-label={`Remove ${groupItems[0].packageName || 'package'}`}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    <div className="pcg-items">
+                      {groupItems.map((item, idx) => {
+                        const thumbUrl = item.photo?.id
+                          ? `/api/photos/${item.photo.id}/asset?variant=thumbnail`
+                          : '';
+                        const paperFinish = item.variantDisplayName || '';
+                        return (
+                          <div key={idx} className="pcg-item">
+                            {thumbUrl && (
+                              <img src={thumbUrl} alt="" className="pcg-item-thumb" />
+                            )}
+                            <div className="pcg-item-label">
+                              <span className="pcg-item-name">{item.productName || 'Print'}</span>
+                              {paperFinish && <span className="pcg-item-paper">{paperFinish}</span>}
+                            </div>
+                            <span className="pcg-item-included">Included</span>
+                            {!item.isDigital && (
+                              <button
+                                className="pcg-item-edit"
+                                onClick={() => {
+                                  const latest = items.find(
+                                    i => i.photoId === item.photoId &&
+                                         i.productId === item.productId &&
+                                         i.productSizeId === item.productSizeId &&
+                                         i.packageGroupId === item.packageGroupId
+                                  );
+                                  setEditingItem(latest ? { ...item, cropData: latest.cropData } : item);
+                                  setEditingDrawnSize(null);
+                                }}
+                              >
+                                Edit Crop
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+
+                {/* Standalone items */}
+                {standaloneItems.map((item) => {
+                  const resolvedItem = getResolvedCartItem(item);
+                  const photo = item.photo || item;
+                  const cropKey = item.cropData ? `${item.cropData.x}-${item.cropData.y}-${item.cropData.width}-${item.cropData.height}` : 'nocrop';
+                  return (
+                    <CartItem
+                      key={item.photoId + '-' + (item.productId || '') + '-' + (item.productSizeId || '') + '-' + cropKey}
+                      item={resolvedItem}
+                      photo={photo}
+                      onEditCrop={(editItem, _editPhoto, drawnSize) => {
+                        const latest = items.find(
+                          (i) => i.photoId === editItem.photoId && i.productId === editItem.productId && i.productSizeId === editItem.productSizeId
+                        );
+                        setEditingItem(latest ? { ...editItem, cropData: latest.cropData } : editItem);
+                        setEditingDrawnSize(drawnSize || null);
+                      }}
+                      onOpenWhccEditor={handleOpenWhccEditor}
+                      showWhccEditorButton={!!resolvedItem?.requiresWhccEditor}
+                      studioId={user?.studioId}
+                    />
                   );
-                  setEditingItem(latest ? { ...editItem, cropData: latest.cropData } : editItem);
-                  setEditingDrawnSize(drawnSize || null);
-                }}
-                onOpenWhccEditor={handleOpenWhccEditor}
-                showWhccEditorButton={!!resolvedItem?.requiresWhccEditor}
-                studioId={user?.studioId}
-              />
+                })}
+              </>
             );
-          })}
+          })()}
         </div>
 
           {/* Package Cost/Profit Display - moved here as requested */}

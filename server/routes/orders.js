@@ -24,7 +24,7 @@ router.post('/admin/batch-update-status', adminRequired, async (req, res) => {
       const order = await queryRow('SELECT o.*, u.email as customerEmail, u.name as customerName FROM orders o LEFT JOIN users u ON u.id = o.user_id WHERE o.id = $1', [orderId]);
       // Join products and photos for correct productName and photoFileName
       const items = await queryRows(`
-        SELECT oi.id as id, oi.photo_id as photoId, oi.photo_ids as photoIds, oi.product_id as productId, oi.product_size_id as productSizeId, oi.quantity, oi.price as price, oi.crop_data as cropData, oi.digital_download_scope as digitalDownloadScope, oi.studio_revenue_amount as studioRevenueAmount, oi.base_revenue_amount as baseRevenueAmount, oi.production_cost_amount as productionCostAmount, oi.studio_payout_amount as studioPayoutAmount, oi.super_admin_share_amount as superAdminShareAmount, oi.stripe_fee_allocated_amount as stripeFeeAllocatedAmount, oi.studio_net_payout_amount as studioNetPayoutAmount, p.name as productName, ph.file_name as photoFileName
+        SELECT oi.id as id, oi.photo_id as photoId, oi.photo_ids as photoIds, oi.product_id as productId, oi.product_size_id as productSizeId, oi.quantity, oi.price as price, oi.crop_data as cropData, oi.digital_download_scope as digitalDownloadScope, oi.studio_revenue_amount as studioRevenueAmount, oi.base_revenue_amount as baseRevenueAmount, oi.production_cost_amount as productionCostAmount, oi.studio_payout_amount as studioPayoutAmount, oi.super_admin_share_amount as superAdminShareAmount, oi.stripe_fee_allocated_amount as stripeFeeAllocatedAmount, oi.studio_net_payout_amount as studioNetPayoutAmount, p.name as productName, ph.file_name as photoFileName, oi.package_group_id as packageGroupId, oi.package_price as packagePrice, oi.package_name as packageName
         FROM order_items oi
         LEFT JOIN products p ON p.id = oi.product_id
         LEFT JOIN photos ph ON ph.id = oi.photo_id
@@ -184,7 +184,7 @@ router.post('/admin/:orderId/resend-digital-download', adminRequired, async (req
     if (!order) return res.status(404).json({ success: false, message: 'Order not found', digitalItemCount: 0 });
 
     const items = await queryRows(
-      `SELECT oi.id as id, oi.photo_id as photoId, oi.photo_ids as photoIds, oi.source_album_id as sourceAlbumId, oi.digital_download_scope as digitalDownloadScope, oi.quantity, oi.price as unitPrice, ph.file_name as photoFileName, ph.album_id as photoAlbumId, COALESCE(oi.product_options_snapshot, p.options) as productOptions, oi.attributes as attributes, p.category as productCategory, p.name as productName, a.studio_id as studioId, s.name as studioName, COALESCE(NULLIF(s.email, ''), pc.email) as studioEmail
+      `SELECT oi.id as id, oi.photo_id as photoId, oi.photo_ids as photoIds, oi.source_album_id as sourceAlbumId, oi.digital_download_scope as digitalDownloadScope, oi.quantity, oi.price as unitPrice, ph.file_name as photoFileName, ph.album_id as photoAlbumId, COALESCE(oi.product_options_snapshot, p.options) as productOptions, oi.attributes as attributes, p.category as productCategory, p.name as productName, a.studio_id as studioId, s.name as studioName, COALESCE(NULLIF(s.email, ''), pc.email) as studioEmail, oi.package_group_id as packageGroupId, oi.package_price as packagePrice, oi.package_name as packageName
         FROM order_items oi
         INNER JOIN photos ph ON ph.id = oi.photo_id
         LEFT JOIN products p ON p.id = oi.product_id
@@ -788,6 +788,12 @@ const ensureOrderItemAccountingSchema = async () => {
       ALTER TABLE order_items ADD stripe_fee_allocated_amount FLOAT NULL;
     IF COL_LENGTH('order_items', 'studio_net_payout_amount') IS NULL
       ALTER TABLE order_items ADD studio_net_payout_amount FLOAT NULL;
+    IF COL_LENGTH('order_items', 'package_group_id') IS NULL
+      ALTER TABLE order_items ADD package_group_id NVARCHAR(128) NULL;
+    IF COL_LENGTH('order_items', 'package_price') IS NULL
+      ALTER TABLE order_items ADD package_price FLOAT NULL;
+    IF COL_LENGTH('order_items', 'package_name') IS NULL
+      ALTER TABLE order_items ADD package_name NVARCHAR(256) NULL;
   `);
 };
 
@@ -3163,7 +3169,10 @@ const sendOrderReceipts = async (orderId) => {
             oi.studio_payout_amount as studioPayoutAmount,
             oi.super_admin_share_amount as superAdminShareAmount,
             oi.stripe_fee_allocated_amount as stripeFeeAllocatedAmount,
-            oi.studio_net_payout_amount as studioNetPayoutAmount
+            oi.studio_net_payout_amount as studioNetPayoutAmount,
+            oi.package_group_id as packageGroupId,
+            oi.package_price as packagePrice,
+            oi.package_name as packageName
      FROM order_items oi
      INNER JOIN products p ON p.id = oi.product_id
      LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id
@@ -3630,10 +3639,21 @@ router.post('/', requireActiveSubscription, async (req, res) => {
       return options?.isDigital === true || options?.is_digital_only === true || options?.digitalOnly === true || category.includes('digital') || name.includes('digital');
     });
 
-    // Use item totals as source of truth for subtotal (prevents shipping from being included in subtotal).
-    const computedSubtotal = Array.isArray(items)
-      ? roundCurrency(items.reduce((sum, item) => sum + ((Number(item?.price) || 0) * (Number(item?.quantity) || 0)), 0))
-      : (Number(subtotal) || 0);
+    // Use item totals as source of truth for subtotal — count packagePrice once per group.
+    const computedSubtotal = (() => {
+      if (!Array.isArray(items)) return Number(subtotal) || 0;
+      const seenGroups = new Set();
+      return roundCurrency(items.reduce((sum, item) => {
+        if (item.packageGroupId) {
+          if (!seenGroups.has(item.packageGroupId)) {
+            seenGroups.add(item.packageGroupId);
+            return sum + (Number(item.packagePrice) || 0);
+          }
+          return sum;
+        }
+        return sum + ((Number(item.price) || 0) * (Number(item.quantity) || 0));
+      }, 0));
+    })();
     const computedTax = Number(taxAmount) || 0;
     const orderStudioId = await getOrderStudioIdFromItems(items);
     if (!orderStudioId) {
@@ -3941,6 +3961,14 @@ router.post('/', requireActiveSubscription, async (req, res) => {
       };
     };
 
+    // Build package group size map so price can be distributed evenly across slots
+    const packageGroupSizes = new Map();
+    for (const item of (items || [])) {
+      if (item.packageGroupId) {
+        packageGroupSizes.set(item.packageGroupId, (packageGroupSizes.get(item.packageGroupId) || 0) + 1);
+      }
+    }
+
     const itemsWithAccounting = [];
     try {
       for (const item of items) {
@@ -4168,8 +4196,15 @@ router.post('/', requireActiveSubscription, async (req, res) => {
         }
       } // end if (item.productSizeId) variant resolution
 
+      // For package items, distribute the package price evenly across all slots
+      let effectiveUnitPrice = Number(item.price) || 0;
+      if (item.packageGroupId && Number(item.packagePrice) > 0) {
+        const groupSize = packageGroupSizes.get(item.packageGroupId) || 1;
+        effectiveUnitPrice = Number(item.packagePrice) / groupSize;
+      }
+
       const accounting = calculateItemAccountingSnapshot({
-        unitPrice: item.price,
+        unitPrice: effectiveUnitPrice,
         quantity: item.quantity,
         baseUnitPrice: resolvedBaseUnitPrice,
         productionUnitCost: resolvedProductionUnitCost,
@@ -4185,6 +4220,7 @@ router.post('/', requireActiveSubscription, async (req, res) => {
         productOptionsSnapshot: item.productOptionsSnapshot,
         attributes,
         accounting,
+        effectiveUnitPrice,
       });
       }
       // DEBUG: Log after itemsWithAccounting construction
@@ -4268,14 +4304,14 @@ router.post('/', requireActiveSubscription, async (req, res) => {
             product_options_snapshot, fulfillment_type, digital_download_scope, source_album_id, pricing_snapshot,
             studio_revenue_amount, base_revenue_amount, production_cost_amount, gross_studio_markup_amount,
             studio_payout_amount, super_admin_share_amount, stripe_fee_allocated_amount, studio_net_payout_amount,
-            attributes
+            attributes, package_group_id, package_price, package_name
           )
           VALUES (
             $1, $2, $3, $4, $5, $6, $7, $8,
             $9, $10, $11, $12, $13,
             $14, $15, $16, $17,
             $18, $19, $20, $21,
-            $22
+            $22, $23, $24, $25
           )
         `;
         const params = [
@@ -4285,7 +4321,7 @@ router.post('/', requireActiveSubscription, async (req, res) => {
           item.productId,
           item.productSizeId || null,
           item.quantity,
-          item.price,
+          item.effectiveUnitPrice,
           item.cropData ? JSON.stringify(item.cropData) : null,
           productOptionsSnapshotPatched,
           item.accounting?.fulfillmentType || null,
@@ -4301,6 +4337,9 @@ router.post('/', requireActiveSubscription, async (req, res) => {
           stripeFeeAllocatedAmount,
           studioNetPayoutAmount,
           attributesJson,
+          item.packageGroupId || null,
+          item.packageGroupId ? (Number(item.packagePrice) || null) : null,
+          item.packageGroupId ? (item.packageName || null) : null,
         ];
         console.log('[ORDER ITEM SQL DEBUG]', { sql, params });
         await query(sql, params);
@@ -4827,7 +4866,10 @@ router.get('/details/:orderId', async (req, res) => {
               super_admin_share_amount as superAdminShareAmount,
               stripe_fee_allocated_amount as stripeFeeAllocatedAmount,
               studio_net_payout_amount as studioNetPayoutAmount,
-              attributes
+              attributes,
+              package_group_id as packageGroupId,
+              package_price as packagePrice,
+              package_name as packageName
        FROM order_items WHERE order_id = $1`,
       [order.id]
     );
@@ -5310,7 +5352,10 @@ router.get('/admin/order-details/:orderId', adminRequired, async (req, res) => {
               oi.super_admin_share_amount as superAdminShareAmount,
               oi.stripe_fee_allocated_amount as stripeFeeAllocatedAmount,
               oi.studio_net_payout_amount as studioNetPayoutAmount,
-              attributes
+              attributes,
+              oi.package_group_id as packageGroupId,
+              oi.package_price as packagePrice,
+              oi.package_name as packageName
        FROM order_items oi
        LEFT JOIN products p ON p.id = oi.product_id
        LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id

@@ -80,6 +80,10 @@ export const orderService = {
           digitalDownloadScope: item.digitalDownloadScope,
           productOptions: item.productOptions,
           price: price,
+          attributes: item.attributes,
+          packageGroupId: item.packageGroupId,
+          packagePrice: item.packagePrice,
+          packageName: item.packageName,
         };
       }),
       subtotal,

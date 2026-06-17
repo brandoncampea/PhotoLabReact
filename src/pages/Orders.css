@@ -277,6 +277,48 @@
   margin: 0.75rem 0 0 0;
 }
 
+.item-price-included {
+  color: #7c5cff;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.order-package-group {
+  grid-column: 1 / -1;
+  border: 1.5px solid rgba(124, 92, 255, 0.45);
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(124, 92, 255, 0.05);
+}
+
+.order-pkg-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  background: rgba(124, 92, 255, 0.1);
+  border-bottom: 1px solid rgba(124, 92, 255, 0.2);
+}
+
+.order-pkg-name {
+  font-weight: 700;
+  color: #a78bfa;
+  font-size: 0.95rem;
+}
+
+.order-pkg-price {
+  font-weight: 700;
+  color: #a78bfa;
+  font-size: 1rem;
+}
+
+.order-pkg-items {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 1rem;
+  padding: 1rem;
+}
+
 /* Crop Data Display */
 .crop-data {
   margin-top: 1rem;

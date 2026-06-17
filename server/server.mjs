@@ -87,6 +87,7 @@ import reportsRoutes from './routes/reports.js';
 import runWhccEditorBackfillOnce from './startup/runWhccEditorBackfillOnce.js';
 import runWhccVariantSchemaMigrations from './startup/runWhccVariantSchemaMigrations.js';
 import './startup/ensureFreeBatchShippingColumn.js';
+import './startup/ensurePackageOrderColumns.js';
 import './startup/ensureOrderApprovalColumns.js';
 import './startup/ensureWhccLabBillingColumns.js';
 import './startup/ensureInstagramIntegrationTables.js';

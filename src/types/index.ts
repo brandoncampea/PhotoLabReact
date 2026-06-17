@@ -129,6 +129,29 @@ export interface CartItem {
   productOptions?: Record<string, any>;
   productOptionsSnapshot?: string | Record<string, any> | null;
   attributes?: string[] | string | number[]; // Added: product attributes (e.g., Lustre, Glossy)
+  variantId?: number | null;
+  variantDisplayName?: string;
+  // Package ordering fields
+  packageGroupId?: string;   // UUID grouping all items from one package order
+  packagePrice?: number;     // total package price (only counted once per group in totals)
+  packageName?: string;      // display name for the package
+}
+
+export interface PackageSlot {
+  slotIndex: number;
+  productId: number;
+  productSizeId: number;
+  variantId?: number | null;
+  variantDisplayName?: string;
+  whccItemAttributeUIDs?: number[];
+  productName: string;
+  sizeName: string;
+  width?: number;
+  height?: number;
+  isDigital: boolean;
+  photo?: Photo;
+  cropData?: CropData;
+  filled: boolean;
 }
 
 export interface CropData {
@@ -572,6 +595,7 @@ export interface PackageItem {
   productId: number;
   productSizeId: number;
   quantity: number;
+  variantId?: number | null;
   product?: PriceListProduct;
   productSize?: PriceListProductSize;
 }

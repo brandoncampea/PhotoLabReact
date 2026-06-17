@@ -21,6 +21,14 @@ function buildAdminRequestHeaders() {
 }
 
 function resolveOrderDiscount(order: { subtotal?: number; shippingCost?: number; taxAmount?: number; totalAmount?: number; discountCode?: string }) {
+  const code = String(order?.discountCode || '').trim();
+
+  // Only infer a discount amount if a discount code was actually applied.
+  // Without a code, any math mismatch is due to data issues, not a real discount.
+  if (!code) {
+    return { code: '', amount: 0, appliesToItems: false };
+  }
+
   const subtotal = Number(order?.subtotal || 0);
   const shipping = Number(order?.shippingCost || 0);
   const tax = Number(order?.taxAmount || 0);
@@ -40,7 +48,7 @@ function resolveOrderDiscount(order: { subtotal?: number; shippingCost?: number;
   }
 
   return {
-    code: String(order?.discountCode || '').trim(),
+    code,
     amount: Number(amount.toFixed(2)),
     appliesToItems,
   };
@@ -56,11 +64,21 @@ function getItemBaseCostTotal(item: {
   basePrice?: number;
 }) {
   const quantity = Math.max(1, Number(item?.quantity) || 1);
-  const superAdminShareAmount = Number(item?.superAdminShareAmount);
-  if (Number.isFinite(superAdminShareAmount) && superAdminShareAmount > 0) {
-    return superAdminShareAmount;
+
+  // base_revenue_amount (variant.price × qty) is the studio's base cost — matches
+  // what the package builder shows as "studio cost". List-view items have this directly.
+  const baseRevenueAmount = Number(item?.baseRevenueAmount);
+  if (Number.isFinite(baseRevenueAmount) && baseRevenueAmount > 0) {
+    return baseRevenueAmount;
   }
 
+  // Detail-view items return base_revenue_amount / qty as basePrice; multiply back.
+  const basePrice = Number(item?.basePrice);
+  if (Number.isFinite(basePrice) && basePrice > 0) {
+    return basePrice * quantity;
+  }
+
+  // Fallback to production cost (WHCC raw cost) for legacy rows.
   const productionCostAmount = Number(item?.productionCostAmount);
   if (Number.isFinite(productionCostAmount) && productionCostAmount > 0) {
     return productionCostAmount;
@@ -71,14 +89,10 @@ function getItemBaseCostTotal(item: {
     return unitCost * quantity;
   }
 
-  const baseRevenueAmount = Number(item?.baseRevenueAmount);
-  if (Number.isFinite(baseRevenueAmount) && baseRevenueAmount > 0) {
-    return baseRevenueAmount;
-  }
-
-  const basePrice = Number(item?.basePrice);
-  if (Number.isFinite(basePrice) && basePrice > 0) {
-    return basePrice * quantity;
+  // Last resort: super-admin share (digital-percentage items where base_revenue_amount = 0).
+  const superAdminShareAmount = Number(item?.superAdminShareAmount);
+  if (Number.isFinite(superAdminShareAmount) && superAdminShareAmount > 0) {
+    return superAdminShareAmount;
   }
 
   return 0;
@@ -422,7 +436,9 @@ function AdminOrderItemCard({ item }: { item: any }) {
           })()}
         <div className="admin-order-item-meta-row">
           <span className="admin-order-qty-pill">Qty: {item.quantity}</span>
-          <span className="admin-order-item-price">${Number((item.price || 0) * (item.quantity || 0)).toFixed(2)}</span>
+          <span className="admin-order-item-price">
+            {(item as any).packageGroupId ? 'Included' : `$${Number((item.price || 0) * (item.quantity || 0)).toFixed(2)}`}
+          </span>
         </div>
         {cropDebugText && <p className="item-size-name" style={{ marginTop: 6 }}>Crop: {cropDebugText}</p>}
         {/* Overlay button for non-digital items */}
@@ -954,7 +970,7 @@ const AdminOrders: React.FC = () => {
   );
 
   const shippingReport = React.useMemo(
-    () => filteredRecentOrders.reduce(
+    () => filteredRecentOrders.filter(o => !['cancelled', 'refunded'].includes(String(o.status).toLowerCase())).reduce(
       (acc, order) => {
         const customerShipping = Number(order.shippingCost || 0);
         const explicitStudioShipping = Number(order.studioShippingCost);
@@ -968,10 +984,11 @@ const AdminOrders: React.FC = () => {
           : (customerShipping - studioShipping);
         
         // Calculate studio profit (gross margin) for this order
-        const studioRevenue = (order.items || []).reduce(
-          (sum, item) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 0),
-          0
-        );
+        const studioRevenue = (order.items || []).reduce((sum, item) => {
+          if (item.studioRevenueAmount != null) return sum + (Number(item.studioRevenueAmount) || 0);
+          if ((item as any).packageGroupId) return sum; // old package item with no accounting
+          return sum + (Number(item.price) || 0) * (Number(item.quantity) || 0);
+        }, 0);
         const baseRevenue = (order.items || []).reduce(
           (sum, item) => sum + getItemBaseCostTotal(item),
           0
@@ -1256,10 +1273,11 @@ const AdminOrders: React.FC = () => {
           order.whccImportResponse ||
           order.whccSubmitResponse
         );
-        const studioRevenue = (order.items || []).reduce(
-          (sum, item) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 0),
-          0
-        );
+        const studioRevenue = (order.items || []).reduce((sum, item) => {
+          if (item.studioRevenueAmount != null) return sum + (Number(item.studioRevenueAmount) || 0);
+          if ((item as any).packageGroupId) return sum;
+          return sum + (Number(item.price) || 0) * (Number(item.quantity) || 0);
+        }, 0);
         const baseRevenue = (order.items || []).reduce(
           (sum, item) => sum + getItemBaseCostTotal(item),
           0
@@ -1738,9 +1756,40 @@ const AdminOrders: React.FC = () => {
       )}
 
       <div className="admin-order-items-grid">
-        {(order.items || []).map((item) => (
-          <MemoAdminOrderItemCard key={item.id} item={item} />
-        ))}
+        {(() => {
+          const packageGroups = new Map<string, any[]>();
+          const standaloneItems: any[] = [];
+          for (const item of (order.items || [])) {
+            if ((item as any).packageGroupId) {
+              const g = packageGroups.get((item as any).packageGroupId) || [];
+              g.push(item);
+              packageGroups.set((item as any).packageGroupId, g);
+            } else {
+              standaloneItems.push(item);
+            }
+          }
+          return (
+            <>
+              {Array.from(packageGroups.entries()).map(([groupId, groupItems]) => (
+                <div key={groupId} style={{ gridColumn: '1 / -1', border: '1.5px solid #7c3aed', borderRadius: 10, marginBottom: 12, overflow: 'hidden' }}>
+                  <div style={{ background: 'rgba(124,58,237,0.15)', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid rgba(124,58,237,0.3)' }}>
+                    <span style={{ fontSize: 18 }}>📦</span>
+                    <span style={{ fontWeight: 600, color: '#e0e0e0', flex: 1 }}>{(groupItems[0] as any).packageName || 'Package'}</span>
+                    <span style={{ fontWeight: 700, color: '#a78bfa' }}>${Number((groupItems[0] as any).packagePrice || 0).toFixed(2)}</span>
+                  </div>
+                  <div className="admin-order-items-grid" style={{ padding: '8px', background: '#0f0f16' }}>
+                    {groupItems.map((item) => (
+                      <MemoAdminOrderItemCard key={item.id} item={item} />
+                    ))}
+                  </div>
+                </div>
+              ))}
+              {standaloneItems.map((item) => (
+                <MemoAdminOrderItemCard key={item.id} item={item} />
+              ))}
+            </>
+          );
+        })()}
       </div>
 
       {hasDigitalDownloads && (

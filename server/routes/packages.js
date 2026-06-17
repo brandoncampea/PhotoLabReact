@@ -27,55 +27,93 @@ const ensureStudioAdminRole = (req, res) => {
   return true;
 };
 
-const calculateItemsCost = async (priceListId, studioId, items = []) => {
-  let calculatedCost = 0;
+const ensurePackagesSchema = async () => {
+  // Drop any FK on packages.price_list_id that references the legacy price_lists table
+  const legacyFk = await queryRow(`
+    SELECT fk.name FROM sys.foreign_keys fk
+    INNER JOIN sys.tables rt ON fk.referenced_object_id = rt.object_id
+    WHERE fk.parent_object_id = OBJECT_ID('packages') AND rt.name = 'price_lists'
+  `);
+  if (legacyFk?.name) {
+    await query(`ALTER TABLE packages DROP CONSTRAINT [${legacyFk.name}]`);
+  }
+  // Add variant_id to package_items if missing
+  await query(`
+    IF COL_LENGTH('package_items', 'variant_id') IS NULL
+      ALTER TABLE package_items ADD variant_id INT NULL
+  `);
+};
 
+const calculateItemsCost = async (priceListId, items = []) => {
+  let calculatedCost = 0;
   for (const item of items) {
     const quantity = Number(item.quantity);
-    const productId = Number(item.productId);
     const productSizeId = Number(item.productSizeId);
-
-    if (!Number.isFinite(quantity) || quantity <= 0) {
+    if (!Number.isFinite(quantity) || quantity <= 0)
       throw new Error('Each package item must include quantity greater than 0');
-    }
-
-    if (!Number.isInteger(productId) || productId <= 0 || !Number.isInteger(productSizeId) || productSizeId <= 0) {
-      throw new Error('Each package item must include valid productId and productSizeId');
-    }
-
-    const sizeRow = await queryRow(
-      `SELECT
-         p.id as productId,
-         p.options,
-         COALESCE(spsso.price, ps.price) as effectivePrice
-       FROM product_sizes ps
-       INNER JOIN products p ON p.id = ps.product_id
-       INNER JOIN price_list_products plp ON plp.product_id = p.id AND plp.price_list_id = ps.price_list_id
-       LEFT JOIN studio_price_list_size_overrides spsso
-         ON spsso.product_size_id = ps.id
-        AND spsso.price_list_id = ps.price_list_id
-        AND spsso.studio_id = $4
-       WHERE ps.id = $1
-         AND ps.product_id = $2
-         AND ps.price_list_id = $3`,
-      [productSizeId, productId, priceListId, studioId]
+    if (!Number.isInteger(productSizeId) || productSizeId <= 0)
+      throw new Error('Each package item must include valid productSizeId');
+    const row = await queryRow(
+      `SELECT spi.price FROM studio_price_list_items spi
+       WHERE spi.studio_price_list_id = $1
+         AND spi.product_size_id = $2
+         AND spi.is_offered = 1
+         AND (spi.is_deleted = 0 OR spi.is_deleted IS NULL)`,
+      [priceListId, productSizeId]
     );
-
-    if (!sizeRow) {
-      throw new Error('One or more package items are not valid for this price list');
-    }
-
-    const options = parseProductOptions(sizeRow.options);
-    const isActive = options.isActive !== undefined ? !!options.isActive : true;
-    if (!isActive) {
-      throw new Error('Packages can only include active products');
-    }
-
-    calculatedCost += (Number(sizeRow.effectivePrice) || 0) * quantity;
+    if (!row) throw new Error('One or more package items are not offered in this price list');
+    calculatedCost += (Number(row.price) || 0) * quantity;
   }
-
   return Number(calculatedCost.toFixed(2));
 };
+
+// Public: GET /api/packages/for-album/:albumId
+// Resolves the effective price list (album's explicit list → studio default) and returns its packages.
+router.get('/for-album/:albumId', async (req, res) => {
+  try {
+    const album = await queryRow(
+      'SELECT id, price_list_id, studio_id FROM albums WHERE id = $1',
+      [req.params.albumId]
+    );
+    if (!album) return res.status(404).json({ error: 'Album not found' });
+
+    // Resolve effective studio price list — same fallback logic as the products route
+    let priceList = null;
+    if (album.price_list_id) {
+      priceList = await queryRow(
+        'SELECT TOP 1 id FROM studio_price_lists WHERE id = $1 AND studio_id = $2',
+        [album.price_list_id, album.studio_id]
+      );
+    }
+    if (!priceList?.id) {
+      priceList = await queryRow(
+        'SELECT TOP 1 id FROM studio_price_lists WHERE studio_id = $1 ORDER BY is_default DESC, id ASC',
+        [album.studio_id]
+      );
+    }
+    if (!priceList?.id) return res.json([]);
+
+    const packages = await queryRows(`
+      SELECT id, price_list_id as priceListId, name, description,
+             package_price as packagePrice, is_active as isActive, created_at as createdDate
+      FROM packages
+      WHERE price_list_id = $1 AND is_active = 1
+    `, [priceList.id]);
+
+    const enriched = [];
+    for (const pkg of packages) {
+      const items = await queryRows(
+        'SELECT product_id as productId, product_size_id as productSizeId, quantity, variant_id as variantId FROM package_items WHERE package_id = $1',
+        [pkg.id]
+      );
+      enriched.push({ ...pkg, items });
+    }
+
+    res.json(enriched);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 // Compatibility: GET /api/packages?priceListId=1
 router.get('/', async (req, res) => {
@@ -95,7 +133,7 @@ router.get('/', async (req, res) => {
     const enriched = [];
     for (const pkg of packages) {
       const items = await queryRows(`
-        SELECT product_id as productId, product_size_id as productSizeId, quantity
+        SELECT product_id as productId, product_size_id as productSizeId, quantity, variant_id as variantId
         FROM package_items
         WHERE package_id = $1
       `, [pkg.id]);
@@ -123,7 +161,7 @@ router.get('/pricelist/:priceListId', async (req, res) => {
     const enriched = [];
     for (const pkg of packages) {
       const items = await queryRows(`
-        SELECT product_id as productId, product_size_id as productSizeId, quantity
+        SELECT product_id as productId, product_size_id as productSizeId, quantity, variant_id as variantId
         FROM package_items
         WHERE package_id = $1
       `, [pkg.id]);
@@ -187,7 +225,8 @@ router.post('/', adminRequired, async (req, res) => {
       return res.status(400).json({ error: 'At least one package item is required' });
     }
 
-    const calculatedCost = await calculateItemsCost(parsedPriceListId, Number(req.user.studio_id), items);
+    await ensurePackagesSchema();
+    const calculatedCost = await calculateItemsCost(parsedPriceListId, items);
 
     const result = await queryRow(`
       INSERT INTO packages (price_list_id, name, description, package_price, is_active)
@@ -197,13 +236,12 @@ router.post('/', adminRequired, async (req, res) => {
 
     const packageId = result.id;
 
-    // Insert package items
     if (items && items.length > 0) {
       for (const item of items) {
         await query(`
-          INSERT INTO package_items (package_id, product_id, product_size_id, quantity)
-          VALUES ($1, $2, $3, $4)
-        `, [packageId, item.productId, item.productSizeId || null, item.quantity]);
+          INSERT INTO package_items (package_id, product_id, product_size_id, quantity, variant_id)
+          VALUES ($1, $2, $3, $4, $5)
+        `, [packageId, item.productId, item.productSizeId || null, item.quantity, item.variantId ?? null]);
       }
     }
 
@@ -245,7 +283,8 @@ router.put('/:id', adminRequired, async (req, res) => {
       return res.status(400).json({ error: 'At least one package item is required' });
     }
 
-    const calculatedCost = await calculateItemsCost(Number(existing.priceListId), Number(req.user.studio_id), items);
+    await ensurePackagesSchema();
+    const calculatedCost = await calculateItemsCost(Number(existing.priceListId), items);
 
     await query(`
       UPDATE packages
@@ -253,16 +292,14 @@ router.put('/:id', adminRequired, async (req, res) => {
       WHERE id = $5
     `, [String(name).trim(), description || null, parsedPackagePrice, !!isActive, req.params.id]);
 
-    // Delete existing items
     await query('DELETE FROM package_items WHERE package_id = $1', [req.params.id]);
 
-    // Insert new items
     if (items && items.length > 0) {
       for (const item of items) {
         await query(`
-          INSERT INTO package_items (package_id, product_id, product_size_id, quantity)
-          VALUES ($1, $2, $3, $4)
-        `, [req.params.id, item.productId, item.productSizeId || null, item.quantity]);
+          INSERT INTO package_items (package_id, product_id, product_size_id, quantity, variant_id)
+          VALUES ($1, $2, $3, $4, $5)
+        `, [req.params.id, item.productId, item.productSizeId || null, item.quantity, item.variantId ?? null]);
       }
     }
 

@@ -119,14 +119,14 @@ const formatDateTime = (value) => {
 
 const resolveDiscountDetails = (order = {}) => {
   const code = String(order?.discountCode ?? order?.discount_code ?? '').trim();
+  if (!code) return { code: '', amount: 0, hasDiscount: false };
+
   const subtotal = Number(order?.subtotal || 0);
   const taxAmount = Number(order?.taxAmount || 0);
   const shippingCost = Number(order?.shippingCost || 0);
   const totalAmount = Number(order?.totalAmount || 0);
 
-  // Preferred formula for current checkout payloads.
   const preferredComputed = (subtotal + taxAmount) - totalAmount;
-  // Fallback for older payload variants where subtotal may exclude shipping.
   const fallbackComputed = (subtotal + taxAmount + shippingCost) - totalAmount;
 
   let amount = 0;
@@ -143,29 +143,73 @@ const resolveDiscountDetails = (order = {}) => {
   };
 };
 
-const renderItemsRows = (items) => items.map((item) => {
-  const photoName = item.photoFileName || item.fileName || item.filename || `Photo #${item.photoId}`;
-  const productName = item.productName || item.name || 'Product';
-  const unitPrice = Number(item.unitPrice ?? item.price ?? 0);
-  const quantity = Number(item.quantity || 0);
-  const lineTotal = unitPrice * quantity;
-  // Render product attributes if present
-  let attrHtml = '';
-  if (item.attributes) {
-    if (Array.isArray(item.attributes)) {
-      attrHtml = item.attributes.map(attr => `<div style=\"font-size:12px;color:#7b61ff;\">${esc(attr)}</div>`).join('');
+const renderItemsRows = (items) => {
+  // Separate package groups from standalone items
+  const packageGroups = new Map();
+  const standaloneItems = [];
+  for (const item of items) {
+    if (item.packageGroupId) {
+      const group = packageGroups.get(item.packageGroupId) || [];
+      group.push(item);
+      packageGroups.set(item.packageGroupId, group);
     } else {
-      attrHtml = `<div style=\"font-size:12px;color:#7b61ff;\">${esc(item.attributes)}</div>`;
+      standaloneItems.push(item);
     }
   }
-  return `<tr>
-    <td style=\"padding:10px 8px;border-bottom:1px solid #343b45;color:#e7edf6;\">${esc(productName)}${attrHtml ? `<div>${attrHtml}</div>` : ''}</td>
-    <td style=\"padding:10px 8px;border-bottom:1px solid #343b45;color:#d0d8e3;\">${esc(photoName)}</td>
-    <td style=\"padding:10px 8px;border-bottom:1px solid #343b45;text-align:right;color:#d0d8e3;\">${currency(unitPrice)}</td>
-    <td style=\"padding:10px 8px;border-bottom:1px solid #343b45;text-align:right;color:#d0d8e3;\">${quantity}</td>
-    <td style=\"padding:10px 8px;border-bottom:1px solid #343b45;text-align:right;color:#fff;\">${currency(lineTotal)}</td>
-  </tr>`;
-}).join('');
+
+  const rows = [];
+
+  // Render each package group as a header row + sub-rows
+  for (const [, groupItems] of packageGroups) {
+    const pkgName = groupItems[0].packageName || 'Package';
+    const pkgPrice = Number(groupItems[0].packagePrice) || 0;
+    rows.push(`<tr>
+      <td colspan="2" style="padding:10px 8px;border-bottom:1px solid #343b45;color:#c4b5fd;font-weight:600;">
+        📦 ${esc(pkgName)}
+      </td>
+      <td style="padding:10px 8px;border-bottom:1px solid #343b45;text-align:right;color:#c4b5fd;font-weight:600;">${currency(pkgPrice)}</td>
+      <td style="padding:10px 8px;border-bottom:1px solid #343b45;text-align:right;color:#d0d8e3;">1</td>
+      <td style="padding:10px 8px;border-bottom:1px solid #343b45;text-align:right;color:#fff;font-weight:600;">${currency(pkgPrice)}</td>
+    </tr>`);
+    for (const item of groupItems) {
+      const photoName = item.photoFileName || item.fileName || item.filename || `Photo #${item.photoId}`;
+      const productName = item.productName || item.name || 'Product';
+      rows.push(`<tr>
+        <td style="padding:6px 8px 6px 24px;border-bottom:1px solid #2a3140;color:#d0d8e3;font-size:13px;">↳ ${esc(productName)}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #2a3140;color:#9ca3af;font-size:13px;">${esc(photoName)}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #2a3140;text-align:right;color:#6b7280;font-size:13px;">Included</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #2a3140;text-align:right;color:#6b7280;font-size:13px;">1</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #2a3140;text-align:right;color:#6b7280;font-size:13px;">—</td>
+      </tr>`);
+    }
+  }
+
+  // Render standalone items normally
+  for (const item of standaloneItems) {
+    const photoName = item.photoFileName || item.fileName || item.filename || `Photo #${item.photoId}`;
+    const productName = item.productName || item.name || 'Product';
+    const unitPrice = Number(item.unitPrice ?? item.price ?? 0);
+    const quantity = Number(item.quantity || 0);
+    const lineTotal = unitPrice * quantity;
+    let attrHtml = '';
+    if (item.attributes) {
+      if (Array.isArray(item.attributes)) {
+        attrHtml = item.attributes.map(attr => `<div style=\"font-size:12px;color:#7b61ff;\">${esc(attr)}</div>`).join('');
+      } else {
+        attrHtml = `<div style=\"font-size:12px;color:#7b61ff;\">${esc(item.attributes)}</div>`;
+      }
+    }
+    rows.push(`<tr>
+      <td style=\"padding:10px 8px;border-bottom:1px solid #343b45;color:#e7edf6;\">${esc(productName)}${attrHtml ? `<div>${attrHtml}</div>` : ''}</td>
+      <td style=\"padding:10px 8px;border-bottom:1px solid #343b45;color:#d0d8e3;\">${esc(photoName)}</td>
+      <td style=\"padding:10px 8px;border-bottom:1px solid #343b45;text-align:right;color:#d0d8e3;\">${currency(unitPrice)}</td>
+      <td style=\"padding:10px 8px;border-bottom:1px solid #343b45;text-align:right;color:#d0d8e3;\">${quantity}</td>
+      <td style=\"padding:10px 8px;border-bottom:1px solid #343b45;text-align:right;color:#fff;\">${currency(lineTotal)}</td>
+    </tr>`);
+  }
+
+  return rows.join('');
+};
 
 const isDigitalLikeItem = (item) => {
   const options = (() => {
@@ -187,9 +231,19 @@ const normalizeReceiptAmounts = (order = {}, items = []) => {
   const storedTotal = Number(order?.totalAmount ?? order?.total ?? 0) || 0;
 
   const hasItems = Array.isArray(items) && items.length > 0;
-  const itemSubtotal = hasItems
-    ? Number(items.reduce((sum, item) => sum + ((Number(item?.unitPrice ?? item?.price ?? 0) || 0) * (Number(item?.quantity || 0) || 0)), 0) || 0)
-    : null;
+  const itemSubtotal = hasItems ? (() => {
+    const seenGroups = new Set();
+    return Number(items.reduce((sum, item) => {
+      if (item.packageGroupId) {
+        if (!seenGroups.has(item.packageGroupId)) {
+          seenGroups.add(item.packageGroupId);
+          return sum + (Number(item.packagePrice) || 0);
+        }
+        return sum;
+      }
+      return sum + ((Number(item.unitPrice ?? item.price ?? 0) || 0) * (Number(item.quantity || 0) || 0));
+    }, 0) || 0);
+  })() : null;
 
   let subtotal = storedSubtotal;
   let shipping = storedShipping;

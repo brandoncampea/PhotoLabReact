@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { CartItem, Photo, CropData, Package, Product, ProductSize } from '../types';
+import { CartItem, Photo, CropData, Package, Product, ProductSize, PackageSlot } from '../types';
 import { photoService } from '../services/photoService';
 import api from '../services/api';
 
@@ -15,8 +15,13 @@ interface CartContextType {
     photos?: { photo: Photo; cropData: CropData; position: number }[],
     options?: { albumId?: number; albumName?: string; albumCoverImageUrl?: string; digitalDownloadScope?: 'photo' | 'album'; productOptions?: Record<string, any> }
   ) => Promise<void>;
-  addPackageToCart: (pkg: Package, photo: Photo, cropData: CropData) => Promise<void>;
+  addPackageToCart: (
+    pkg: Package,
+    slots: PackageSlot[],
+    albumInfo?: { albumId?: number; albumName?: string; albumCoverImageUrl?: string }
+  ) => Promise<void>;
   removeFromCart: (photoId: number, productId?: number, productSizeId?: number) => void;
+  removePackageFromCart: (packageGroupId: string) => void;
   updateQuantity: (photoId: number, quantity: number, productId?: number, productSizeId?: number) => void;
   updateCropData: (photoId: number, cropData: CropData, productId?: number, productSizeId?: number) => void;
   clearCart: () => void;
@@ -359,45 +364,44 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   };
 
-  const addPackageToCart = async (pkg: Package, photo: Photo, cropData: CropData) => {
-    if (!pkg.items || pkg.items.length === 0) {
-      throw new Error('Package has no items');
-    }
+  const addPackageToCart = async (
+    pkg: Package,
+    slots: PackageSlot[],
+    albumInfo?: { albumId?: number; albumName?: string; albumCoverImageUrl?: string }
+  ) => {
+    if (!pkg || slots.length === 0) throw new Error('Package has no slots');
 
-    // Expand package into individual cart items
-    // Each package item becomes a separate cart item with the same photo and crop data
-    const newItems: CartItem[] = [];
+    const filledSlots = slots.filter(s => s.filled && s.photo && s.cropData);
+    if (filledSlots.length === 0) throw new Error('No filled slots in package');
 
-    for (const pkgItem of pkg.items) {
-      if (!pkgItem.productId || !pkgItem.productSizeId) {
-        console.warn('Skipping package item with missing product/size:', pkgItem);
-        continue;
-      }
+    // Unique group ID so cart can identify all items from this one package order
+    const packageGroupId = `pkg-${pkg.id}-${Date.now()}`;
 
-      // Use the productSize price from the package item (already loaded)
-      const price = pkgItem.productSize?.price || 0;
+    const newItems: CartItem[] = filledSlots.map(slot => ({
+      photoId: slot.photo!.id,
+      photo: slot.photo!,
+      albumId: albumInfo?.albumId,
+      albumName: albumInfo?.albumName,
+      albumCoverImageUrl: albumInfo?.albumCoverImageUrl,
+      photoIds: [slot.photo!.id],
+      photos: [{ photo: slot.photo!, cropData: slot.cropData!, position: 1 }],
+      quantity: 1,
+      cropData: slot.cropData!,
+      productId: slot.productId,
+      productSizeId: slot.productSizeId,
+      productName: slot.productName,
+      productSizeName: slot.sizeName,
+      variantId: slot.variantId ?? undefined,
+      variantDisplayName: slot.variantDisplayName,
+      attributes: slot.whccItemAttributeUIDs ?? [],
+      isDigital: slot.isDigital,
+      price: 0, // individual price is 0; packagePrice on the group counts once
+      packageGroupId,
+      packagePrice: pkg.packagePrice,
+      packageName: pkg.name,
+    }));
 
-      newItems.push({
-        photoId: photo.id,
-        photo,
-        photoIds: [photo.id],
-        photos: [{ photo, cropData, position: 1 }],
-        quantity: pkgItem.quantity,
-        cropData,
-        productId: pkgItem.productId,
-        productSizeId: pkgItem.productSizeId,
-        productName: pkgItem.product?.name,
-        productSizeName: pkgItem.productSize?.name,
-        price,
-      });
-    }
-
-    if (newItems.length === 0) {
-      throw new Error('No valid items in package');
-    }
-
-    // Add all package items to cart
-    setItems((prevItems) => [...prevItems, ...newItems]);
+    setItems(prev => [...prev, ...newItems]);
   };
 
   const removeFromCart = (photoId: number, productId?: number, productSizeId?: number) => {
@@ -406,6 +410,10 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (productId == null && productSizeId == null) return false;
       return !(Number(item.productId || 0) === Number(productId || 0) && Number(item.productSizeId || 0) === Number(productSizeId || 0));
     }));
+  };
+
+  const removePackageFromCart = (packageGroupId: string) => {
+    setItems(prev => prev.filter(item => item.packageGroupId !== packageGroupId));
   };
 
   const updateQuantity = (photoId: number, quantity: number, productId?: number, productSizeId?: number) => {
@@ -461,7 +469,18 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const getTotalPrice = () => {
-    return items.reduce((total, item) => total + item.price * item.quantity, 0);
+    const countedGroups = new Set<string>();
+    return items.reduce((total, item) => {
+      if (item.packageGroupId) {
+        // Count the package price only once per group
+        if (!countedGroups.has(item.packageGroupId)) {
+          countedGroups.add(item.packageGroupId);
+          return total + (item.packagePrice ?? 0);
+        }
+        return total;
+      }
+      return total + item.price * item.quantity;
+    }, 0);
   };
 
   // Save current cart as a named list
@@ -486,6 +505,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         addToCart,
         addPackageToCart,
         removeFromCart,
+        removePackageFromCart,
         updateQuantity,
         updateCropData,
         clearCart,

@@ -12,10 +12,11 @@ const sectionTitle: React.CSSProperties = { fontWeight: 800, fontSize: '1.05rem'
 const subtitleText: React.CSSProperties = { color: '#6b6b80', fontSize: '0.82rem' };
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-type ProdSize = { id: number; name: string; cost: number };
-type Product  = { id: number; name: string; category: string; sizes: ProdSize[] };
-type FormItem = { productId: number; productSizeId: number; quantity: number };
-type SavedPkg = { id: number; name: string; description: string | null; packagePrice: number; isActive: boolean; priceListId: number; items: FormItem[] };
+type ProdVariant = { id: number | null; name: string; price: number; cost: number };
+type ProdSize    = { id: number; name: string; price: number; cost: number; variants: ProdVariant[] };
+type Product     = { id: number; name: string; category: string; sizes: ProdSize[] };
+type FormItem    = { productId: number; productSizeId: number; quantity: number; variantId?: number | null };
+type SavedPkg    = { id: number; name: string; description: string | null; packagePrice: number; isActive: boolean; priceListId: number; items: FormItem[] };
 
 // ── Template suggestions ──────────────────────────────────────────────────────
 const TEMPLATES = [
@@ -28,11 +29,34 @@ const TEMPLATES = [
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const fmtCurrency = (n: number) => `$${Number(n).toFixed(2)}`;
 
-function calcTotalCost(items: FormItem[], products: Product[]): number {
-  return items.reduce((sum, item) => {
-    const size = products.flatMap(p => p.sizes.map(s => ({ ...s, productId: p.id }))).find(s => s.productId === item.productId && s.id === item.productSizeId);
-    return sum + (size?.cost ?? 0) * item.quantity;
-  }, 0);
+function resolveItemPrice(item: FormItem, products: Product[]): number {
+  const prod = products.find(p => p.id === item.productId);
+  const size = prod?.sizes.find(s => s.id === item.productSizeId);
+  if (!size) return 0;
+  if (size.variants.length > 0) {
+    const v = item.variantId != null
+      ? (size.variants.find(v => v.id === item.variantId) ?? size.variants[0])
+      : size.variants[0];
+    return (v?.price ?? size.price) * item.quantity;
+  }
+  return size.price * item.quantity;
+}
+
+function calcRetailTotal(items: FormItem[], products: Product[]): number {
+  return items.reduce((sum, item) => sum + resolveItemPrice(item, products), 0);
+}
+
+function resolveItemCost(item: FormItem, products: Product[]): number {
+  const prod = products.find(p => p.id === item.productId);
+  const size = prod?.sizes.find(s => s.id === item.productSizeId);
+  if (!size) return 0;
+  if (size.variants.length > 0) {
+    const v = item.variantId != null
+      ? (size.variants.find(v => v.id === item.variantId) ?? size.variants[0])
+      : size.variants[0];
+    return (v?.cost ?? size.cost) * item.quantity;
+  }
+  return size.cost * item.quantity;
 }
 
 // ── Main Component ────────────────────────────────────────────────────────────
@@ -83,10 +107,36 @@ const AdminPackagesPage: React.FC = () => {
         packageService.getAll(selectedPLId),
       ]);
       const offered = (items || []).filter((i: any) => !!i.is_offered);
-      const grouped: Record<number, Product> = {};
+const grouped: Record<number, Product> = {};
       offered.forEach((item: any) => {
         if (!grouped[item.product_id]) grouped[item.product_id] = { id: item.product_id, name: item.product_name, category: item.product_category || 'Uncategorized', sizes: [] };
-        grouped[item.product_id].sizes.push({ id: item.product_size_id, name: item.size_name, cost: Number(item.base_cost) || 0 });
+        const itemFlatPrice = Number(item.price) || 0;
+        const flatBaseCost  = Number(item.base_cost) || 0;
+        // For percentage-priced digital items the cost is a % of the studio's price
+        const itemBaseCost = flatBaseCost > 0
+          ? flatBaseCost
+          : (item.digital_pricing_mode === 'percentage' && Number(item.super_admin_percentage) > 0 && itemFlatPrice > 0
+              ? Number((itemFlatPrice * Number(item.super_admin_percentage) / 100).toFixed(2))
+              : 0);
+        const activeRawVariants = (item.studioWhccVariants || []).filter((v: any) => !!v.isActive);
+        const variantFallbackPrice = activeRawVariants
+          .map((v: any) => Number(v.studioPrice))
+          .find((p: number) => p > 0) ?? 0;
+        const studioPrice = itemFlatPrice > 0 ? itemFlatPrice : variantFallbackPrice;
+        const activeVariants: ProdVariant[] = activeRawVariants
+          .map((v: any) => ({
+            id: v.id ?? null,
+            name: String(v.displayName || ''),
+            price: Number(v.studioPrice ?? v.baseCost ?? studioPrice) || studioPrice,
+            cost: Number(v.price ?? v.baseCost) || itemBaseCost,
+          }));
+        grouped[item.product_id].sizes.push({
+          id: item.product_size_id,
+          name: item.size_name,
+          price: studioPrice,
+          cost: itemBaseCost,
+          variants: activeVariants,
+        });
       });
       setProducts(Object.values(grouped));
       setPackages(Array.isArray(pkgs) ? pkgs : []);
@@ -118,7 +168,7 @@ const AdminPackagesPage: React.FC = () => {
     setFormName(pkg.name);
     setFormDesc(pkg.description ?? '');
     setFormPrice(String(pkg.packagePrice));
-    setFormItems(pkg.items.map(i => ({ productId: i.productId, productSizeId: i.productSizeId, quantity: i.quantity })));
+    setFormItems(pkg.items.map(i => ({ productId: i.productId, productSizeId: i.productSizeId, quantity: i.quantity, variantId: i.variantId ?? null })));
     setItemSearch('');
     setShowForm(true);
   };
@@ -134,13 +184,14 @@ const AdminPackagesPage: React.FC = () => {
         if (p.name.toLowerCase().includes(k)) {
           const size = p.sizes[0];
           if (size && !matched.some(m => m.productId === p.id)) {
-            matched.push({ productId: p.id, productSizeId: size.id, quantity: 1 });
+            const defVariant = size.variants.length > 0 ? (size.variants.find(v => v.id != null) ?? size.variants[0]) : null;
+            matched.push({ productId: p.id, productSizeId: size.id, quantity: 1, variantId: defVariant?.id ?? null });
             break;
           }
         }
       }
     });
-    const cost = calcTotalCost(matched, products);
+    const cost = calcRetailTotal(matched, products);
     const suggested = cost > 0 ? (cost * tmpl.suggestedMultiplier).toFixed(2) : '';
     setEditingId(null);
     setFormName(tmpl.name);
@@ -151,16 +202,21 @@ const AdminPackagesPage: React.FC = () => {
     setShowForm(true);
   };
 
-  const toggleItem = (productId: number, productSizeId: number) => {
+  const toggleItem = (productId: number, productSizeId: number, size: ProdSize) => {
     setFormItems(prev => {
       const exists = prev.find(i => i.productId === productId && i.productSizeId === productSizeId);
       if (exists) return prev.filter(i => !(i.productId === productId && i.productSizeId === productSizeId));
-      return [...prev, { productId, productSizeId, quantity: 1 }];
+      const defaultVariant = size.variants.length === 1 ? size.variants[0] : size.variants.find(v => v.id != null);
+      return [...prev, { productId, productSizeId, quantity: 1, variantId: defaultVariant?.id ?? null }];
     });
   };
 
   const setQty = (productId: number, productSizeId: number, qty: number) => {
     setFormItems(prev => prev.map(i => i.productId === productId && i.productSizeId === productSizeId ? { ...i, quantity: Math.max(1, qty) } : i));
+  };
+
+  const setVariant = (productId: number, productSizeId: number, variantId: number | null) => {
+    setFormItems(prev => prev.map(i => i.productId === productId && i.productSizeId === productSizeId ? { ...i, variantId } : i));
   };
 
   const savePackage = async () => {
@@ -187,11 +243,15 @@ const AdminPackagesPage: React.FC = () => {
   };
 
   // ── Derived ──
-  const totalCost = calcTotalCost(formItems, products);
-  const priceNum  = Number(formPrice) || 0;
-  const margin    = priceNum - totalCost;
-  const marginPct = priceNum > 0 ? (margin / priceNum) * 100 : 0;
-  const suggestedPrice = totalCost > 0 ? (totalCost * 2.5).toFixed(2) : '';
+  const retailTotal    = formItems.reduce((sum, item) => sum + resolveItemPrice(item, products), 0);
+  const studioCostTotal = formItems.reduce((sum, item) => sum + resolveItemCost(item, products), 0);
+  const priceNum       = Number(formPrice) || 0;
+  const studioProfit   = priceNum > 0 ? priceNum - studioCostTotal : 0;
+  const profitPct      = priceNum > 0 ? (studioProfit / priceNum) * 100 : 0;
+  const customerSavings = retailTotal > 0 && priceNum > 0 ? retailTotal - priceNum : 0;
+  const savingsPct      = retailTotal > 0 && customerSavings > 0 ? (customerSavings / retailTotal) * 100 : 0;
+  // Suggest 85% of retail — customer saves 15%
+  const suggestedPrice = retailTotal > 0 ? (retailTotal * 0.85).toFixed(2) : '';
 
   const allSizes = products.flatMap(p => p.sizes.map(s => ({ ...s, productId: p.id, productName: p.name, category: p.category })));
   const filteredSizes = itemSearch.trim()
@@ -292,21 +352,45 @@ const AdminPackagesPage: React.FC = () => {
                             <div key={cat}>
                               <div style={{ background: '#1a1a28', padding: '6px 12px', fontSize: '0.72rem', fontWeight: 800, color: '#6b6b80', textTransform: 'uppercase', letterSpacing: '0.07em', position: 'sticky', top: 0 }}>{cat}</div>
                               {sizes.map(s => {
-                                const checked = formItems.some(i => i.productId === s.productId && i.productSizeId === s.id);
-                                const qty = formItems.find(i => i.productId === s.productId && i.productSizeId === s.id)?.quantity ?? 1;
+                                const formEntry = formItems.find(i => i.productId === s.productId && i.productSizeId === s.id);
+                                const checked = !!formEntry;
+                                const qty = formEntry?.quantity ?? 1;
+                                const selectedVariantId = formEntry?.variantId ?? null;
+                                const hasVariants = s.variants.length > 1;
+                                const displayPrice = hasVariants
+                                  ? (s.variants.find(v => v.id === selectedVariantId) ?? s.variants[0])?.price ?? s.price
+                                  : s.variants.length === 1 ? s.variants[0].price : s.price;
                                 return (
-                                  <label key={`${s.productId}-${s.id}`} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '7px 12px', cursor: 'pointer', background: checked ? 'rgba(124,92,255,0.1)' : 'transparent', borderBottom: '1px solid #23232a', transition: 'background 0.1s' }}>
-                                    <input type="checkbox" checked={checked} onChange={() => toggleItem(s.productId, s.id)} style={{ width: 15, height: 15, cursor: 'pointer', flexShrink: 0 }} />
-                                    <span style={{ flex: 1, color: checked ? '#e0e0e0' : '#bdbdbd', fontSize: '0.85rem' }}>{s.productName} <span style={{ color: '#6b6b80' }}>· {s.name}</span></span>
-                                    <span style={{ color: '#6b6b80', fontSize: '0.8rem', flexShrink: 0 }}>{fmtCurrency(s.cost)}</span>
-                                    {checked && (
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-                                        <button type="button" onClick={e => { e.preventDefault(); setQty(s.productId, s.id, qty - 1); }} style={{ width: 22, height: 22, borderRadius: 4, background: '#3a3656', border: 'none', color: '#e0e0e0', cursor: 'pointer', fontSize: '0.9rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
-                                        <span style={{ color: '#a78bfa', fontWeight: 700, fontSize: '0.85rem', minWidth: 16, textAlign: 'center' }}>{qty}</span>
-                                        <button type="button" onClick={e => { e.preventDefault(); setQty(s.productId, s.id, qty + 1); }} style={{ width: 22, height: 22, borderRadius: 4, background: '#3a3656', border: 'none', color: '#e0e0e0', cursor: 'pointer', fontSize: '0.9rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+                                  <div key={`${s.productId}-${s.id}`} style={{ borderBottom: '1px solid #23232a', background: checked ? 'rgba(124,92,255,0.08)' : 'transparent', transition: 'background 0.1s' }}>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '7px 12px', cursor: 'pointer' }}>
+                                      <input type="checkbox" checked={checked} onChange={() => toggleItem(s.productId, s.id, s)} style={{ width: 15, height: 15, cursor: 'pointer', flexShrink: 0 }} />
+                                      <span style={{ flex: 1, color: checked ? '#e0e0e0' : '#bdbdbd', fontSize: '0.85rem' }}>{s.productName} <span style={{ color: '#6b6b80' }}>· {s.name}</span></span>
+                                      <span style={{ color: '#a78bfa', fontSize: '0.8rem', flexShrink: 0 }}>{fmtCurrency(displayPrice)}</span>
+                                      {checked && (
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                                          <button type="button" onClick={e => { e.preventDefault(); setQty(s.productId, s.id, qty - 1); }} style={{ width: 22, height: 22, borderRadius: 4, background: '#3a3656', border: 'none', color: '#e0e0e0', cursor: 'pointer', fontSize: '0.9rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
+                                          <span style={{ color: '#a78bfa', fontWeight: 700, fontSize: '0.85rem', minWidth: 16, textAlign: 'center' }}>{qty}</span>
+                                          <button type="button" onClick={e => { e.preventDefault(); setQty(s.productId, s.id, qty + 1); }} style={{ width: 22, height: 22, borderRadius: 4, background: '#3a3656', border: 'none', color: '#e0e0e0', cursor: 'pointer', fontSize: '0.9rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+                                        </div>
+                                      )}
+                                    </label>
+                                    {checked && hasVariants && (
+                                      <div style={{ padding: '0 12px 8px 34px' }}>
+                                        <select
+                                          value={selectedVariantId ?? s.variants[0]?.id ?? ''}
+                                          onChange={e => setVariant(s.productId, s.id, Number(e.target.value) || null)}
+                                          style={{ background: '#23232a', border: '1px solid #3a3656', borderRadius: 6, color: '#e0e0e0', padding: '4px 8px', fontSize: '0.8rem', width: '100%' }}
+                                          onClick={e => e.stopPropagation()}
+                                        >
+                                          {s.variants.map(v => (
+                                            <option key={v.id ?? v.name} value={v.id ?? ''}>
+                                              {v.name} — {fmtCurrency(v.price)}
+                                            </option>
+                                          ))}
+                                        </select>
                                       </div>
                                     )}
-                                  </label>
+                                  </div>
                                 );
                               })}
                             </div>
@@ -320,7 +404,7 @@ const AdminPackagesPage: React.FC = () => {
                   <div style={{ background: '#13131c', border: '1px solid #3a3656', borderRadius: 12, padding: '1.1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                     <div style={{ fontWeight: 700, color: '#a78bfa', fontSize: '0.88rem', marginBottom: '0.25rem' }}>Package Summary</div>
 
-                    {/* Selected items */}
+                    {/* Selected items — show retail price per line */}
                     {formItems.length === 0
                       ? <div style={{ color: '#4a4a6a', fontSize: '0.82rem', fontStyle: 'italic' }}>No items selected yet</div>
                       : (
@@ -328,10 +412,17 @@ const AdminPackagesPage: React.FC = () => {
                           {formItems.map(item => {
                             const p = products.find(p => p.id === item.productId);
                             const s = p?.sizes.find(s => s.id === item.productSizeId);
+                            const variant = s && s.variants.length > 1
+                              ? (s.variants.find(v => v.id === item.variantId) ?? s.variants[0])
+                              : null;
+                            const linePrice = resolveItemPrice(item, products);
                             return (
-                              <div key={`${item.productId}-${item.productSizeId}`} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#bdbdbd' }}>
-                                <span>{item.quantity}× {p?.name} <span style={{ color: '#6b6b80' }}>{s?.name}</span></span>
-                                <span style={{ color: '#e0e0e0' }}>{fmtCurrency((s?.cost ?? 0) * item.quantity)}</span>
+                              <div key={`${item.productId}-${item.productSizeId}`} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#bdbdbd', gap: 8 }}>
+                                <span style={{ minWidth: 0 }}>
+                                  {item.quantity}× {p?.name} <span style={{ color: '#6b6b80' }}>{s?.name}</span>
+                                  {variant && <span style={{ color: '#6b6b80' }}> · {variant.name}</span>}
+                                </span>
+                                <span style={{ color: '#e0e0e0', flexShrink: 0 }}>{fmtCurrency(linePrice)}</span>
                               </div>
                             );
                           })}
@@ -339,35 +430,52 @@ const AdminPackagesPage: React.FC = () => {
                       )
                     }
 
-                    {/* Cost total */}
-                    <div style={{ borderTop: '1px solid #3a3656', paddingTop: '0.6rem' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', marginBottom: '0.25rem' }}>
-                        <span style={{ color: '#6b6b80' }}>Your cost</span>
-                        <span style={{ color: '#e0e0e0', fontWeight: 700 }}>{fmtCurrency(totalCost)}</span>
+                    {/* Retail + cost totals */}
+                    {formItems.length > 0 && (
+                      <div style={{ borderTop: '1px solid #3a3656', paddingTop: '0.55rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem' }}>
+                          <span style={{ color: '#6b6b80' }}>Retail value</span>
+                          <span style={{ color: '#bdbdbd' }}>{fmtCurrency(retailTotal)}</span>
+                        </div>
+                        {studioCostTotal > 0 && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem' }}>
+                            <span style={{ color: '#6b6b80' }}>Your cost</span>
+                            <span style={{ color: '#bdbdbd' }}>{fmtCurrency(studioCostTotal)}</span>
+                          </div>
+                        )}
                       </div>
-                    </div>
+                    )}
 
                     {/* Price input */}
                     <div>
-                      <label style={lbl}>Your price *</label>
+                      <label style={lbl}>Package price *</label>
                       <input style={{ ...inp, fontSize: '1.1rem', fontWeight: 700, color: '#a78bfa', textAlign: 'right' }} type="number" min="0" step="0.01" value={formPrice} onChange={e => setFormPrice(e.target.value)} placeholder="0.00" />
                       {suggestedPrice && (
-                        <button type="button" onClick={() => setFormPrice(suggestedPrice)} style={{ marginTop: 5, background: 'none', border: 'none', color: '#6b6b80', fontSize: '0.75rem', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}>
-                          Use suggested {fmtCurrency(Number(suggestedPrice))} (2.5× cost)
+                        <button type="button" onClick={() => setFormPrice(suggestedPrice)} style={{ marginTop: 5, background: 'none', border: 'none', color: '#7c5cff', fontSize: '0.75rem', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}>
+                          Suggest {fmtCurrency(Number(suggestedPrice))} — customer saves {fmtCurrency(retailTotal - Number(suggestedPrice))} (15%)
                         </button>
                       )}
                     </div>
 
-                    {/* Margin */}
-                    {priceNum > 0 && totalCost > 0 && (
-                      <div style={{ background: margin >= 0 ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)', border: `1px solid ${margin >= 0 ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'}`, borderRadius: 8, padding: '0.6rem 0.75rem' }}>
+                    {/* Customer savings + studio profit */}
+                    {priceNum > 0 && retailTotal > 0 && (
+                      <div style={{ background: studioProfit >= 0 ? 'rgba(124,92,255,0.07)' : 'rgba(239,68,68,0.08)', border: `1px solid ${studioProfit >= 0 ? 'rgba(124,92,255,0.2)' : 'rgba(239,68,68,0.2)'}`, borderRadius: 8, padding: '0.6rem 0.75rem', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                        {customerSavings > 0 && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem' }}>
+                            <span style={{ color: '#6b6b80' }}>Customer saves</span>
+                            <span style={{ color: '#22c55e', fontWeight: 600 }}>{fmtCurrency(customerSavings)} ({savingsPct.toFixed(0)}%)</span>
+                          </div>
+                        )}
+                        {customerSavings <= 0 && (
+                          <div style={{ color: '#f59e0b', fontSize: '0.75rem' }}>⚠️ Package price ≥ retail — no customer savings</div>
+                        )}
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem' }}>
-                          <span style={{ color: '#6b6b80' }}>Margin</span>
-                          <span style={{ color: margin >= 0 ? '#22c55e' : '#ef4444', fontWeight: 700 }}>{fmtCurrency(margin)} ({marginPct.toFixed(0)}%)</span>
+                          <span style={{ color: '#6b6b80' }}>Studio profit</span>
+                          <span style={{ color: studioProfit >= 0 ? '#a78bfa' : '#ef4444', fontWeight: 700 }}>{fmtCurrency(studioProfit)} ({profitPct.toFixed(0)}%)</span>
                         </div>
-                        <div style={{ color: '#4a4a6a', fontSize: '0.72rem', marginTop: 3 }}>
-                          {margin < 0 ? '⚠️ Price is below cost' : margin < totalCost * 0.5 ? 'Low margin — consider a higher price' : 'Healthy margin'}
-                        </div>
+                        {studioProfit < 0 && (
+                          <div style={{ color: '#ef4444', fontSize: '0.72rem' }}>⚠️ Package price is below your cost</div>
+                        )}
                       </div>
                     )}
 
@@ -404,9 +512,11 @@ const AdminPackagesPage: React.FC = () => {
                 : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                     {packages.map(pkg => {
-                      const cost = calcTotalCost(pkg.items, products);
-                      const pkgMargin = pkg.packagePrice - cost;
-                      const pkgMarginPct = pkg.packagePrice > 0 ? (pkgMargin / pkg.packagePrice) * 100 : 0;
+                      const pkgRetail = calcRetailTotal(pkg.items, products);
+                      const pkgCost   = pkg.items.reduce((sum, item) => sum + resolveItemCost(item, products), 0);
+                      const pkgProfit = pkg.packagePrice - pkgCost;
+                      const pkgProfitPct = pkg.packagePrice > 0 ? (pkgProfit / pkg.packagePrice) * 100 : 0;
+                      const pkgSavings = pkgRetail > 0 ? pkgRetail - pkg.packagePrice : 0;
                       return (
                         <div key={pkg.id} style={{ background: '#1e1e28', border: '1px solid #3a3656', borderRadius: 12, padding: '1rem 1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
                           <div style={{ flex: 1, minWidth: 0 }}>
@@ -428,9 +538,10 @@ const AdminPackagesPage: React.FC = () => {
                               {pkg.items.length === 0 && <span style={{ color: '#4a4a6a', fontSize: '0.8rem' }}>No items</span>}
                             </div>
                             <div style={{ display: 'flex', gap: '1.25rem', fontSize: '0.8rem', flexWrap: 'wrap' }}>
-                              <span style={{ color: '#6b6b80' }}>Your cost: <span style={{ color: '#bdbdbd' }}>{cost > 0 ? fmtCurrency(cost) : '—'}</span></span>
+                              {pkgCost > 0 && <span style={{ color: '#6b6b80' }}>Your cost: <span style={{ color: '#bdbdbd' }}>{fmtCurrency(pkgCost)}</span></span>}
                               <span style={{ color: '#6b6b80' }}>Price: <span style={{ color: '#a78bfa', fontWeight: 700 }}>{fmtCurrency(pkg.packagePrice)}</span></span>
-                              {cost > 0 && <span style={{ color: pkgMargin >= 0 ? '#22c55e' : '#ef4444' }}>Margin: {fmtCurrency(pkgMargin)} ({pkgMarginPct.toFixed(0)}%)</span>}
+                              {pkgRetail > 0 && pkgSavings > 0 && <span style={{ color: '#22c55e' }}>Customer saves: {fmtCurrency(pkgSavings)}</span>}
+                              {pkgCost > 0 && <span style={{ color: pkgProfit >= 0 ? '#6b6b80' : '#ef4444' }}>Profit: <span style={{ color: pkgProfit >= 0 ? '#a78bfa' : '#ef4444', fontWeight: 700 }}>{fmtCurrency(pkgProfit)} ({pkgProfitPct.toFixed(0)}%)</span></span>}
                             </div>
                           </div>
                           <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>

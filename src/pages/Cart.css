@@ -363,3 +363,138 @@
     flex-wrap: wrap;
   }
 }
+
+/* Package cart group card */
+.package-cart-group {
+  background: #1a1a2e;
+  border: 1.5px solid #7c3aed;
+  border-radius: 12px;
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+
+.pcg-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: rgba(124, 58, 237, 0.15);
+  border-bottom: 1px solid rgba(124, 58, 237, 0.3);
+}
+
+.pcg-icon {
+  font-size: 1.4rem;
+  flex-shrink: 0;
+}
+
+.pcg-info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.pcg-name {
+  font-weight: 600;
+  font-size: 1rem;
+  color: #e0e0e0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pcg-count {
+  font-size: 0.78rem;
+  color: #a78bfa;
+}
+
+.pcg-price {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #a78bfa;
+  flex-shrink: 0;
+}
+
+.pcg-remove {
+  background: transparent;
+  border: 1px solid rgba(239, 68, 68, 0.5);
+  color: #f87171;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.pcg-remove:hover {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: #ef4444;
+}
+
+.pcg-items {
+  padding: 8px 0;
+}
+
+.pcg-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.pcg-item:last-child {
+  border-bottom: none;
+}
+
+.pcg-item-thumb {
+  width: 52px;
+  height: 52px;
+  object-fit: cover;
+  border-radius: 6px;
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.pcg-item-label {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  gap: 2px;
+}
+
+.pcg-item-name {
+  font-size: 0.9rem;
+  color: #d1d5db;
+}
+
+.pcg-item-paper {
+  font-size: 0.75rem;
+  color: #9ca3af;
+  font-style: italic;
+}
+
+.pcg-item-included {
+  font-size: 0.75rem;
+  color: #6b7280;
+  flex-shrink: 0;
+  font-style: italic;
+}
+
+.pcg-item-edit {
+  background: transparent;
+  border: 1px solid rgba(124, 58, 237, 0.5);
+  color: #a78bfa;
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: 0.78rem;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+
+.pcg-item-edit:hover {
+  background: rgba(124, 58, 237, 0.15);
+}

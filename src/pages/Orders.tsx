@@ -1,5 +1,5 @@
 // Helper component for order items
-function OrderItemWithSas({ item }: { item: any }) {
+function OrderItemWithSas({ item, isPackageItem }: { item: any; isPackageItem?: boolean }) {
   // thumbnailUrl is a backend API URL — use directly (not a blob name for useSasUrl)
   const assetUrl = item.photo?.id ? `/api/photos/${item.photo.id}/asset?variant=thumbnail` : null;
   const cropData = item.cropData
@@ -67,7 +67,9 @@ function OrderItemWithSas({ item }: { item: any }) {
         </div>
         {/* Only show crop debug for admin/studio */}
         {isAdminOrStudio && cropDebugText && <p className="item-size-name">Crop: {cropDebugText}</p>}
-        <p className="item-price">${(item.price * item.quantity).toFixed(2)}</p>
+        {isPackageItem
+          ? <p className="item-price item-price-included">Included</p>
+          : <p className="item-price">${(item.price * item.quantity).toFixed(2)}</p>}
         {/* Show download link for digital products */}
         {item.isDigital && Array.isArray(item.downloadUrls) && item.downloadUrls.length > 0 && (
           <div className="digital-download-link">
@@ -98,6 +100,9 @@ import './Orders.css';
 // import TopNavbar from '../components/TopNavbar';
 
 const resolveOrderDiscount = (order: Pick<Order, 'subtotal' | 'shippingCost' | 'taxAmount' | 'totalAmount' | 'discountCode'>) => {
+  const code = String(order?.discountCode || '').trim();
+  if (!code) return { code: '', amount: 0 };
+
   const subtotal = Number(order?.subtotal || 0);
   const shipping = Number(order?.shippingCost || 0);
   const tax = Number(order?.taxAmount || 0);
@@ -112,7 +117,7 @@ const resolveOrderDiscount = (order: Pick<Order, 'subtotal' | 'shippingCost' | '
       : 0;
 
   return {
-    code: String(order?.discountCode || '').trim(),
+    code,
     amount: Number(amount.toFixed(2)),
   };
 };
@@ -261,10 +266,38 @@ const Orders: React.FC = () => {
                       ) : (
                         <>
                           <div className="order-items">
-                            {(order.items || []).map((item) => {
-                                // No need to compute downloadUrl; use item.downloadUrls directly
-                                return <OrderItemWithSas key={item.id} item={item} />;
-                              })}
+                            {(() => {
+                              const packageGroups = new Map<string, any[]>();
+                              const standalone: any[] = [];
+                              for (const item of (order.items || [])) {
+                                if ((item as any).packageGroupId) {
+                                  const g = packageGroups.get((item as any).packageGroupId) || [];
+                                  g.push(item);
+                                  packageGroups.set((item as any).packageGroupId, g);
+                                } else {
+                                  standalone.push(item);
+                                }
+                              }
+                              const nodes: React.ReactNode[] = [];
+                              packageGroups.forEach((groupItems, groupId) => {
+                                const first = groupItems[0] as any;
+                                nodes.push(
+                                  <div key={`pkg-${groupId}`} className="order-package-group">
+                                    <div className="order-pkg-header">
+                                      <span className="order-pkg-name">{first.packageName || 'Package'}</span>
+                                      <span className="order-pkg-price">${Number(first.packagePrice || 0).toFixed(2)}</span>
+                                    </div>
+                                    <div className="order-pkg-items">
+                                      {groupItems.map((item: any) => (
+                                        <OrderItemWithSas key={item.id} item={item} isPackageItem />
+                                      ))}
+                                    </div>
+                                  </div>
+                                );
+                              });
+                              standalone.forEach(item => nodes.push(<OrderItemWithSas key={item.id} item={item} />));
+                              return nodes;
+                            })()}
                           </div>
                           <div className="order-pricing-summary">
                             {(() => {
