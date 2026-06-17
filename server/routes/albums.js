@@ -345,14 +345,25 @@ router.get('/', authRequired, async (req, res) => {
       const placeholders = albumIds.map((_, i) => `$${i + 1}`).join(',');
       const statsRows = await queryRows(`
         SELECT ph.album_id as albumId,
-               SUM(oi.quantity) as productCount,
-               SUM((oi.price - COALESCE(ps.cost, prod.cost, 0)) * oi.quantity) as netRevenue
+               COUNT(DISTINCT o.id) as orderCount,
+               SUM(
+                 CASE
+                   WHEN oi.studio_net_payout_amount IS NOT NULL
+                     THEN oi.studio_net_payout_amount
+                   WHEN oi.studio_revenue_amount IS NOT NULL
+                     THEN oi.studio_revenue_amount - COALESCE(oi.stripe_fee_allocated_amount, 0)
+                   ELSE (oi.price - COALESCE(ps.cost, prod.cost, 0)) * oi.quantity
+                        - COALESCE(oi.stripe_fee_allocated_amount, 0)
+                 END
+               ) as netRevenue
         FROM order_items oi
         INNER JOIN photos ph ON ph.id = oi.photo_id
         INNER JOIN albums p ON p.id = ph.album_id
+        INNER JOIN orders o ON o.id = oi.order_id
         LEFT JOIN products prod ON prod.id = oi.product_id
         LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id
         WHERE p.id IN (${placeholders})
+          AND LOWER(o.status) NOT IN ('cancelled', 'refunded')
         GROUP BY ph.album_id
       `, albumIds);
       statsMap = new Map(statsRows.map(row => [row.albumId, row]));
@@ -387,7 +398,7 @@ router.get('/', authRequired, async (req, res) => {
       const views = viewsMap.get(Number(album.id)) || {};
       return {
         ...signAlbumForResponse(album),
-        productCount: Number(stats.productCount) || 0,
+        productCount: Number(stats.orderCount) || 0,
         netRevenue: Number(stats.netRevenue) || 0,
         viewCount: Number(views.viewCount) || 0,
         viewOpenCount: Number(views.viewOpenCount) || 0,

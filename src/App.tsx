@@ -6,6 +6,7 @@ const AdminTickets = lazy(() => import('./pages/admin/AdminTickets'));
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { CartProvider } from './contexts/CartContext';
+import { PackageBuilderProvider } from './contexts/PackageBuilderContext';
 import { UploadProvider } from './contexts/UploadContext';
 import './components/UploadPanel.css';
 import Layout from './components/Layout/Layout';
@@ -70,6 +71,7 @@ function App() {
   return (
     <AuthProvider>
       <CartProvider>
+        <PackageBuilderProvider>
         <UploadProvider>
           <Layout>
             <Suspense fallback={<div className="loader">Loading...</div>}>
@@ -141,6 +143,7 @@ function App() {
             </Suspense>
           </Layout>
         </UploadProvider>
+        </PackageBuilderProvider>
       </CartProvider>
     </AuthProvider>
   );

@@ -11,7 +11,9 @@ import { productService } from '../services/productService';
 import playerWatchlistService from '../services/playerWatchlistService';
 import { useCart } from '../contexts/CartContext';
 import { useAuth } from '../contexts/AuthContext';
-import { Album, Photo, Product, ProductSize } from '../types';
+import { Album, Photo, Product, ProductSize, PackageSlot } from '../types';
+import { usePackageBuilder } from '../contexts/PackageBuilderContext';
+import PackageProgressBar from '../components/PackageProgressBar';
 import './AlbumDetails.css';
 import { Helmet } from 'react-helmet-async';
 
@@ -92,6 +94,8 @@ const AlbumDetails: React.FC = () => {
   const [cropperRef, setCropperRef] = useState<any>(null);
   const [productToCrop, setProductToCrop] = useState<ProductWithMatch | null>(null);
   const [sizeToCrop, setSizeToCrop] = useState<ProductSize | null>(null);
+  const [packages, setPackages] = useState<any[]>([]);
+  const [packageCropSlotIndex, setPackageCropSlotIndex] = useState<number | null>(null);
   const [showWhccPhotoModal, setShowWhccPhotoModal] = useState(false);
   const [whccProductToConfigure, setWhccProductToConfigure] = useState<ProductWithMatch | null>(null);
   const [whccSizeToConfigure, setWhccSizeToConfigure] = useState<ProductSize | null>(null);
@@ -99,7 +103,8 @@ const AlbumDetails: React.FC = () => {
   const [whccSelectedPhotoIds, setWhccSelectedPhotoIds] = useState<number[]>([]);
   const [photoQuery, setPhotoQuery] = useState('');
   const [metadataFilter, setMetadataFilter] = useState<'all' | 'camera' | 'iso' | 'aperture' | 'shutterSpeed' | 'focalLength' | 'dateTaken' | 'any'>('all');
-  const { addToCart } = useCart();
+  const { addToCart, addPackageToCart } = useCart();
+  const packageBuilder = usePackageBuilder();
   const autoBuyAttemptedRef = useRef(false);
   const [orderRowToCrop, setOrderRowToCrop] = useState<ProductOrderRow | null>(null);
 
@@ -212,6 +217,11 @@ const AlbumDetails: React.FC = () => {
         setAlbum(albumRes.data);
         setPhotos(Array.isArray(photosRes) ? photosRes : []);
         setProducts(Array.isArray(productsRes) ? productsRes : []);
+        // Load packages for this album's effective price list (album list → studio default)
+        try {
+          const pkgsRes = await api.get(`/packages/for-album/${id}`);
+          setPackages(pkgsRes.data || []);
+        } catch { /* packages are optional */ }
         // Track album view for analytics
         analyticsService.trackAlbumView(
           id,
@@ -1073,27 +1083,39 @@ const AlbumDetails: React.FC = () => {
         console.log('[AlbumDetails] handleCropConfirm - no cropData or selectedPhoto, using centered aspect crop', cropValues);
       }
 
-      await addToCart(
-        selectedPhoto,
-        cropValues,
-        productToCrop,
-        size,
-        1,
-        undefined,
-        undefined,
-        {
-          albumId: Number(album?.id || 0) || undefined,
-          albumName: String(album?.name || '').trim() || undefined,
-          albumCoverImageUrl: String((album as any)?.coverImageUrl || '').trim() || undefined,
-          productOptions: buildProductOptions(productToCrop, size, orderRowToCrop),
-        }
-      );
-      setAddMessage(`${productToCrop.name} added to cart.`);
-      setShowCropModal(false);
-      setProductToCrop(null);
-      setSizeToCrop(null);
-      setOrderRowToCrop(null);
-      setCropperRef(null);
+      if (packageCropSlotIndex !== null) {
+        // Package mode: fill the slot instead of adding to cart directly
+        packageBuilder.fillCurrentSlot(selectedPhoto, cropValues);
+        setAddMessage('Photo added to package!');
+        setShowCropModal(false);
+        setProductToCrop(null);
+        setSizeToCrop(null);
+        setOrderRowToCrop(null);
+        setPackageCropSlotIndex(null);
+        setCropperRef(null);
+      } else {
+        await addToCart(
+          selectedPhoto,
+          cropValues,
+          productToCrop,
+          size,
+          1,
+          undefined,
+          undefined,
+          {
+            albumId: Number(album?.id || 0) || undefined,
+            albumName: String(album?.name || '').trim() || undefined,
+            albumCoverImageUrl: String((album as any)?.coverImageUrl || '').trim() || undefined,
+            productOptions: buildProductOptions(productToCrop, size, orderRowToCrop),
+          }
+        );
+        setAddMessage(`${productToCrop.name} added to cart.`);
+        setShowCropModal(false);
+        setProductToCrop(null);
+        setSizeToCrop(null);
+        setOrderRowToCrop(null);
+        setCropperRef(null);
+      }
     } catch {
       setAddMessage('Failed to add item to cart.');
     } finally {
@@ -1113,6 +1135,46 @@ const AlbumDetails: React.FC = () => {
     const cropper = cropperRef?.cropper || cropperRef;
     if (cropper?.reset) {
       cropper.reset();
+    }
+  };
+
+  // Package builder: use currently-selected photo for the active slot
+  const handleUsePhotoForPackage = () => {
+    if (!selectedPhoto || !packageBuilder.currentSlot) return;
+    const slot = packageBuilder.currentSlot;
+
+    if (slot.isDigital) {
+      // Digital items need no crop
+      packageBuilder.fillCurrentSlot(selectedPhoto, { x: 0, y: 0, width: 100, height: 100, rotate: 0, scaleX: 1, scaleY: 1 });
+      return;
+    }
+
+    const product = (products || []).find((p: Product) => p.id === slot.productId);
+    if (!product) return;
+    const size = (product.sizes || []).find((s: ProductSize) => s.id === slot.productSizeId);
+    if (!size) return;
+
+    const mockProduct: ProductWithMatch = { ...product, bestSize: size, ratioDiff: 0, isRecommended: true };
+    setProductToCrop(mockProduct);
+    setSizeToCrop(size);
+    setOrderRowToCrop(null);
+    setPackageCropSlotIndex(packageBuilder.currentSlotIndex);
+    setShowCropModal(true);
+  };
+
+  // Package builder: commit all filled slots to cart and navigate to cart
+  const handleCommitPackage = async () => {
+    if (!packageBuilder.isComplete || !packageBuilder.activePackage) return;
+    try {
+      await addPackageToCart(
+        packageBuilder.activePackage,
+        packageBuilder.slots as PackageSlot[],
+        packageBuilder.albumInfo
+      );
+      packageBuilder.cancelPackage();
+      navigate('/cart');
+    } catch {
+      setAddMessage('Failed to add package to cart.');
     }
   };
 
@@ -1142,6 +1204,8 @@ const AlbumDetails: React.FC = () => {
         <meta property="og:url" content={window.location.href} />
       </Helmet>
       <div className="main-content dark-bg albums-full-height">
+      {/* Sticky package builder progress bar — shown when a package is in progress */}
+      {packageBuilder.isActive && <PackageProgressBar onCommit={handleCommitPackage} />}
       <div className="page-header" style={{ marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
           {selectedPhoto ? (
@@ -1285,6 +1349,72 @@ const AlbumDetails: React.FC = () => {
 
 
 
+
+      {/* Packages section */}
+      {packages.length > 0 && (
+        <div style={{ marginBottom: 14, border: '1px solid #3a2d7f', borderRadius: 10, padding: '12px 14px', background: 'rgba(123, 97, 255, 0.04)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
+            <h3 style={{ margin: 0, color: '#c7bcff', fontSize: 15, fontWeight: 700 }}>📦 Packages</h3>
+            <span style={{ fontSize: 12, color: '#8d81ff' }}>Bundle and save</span>
+          </div>
+          <div style={{ display: 'grid', gap: 10 }}>
+            {packages.map((pkg: any) => {
+              const isThisActive = packageBuilder.activePackage?.id === pkg.id;
+              // Build readable items summary from loaded products
+              const itemsSummary = (pkg.items || []).map((item: any) => {
+                const prod = products.find(p => p.id === item.productId);
+                const sz = prod?.sizes.find(s => s.id === item.productSizeId);
+                const label = [sz?.name, prod?.name].filter(Boolean).join(' ');
+                return `${item.quantity}× ${label || `Product ${item.productId}`}`;
+              }).join(' · ');
+
+              return (
+                <div
+                  key={pkg.id}
+                  style={{
+                    border: isThisActive ? '2px solid #7b61ff' : '1px solid #2a2056',
+                    borderRadius: 10,
+                    padding: '10px 14px',
+                    background: isThisActive ? 'rgba(123, 97, 255, 0.1)' : '#1a1630',
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 14,
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <div style={{ flex: '1 1 200px', minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, color: '#fff', fontSize: 15, marginBottom: 3 }}>{pkg.name}</div>
+                    {pkg.description && (
+                      <div style={{ fontSize: 12, color: '#8d81ff', marginBottom: 4 }}>{pkg.description}</div>
+                    )}
+                    <div style={{ fontSize: 12, color: '#a8a8c8', lineHeight: 1.5 }}>{itemsSummary}</div>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
+                    <div style={{ fontSize: 19, fontWeight: 800, color: '#9fffb4' }}>
+                      ${Number(pkg.packagePrice || 0).toFixed(2)}
+                    </div>
+                    {!isThisActive ? (
+                      <button
+                        className="btn btn-primary btn-sm"
+                        style={{ fontWeight: 700, minWidth: 120, borderRadius: 999, whiteSpace: 'nowrap' }}
+                        onClick={() => packageBuilder.startPackage(pkg, products, {
+                          albumId: album?.id,
+                          albumName: album?.name ?? undefined,
+                          albumCoverImageUrl: (album as any)?.coverImageUrl ?? undefined,
+                        })}
+                      >
+                        Start Package
+                      </button>
+                    ) : (
+                      <span style={{ fontSize: 12, color: '#7b61ff', fontWeight: 700 }}>In Progress ↑</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div style={{ marginBottom: 14, border: '1px solid #2a2740', borderRadius: 8, padding: 12 }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 10 }}>
@@ -1478,6 +1608,69 @@ const AlbumDetails: React.FC = () => {
                               />
                             );
                           })()}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Package builder CTA — shown when a package is active */}
+                    {packageBuilder.isActive && packageBuilder.currentSlot && (
+                      <div style={{
+                        margin: '0 auto 16px auto',
+                        maxWidth: 540,
+                        border: '2px solid #7b61ff',
+                        borderRadius: 12,
+                        padding: '12px 14px',
+                        background: 'rgba(123, 97, 255, 0.1)',
+                        boxShadow: '0 0 20px rgba(123, 97, 255, 0.18)',
+                      }}>
+                        <div style={{ fontSize: 11, color: '#8d81ff', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>
+                          📦 {packageBuilder.activePackage?.name}
+                        </div>
+                        <div style={{ fontSize: 13, color: '#c7bcff', marginBottom: 10 }}>
+                          Slot {packageBuilder.currentSlotIndex + 1} of {packageBuilder.slots.length}:{' '}
+                          <strong style={{ color: '#fff' }}>
+                            {packageBuilder.currentSlot.sizeName
+                              ? `${packageBuilder.currentSlot.sizeName} ${packageBuilder.currentSlot.productName}`
+                              : packageBuilder.currentSlot.productName}
+                          </strong>
+                        </div>
+                        <button
+                          className="btn btn-primary"
+                          onClick={handleUsePhotoForPackage}
+                          style={{ width: '100%', fontWeight: 700, fontSize: 15, padding: '10px 20px', borderRadius: 12, marginBottom: 8 }}
+                        >
+                          {packageBuilder.currentSlot.isDigital ? '✓ ' : ''}
+                          Use this photo for {packageBuilder.currentSlot.sizeName || packageBuilder.currentSlot.productName}
+                          {!packageBuilder.currentSlot.isDigital && ' →'}
+                        </button>
+                        {/* Mini slot progress pills */}
+                        {packageBuilder.slots.length > 1 && (
+                          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 8 }}>
+                            {packageBuilder.slots.map((slot, i) => (
+                              <span
+                                key={i}
+                                style={{
+                                  fontSize: 11,
+                                  padding: '2px 9px',
+                                  borderRadius: 999,
+                                  background: slot.filled
+                                    ? 'rgba(121, 210, 121, 0.13)'
+                                    : i === packageBuilder.currentSlotIndex
+                                    ? 'rgba(123, 97, 255, 0.22)'
+                                    : 'rgba(255,255,255,0.04)',
+                                  border: `1px solid ${slot.filled ? '#79d279' : i === packageBuilder.currentSlotIndex ? '#7b61ff' : '#3a3656'}`,
+                                  color: slot.filled ? '#79d279' : i === packageBuilder.currentSlotIndex ? '#c7bcff' : '#555',
+                                  cursor: 'default',
+                                }}
+                              >
+                                {slot.filled ? '✓ ' : i === packageBuilder.currentSlotIndex ? '→ ' : ''}
+                                {slot.sizeName || slot.productName}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        <div style={{ borderTop: '1px solid rgba(123, 97, 255, 0.2)', paddingTop: 8, fontSize: 12, color: '#555', textAlign: 'center' }}>
+                          — or order individually below —
                         </div>
                       </div>
                     )}

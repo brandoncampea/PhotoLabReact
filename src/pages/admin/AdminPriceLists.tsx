@@ -922,24 +922,36 @@ const [savingProductKey, setSavingProductKey] = useState<string | null>(null);
 				</form>
 			)}
 
+				{!selectedPriceList && (
 				<ul className="admin-price-lists-list">
 					{priceLists.map(list => (
-						<li key={list.id} className="admin-price-lists-list-item" style={{ marginBottom: 8 }}>
-						<button onClick={() => handleSelectList(list)} className="btn btn-link">{list.name}</button>
-						{list.super_price_list_name && <span style={{ marginLeft: 8, color: '#aaa' }}>from {list.super_price_list_name}</span>}
-						{list.description && <span style={{ marginLeft: 8, color: '#888' }}>{list.description}</span>}
-					</li>
-				))}
-			</ul>
+						<li key={list.id} className="admin-price-lists-list-item">
+							<button onClick={() => handleSelectList(list)} className="btn btn-link">{list.name}</button>
+							{(list.super_price_list_name || list.description) && (
+								<span className="list-item-meta">
+									{list.super_price_list_name && <>from {list.super_price_list_name}</>}
+									{list.description && <>{list.super_price_list_name ? ' — ' : ''}{list.description}</>}
+								</span>
+							)}
+						</li>
+					))}
+				</ul>
+			)}
 
 			{selectedPriceList && (
-				<div className="admin-orders-card" style={{ marginTop: 20 }}>
+				<>
+				<div className="admin-price-lists-nav">
+					<button className="admin-price-lists-back-btn" onClick={() => setSelectedPriceList(null)}>← Price Lists</button>
+					<span className="admin-price-lists-nav-name">{selectedPriceList.name}</span>
+					{selectedPriceList.super_price_list_name && <span className="admin-price-lists-nav-meta">from {selectedPriceList.super_price_list_name}</span>}
+				</div>
+				<div className="admin-orders-card">
 					<h3>Items for {selectedPriceList.name}</h3>
 					{recommendedProductsForOrdering.length > 0 && (
-						<div style={{ marginBottom: 14, border: '1px solid #2b2550', borderRadius: 8, padding: 10, background: '#171428' }}>
-							<div style={{ marginBottom: 8, color: '#c5bcff', fontWeight: 700 }}>Recommended Product Order</div>
-							<div style={{ fontSize: 12, color: '#9d97bf', marginBottom: 8 }}>Drag cards to set customer-facing order for recommended products.</div>
-							<div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8 }}>
+						<div className="spl-recommended-section">
+							<div className="spl-recommended-title">Recommended Product Order</div>
+							<div className="spl-recommended-subtitle">Drag cards to set customer-facing order for recommended products.</div>
+							<div className="spl-recommended-grid">
 								{recommendedProductsForOrdering.map((product, index, arr) => (
 									<div
 										key={product.groupKey}
@@ -965,79 +977,60 @@ const [savingProductKey, setSavingProductKey] = useState<string | null>(null);
 											}
 										}}
 										onDragEnd={() => setDraggingRecommendedProductId(null)}
-										style={{
-											border: '1px solid #332c62',
-											borderRadius: 8,
-											padding: 8,
-											background: draggingRecommendedProductId === index ? '#2a2550' : '#1f1b35',
-											cursor: 'grab',
-										}}
+										className={`spl-recommended-card${draggingRecommendedProductId === index ? ' is-dragging' : ''}`}
 									>
-										<div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-											<span style={{ opacity: 0.8 }}>⋮⋮</span>
+										<div className="spl-recommended-card-inner">
+											<span className="spl-recommended-card-drag">⋮⋮</span>
 											{product.imageUrl ? (
-												<img src={product.imageUrl} alt={product.productName} style={{ width: 28, height: 28, borderRadius: 4, objectFit: 'cover', border: '1px solid #47406f' }} />
+												<img src={product.imageUrl} alt={product.productName} style={{ width: 28, height: 28, borderRadius: 4, objectFit: 'cover' }} />
 											) : null}
 											<div style={{ minWidth: 0 }}>
-												<div style={{ fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{product.productName}</div>
-												<div style={{ fontSize: 11, color: '#a7a2c4' }}>{product.category}</div>
+												<div className="spl-recommended-card-name">{product.productName}</div>
+												<div className="spl-recommended-card-cat">{product.category}</div>
 											</div>
-											<span style={{ marginLeft: 'auto', fontSize: 12, color: '#cfc7ff' }}>#{index + 1}</span>
+											<span className="spl-recommended-card-index">#{index + 1}</span>
 										</div>
 									</div>
 								))}
 							</div>
 						</div>
 					)}
-					<div className="admin-price-lists-filters-row" style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
-						<label style={{ color: '#aaa' }}>Filter:</label>
-						<input
-							type="text"
-							value={itemFilterText}
-							onChange={(e) => setItemFilterText(e.target.value)}
-							placeholder="Type category, product, or size"
-							style={{ minWidth: 280 }}
-						/>
-						<button
-							className="btn btn-secondary btn-sm"
-							onClick={() => setItemFilterText('')}
-						>
-							Clear Filters
-						</button>
-					</div>
-					<div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
-						<button
-							className="btn btn-secondary btn-sm"
-							onClick={() => handleToggleOfferedBulk(filteredItemIds, true)}
-						>
-							Offer All
-						</button>
-						<button
-							className="btn btn-secondary btn-sm"
-							onClick={() => handleToggleOfferedBulk(filteredItemIds, false)}
-						>
-							Unoffer All
-						</button>
-						<button
-							className="btn btn-secondary btn-sm"
-							onClick={() => handleToggleOfferedBulk(filteredAlbumPurchaseItemIds, true)}
-							disabled={filteredAlbumPurchaseItemIds.length === 0}
-						>
-							Offer Full Album Products
-						</button>
-						<button className="btn btn-secondary btn-sm" onClick={handleToggleExpandAll}>{isTreeExpanded ? 'Contract All' : 'Expand All'}</button>
-						<label style={{ color: '#aaa' }}>Markup % for all offered:</label>
-						<input
-							type="number"
-							min={0}
-							step={1}
-							value={markupPercent}
-							onChange={e => setMarkupPercent(e.target.value)}
-							style={{ width: 100 }}
-						/>
-						<button className="btn btn-primary btn-sm" onClick={handleApplyMarkup} disabled={applyingMarkup || markupPercent === ''}>
-							{applyingMarkup ? 'Applying...' : 'Apply'}
-						</button>
+					<div className="admin-price-lists-toolbar-section">
+						<div className="admin-price-lists-filters-row">
+							<input
+								type="text"
+								value={itemFilterText}
+								onChange={(e) => setItemFilterText(e.target.value)}
+								placeholder="Search categories, products, or sizes…"
+								className="admin-price-lists-search-input"
+							/>
+							{itemFilterText && (
+								<button className="admin-price-lists-clear-btn" onClick={() => setItemFilterText('')}>✕</button>
+							)}
+						</div>
+						<div className="admin-price-lists-actions-row">
+							<div className="admin-price-lists-bulk-btns">
+								<button className="btn btn-secondary btn-sm" onClick={() => handleToggleOfferedBulk(filteredItemIds, true)}>Offer All</button>
+								<button className="btn btn-secondary btn-sm" onClick={() => handleToggleOfferedBulk(filteredItemIds, false)}>Unoffer All</button>
+								<button className="btn btn-secondary btn-sm" onClick={() => handleToggleOfferedBulk(filteredAlbumPurchaseItemIds, true)} disabled={filteredAlbumPurchaseItemIds.length === 0}>Offer Full Album Products</button>
+								<button className="btn btn-secondary btn-sm" onClick={handleToggleExpandAll}>{isTreeExpanded ? 'Contract All' : 'Expand All'}</button>
+							</div>
+							<div className="admin-price-lists-markup-row">
+								<label className="admin-price-lists-markup-label">Markup % for all offered:</label>
+								<input
+									type="number"
+									min={0}
+									step={1}
+									value={markupPercent}
+									onChange={e => setMarkupPercent(e.target.value)}
+									className="admin-price-lists-markup-input"
+									placeholder="0"
+								/>
+								<button className="btn btn-primary btn-sm" onClick={handleApplyMarkup} disabled={applyingMarkup || markupPercent === ''}>
+									{applyingMarkup ? 'Applying…' : 'Apply'}
+								</button>
+							</div>
+						</div>
 					</div>
 					<div className="spl-body spl-compact-body">
 						{Object.keys(filteredGroupedItems).length === 0 && (
@@ -1358,6 +1351,7 @@ const [savingProductKey, setSavingProductKey] = useState<string | null>(null);
 
 					{/* Packages and suggestions UI removed */}
 				</div>
+				</>
 			)}
 		</div>
 	);
