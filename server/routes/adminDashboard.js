@@ -357,6 +357,10 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
         const whccExpr = hasProductionCostAmt
             ? 'COALESCE(oi.production_cost_amount, 0)'
             : '0';
+        // baseRevExpr: wholesale/base price per item (what the studio pays for products)
+        const baseRevExpr = hasBaseRevenueAmt
+            ? 'COALESCE(oi.base_revenue_amount, 0)'
+            : '0';
         // grossRevExpr: platform's gross revenue per item = base_price - WHCC = super_admin_share
         // This is always less than studio retail revenue
         const grossRevExpr = hasSuperAdminShareAmt
@@ -373,6 +377,7 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
         const revenueBreakdownRow = await queryRow(
             `SELECT
                 COALESCE(SUM(${studioRevenueExpr}), 0) as totalStudioRevenue,
+                COALESCE(SUM(${baseRevExpr}), 0) as totalBaseRevenue,
                 COALESCE(SUM(${grossRevExpr}), 0) as totalGrossRevenue,
                 COALESCE(SUM(${whccExpr}), 0) as totalWhccCost,
                 COALESCE(SUM(COALESCE(oi.quantity, 0)), 0) as totalProductsSold,
@@ -395,7 +400,7 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
         );
 
         const breakdownStudioRevenue = Number(revenueBreakdownRow?.totalStudioRevenue || 0);
-        const breakdownBaseRevenue = breakdownStudioRevenue; // kept for response compatibility
+        const breakdownBaseRevenue = Number(revenueBreakdownRow?.totalBaseRevenue || 0);
         const breakdownWhccCost = Number(revenueBreakdownRow?.totalWhccCost || 0);
         const totalProductsSold = Number(revenueBreakdownRow?.totalProductsSold || 0);
         const breakdownShippingMargin = Number(revenueBreakdownRow?.totalShippingMargin || 0);
