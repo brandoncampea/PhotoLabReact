@@ -253,9 +253,6 @@ router.post('/signup', async (req, res) => {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    // Ensure trial_end column exists (idempotent)
-    await query(`IF COL_LENGTH('studios', 'trial_end') IS NULL ALTER TABLE studios ADD trial_end DATETIME NULL`);
-
     // Look up plan if provided
     let plan = null;
     if (planId) {

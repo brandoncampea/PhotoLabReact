@@ -140,6 +140,37 @@ export const stripeService = {
   },
 
   /**
+   * Sum all paid subscription invoices in the platform Stripe account.
+   * Paginates up to 1000 invoices to avoid unbounded API time on large accounts.
+   */
+  async getSubscriptionRevenue() {
+    try {
+      const { client } = await getConfiguredStripeClient();
+      let total = 0;
+      let startingAfter = null;
+      let fetched = 0;
+      const PAGE_LIMIT = 100;
+      const MAX_INVOICES = 1000;
+
+      while (fetched < MAX_INVOICES) {
+        const params = { status: 'paid', limit: PAGE_LIMIT };
+        if (startingAfter) params.starting_after = startingAfter;
+        const page = await client.invoices.list(params);
+        for (const inv of page.data) {
+          total += inv.amount_paid || 0;
+        }
+        fetched += page.data.length;
+        if (!page.has_more || page.data.length === 0) break;
+        startingAfter = page.data[page.data.length - 1].id;
+      }
+      return total / 100; // Stripe stores amounts in cents
+    } catch (error) {
+      console.error('[stripeService] getSubscriptionRevenue error:', error.message);
+      return 0;
+    }
+  },
+
+  /**
    * Verify webhook signature
    */
   async verifyWebhookSignature(body, signature, webhookSecret) {

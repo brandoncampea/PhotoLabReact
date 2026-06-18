@@ -1,6 +1,7 @@
 import express from 'express';
 import mssql from '../mssql.cjs';
 import { adminRequired } from '../middleware/auth.js';
+import stripeService from '../services/stripeService.js';
 
 const { queryRow, queryRows, query } = mssql;
 const router = express.Router();
@@ -71,21 +72,21 @@ router.get('/studio-revenue-details', adminRequired, async (req, res) => {
         if (req.user?.role !== 'super_admin') {
             return res.status(403).json({ error: 'Forbidden' });
         }
-        const [hasProductSizeIdRow, hasPackageNameRow, hasProductSizePriceRow, hasProductSizeCostRow, hasProductCostRow] = await Promise.all([
-            queryRow(`SELECT CASE WHEN COL_LENGTH('order_items', 'product_size_id') IS NOT NULL THEN 1 ELSE 0 END as v`),
+        const [hasPackageNameRow, hasProductSizeIdRow, hasStudioRevAmtRow2, hasProdCostAmtRow2] = await Promise.all([
             queryRow(`SELECT CASE WHEN COL_LENGTH('order_items', 'package_name') IS NOT NULL THEN 1 ELSE 0 END as v`),
-            queryRow(`SELECT CASE WHEN COL_LENGTH('product_sizes', 'price') IS NOT NULL THEN 1 ELSE 0 END as v`),
-            queryRow(`SELECT CASE WHEN COL_LENGTH('product_sizes', 'cost') IS NOT NULL THEN 1 ELSE 0 END as v`),
-            queryRow(`SELECT CASE WHEN COL_LENGTH('products', 'cost') IS NOT NULL THEN 1 ELSE 0 END as v`),
+            queryRow(`SELECT CASE WHEN COL_LENGTH('order_items', 'product_size_id') IS NOT NULL THEN 1 ELSE 0 END as v`),
+            queryRow(`SELECT CASE WHEN COL_LENGTH('order_items', 'studio_revenue_amount') IS NOT NULL THEN 1 ELSE 0 END as v`),
+            queryRow(`SELECT CASE WHEN COL_LENGTH('order_items', 'production_cost_amount') IS NOT NULL THEN 1 ELSE 0 END as v`),
         ]);
-        const hasProductSizeId = Number(hasProductSizeIdRow?.v || 0) === 1;
         const hasPackageCols = Number(hasPackageNameRow?.v || 0) === 1;
-        const hasProductSizePrice = Number(hasProductSizePriceRow?.v || 0) === 1;
-        const hasProductSizeCost = Number(hasProductSizeCostRow?.v || 0) === 1;
-        const hasProductCost = Number(hasProductCostRow?.v || 0) === 1;
-        const basePriceExpr = (hasProductSizeId && hasProductSizePrice) ? 'ps.price' : 'NULL';
-        const sizeCosteExpr = (hasProductSizeId && hasProductSizeCost) ? 'ps.cost' : 'NULL';
-        const productCostExpr = hasProductCost ? 'p.cost' : 'NULL';
+        const hasProductSizeId = Number(hasProductSizeIdRow?.v || 0) === 1;
+        // Studio profit = retail revenue - WHCC cost - Stripe fee (what the studio keeps)
+        const studioRevExpr2 = Number(hasStudioRevAmtRow2?.v || 0) === 1
+            ? 'COALESCE(oi.studio_revenue_amount, oi.price * oi.quantity)'
+            : 'oi.price * oi.quantity';
+        const whccExpr2 = Number(hasProdCostAmtRow2?.v || 0) === 1
+            ? 'COALESCE(oi.production_cost_amount, 0)'
+            : '0';
 
         await ensurePayoutTables();
 
@@ -123,13 +124,10 @@ router.get('/studio-revenue-details', adminRequired, async (req, res) => {
                   o.discount_code,
                   o.created_at,
                   o.status,
-                  COALESCE(SUM(oi.price * oi.quantity), 0) as studio_revenue,
-                  COALESCE(SUM(COALESCE(${basePriceExpr}, p.price, 0) * oi.quantity), 0) as base_revenue,
-                  COALESCE(SUM(COALESCE(${sizeCosteExpr}, ${productCostExpr}, 0) * oi.quantity), 0) as whcc_cost
+                  COALESCE(SUM(${studioRevExpr2}), 0) as studio_revenue,
+                  COALESCE(SUM(${whccExpr2}), 0) as whcc_cost
                 FROM orders o
                 LEFT JOIN order_items oi ON oi.order_id = o.id
-                LEFT JOIN products p ON p.id = oi.product_id
-                ${hasProductSizeId ? 'LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id' : ''}
                 WHERE o.studio_id = $1
                 GROUP BY o.id, o.user_id, o.total, o.subtotal, o.tax_amount, o.shipping_cost, o.studio_shipping_cost, o.shipping_margin, o.stripe_fee_amount, o.discount_code, o.created_at, o.status
                 ORDER BY o.created_at DESC
@@ -146,11 +144,11 @@ router.get('/studio-revenue-details', adminRequired, async (req, res) => {
 
             // For each order, get line items and mark paid status
             for (const order of orders) {
-                const baseRevenue = Number(order.base_revenue || 0);
+                const studioRevenue = Number(order.studio_revenue || 0);
                 const whccCost = Number(order.whcc_cost || 0);
                 const stripeFeeAmount = Number(order.stripe_fee_amount || 0);
-                // Gross profit per order = (platform_price - WHCC_cost) × qty
-                order.studio_profit = baseRevenue - whccCost - stripeFeeAmount;
+                // Studio profit = retail revenue - WHCC cost - Stripe fee
+                order.studio_profit = studioRevenue - whccCost - stripeFeeAmount;
                 order.is_paid = paidOrderMap.has(Number(order.id));
                 order.payout_id = paidOrderMap.get(Number(order.id)) || null;
 
@@ -224,28 +222,24 @@ router.post('/studio-payout/:studioId', adminRequired, async (req, res) => {
 
         await ensurePayoutTables();
 
-        const [_psIdRow, _psPriceRow, _psCostRow, _pCostRow] = await Promise.all([
-            queryRow(`SELECT CASE WHEN COL_LENGTH('order_items', 'product_size_id') IS NOT NULL THEN 1 ELSE 0 END as v`),
-            queryRow(`SELECT CASE WHEN COL_LENGTH('product_sizes', 'price') IS NOT NULL THEN 1 ELSE 0 END as v`),
-            queryRow(`SELECT CASE WHEN COL_LENGTH('product_sizes', 'cost') IS NOT NULL THEN 1 ELSE 0 END as v`),
-            queryRow(`SELECT CASE WHEN COL_LENGTH('products', 'cost') IS NOT NULL THEN 1 ELSE 0 END as v`),
+        const [_sraRow2, _pcaRow2] = await Promise.all([
+            queryRow(`SELECT CASE WHEN COL_LENGTH('order_items', 'studio_revenue_amount') IS NOT NULL THEN 1 ELSE 0 END as v`),
+            queryRow(`SELECT CASE WHEN COL_LENGTH('order_items', 'production_cost_amount') IS NOT NULL THEN 1 ELSE 0 END as v`),
         ]);
-        const hasProductSizeId = Number(_psIdRow?.v || 0) === 1;
-        const _basePriceExpr = (hasProductSizeId && Number(_psPriceRow?.v || 0) === 1) ? 'ps.price' : 'NULL';
-        const _sizeCosteExpr = (hasProductSizeId && Number(_psCostRow?.v || 0) === 1) ? 'ps.cost' : 'NULL';
-        const _productCostExpr = Number(_pCostRow?.v || 0) === 1 ? 'p.cost' : 'NULL';
+        const _studioRevExpr = Number(_sraRow2?.v || 0) === 1
+            ? 'COALESCE(oi.studio_revenue_amount, oi.price * oi.quantity)'
+            : 'oi.price * oi.quantity';
+        const _whccExpr = Number(_pcaRow2?.v || 0) === 1 ? 'COALESCE(oi.production_cost_amount, 0)' : '0';
 
-        // Get all orders for this studio with gross revenue = (base_price - whcc_cost) × qty
+        // Get all orders for this studio: studio profit = retail - WHCC cost
         const allOrders = await queryRows(`
             SELECT
               o.id,
               o.stripe_fee_amount,
-              COALESCE(SUM(COALESCE(${_basePriceExpr}, p.price, 0) * oi.quantity), 0) as base_revenue,
-              COALESCE(SUM(COALESCE(${_sizeCosteExpr}, ${_productCostExpr}, 0) * oi.quantity), 0) as whcc_cost
+              COALESCE(SUM(${_studioRevExpr}), 0) as studio_revenue,
+              COALESCE(SUM(${_whccExpr}), 0) as whcc_cost
             FROM orders o
             LEFT JOIN order_items oi ON oi.order_id = o.id
-            LEFT JOIN products p ON p.id = oi.product_id
-            ${hasProductSizeId ? 'LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id' : ''}
             WHERE o.studio_id = $1
             GROUP BY o.id, o.stripe_fee_amount
         `, [studioId]);
@@ -263,10 +257,10 @@ router.post('/studio-payout/:studioId', adminRequired, async (req, res) => {
         }
 
         const amount = unpaidOrders.reduce((sum, o) => {
-            const baseRevenue = Number(o.base_revenue || 0);
+            const studioRevenue = Number(o.studio_revenue || 0);
             const whccCost = Number(o.whcc_cost || 0);
             const stripeFeeAmount = Number(o.stripe_fee_amount || 0);
-            return sum + (baseRevenue - whccCost - stripeFeeAmount);
+            return sum + (studioRevenue - whccCost - stripeFeeAmount);
         }, 0);
 
         const notes = req.body?.notes || null;
@@ -301,9 +295,14 @@ router.post('/studio-payout/:studioId', adminRequired, async (req, res) => {
 router.get('/dashboard-stats', adminRequired, async (req, res) => {
     try {
         const isSuperAdmin = req.user?.role === 'super_admin';
-        const studioId = req.user?.acting_studio_id
-          ? Number(req.user.acting_studio_id)
-          : (!isSuperAdmin && req.user?.studio_id ? Number(req.user.studio_id) : null);
+        // Super admins can pass ?globalStats=true to get aggregate data across all studios,
+        // ignoring any acting_studio_id that might be set from managing a specific studio.
+        const isGlobalStats = isSuperAdmin && req.query.globalStats === 'true';
+        const studioId = isGlobalStats ? null : (
+          req.user?.acting_studio_id
+            ? Number(req.user.acting_studio_id)
+            : (!isSuperAdmin && req.user?.studio_id ? Number(req.user.studio_id) : null)
+        );
         const orderStudioFilter = studioId ? `o.studio_id = ${studioId}` : '';
         const customerStudioFilter = studioId ? `studio_id = ${studioId}` : '';
         const userStudioFilter = studioId ? ` AND studio_id = ${studioId}` : '';
@@ -335,62 +334,79 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
         );
 
         // Check which optional columns exist before including them in queries
-        const [hasProductSizeIdRow, hasProductSizePriceRow, hasProductSizeCostRow, hasProductCostRow, hasPackageNameRow] = await Promise.all([
-            queryRow(`SELECT CASE WHEN COL_LENGTH('order_items', 'product_size_id') IS NOT NULL THEN 1 ELSE 0 END as v`),
-            queryRow(`SELECT CASE WHEN COL_LENGTH('product_sizes', 'price') IS NOT NULL THEN 1 ELSE 0 END as v`),
-            queryRow(`SELECT CASE WHEN COL_LENGTH('product_sizes', 'cost') IS NOT NULL THEN 1 ELSE 0 END as v`),
-            queryRow(`SELECT CASE WHEN COL_LENGTH('products', 'cost') IS NOT NULL THEN 1 ELSE 0 END as v`),
+        const [hasPackageNameRow, hasStudioRevenueAmtRow, hasBaseRevenueAmtRow, hasProductionCostAmtRow, hasSuperAdminShareAmtRow] = await Promise.all([
             queryRow(`SELECT CASE WHEN COL_LENGTH('order_items', 'package_name') IS NOT NULL THEN 1 ELSE 0 END as v`),
+            queryRow(`SELECT CASE WHEN COL_LENGTH('order_items', 'studio_revenue_amount') IS NOT NULL THEN 1 ELSE 0 END as v`),
+            queryRow(`SELECT CASE WHEN COL_LENGTH('order_items', 'base_revenue_amount') IS NOT NULL THEN 1 ELSE 0 END as v`),
+            queryRow(`SELECT CASE WHEN COL_LENGTH('order_items', 'production_cost_amount') IS NOT NULL THEN 1 ELSE 0 END as v`),
+            queryRow(`SELECT CASE WHEN COL_LENGTH('order_items', 'super_admin_share_amount') IS NOT NULL THEN 1 ELSE 0 END as v`),
         ]);
-        const hasProductSizeId = Number(hasProductSizeIdRow?.v || 0) === 1;
-        const hasProductSizePrice = Number(hasProductSizePriceRow?.v || 0) === 1;
-        const hasProductSizeCost = Number(hasProductSizeCostRow?.v || 0) === 1;
-        const hasProductCost = Number(hasProductCostRow?.v || 0) === 1;
+        const hasStudioRevenueAmt = Number(hasStudioRevenueAmtRow?.v || 0) === 1;
+        const hasBaseRevenueAmt = Number(hasBaseRevenueAmtRow?.v || 0) === 1;
+        const hasProductionCostAmt = Number(hasProductionCostAmtRow?.v || 0) === 1;
+        const hasSuperAdminShareAmt = Number(hasSuperAdminShareAmtRow?.v || 0) === 1;
 
-        // Base price = platform price charged to studios (ps.price or p.price)
-        const basePriceExpr = (hasProductSizeId && hasProductSizePrice) ? 'ps.price' : 'NULL';
-        const fallbackPriceExpr = 'p.price';
-        // WHCC cost = what platform pays WHCC (ps.cost or p.cost)
-        const sizeCosteExpr = (hasProductSizeId && hasProductSizeCost) ? 'ps.cost' : 'NULL';
-        const productCostExpr = hasProductCost ? 'p.cost' : 'NULL';
+        // studioRevenueExpr: full retail paid by customers (for informational total)
+        const studioRevenueExpr = hasStudioRevenueAmt
+            ? 'COALESCE(oi.studio_revenue_amount, oi.price * oi.quantity)'
+            : 'oi.price * oi.quantity';
+        const subStudioRevenueExpr = hasStudioRevenueAmt
+            ? 'COALESCE(studio_revenue_amount, price * quantity)'
+            : 'price * quantity';
+        // whccExpr: WHCC production cost per item
+        const whccExpr = hasProductionCostAmt
+            ? 'COALESCE(oi.production_cost_amount, 0)'
+            : '0';
+        // grossRevExpr: platform's gross revenue per item = base_price - WHCC = super_admin_share
+        // This is always less than studio retail revenue
+        const grossRevExpr = hasSuperAdminShareAmt
+            ? `COALESCE(oi.super_admin_share_amount, ${hasBaseRevenueAmt ? 'COALESCE(oi.base_revenue_amount, 0)' : '0'} - ${whccExpr})`
+            : hasBaseRevenueAmt
+            ? `COALESCE(oi.base_revenue_amount, 0) - ${whccExpr}`
+            : '0';
+        const subGrossRevExpr = hasSuperAdminShareAmt
+            ? `COALESCE(super_admin_share_amount, ${hasBaseRevenueAmt ? 'COALESCE(base_revenue_amount, 0)' : '0'} - COALESCE(production_cost_amount, 0))`
+            : hasBaseRevenueAmt
+            ? `COALESCE(base_revenue_amount, 0) - COALESCE(production_cost_amount, 0)`
+            : '0';
 
         const revenueBreakdownRow = await queryRow(
             `SELECT
-                COALESCE(SUM(oi.price * oi.quantity), 0) as totalStudioRevenue,
-                COALESCE(SUM(COALESCE(${basePriceExpr}, ${fallbackPriceExpr}, 0) * oi.quantity), 0) as totalBaseRevenue,
-                COALESCE(SUM(COALESCE(${sizeCosteExpr}, ${productCostExpr}, 0) * oi.quantity), 0) as totalWhccCost,
+                COALESCE(SUM(${studioRevenueExpr}), 0) as totalStudioRevenue,
+                COALESCE(SUM(${grossRevExpr}), 0) as totalGrossRevenue,
+                COALESCE(SUM(${whccExpr}), 0) as totalWhccCost,
                 COALESCE(SUM(COALESCE(oi.quantity, 0)), 0) as totalProductsSold,
                 COALESCE(SUM(COALESCE(o.shipping_margin, 0)), 0) as totalShippingMargin,
                 COALESCE(SUM(
                     COALESCE(o.stripe_fee_amount, 0) *
                     CASE
                         WHEN COALESCE(orderTotals.totalItemRevenue, 0) <= 0 THEN 0
-                        ELSE ((oi.price * oi.quantity) / orderTotals.totalItemRevenue)
+                        ELSE (${studioRevenueExpr} / orderTotals.totalItemRevenue)
                     END
                 ), 0) as totalStripeFees
              FROM orders o
              INNER JOIN order_items oi ON oi.order_id = o.id
              LEFT JOIN (
-                 SELECT order_id, COALESCE(SUM(price * quantity), 0) as totalItemRevenue
+                 SELECT order_id, COALESCE(SUM(${subStudioRevenueExpr}), 0) as totalItemRevenue
                  FROM order_items
                  GROUP BY order_id
              ) orderTotals ON orderTotals.order_id = o.id
-             LEFT JOIN products p ON p.id = oi.product_id
-             ${hasProductSizeId ? 'LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id' : ''}
              WHERE LOWER(o.status) NOT IN ('cancelled', 'refunded')${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}`
         );
 
         const breakdownStudioRevenue = Number(revenueBreakdownRow?.totalStudioRevenue || 0);
-        const breakdownBaseRevenue = Number(revenueBreakdownRow?.totalBaseRevenue || 0);
+        const breakdownBaseRevenue = breakdownStudioRevenue; // kept for response compatibility
         const breakdownWhccCost = Number(revenueBreakdownRow?.totalWhccCost || 0);
         const totalProductsSold = Number(revenueBreakdownRow?.totalProductsSold || 0);
         const breakdownShippingMargin = Number(revenueBreakdownRow?.totalShippingMargin || 0);
         const breakdownStripeFees = Number(revenueBreakdownRow?.totalStripeFees || 0);
-        // Gross revenue = (platform markup price - WHCC cost) × qty across all studios
-        const totalGrossRevenue = breakdownBaseRevenue - breakdownWhccCost;
-        const totalGrossMargin = totalGrossRevenue;
+        // Gross revenue = platform base price - WHCC cost (super_admin_share) — always less than studio retail
+        const totalGrossRevenue = Number(revenueBreakdownRow?.totalGrossRevenue || 0);
         const avgProfitPerProduct = totalProductsSold > 0 ? (totalGrossRevenue / totalProductsSold) : 0;
         const breakdownSuperAdminRevenue = totalGrossRevenue;
+        // Total profit = gross revenue + subscription revenue
+        const subscriptionRevenue = isSuperAdmin ? await stripeService.getSubscriptionRevenue() : 0;
+        const totalGrossMargin = totalGrossRevenue + subscriptionRevenue;
 
         // Always count unique user_id from orders for total customers (active customers)
         const totalCustomersRow = await queryRow(`SELECT COUNT(DISTINCT user_id) as count FROM orders${customerStudioFilter ? ' WHERE ' + customerStudioFilter : ''}`);
@@ -418,32 +434,21 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
                 o.status,
                 o.created_at,
                 u.email as customer_email,
-                COALESCE(SUM(oi.price * oi.quantity), 0) as studioRevenue,
-                COALESCE(SUM(COALESCE(${hasProductSizeId ? 'ps.price' : 'NULL'}, p.price, 0) * oi.quantity), 0) as baseRevenue,
+                COALESCE(SUM(${studioRevenueExpr}), 0) as studioRevenue,
+                COALESCE(SUM(${grossRevExpr}), 0) as platformRevenue,
                 COALESCE(MAX(COALESCE(o.stripe_fee_amount, 0)), 0) as stripeFeeAmount
              FROM orders o
              LEFT JOIN users u ON u.id = o.user_id
              LEFT JOIN order_items oi ON oi.order_id = o.id
-             LEFT JOIN products p ON p.id = oi.product_id
-             ${hasProductSizeId ? 'LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id' : ''}
              WHERE 1=1${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}
              GROUP BY o.id, o.user_id, o.total, o.subtotal, o.tax_amount, o.shipping_cost, o.discount_code, o.status, o.created_at, u.email
              ORDER BY o.created_at DESC`
         );
 
         const recentOrders = (recentOrderRows || []).map((order) => {
-            const studioRevenue = Number(order.studioRevenue || 0);
-            const baseRevenue = Number(order.baseRevenue || 0);
+            const platformRevenue = Number(order.platformRevenue || 0);
             const stripeFeeAmount = Number(order.stripeFeeAmount || 0);
-            const discountAmount = resolveOrderDiscountAmount({
-                subtotal: order.subtotal,
-                shippingCost: order.shipping_cost,
-                taxAmount: order.tax_amount,
-                totalAmount: order.total,
-                discountCode: order.discount_code,
-            });
-            const studioRevenueNet = Math.max(0, studioRevenue - discountAmount);
-            const studioProfit = studioRevenueNet - baseRevenue - stripeFeeAmount;
+            const studioProfit = platformRevenue - stripeFeeAmount;
             return {
                 ...order,
                 total: Number(order.total || 0),
@@ -479,17 +484,14 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
              ORDER BY label ASC`
         );
 
-        // Gross revenue series = (platform_price - whcc_cost) × qty per time period
-        const grossRevenueExpr = `(COALESCE(${basePriceExpr}, ${fallbackPriceExpr}, 0) - COALESCE(${sizeCosteExpr}, ${productCostExpr}, 0)) * oi.quantity`;
-        const grossRevenueJoin = hasProductSizeId ? `LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id` : '';
+        // Gross revenue series = platform base - WHCC cost (super_admin_share) per time period
+        const grossRevenueExpr = grossRevExpr;
 
         const superAdminRevenueDayRows = await queryRows(
             `SELECT FORMAT(o.created_at, 'yyyy-MM-dd') as label,
                     SUM(${grossRevenueExpr}) as value
              FROM orders o
              INNER JOIN order_items oi ON oi.order_id = o.id
-             LEFT JOIN products p ON p.id = oi.product_id
-             ${grossRevenueJoin}
              WHERE LOWER(o.status) NOT IN ('cancelled', 'refunded')
                  AND o.created_at >= DATEADD(day, -29, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}
              GROUP BY FORMAT(o.created_at, 'yyyy-MM-dd')
@@ -501,8 +503,6 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
                     SUM(${grossRevenueExpr}) as value
              FROM orders o
              INNER JOIN order_items oi ON oi.order_id = o.id
-             LEFT JOIN products p ON p.id = oi.product_id
-             ${grossRevenueJoin}
              WHERE LOWER(o.status) NOT IN ('cancelled', 'refunded')
                  AND o.created_at >= DATEADD(week, -11, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}
              GROUP BY FORMAT(DATEADD(day, -1 * (DATEPART(weekday, o.created_at) - 1), CAST(o.created_at AS date)), 'yyyy-MM-dd')
@@ -514,8 +514,6 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
                     SUM(${grossRevenueExpr}) as value
              FROM orders o
              INNER JOIN order_items oi ON oi.order_id = o.id
-             LEFT JOIN products p ON p.id = oi.product_id
-             ${grossRevenueJoin}
              WHERE LOWER(o.status) NOT IN ('cancelled', 'refunded')
                  AND o.created_at >= DATEADD(month, -11, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}
              GROUP BY FORMAT(o.created_at, 'yyyy-MM')
@@ -950,6 +948,7 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
                 totalShippingMargin: breakdownShippingMargin,
                 totalStripeFees: breakdownStripeFees,
                 totalGrossMargin,
+                subscriptionRevenue,
             },
             totalSuperAdminRevenue: breakdownSuperAdminRevenue,
             totalProductsSold,

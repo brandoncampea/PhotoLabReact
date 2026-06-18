@@ -15,7 +15,7 @@ const SuperAdminDashboard: React.FC = () => {
   // Studio revenue/cost drill-down
   const [studioDetails, setStudioDetails] = useState<any[]>([]);
   const [expandedStudio, setExpandedStudio] = useState<number | null>(null);
-  const [profitThreshold, setProfitThreshold] = useState<number>(0);
+  const [profitThreshold, setProfitThreshold] = useState<number | null>(null);
   const [payingStudio, setPayingStudio] = useState<number | null>(null);
   const [payoutNotes, setPayoutNotes] = useState<string>('');
   const [payoutError, setPayoutError] = useState<string>('');
@@ -45,6 +45,7 @@ const SuperAdminDashboard: React.FC = () => {
     avgProfitPerProduct: 0,
     totalTax: 0,
     totalGrossMargin: 0,
+    subscriptionRevenue: 0,
     totalOrders: 0,
     totalCustomers: 0,
     pendingOrders: 0,
@@ -95,7 +96,7 @@ const SuperAdminDashboard: React.FC = () => {
   useEffect(() => {
     const fetchChartData = async () => {
       try {
-        const response = await api.get('/admin/dashboard-stats');
+        const response = await api.get('/admin/dashboard-stats?globalStats=true');
         const data = response.data || {};
 
         const labels: LabelsByRange = {
@@ -123,6 +124,7 @@ const SuperAdminDashboard: React.FC = () => {
           avgProfitPerProduct: Number(data.avgProfitPerProduct || data?.grossMarginBreakdown?.avgProfitPerProduct || 0),
           totalTax: Number(data?.revenueComposition?.totalTax || 0),
           totalGrossMargin: Number(data?.grossMarginBreakdown?.totalGrossMargin || 0),
+          subscriptionRevenue: Number(data?.grossMarginBreakdown?.subscriptionRevenue || 0),
           totalOrders: Number(data.totalOrders || 0),
           totalCustomers: Number(data.totalCustomers || 0),
           pendingOrders: Number(data.pendingOrders || 0),
@@ -173,7 +175,7 @@ const SuperAdminDashboard: React.FC = () => {
         setCustomersSeries({ day: [], week: [], month: [] });
         setPendingSeries({ day: [], week: [], month: [] });
         setProductsSoldSeries({ day: [], week: [], month: [] });
-        setStats({ totalRevenue: 0, totalSuperAdminRevenue: 0, totalProductsSold: 0, avgProfitPerProduct: 0, totalTax: 0, totalGrossMargin: 0, totalOrders: 0, totalCustomers: 0, pendingOrders: 0, schedulingBookings: 0, schedulingPending: 0, schedulingUpcoming: 0, schedulingRevenue: 0, schedulingPlatformFees: 0, schedulingStripeFees: 0, schedulingPayouts: 0, schedulingUpcomingList: [] });
+        setStats({ totalRevenue: 0, totalSuperAdminRevenue: 0, totalProductsSold: 0, avgProfitPerProduct: 0, totalTax: 0, totalGrossMargin: 0, subscriptionRevenue: 0, totalOrders: 0, totalCustomers: 0, pendingOrders: 0, schedulingBookings: 0, schedulingPending: 0, schedulingUpcoming: 0, schedulingRevenue: 0, schedulingPlatformFees: 0, schedulingStripeFees: 0, schedulingPayouts: 0, schedulingUpcomingList: [] });
       }
     };
     fetchChartData();
@@ -283,7 +285,7 @@ const SuperAdminDashboard: React.FC = () => {
         <div className="dashboard-card tallydark-card">
           <div className="dashboard-card-label">Gross Revenue</div>
           <div className="dashboard-card-value">${stats.totalSuperAdminRevenue.toFixed(2)}</div>
-          <div className="dashboard-card-sub">Markup × Qty · all studios</div>
+          <div className="dashboard-card-sub">(Markup − WHCC Cost) × Qty · all studios</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '10px 0 0 0' }}>
             <button className="dashboard-pill" style={{ padding: '3px 12px', fontSize: '0.98rem' }} onClick={() => setRevenueRange('day')} disabled={revenueRange === 'day'}>Day</button>
             <button className="dashboard-pill" style={{ padding: '3px 12px', fontSize: '0.98rem' }} onClick={() => setRevenueRange('week')} disabled={revenueRange === 'week'}>Week</button>
@@ -395,7 +397,9 @@ const SuperAdminDashboard: React.FC = () => {
           <div className="dashboard-card-label">Total Profit</div>
           <div className="dashboard-card-value">${stats.totalGrossMargin.toFixed(2)}</div>
           <div className="dashboard-card-sub">
-            {stats.totalSuperAdminRevenue > 0 ? `${((stats.totalGrossMargin / stats.totalSuperAdminRevenue) * 100).toFixed(1)}% margin · Markup − WHCC Cost` : '0% margin'}
+            {stats.subscriptionRevenue > 0
+              ? `Gross Revenue + $${stats.subscriptionRevenue.toFixed(2)} subscriptions`
+              : 'Gross Revenue + subscriptions'}
           </div>
           <DashboardChart
             data={revenueSeries[revenueRange]?.map((v) => v * (stats.totalSuperAdminRevenue > 0 ? (stats.totalGrossMargin / stats.totalSuperAdminRevenue) : 0)) || []}
@@ -472,10 +476,10 @@ const SuperAdminDashboard: React.FC = () => {
                 type="number"
                 min={0}
                 step={1}
-                value={profitThreshold}
-                onChange={e => setProfitThreshold(Number(e.target.value))}
+                value={profitThreshold ?? ''}
+                onChange={e => setProfitThreshold(e.target.value === '' ? null : Number(e.target.value))}
                 style={{ width: 80, padding: '5px 8px', border: 'none', background: 'transparent', color: '#e0e0f0', fontSize: 13, outline: 'none' }}
-                placeholder="0"
+                placeholder="All"
               />
             </div>
           </div>
@@ -494,7 +498,7 @@ const SuperAdminDashboard: React.FC = () => {
         )}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {studioDetails
-            .filter(({ summary }: any) => Number(summary.currentStudioProfit || 0) >= profitThreshold)
+            .filter(({ summary }: any) => profitThreshold === null || Number(summary.currentStudioProfit || 0) >= profitThreshold)
             .map(({ studio, summary, orders, payoutHistory }: any) => {
               const isExpanded = expandedStudio === studio.id;
               const currentProfit = Number(summary.currentStudioProfit || 0);

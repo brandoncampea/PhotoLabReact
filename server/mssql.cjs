@@ -378,9 +378,19 @@ async function initializeDatabase() {
 		END
 	`);
 
-	// --- Ship From Address columns ---
-	// Add all legacy and new ship_from address columns for compatibility
-	const allShipFromColumns = [
+	// --- Studios: all optional columns added idempotently ---
+	const allStudiosColumns = [
+		// Subscription / billing
+		{ name: 'stripe_customer_id', type: 'NVARCHAR(255)' },
+		{ name: 'stripe_subscription_id', type: 'NVARCHAR(255)' },
+		{ name: 'billing_cycle', type: 'NVARCHAR(50)' },
+		{ name: 'is_free_subscription', type: 'BIT DEFAULT 0' },
+		{ name: 'cancellation_requested', type: 'BIT DEFAULT 0' },
+		{ name: 'cancellation_date', type: 'DATETIME2' },
+		{ name: 'trial_end', type: 'DATETIME2' },
+		{ name: 'fee_type', type: 'NVARCHAR(50)' },
+		{ name: 'fee_value', type: 'FLOAT DEFAULT 0' },
+		// Address / contact
 		{ name: 'customDomain', type: 'NVARCHAR(255)' },
 		{ name: 'address_line1', type: 'NVARCHAR(255)' },
 		{ name: 'address_line2', type: 'NVARCHAR(255)' },
@@ -388,7 +398,6 @@ async function initializeDatabase() {
 		{ name: 'address_state', type: 'NVARCHAR(100)' },
 		{ name: 'address_postal_code', type: 'NVARCHAR(20)' },
 		{ name: 'address_country', type: 'NVARCHAR(100)' },
-		// Legacy/alternate columns referenced by backend
 		{ name: 'ship_from_name', type: 'NVARCHAR(255)' },
 		{ name: 'ship_from_address1', type: 'NVARCHAR(255)' },
 		{ name: 'ship_from_address2', type: 'NVARCHAR(255)' },
@@ -397,7 +406,7 @@ async function initializeDatabase() {
 		{ name: 'ship_from_zip', type: 'NVARCHAR(20)' },
 		{ name: 'ship_from_country', type: 'NVARCHAR(100)' },
 	];
-	for (const col of allShipFromColumns) {
+	for (const col of allStudiosColumns) {
 		await query(`
 			IF COL_LENGTH('studios', '${col.name}') IS NULL
 			BEGIN
