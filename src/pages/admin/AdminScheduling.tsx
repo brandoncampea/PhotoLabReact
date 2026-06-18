@@ -30,8 +30,12 @@ const statusColor: Record<string, string> = { pending: '#f59e0b', approved: '#22
 export default function AdminScheduling() {
   const { user } = useAuth();
   const token = localStorage.getItem('authToken');
-  const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
-  const studioId = user?.studioId || (user?.role === 'super_admin' ? Number(localStorage.getItem('viewAsStudioId')) || null : null);
+  const viewAsStudioId = localStorage.getItem('viewAsStudioId');
+  const studioId = user?.role === 'super_admin'
+    ? (Number(viewAsStudioId) || null)
+    : (user?.studioId || null);
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+  if (viewAsStudioId) headers['x-acting-studio-id'] = viewAsStudioId;
 
   const [tab, setTab] = useState<Tab>('Bookings');
   const [sessionTypes, setSessionTypes] = useState<SessionType[]>([]);

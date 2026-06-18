@@ -72,9 +72,13 @@ const AdminTeam: React.FC = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  const studioId = user?.studioId;
+  const viewAsStudioId = localStorage.getItem('viewAsStudioId');
+  const studioId = user?.role === 'super_admin'
+    ? (Number(viewAsStudioId) || null)
+    : (user?.studioId || null);
   const token = localStorage.getItem('authToken');
-  const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
+  if (viewAsStudioId) headers['x-acting-studio-id'] = viewAsStudioId;
 
   useEffect(() => {
     if (studioId) loadAll();

@@ -31,6 +31,7 @@ type WatermarkFormData = {
 
 const AdminWatermarks: React.FC = () => {
   const { user } = useAuth();
+  const effectiveStudioId = Number(localStorage.getItem('viewAsStudioId') || user?.studioId || 0) || null;
   const [watermarks, setWatermarks] = useState<Watermark[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -137,11 +138,11 @@ const AdminWatermarks: React.FC = () => {
       };
 
       if (editingWatermark) {
-        if (!user?.studioId) {
-          setError('No studio ID found for user.');
+        if (!effectiveStudioId) {
+          setError('No studio ID found.');
           return;
         }
-        const updated = await watermarkService.update(editingWatermark.id, { ...payload, studioId: user.studioId } as any, formData.image || undefined);
+        const updated = await watermarkService.update(editingWatermark.id, { ...payload, studioId: effectiveStudioId } as any, formData.image || undefined);
         setWatermarks((prev) => prev.map((w) => (w.id === updated.id ? updated : w)));
         setMessage('Watermark updated.');
       } else {
@@ -149,11 +150,11 @@ const AdminWatermarks: React.FC = () => {
           setError('Please select an image file.');
           return;
         }
-        if (!user?.studioId) {
-          setError('No studio ID found for user.');
+        if (!effectiveStudioId) {
+          setError('No studio ID found.');
           return;
         }
-        const created = await watermarkService.create({ ...payload, studioId: user.studioId } as any, formData.image);
+        const created = await watermarkService.create({ ...payload, studioId: effectiveStudioId } as any, formData.image);
         setWatermarks((prev) => [created, ...prev]);
         setMessage('Watermark created.');
       }
@@ -191,9 +192,9 @@ const AdminWatermarks: React.FC = () => {
       <div className="watermarks-grid">
         {watermarks
           .filter((w) => {
-            if (!user?.studioId) return true;
+            if (!effectiveStudioId) return true;
             const watermarkStudioId = Number((w as any)?.studioId || 0);
-            return watermarkStudioId > 0 ? watermarkStudioId === Number(user.studioId) : true;
+            return watermarkStudioId > 0 ? watermarkStudioId === effectiveStudioId : true;
           })
           .map((watermark) => (
             <div key={watermark.id} className="watermark-card">

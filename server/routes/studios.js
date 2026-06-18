@@ -1169,12 +1169,12 @@ router.get('/onboarding-checklist', authRequired, async (req, res) => {
     const [profile, watermark, priceList, shipping, packages, album, order] = await Promise.all([
       queryRow(`SELECT logo_url FROM profile_config WHERE studio_id = $1`, [studioId]),
       queryRow(`SELECT TOP 1 id FROM watermarks WHERE studio_id = $1`, [studioId]),
-      queryRow(`SELECT TOP 1 id FROM price_lists WHERE studio_id = $1`, [studioId]),
+      queryRow(`SELECT TOP 1 id FROM studio_price_lists WHERE studio_id = $1`, [studioId]),
       queryRow(`SELECT TOP 1 id FROM shipping_config WHERE id = $1`, [studioId]),
       queryRow(
         `SELECT TOP 1 p.id FROM packages p
-         JOIN price_lists pl ON pl.id = p.price_list_id
-         WHERE pl.studio_id = $1`,
+         JOIN studio_price_lists spl ON spl.id = p.price_list_id
+         WHERE spl.studio_id = $1`,
         [studioId]
       ),
       queryRow(`SELECT TOP 1 id FROM albums WHERE studio_id = $1`, [studioId]),

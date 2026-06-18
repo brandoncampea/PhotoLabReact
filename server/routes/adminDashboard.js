@@ -304,7 +304,9 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
             console.log('[ADMIN DASHBOARD-STATS ROUTE] --- DEBUG END ---');
     try {
         const isSuperAdmin = req.user?.role === 'super_admin';
-        const studioId = !isSuperAdmin && req.user?.studio_id ? Number(req.user.studio_id) : null;
+        const studioId = req.user?.acting_studio_id
+          ? Number(req.user.acting_studio_id)
+          : (!isSuperAdmin && req.user?.studio_id ? Number(req.user.studio_id) : null);
         const orderStudioFilter = studioId ? `o.studio_id = ${studioId}` : '';
         const customerStudioFilter = studioId ? `studio_id = ${studioId}` : '';
         const userStudioFilter = studioId ? ` AND studio_id = ${studioId}` : '';

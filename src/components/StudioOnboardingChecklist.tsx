@@ -4,7 +4,8 @@ import api from '../services/api';
 
 type Step = { id: string; label: string; done: boolean; link: string | null };
 
-const DISMISS_KEY = 'studio_onboarding_dismissed';
+const DISMISS_ALL_KEY = 'studio_onboarding_dismissed';
+const SKIP_ITEMS_KEY = 'studio_onboarding_skipped';
 
 const STEP_ICONS: Record<string, string> = {
   profile:   '🖼️',
@@ -16,10 +17,20 @@ const STEP_ICONS: Record<string, string> = {
   income:    '🎉',
 };
 
+const loadSkipped = (): Set<string> => {
+  try { return new Set(JSON.parse(localStorage.getItem(SKIP_ITEMS_KEY) || '[]')); }
+  catch { return new Set(); }
+};
+
+const saveSkipped = (set: Set<string>) => {
+  localStorage.setItem(SKIP_ITEMS_KEY, JSON.stringify([...set]));
+};
+
 const StudioOnboardingChecklist: React.FC = () => {
   const [steps, setSteps] = useState<Step[]>([]);
   const [loading, setLoading] = useState(true);
-  const [dismissed, setDismissed] = useState(() => localStorage.getItem(DISMISS_KEY) === '1');
+  const [dismissed, setDismissed] = useState(() => localStorage.getItem(DISMISS_ALL_KEY) === '1');
+  const [skipped, setSkipped] = useState<Set<string>>(loadSkipped);
   const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
@@ -29,17 +40,30 @@ const StudioOnboardingChecklist: React.FC = () => {
       .finally(() => setLoading(false));
   }, []);
 
-  const completedCount = steps.filter(s => s.done).length;
-  const totalCount = steps.length;
+  const visibleSteps = steps.filter(s => !skipped.has(s.id));
+  const completedCount = visibleSteps.filter(s => s.done).length;
+  const totalCount = visibleSteps.length;
   const allDone = totalCount > 0 && completedCount === totalCount;
   const pct = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
 
-  const handleDismiss = () => {
-    localStorage.setItem(DISMISS_KEY, '1');
+  const dismissAll = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    localStorage.setItem(DISMISS_ALL_KEY, '1');
     setDismissed(true);
   };
 
+  const skipItem = (e: React.MouseEvent, id: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const next = new Set(skipped);
+    next.add(id);
+    saveSkipped(next);
+    setSkipped(next);
+  };
+
   if (loading || dismissed) return null;
+  // Hide entirely if all visible steps are skipped
+  if (totalCount === 0) return null;
 
   return (
     <div style={{
@@ -73,7 +97,6 @@ const StudioOnboardingChecklist: React.FC = () => {
               {completedCount}/{totalCount}
             </span>
           </div>
-          {/* Progress bar */}
           <div style={{ height: 5, background: 'rgba(255,255,255,0.07)', borderRadius: 4, overflow: 'hidden' }}>
             <div style={{
               height: '100%',
@@ -87,14 +110,18 @@ const StudioOnboardingChecklist: React.FC = () => {
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {allDone && (
-            <button
-              onClick={e => { e.stopPropagation(); handleDismiss(); }}
-              style={{ background: 'none', border: 'none', color: '#52525b', fontSize: '0.8rem', cursor: 'pointer', padding: '2px 6px' }}
-            >
-              Dismiss
-            </button>
-          )}
+          <button
+            onClick={dismissAll}
+            title="Dismiss checklist"
+            style={{
+              background: 'none', border: 'none',
+              color: '#52525b', fontSize: '0.8rem',
+              cursor: 'pointer', padding: '2px 6px',
+              lineHeight: 1,
+            }}
+          >
+            ✕
+          </button>
           <span style={{ color: '#52525b', fontSize: '0.85rem' }}>{collapsed ? '▼' : '▲'}</span>
         </div>
       </div>
@@ -103,11 +130,10 @@ const StudioOnboardingChecklist: React.FC = () => {
       {!collapsed && (
         <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', padding: '10px 18px 14px' }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '8px 16px' }}>
-            {steps.map((step, idx) => {
-              const isLast = idx === steps.length - 1;
+            {visibleSteps.map((step, idx) => {
+              const isLast = idx === visibleSteps.length - 1;
               const inner = (
                 <div
-                  key={step.id}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -125,13 +151,10 @@ const StudioOnboardingChecklist: React.FC = () => {
                     transition: 'background 0.15s',
                   }}
                 >
-                  {/* Circle checkbox */}
                   <div style={{
                     width: 20, height: 20, borderRadius: '50%', flexShrink: 0,
                     border: step.done ? 'none' : '2px solid #3f3f60',
-                    background: step.done
-                      ? (isLast ? '#22c55e' : '#4ade80')
-                      : 'transparent',
+                    background: step.done ? (isLast ? '#22c55e' : '#4ade80') : 'transparent',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontSize: 11, color: '#fff', fontWeight: 700,
                   }}>
@@ -147,6 +170,20 @@ const StudioOnboardingChecklist: React.FC = () => {
                   }}>
                     {step.label}
                   </span>
+                  {!step.done && (
+                    <button
+                      onClick={e => skipItem(e, step.id)}
+                      title="Dismiss this step"
+                      style={{
+                        background: 'none', border: 'none',
+                        color: '#3f3f60', fontSize: '0.75rem',
+                        cursor: 'pointer', padding: '0 2px',
+                        lineHeight: 1, flexShrink: 0,
+                      }}
+                    >
+                      ✕
+                    </button>
+                  )}
                   {!step.done && step.link && (
                     <span style={{ fontSize: '0.72rem', color: '#7c5cff', fontWeight: 700, flexShrink: 0 }}>→</span>
                   )}
