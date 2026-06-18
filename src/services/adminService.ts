@@ -103,6 +103,8 @@ export const userAdminService = {
       email: string;
       name: string;
       role: 'customer' | 'admin' | 'super_admin' | 'studio_admin';
+      studioId?: number | null;
+      studioName?: string | null;
       isActive: boolean;
       createdAt: string;
       lastLoginAt?: string;
@@ -120,6 +122,8 @@ export const userAdminService = {
         firstName,
         lastName,
         role: u.role,
+        studioId: u.studioId ?? undefined,
+        studioName: u.studioName ?? undefined,
         registeredDate: u.createdAt,
         totalOrders: u.totalOrders || 0,
         totalSpent: u.totalSpent || 0,

@@ -369,7 +369,7 @@ router.post('/stripe', express.raw({ type: 'application/json' }), async (req, re
  */
 async function handleSubscriptionCreated(subscription) {
   const studioId = subscription.metadata?.studioId;
-  
+
   if (!studioId) {
     console.log('No studioId in subscription metadata');
     return;
@@ -382,19 +382,41 @@ async function handleSubscriptionCreated(subscription) {
       return;
     }
 
-    // Update studio with subscription info
+    const billingCycle = subscription.metadata?.billingCycle || 'monthly';
+    const planId = subscription.metadata?.planId;
+
+    let planName = null;
+    if (planId) {
+      const plan = await queryRow('SELECT name FROM subscription_plans WHERE id = $1', [planId]);
+      if (plan) planName = plan.name;
+    }
+
+    const dbStatus = subscription.status === 'trialing'
+      ? SUBSCRIPTION_STATUSES.trialing
+      : SUBSCRIPTION_STATUSES.active;
+
+    const trialEnd = subscription.trial_end
+      ? new Date(subscription.trial_end * 1000).toISOString()
+      : null;
+
     await query(`
       UPDATE studios
-      SET stripe_customer_id = $1, 
-          stripe_subscription_id = $2, 
+      SET stripe_customer_id = $1,
+          stripe_subscription_id = $2,
           subscription_status = $3,
-          subscription_start = CURRENT_TIMESTAMP
-      WHERE id = $4
+          subscription_start = CURRENT_TIMESTAMP,
+          billing_cycle = $4,
+          subscription_plan = COALESCE($5, subscription_plan),
+          trial_end = COALESCE($6, trial_end)
+      WHERE id = $7
     `, [
       subscription.customer,
       subscription.id,
-      SUBSCRIPTION_STATUSES.active,
-      studioId
+      dbStatus,
+      billingCycle,
+      planName,
+      trialEnd,
+      studioId,
     ]);
 
     console.log(`Subscription created for studio ${studioId}:`, subscription.id);
@@ -416,25 +438,30 @@ async function handleSubscriptionUpdated(subscription) {
 
   try {
     // Determine subscription status based on Stripe status
-    let statusMap = {
+    const statusMap = {
       'active': SUBSCRIPTION_STATUSES.active,
+      'trialing': SUBSCRIPTION_STATUSES.trialing,
       'past_due': SUBSCRIPTION_STATUSES.past_due,
       'canceled': SUBSCRIPTION_STATUSES.canceled,
       'unpaid': SUBSCRIPTION_STATUSES.past_due,
-      'paused': SUBSCRIPTION_STATUSES.paused
+      'paused': SUBSCRIPTION_STATUSES.paused,
     };
 
     const status = statusMap[subscription.status] || SUBSCRIPTION_STATUSES.inactive;
 
-    // Calculate next billing date
     const nextBillingDate = new Date(subscription.current_period_end * 1000).toISOString();
+
+    const trialEnd = subscription.trial_end
+      ? new Date(subscription.trial_end * 1000).toISOString()
+      : null;
 
     await query(`
       UPDATE studios
       SET subscription_status = $1,
-          subscription_end = $2
-      WHERE id = $3
-    `, [status, nextBillingDate, studioId]);
+          subscription_end = $2,
+          trial_end = COALESCE($3, trial_end)
+      WHERE id = $4
+    `, [status, nextBillingDate, trialEnd, studioId]);
 
     console.log(`Subscription updated for studio ${studioId}:`, subscription.id);
   } catch (error) {

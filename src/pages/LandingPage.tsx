@@ -33,6 +33,7 @@ export default function LandingPage() {
   const [plans, setPlans] = React.useState<any[]>([]);
   const [plansLoading, setPlansLoading] = React.useState(true);
   const [plansError, setPlansError] = React.useState('');
+  const [pricingCycle, setPricingCycle] = React.useState<'monthly' | 'yearly'>('monthly');
 
   React.useEffect(() => {
     async function fetchPlans() {
@@ -372,18 +373,62 @@ export default function LandingPage() {
       <section className="landing-pricing-section">
         <h2 className="gradient-text landing-pricing-title">Plans for Every Studio Size</h2>
         <p className="landing-pricing-desc">Start with a free trial — no credit card required</p>
+
+        {/* Billing cycle toggle */}
+        {!plansLoading && !plansError && plans.length > 0 && (
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.75rem' }}>
+            <div style={{ display: 'flex', gap: 0, background: 'rgba(255,255,255,0.05)', borderRadius: 10, border: '1px solid rgba(124,92,255,0.2)', padding: 4 }}>
+              {(['monthly', 'yearly'] as const).map(cycle => (
+                <button
+                  key={cycle}
+                  onClick={() => setPricingCycle(cycle)}
+                  style={{
+                    padding: '8px 22px',
+                    borderRadius: 7,
+                    border: 'none',
+                    background: pricingCycle === cycle ? '#7c5cff' : 'transparent',
+                    color: pricingCycle === cycle ? '#fff' : '#a1a1aa',
+                    fontWeight: 700,
+                    fontSize: 15,
+                    cursor: 'pointer',
+                    transition: 'background 0.15s, color 0.15s',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                  }}
+                >
+                  {cycle === 'monthly' ? 'Monthly' : 'Annual'}
+                  {cycle === 'yearly' && (
+                    <span style={{ background: 'rgba(74,222,128,0.2)', color: '#4ade80', fontSize: 12, fontWeight: 700, padding: '2px 8px', borderRadius: 10 }}>
+                      Save up to 20%
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="pricing-row">
           {plansLoading ? <div className="pricing-loading">Loading plans...</div>
             : plansError ? <div className="pricing-error">{plansError}</div>
             : plans.length === 0 ? <div className="pricing-empty">No plans available.</div>
             : plans.map((plan, idx) => {
-              if (idx !== plans.findIndex(p => p.id === plan.id)) return null;
-              const mp = plan.monthly_price ? `$${plan.monthly_price.toFixed(2)}` : '';
-              const yp = plan.yearly_price ? `$${plan.yearly_price.toFixed(2)}` : '';
-              let yd = '';
-              if (plan.monthly_price && plan.yearly_price && plan.yearly_price < plan.monthly_price * 12) yd = `Save $${(plan.monthly_price * 12 - plan.yearly_price).toFixed(2)} yearly`;
+              if (idx !== plans.findIndex((p: any) => p.id === plan.id)) return null;
+              const mp = plan.monthly_price ?? 0;
+              const yp = plan.yearly_price ?? null;
+              const savings = yp != null && mp > 0 ? Math.round(((mp * 12 - yp) / (mp * 12)) * 100) : 0;
               return (
-                <PricingCard key={`${plan.id}-${plan.name}`} name={plan.name || plan.nickname || 'Plan'} price={mp} yearlyPrice={yp} yearlyDiscount={yd} features={plan.features || plan.metadata?.features || []} highlighted={plan.metadata?.highlighted || false} />
+                <PricingCard
+                  key={`${plan.id}-${plan.name}`}
+                  name={plan.name || plan.nickname || 'Plan'}
+                  monthlyPrice={mp}
+                  yearlyPrice={yp}
+                  savingsPct={savings}
+                  billingCycle={pricingCycle}
+                  features={plan.features || plan.metadata?.features || []}
+                  highlighted={plan.metadata?.highlighted || false}
+                />
               );
             })}
         </div>
@@ -404,19 +449,39 @@ export default function LandingPage() {
   );
 }
 
-function PricingCard({ name, price, yearlyPrice, yearlyDiscount, features, highlighted }: {
-  name: string; price: string; yearlyPrice?: string; yearlyDiscount?: string; features: string[]; highlighted?: boolean;
+function PricingCard({ name, monthlyPrice, yearlyPrice, savingsPct, billingCycle, features, highlighted }: {
+  name: string;
+  monthlyPrice: number;
+  yearlyPrice: number | null;
+  savingsPct: number;
+  billingCycle: 'monthly' | 'yearly';
+  features: string[];
+  highlighted?: boolean;
 }) {
+  const showAnnual = billingCycle === 'yearly' && yearlyPrice != null;
+  const displayMonthlyEquiv = showAnnual ? yearlyPrice! / 12 : monthlyPrice;
+
   return (
     <div className={`pricing-card${highlighted ? ' pricing-card-highlighted' : ''}`}>
       {highlighted && <div className="pricing-card-popular">Most Popular</div>}
       <h3 className="pricing-card-title">{name}</h3>
-      <div className="pricing-card-price">{price}<span className="pricing-card-price-unit">/mo</span></div>
-      {yearlyPrice && (
+      <div className="pricing-card-price">
+        ${displayMonthlyEquiv.toFixed(2)}<span className="pricing-card-price-unit">/mo</span>
+      </div>
+      {showAnnual && yearlyPrice != null ? (
         <div className="pricing-card-yearly">
-          <span className="pricing-card-yearly-label">Yearly:</span> {yearlyPrice} <span className="pricing-card-yearly-unit">/yr</span>
-          {yearlyDiscount && <span className="pricing-card-yearly-discount">{yearlyDiscount}</span>}
+          <span style={{ color: '#a1a1aa' }}>${yearlyPrice.toFixed(2)}/yr billed annually</span>
+          {savingsPct > 0 && <span className="pricing-card-yearly-discount"> · Save {savingsPct}%</span>}
         </div>
+      ) : (
+        yearlyPrice != null && savingsPct > 0 && (
+          <div className="pricing-card-yearly">
+            <span style={{ color: '#52525b', fontSize: '0.8em' }}>
+              or ${(yearlyPrice / 12).toFixed(2)}/mo billed annually
+            </span>
+            <span className="pricing-card-yearly-discount"> · Save {savingsPct}%</span>
+          </div>
+        )
       )}
       <ul className="pricing-card-features">
         {features.map((f, i) => <li key={i} className="pricing-card-feature">✓ {f}</li>)}

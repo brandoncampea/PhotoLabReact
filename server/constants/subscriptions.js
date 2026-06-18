@@ -59,6 +59,7 @@ export const SUBSCRIPTION_PLANS = {
 export const SUBSCRIPTION_STATUSES = {
   inactive: 'inactive',
   active: 'active',
+  trialing: 'trialing',
   past_due: 'past_due',
   canceled: 'canceled',
   paused: 'paused'

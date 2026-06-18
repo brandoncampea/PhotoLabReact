@@ -12,17 +12,16 @@ function isConfigured() {
   return Boolean(mailtrapClient && mailtrapSenderEmail);
 }
 
-export async function sendEmail({ to, subject, text, html }) {
+export async function sendEmail({ to, cc, subject, text, html }) {
   if (!isConfigured() || !to) return false;
-  await mailtrapClient.send({
-    from: {
-      email: mailtrapSenderEmail,
-      name: mailtrapSenderName,
-    },
+  const msg = {
+    from: { email: mailtrapSenderEmail, name: mailtrapSenderName },
     to: Array.isArray(to) ? to.map(email => ({ email })) : [{ email: to }],
     subject,
     html,
     text,
-  });
+  };
+  if (cc?.length) msg.cc = Array.isArray(cc) ? cc.map(email => ({ email })) : [{ email: cc }];
+  await mailtrapClient.send(msg);
   return true;
 }

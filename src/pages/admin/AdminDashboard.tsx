@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import DashboardChart from '../../components/DashboardChart';
 import AdminLayout from '../../components/AdminLayout';
+import StudioOnboardingChecklist from '../../components/StudioOnboardingChecklist';
 import './AdminDashboard.css';
 import api from '../../services/api';
 import { photoService } from '../../services/photoService';
@@ -209,6 +210,8 @@ const AdminDashboard: React.FC = () => {
           Business overview, stats, and recent activity for your studio.
         </p>
       </div>
+
+      <StudioOnboardingChecklist />
 
       <div className="dashboard-widget tallydark-card admin-dashboard-widget" style={{ marginBottom: 18 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>

@@ -71,10 +71,12 @@ router.get('/studio-revenue-details', adminRequired, async (req, res) => {
         if (req.user?.role !== 'super_admin') {
             return res.status(403).json({ error: 'Forbidden' });
         }
-        const hasProductSizeIdRow = await queryRow(
-            `SELECT CASE WHEN COL_LENGTH('order_items', 'product_size_id') IS NOT NULL THEN 1 ELSE 0 END as hasProductSizeId`
-        );
-        const hasProductSizeId = Number(hasProductSizeIdRow?.hasProductSizeId || 0) === 1;
+        const [hasProductSizeIdRow, hasPackageNameRow] = await Promise.all([
+            queryRow(`SELECT CASE WHEN COL_LENGTH('order_items', 'product_size_id') IS NOT NULL THEN 1 ELSE 0 END as v`),
+            queryRow(`SELECT CASE WHEN COL_LENGTH('order_items', 'package_name') IS NOT NULL THEN 1 ELSE 0 END as v`),
+        ]);
+        const hasProductSizeId = Number(hasProductSizeIdRow?.v || 0) === 1;
+        const hasPackageCols = Number(hasPackageNameRow?.v || 0) === 1;
 
         await ensurePayoutTables();
 
@@ -150,8 +152,20 @@ router.get('/studio-revenue-details', adminRequired, async (req, res) => {
                 order.payout_id = paidOrderMap.get(Number(order.id)) || null;
 
                 order.items = await queryRows(`
-                    SELECT id, product_id, product_size_id, quantity, price, photo_id
-                    FROM order_items WHERE order_id = $1
+                    SELECT
+                        oi.id,
+                        oi.product_id,
+                        oi.product_size_id,
+                        oi.quantity,
+                        oi.price,
+                        oi.photo_id,
+                        p.name as product_name,
+                        ${hasProductSizeId ? 'ps.size_name' : "CAST(NULL AS NVARCHAR(255))"} as size_name
+                        ${hasPackageCols ? ', oi.package_name, oi.package_price, oi.package_group_id' : ", CAST(NULL AS NVARCHAR(256)) as package_name, CAST(NULL AS DECIMAL(10,2)) as package_price, CAST(NULL AS INT) as package_group_id"}
+                    FROM order_items oi
+                    LEFT JOIN products p ON p.id = oi.product_id
+                    ${hasProductSizeId ? 'LEFT JOIN product_sizes ps ON ps.id = oi.product_size_id' : ''}
+                    WHERE oi.order_id = $1
                 `, [order.id]);
             }
 
@@ -769,16 +783,16 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
 
               const albumViewsQuery = `SELECT TOP 5
                                         TRY_CAST(JSON_VALUE(a.event_data, '$.albumId') AS INT) as albumId,
-                                        COALESCE(NULLIF(JSON_VALUE(a.event_data, '$.albumName'), ''), al.name, CONCAT('Album #', TRY_CAST(JSON_VALUE(a.event_data, '$.albumId') AS INT))) as albumName,
-                                        al.cover_image_url as coverImageUrl,
-                                                                                SUM(CASE WHEN a.event_type = 'album_view' THEN 1 ELSE 0 END) as opens,
-                                                                                SUM(CASE WHEN a.event_type = 'album_card_click' THEN 1 ELSE 0 END) as clicks,
-                                                                                COUNT(*) as views
+                                        COALESCE(NULLIF(MAX(JSON_VALUE(a.event_data, '$.albumName')), ''), MAX(al.name), CONCAT('Album #', TRY_CAST(JSON_VALUE(a.event_data, '$.albumId') AS INT))) as albumName,
+                                        MAX(al.cover_image_url) as coverImageUrl,
+                                        SUM(CASE WHEN a.event_type = 'album_view' THEN 1 ELSE 0 END) as opens,
+                                        SUM(CASE WHEN a.event_type = 'album_card_click' THEN 1 ELSE 0 END) as clicks,
+                                        COUNT(*) as views
                                     FROM analytics a
                                     LEFT JOIN albums al ON al.id = TRY_CAST(JSON_VALUE(a.event_data, '$.albumId') AS INT)
-                                                                            ${buildWhere("a.event_type IN ('album_view', 'album_card_click')", '', analyticsTimeFilter ? analyticsTimeFilter.replace(/\bcreated_at\b/g, 'a.created_at') : '')}
+                                    ${buildWhere("a.event_type IN ('album_view', 'album_card_click')", '', analyticsTimeFilter ? analyticsTimeFilter.replace(/\bcreated_at\b/g, 'a.created_at') : '')}
                                     ${albumPhotoStudioFilter}
-                                    GROUP BY JSON_VALUE(a.event_data, '$.albumId'), JSON_VALUE(a.event_data, '$.albumName'), al.name, al.cover_image_url
+                                    GROUP BY TRY_CAST(JSON_VALUE(a.event_data, '$.albumId') AS INT)
                   ORDER BY views DESC`;
               console.log('[analytics] albumViewsQuery:', albumViewsQuery);
               const albumViewsRows = await queryRows(albumViewsQuery);
@@ -786,20 +800,20 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
 
               const photoViewsQuery = `SELECT TOP 5
                                         TRY_CAST(JSON_VALUE(a.event_data, '$.photoId') AS INT) as photoId,
-                                        COALESCE(TRY_CAST(JSON_VALUE(a.event_data, '$.albumId') AS INT), p.album_id) as albumId,
-                                        COALESCE(NULLIF(JSON_VALUE(a.event_data, '$.photoFileName'), ''), p.file_name) as photoFileName,
-                                        COALESCE(NULLIF(JSON_VALUE(a.event_data, '$.albumName'), ''), al.name) as albumName,
-                    p.thumbnail_url as thumbnailUrl,
-                    p.full_image_url as fullImageUrl,
-                                                                                SUM(CASE WHEN a.event_type = 'photo_view' THEN 1 ELSE 0 END) as opens,
-                                                                                SUM(CASE WHEN a.event_type = 'photo_thumbnail_click' THEN 1 ELSE 0 END) as clicks,
-                                                                                COUNT(*) as views
+                                        COALESCE(MAX(TRY_CAST(JSON_VALUE(a.event_data, '$.albumId') AS INT)), MAX(p.album_id)) as albumId,
+                                        COALESCE(NULLIF(MAX(JSON_VALUE(a.event_data, '$.photoFileName')), ''), MAX(p.file_name)) as photoFileName,
+                                        COALESCE(NULLIF(MAX(JSON_VALUE(a.event_data, '$.albumName')), ''), MAX(al.name)) as albumName,
+                                        MAX(p.thumbnail_url) as thumbnailUrl,
+                                        MAX(p.full_image_url) as fullImageUrl,
+                                        SUM(CASE WHEN a.event_type = 'photo_view' THEN 1 ELSE 0 END) as opens,
+                                        SUM(CASE WHEN a.event_type = 'photo_thumbnail_click' THEN 1 ELSE 0 END) as clicks,
+                                        COUNT(*) as views
                                     FROM analytics a
                                     LEFT JOIN photos p ON p.id = TRY_CAST(JSON_VALUE(a.event_data, '$.photoId') AS INT)
                                     LEFT JOIN albums al ON al.id = COALESCE(TRY_CAST(JSON_VALUE(a.event_data, '$.albumId') AS INT), p.album_id)
-                                                                            ${buildWhere("a.event_type IN ('photo_view', 'photo_thumbnail_click')", '', analyticsTimeFilter ? analyticsTimeFilter.replace(/\bcreated_at\b/g, 'a.created_at') : '')}
+                                    ${buildWhere("a.event_type IN ('photo_view', 'photo_thumbnail_click')", '', analyticsTimeFilter ? analyticsTimeFilter.replace(/\bcreated_at\b/g, 'a.created_at') : '')}
                                     ${albumPhotoStudioFilter}
-                                    GROUP BY JSON_VALUE(a.event_data, '$.photoId'), JSON_VALUE(a.event_data, '$.albumId'), JSON_VALUE(a.event_data, '$.photoFileName'), JSON_VALUE(a.event_data, '$.albumName'), p.album_id, p.file_name, p.thumbnail_url, p.full_image_url, al.name
+                                    GROUP BY TRY_CAST(JSON_VALUE(a.event_data, '$.photoId') AS INT)
                   ORDER BY views DESC`;
               console.log('[analytics] photoViewsQuery:', photoViewsQuery);
               const photoViewsRows = await queryRows(photoViewsQuery);

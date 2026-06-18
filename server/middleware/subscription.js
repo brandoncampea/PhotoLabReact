@@ -127,6 +127,26 @@ export const enforceStorageQuotaForStudio = async (studioId, additionalBytes = 0
 };
 
 /**
+ * Returns true if the studio has an accessible subscription:
+ *  - status is 'active', OR
+ *  - is_free_subscription is set (admin-granted free access), OR
+ *  - annual plan that was canceled but subscription_end is still in the future
+ */
+export function isStudioSubscriptionActive(studio) {
+  if (!studio) return false;
+  if (studio.subscription_status === 'active') return true;
+  if (studio.subscription_status === 'trialing') return true;
+  if (studio.is_free_subscription) return true;
+  if (
+    studio.subscription_status === 'canceled' &&
+    studio.billing_cycle === 'yearly' &&
+    studio.subscription_end &&
+    new Date(studio.subscription_end) > new Date()
+  ) return true;
+  return false;
+}
+
+/**
  * Middleware to check if the user's studio has an active subscription
  * Blocks free/inactive studios from using protected features
  */
@@ -178,8 +198,8 @@ export const requireActiveSubscription = async (req, res, next) => {
     }
 
     const studio = await queryRow(`
-      SELECT subscription_status, is_free_subscription 
-      FROM studios 
+      SELECT subscription_status, is_free_subscription, billing_cycle, subscription_end
+      FROM studios
       WHERE id = $1
     `, [effectiveStudioId]);
 
@@ -187,9 +207,8 @@ export const requireActiveSubscription = async (req, res, next) => {
       return res.status(403).json({ error: 'Studio not found' });
     }
 
-    // Check if subscription is active (both paid and free subscriptions allowed)
-    if (studio.subscription_status !== 'active') {
-      return res.status(403).json({ 
+    if (!isStudioSubscriptionActive(studio)) {
+      return res.status(403).json({
         error: 'Active subscription required. Please subscribe to use this feature.',
         requiresSubscription: true,
         subscriptionStatus: studio.subscription_status

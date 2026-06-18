@@ -4,7 +4,7 @@ import { ProfileConfig, LandingPage } from '../../types';
 import { profileService } from '../../services/profileService';
 import { watermarkService } from '../../services/watermarkService';
 import { useAuth } from '../../contexts/AuthContext';
-import { SUBSCRIPTION_PLANS } from '../../services/subscriptionService';
+import api from '../../services/api';
 import { getAvailableTimezones, getBrowserTimezone, setStudioTimezone, formatDateInStudioTimezone } from '../../utils/studioDateTime';
 import AdminLayout from '../../components/AdminLayout';
 import ReactQuill from 'react-quill';
@@ -67,6 +67,28 @@ const statLabel: React.CSSProperties = {
   marginBottom: 4,
 };
 
+interface DbPlan {
+  id: number;
+  name: string;
+  monthly_price: number;
+  yearly_price: number | null;
+  stripe_monthly_price_id: string | null;
+  stripe_yearly_price_id: string | null;
+  features: string[];
+}
+
+interface StripeStatus {
+  hasStripeCustomer: boolean;
+  hasStripeSubscription: boolean;
+  subscriptionStatus: string;
+}
+
+function planSavingsPct(monthly: number, yearly: number): number {
+  const annualAtMonthly = monthly * 12;
+  if (annualAtMonthly === 0) return 0;
+  return Math.round(((annualAtMonthly - yearly) / annualAtMonthly) * 100);
+}
+
 const AdminProfile: React.FC = () => {
   const { user } = useAuth();
   const [config, setConfig] = useState<ProfileConfig | null>(null);
@@ -86,7 +108,7 @@ const AdminProfile: React.FC = () => {
   const [subscription, setSubscription] = useState<any>(null);
   const [watermarkUrl, setWatermarkUrl] = useState<string>('');
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
-  const [selectedUpgradePlan, setSelectedUpgradePlan] = useState<string>('');
+  const [selectedUpgradePlan, setSelectedUpgradePlan] = useState<number | null>(null);
   const [selectedBillingCycle, setSelectedBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
   const [upgrading, setUpgrading] = useState(false);
   const [landingPage, setLandingPage] = useState<LandingPage | null>(null);
@@ -94,6 +116,9 @@ const AdminProfile: React.FC = () => {
   const [showLandingPageEditor, setShowLandingPageEditor] = useState(false);
   const [savingLandingPage, setSavingLandingPage] = useState(false);
   const [studioPublicSlug, setStudioPublicSlug] = useState('');
+  const [dbPlans, setDbPlans] = useState<DbPlan[]>([]);
+  const [stripeStatus, setStripeStatus] = useState<StripeStatus | null>(null);
+  const [portalLoading, setPortalLoading] = useState(false);
 
   useEffect(() => {
     loadConfig();
@@ -102,6 +127,8 @@ const AdminProfile: React.FC = () => {
       fetchWatermark(user.studioId);
       fetchLandingPage();
       fetchStudioPublicSlug(user.studioId);
+      fetchDbPlans();
+      fetchStripeStatus();
     }
   }, [user]);
 
@@ -149,6 +176,25 @@ const AdminProfile: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const fetchDbPlans = async () => {
+    try {
+      const res = await api.get('/subscription-plans');
+      const plans = (res.data || []) as DbPlan[];
+      setDbPlans(plans.filter(p => p.stripe_monthly_price_id || p.stripe_yearly_price_id));
+    } catch { /* non-critical */ }
+  };
+
+  const fetchStripeStatus = async () => {
+    try {
+      const res = await api.get('/stripe/subscription-status');
+      setStripeStatus({
+        hasStripeCustomer: res.data.hasStripeCustomer,
+        hasStripeSubscription: res.data.hasStripeSubscription,
+        subscriptionStatus: res.data.subscriptionStatus,
+      });
+    } catch { /* non-critical */ }
   };
 
   const fetchSubscriptionInfo = async () => {
@@ -208,26 +254,19 @@ const AdminProfile: React.FC = () => {
     if (!selectedUpgradePlan) { alert('Please select a plan'); return; }
     try {
       setUpgrading(true);
-      const token = localStorage.getItem('authToken');
-      const response = await fetch(
-        `/api/studios/${user?.studioId}/subscription/self-service`,
-        {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({ planId: selectedUpgradePlan, billingCycle: selectedBillingCycle })
-        }
-      );
-      if (response.ok) {
-        const data = await response.json();
-        if (data.checkoutUrl) { window.location.href = data.checkoutUrl; return; }
-        setShowUpgradeModal(false);
-        await fetchSubscriptionInfo();
-      } else {
-        const errorData = await response.json().catch(() => null);
-        alert(errorData?.error || 'Failed to update subscription');
+      // Paid Stripe subscribers: send to portal to manage plan & billing changes
+      if (stripeStatus?.hasStripeCustomer && stripeStatus?.hasStripeSubscription) {
+        await handleOpenPortal();
+        return;
       }
+      // New subscription or free → Stripe checkout
+      const res = await api.post('/stripe/create-subscription-checkout', {
+        planId: selectedUpgradePlan,
+        billingCycle: selectedBillingCycle,
+      });
+      window.location.href = res.data.url;
     } catch (err: any) {
-      alert('Error: ' + err.message);
+      alert(err.response?.data?.error || 'Failed to start checkout');
     } finally {
       setUpgrading(false);
     }
@@ -269,15 +308,23 @@ const AdminProfile: React.FC = () => {
   };
 
   const openEditSubscriptionModal = () => {
-    const currentPlan = subscription?.studio?.subscription_plan;
+    const currentPlanName = subscription?.studio?.subscription_plan;
     const currentCycle = subscription?.studio?.billing_cycle;
-    if (currentPlan && SUBSCRIPTION_PLANS[currentPlan as keyof typeof SUBSCRIPTION_PLANS]) {
-      setSelectedUpgradePlan(currentPlan);
-    } else {
-      setSelectedUpgradePlan('');
-    }
+    const match = dbPlans.find(p => p.name.toLowerCase() === (currentPlanName || '').toLowerCase());
+    setSelectedUpgradePlan(match ? match.id : null);
     setSelectedBillingCycle(currentCycle === 'monthly' || currentCycle === 'yearly' ? currentCycle : 'monthly');
     setShowUpgradeModal(true);
+  };
+
+  const handleOpenPortal = async () => {
+    try {
+      setPortalLoading(true);
+      const res = await api.post('/stripe/billing-portal', {});
+      window.location.href = res.data.url;
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to open billing portal');
+      setPortalLoading(false);
+    }
   };
 
   const handleSaveLandingPage = async () => {
@@ -561,16 +608,16 @@ const AdminProfile: React.FC = () => {
                   <div>
                     <div style={statLabel}>Current Plan</div>
                     <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#a78bfa' }}>
-                      {subscription.plan?.name || 'No Plan'}
+                      {subscription.plan?.name || subscription.studio.subscription_plan || 'No Plan'}
                     </div>
                     {subscription.studio.is_free_subscription ? (
                       <div style={{ color: '#a3ffb3', fontWeight: 600, fontSize: '0.88rem' }}>FREE</div>
                     ) : subscription.plan ? (
                       <div style={{ color: '#6b6b80', fontSize: '0.88rem' }}>
                         ${subscription.studio.billing_cycle === 'yearly'
-                          ? (subscription.plan.yearlyPrice || subscription.plan.monthlyPrice * 10)
-                          : subscription.plan.monthlyPrice}
-                        /{subscription.studio.billing_cycle === 'yearly' ? 'yr' : 'mo'}
+                          ? ((subscription.plan.yearlyPrice ?? subscription.plan.monthlyPrice * 10) / 12).toFixed(2)
+                          : (subscription.plan.monthlyPrice ?? 0).toFixed(2)}
+                        /mo
                       </div>
                     ) : null}
                   </div>
@@ -591,6 +638,13 @@ const AdminProfile: React.FC = () => {
                   </div>
 
                   <div>
+                    <div style={statLabel}>Billing</div>
+                    <div style={{ color: '#e0e0e0', fontWeight: 600, fontSize: '0.95rem' }}>
+                      {subscription.studio.billing_cycle === 'yearly' ? 'Annual' : 'Monthly'}
+                    </div>
+                  </div>
+
+                  <div>
                     <div style={statLabel}>Renewal Date</div>
                     <div style={{ color: '#e0e0e0', fontWeight: 600, fontSize: '0.95rem' }}>
                       {subscription.studio.subscription_end
@@ -606,10 +660,20 @@ const AdminProfile: React.FC = () => {
                   {user?.role === 'studio_admin' ? (
                     <>
                       <button onClick={openEditSubscriptionModal} className="btn btn-primary" style={{ fontSize: 14, fontWeight: 700 }}>
-                        {subscription.studio.subscription_status === 'active' && !subscription.studio.is_free_subscription
-                          ? 'Edit Subscription'
+                        {subscription.studio.subscription_status === 'active'
+                          ? 'Change Plan / Billing'
                           : 'Subscribe'}
                       </button>
+                      {stripeStatus?.hasStripeCustomer && (
+                        <button
+                          onClick={handleOpenPortal}
+                          disabled={portalLoading}
+                          className="btn btn-secondary"
+                          style={{ fontSize: 14, fontWeight: 700 }}
+                        >
+                          {portalLoading ? 'Opening...' : 'View Payment History'}
+                        </button>
+                      )}
                       {subscription.studio.subscription_status === 'active' &&
                         !subscription.studio.is_free_subscription &&
                         !subscription.studio.cancellation_requested && (
@@ -716,84 +780,107 @@ const AdminProfile: React.FC = () => {
         </div>
       </div>
 
-      {/* Upgrade Modal */}
+      {/* Subscription Modal */}
       {showUpgradeModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}>
-          <div style={{ background: '#23232a', border: '1px solid #3a3656', borderRadius: 18, boxShadow: '0 8px 40px rgba(0,0,0,0.5)', padding: '2rem', width: '100%', maxWidth: 500 }}>
-            <h2 style={{ ...sectionTitle, fontSize: '1.4rem', marginBottom: '0.3rem' }}>Select Your Plan</h2>
+          <div style={{ background: '#23232a', border: '1px solid #3a3656', borderRadius: 18, boxShadow: '0 8px 40px rgba(0,0,0,0.5)', padding: '2rem', width: '100%', maxWidth: 560, maxHeight: '90vh', overflowY: 'auto' }}>
+            <h2 style={{ ...sectionTitle, fontSize: '1.4rem', marginBottom: '0.3rem' }}>
+              {subscription?.studio?.subscription_status === 'active' ? 'Change Plan & Billing' : 'Choose a Plan'}
+            </h2>
             <p style={{ color: '#a1a1aa', marginBottom: '1.25rem', fontSize: '0.9rem' }}>
-              Choose a plan and billing cycle for your subscription
+              Select a plan and billing cycle. You'll be taken to Stripe to complete payment.
             </p>
 
-            <div style={{ display: 'grid', gap: 12, marginBottom: '1.25rem' }}>
-              {Object.entries(SUBSCRIPTION_PLANS).map(([id, plan]) => {
-                const isSelected = selectedUpgradePlan === id;
+            {/* Billing cycle toggle */}
+            <div style={{ display: 'flex', gap: 0, marginBottom: 20, background: 'rgba(255,255,255,0.04)', borderRadius: 10, border: '1px solid rgba(102,102,204,0.2)', padding: 4, width: 'fit-content' }}>
+              {(['monthly', 'yearly'] as const).map(cycle => (
+                <button
+                  key={cycle}
+                  onClick={() => setSelectedBillingCycle(cycle)}
+                  style={{
+                    padding: '8px 18px',
+                    borderRadius: 7,
+                    border: 'none',
+                    background: selectedBillingCycle === cycle ? '#7c5cff' : 'transparent',
+                    color: selectedBillingCycle === cycle ? '#fff' : '#a1a1aa',
+                    fontWeight: 700,
+                    fontSize: 14,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                  }}
+                >
+                  {cycle === 'monthly' ? 'Monthly' : 'Annual'}
+                  {cycle === 'yearly' && (
+                    <span style={{ background: 'rgba(74,222,128,0.2)', color: '#4ade80', fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 10 }}>
+                      Save up to 20%
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            {/* Plan cards */}
+            <div style={{ display: 'grid', gap: 10, marginBottom: '1.25rem' }}>
+              {dbPlans.map(plan => {
+                const isSelected = selectedUpgradePlan === plan.id;
+                const hasPrice = selectedBillingCycle === 'yearly' ? !!plan.stripe_yearly_price_id : !!plan.stripe_monthly_price_id;
+                const displayPrice = selectedBillingCycle === 'yearly' && plan.yearly_price != null
+                  ? plan.yearly_price / 12
+                  : plan.monthly_price;
+                const savings = plan.yearly_price != null ? planSavingsPct(plan.monthly_price, plan.yearly_price) : 0;
+
                 return (
                   <div
-                    key={id}
-                    onClick={() => setSelectedUpgradePlan(id)}
+                    key={plan.id}
+                    onClick={() => hasPrice && setSelectedUpgradePlan(plan.id)}
                     style={{
                       padding: '14px 16px',
                       border: isSelected ? '2px solid #7c5cff' : '1px solid #3a3656',
                       borderRadius: 10,
-                      cursor: 'pointer',
+                      cursor: hasPrice ? 'pointer' : 'default',
+                      opacity: hasPrice ? 1 : 0.45,
                       background: isSelected ? 'rgba(124,92,255,0.12)' : '#29293a',
                       transition: 'all 0.18s',
                       boxShadow: isSelected ? '0 0 0 3px rgba(124,92,255,0.15)' : 'none',
                     }}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
                       <span style={{ fontWeight: 700, color: '#e0e0e0', fontSize: '1rem' }}>{plan.name}</span>
-                      <span style={{ fontWeight: 800, color: '#a78bfa', fontSize: '1.1rem' }}>${plan.monthlyPrice}/mo</span>
+                      <div style={{ textAlign: 'right' }}>
+                        <span style={{ fontWeight: 800, color: '#a78bfa', fontSize: '1.1rem' }}>
+                          ${displayPrice.toFixed(2)}/mo
+                        </span>
+                        {selectedBillingCycle === 'yearly' && plan.yearly_price != null && (
+                          <div style={{ fontSize: '0.75rem', color: '#a1a1aa' }}>
+                            ${plan.yearly_price.toFixed(2)}/yr
+                            {savings > 0 && <span style={{ marginLeft: 4, color: '#4ade80', fontWeight: 700 }}>Save {savings}%</span>}
+                          </div>
+                        )}
+                      </div>
                     </div>
+                    {!hasPrice && (
+                      <div style={{ fontSize: 11, color: '#ef4444', marginBottom: 4 }}>Not available for {selectedBillingCycle} billing</div>
+                    )}
                     <ul style={{ margin: 0, paddingLeft: 18, fontSize: '0.82rem', color: '#6b6b80' }}>
-                      {plan.features.slice(0, 3).map((feature, idx) => (
+                      {(plan.features || []).slice(0, 3).map((feature, idx) => (
                         <li key={idx}>{feature}</li>
                       ))}
                     </ul>
                   </div>
                 );
               })}
+              {dbPlans.length === 0 && (
+                <p style={{ color: '#6b6b80', fontSize: '0.9rem' }}>No plans available. Contact support.</p>
+              )}
             </div>
 
-            <div style={{ marginBottom: '1.5rem' }}>
-              <p style={{ ...labelStyle, marginBottom: 10 }}>Billing Cycle</p>
-              <div style={{ display: 'flex', gap: 10 }}>
-                {(['monthly', 'yearly'] as const).map((cycle) => {
-                  const isSelected = selectedBillingCycle === cycle;
-                  return (
-                    <label
-                      key={cycle}
-                      style={{
-                        flex: 1,
-                        padding: '10px',
-                        border: isSelected ? '2px solid #7c5cff' : '1px solid #3a3656',
-                        borderRadius: 8,
-                        cursor: 'pointer',
-                        textAlign: 'center',
-                        background: isSelected ? 'rgba(124,92,255,0.12)' : '#29293a',
-                        color: '#e0e0e0',
-                        fontWeight: 600,
-                        fontSize: '0.9rem',
-                      }}
-                    >
-                      <input
-                        type="radio"
-                        name="billingCycle"
-                        value={cycle}
-                        checked={isSelected}
-                        onChange={() => setSelectedBillingCycle(cycle)}
-                        style={{ marginRight: 6 }}
-                      />
-                      {cycle.charAt(0).toUpperCase() + cycle.slice(1)}
-                      {cycle === 'yearly' && (
-                        <div style={{ fontSize: '0.75rem', color: '#a3ffb3', marginTop: 3 }}>Save ~17%</div>
-                      )}
-                    </label>
-                  );
-                })}
+            {stripeStatus?.hasStripeSubscription && (
+              <div style={{ background: 'rgba(124,92,255,0.1)', border: '1px solid rgba(124,92,255,0.3)', borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 13, color: '#c4b5fd' }}>
+                You have an active Stripe subscription. Selecting a plan will open the Stripe portal where you can change your plan and billing cycle.
               </div>
-            </div>
+            )}
 
             <div style={{ display: 'flex', gap: 10 }}>
               <button
@@ -812,7 +899,11 @@ const AdminProfile: React.FC = () => {
                   boxShadow: '0 2px 12px rgba(124,92,255,0.25)',
                 }}
               >
-                {upgrading ? 'Saving...' : 'Save Subscription'}
+                {upgrading
+                  ? 'Redirecting...'
+                  : stripeStatus?.hasStripeSubscription
+                    ? 'Manage in Stripe Portal'
+                    : 'Subscribe Now'}
               </button>
               <button
                 onClick={() => setShowUpgradeModal(false)}

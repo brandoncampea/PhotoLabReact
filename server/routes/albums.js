@@ -19,8 +19,7 @@ const ensureAlbumPublishedHiddenColumns = async () => {
 import express from 'express';
 import mssql from '../mssql.cjs';
 const { queryRow, queryRows, query } = mssql;
-import { requireActiveSubscription } from '../middleware/subscription.js';
-import { enforceAlbumQuotaForStudio } from '../middleware/subscription.js';
+import { requireActiveSubscription, enforceAlbumQuotaForStudio, isStudioSubscriptionActive } from '../middleware/subscription.js';
 import { authRequired } from '../middleware/auth.js';
 import { deleteBlobByUrl } from '../services/azureStorage.js';
 const router = express.Router();
@@ -151,10 +150,17 @@ router.get('/public', async (req, res) => {
     if (!studioSlug) {
       return res.status(400).json({ error: 'studioSlug is required' });
     }
-    // Find studio by public_slug
-    const studio = await queryRow('SELECT s.id FROM studios s WHERE s.public_slug = $1', [studioSlug]);
+    // Find studio by public_slug, include subscription fields for access check
+    const studio = await queryRow(
+      `SELECT s.id, s.subscription_status, s.is_free_subscription, s.billing_cycle, s.subscription_end
+       FROM studios s WHERE s.public_slug = $1`,
+      [studioSlug]
+    );
     if (!studio) {
       return res.status(404).json({ error: 'Studio not found' });
+    }
+    if (!isStudioSubscriptionActive(studio)) {
+      return res.status(403).json({ error: 'This studio is not currently active' });
     }
     let albums = [];
     if (player && String(player).trim().length > 0) {
@@ -473,6 +479,15 @@ router.get('/:id', async (req, res) => {
     `, [req.params.id]);
     if (!album) {
       return res.status(404).json({ error: 'Album not found' });
+    }
+    if (album.studioId) {
+      const studioSub = await queryRow(
+        `SELECT subscription_status, is_free_subscription, billing_cycle, subscription_end FROM studios WHERE id = $1`,
+        [album.studioId]
+      );
+      if (studioSub && !isStudioSubscriptionActive(studioSub)) {
+        return res.status(403).json({ error: 'This studio is not currently active' });
+      }
     }
     const [albumWithPreviews] = await addAlbumPreviewImages([album]);
     res.json(signAlbumForResponse(albumWithPreviews));

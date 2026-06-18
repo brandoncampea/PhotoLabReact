@@ -9,8 +9,8 @@ const superAdminLinks = [
   { to: '/admin/super-pricing', label: 'Pricing', icon: '💲' },
   { to: '/admin/users', label: 'Users', icon: '👤' },
   { to: '/admin/studio-admins', label: 'Studio Admins', icon: '🏢' },
-  { to: '/admin/subscription-gateway', label: 'Subscription Gateway', icon: '💳' },
   { to: '/admin/subscription', label: 'Subscription Pricing', icon: '📋' },
+  { to: '/admin/payments', label: 'Studio Payments', icon: '💸' },
   { to: '/admin/scheduling-fees', label: 'Scheduling Fees', icon: '📅' },
   { to: '/admin/configuration', label: 'Lab Configuration', icon: '⚙️' },
 ];
@@ -155,7 +155,7 @@ const Sidebar: React.FC = () => {
           {sectionLabel('Account')}
           {link('/admin/profile', 'Profile', '👤')}
           {inStudioAdminMenu && link('/admin/team', 'Team', '👥')}
-          {isStudioAdmin && link('/admin/profile', 'Subscription', '💳')}
+          {isStudioAdmin && link('/admin/billing', 'Billing', '💳')}
 
           {/* Support */}
           {sectionLabel('Support')}
@@ -178,7 +178,7 @@ const Sidebar: React.FC = () => {
               </button>
               {superOpen && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 2 }}>
-                  {superAdminLinks.map(l => link(l.to, l.label, l.icon))}
+                  {superAdminLinks.map(l => <React.Fragment key={l.to}>{link(l.to, l.label, l.icon)}</React.Fragment>)}
                 </div>
               )}
             </>

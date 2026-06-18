@@ -165,6 +165,7 @@ const StudioAdminDashboard: React.FC = () => {
           </p>
         </div>
 
+
         {/* Quick-stat summary bar */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.75rem', marginBottom: '0.25rem' }}>
           {[

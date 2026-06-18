@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-type Plan = { id: string | number; name: string; monthly_price: number; nickname?: string };
+type Plan = { id: string | number; name: string; monthly_price: number; yearly_price: number | null; nickname?: string };
 
 const inputStyle: React.CSSProperties = {
   display: 'block',
@@ -38,7 +38,8 @@ const StudioSignup: React.FC = () => {
   const navigate = useNavigate();
   const [plans, setPlans] = useState<Plan[]>([]);
   const [plansLoading, setPlansLoading] = useState(true);
-  const [selectedPlan, setSelectedPlan] = useState('');
+  const [selectedPlan, setSelectedPlan] = useState<number | null>(null);
+  const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
   const [formData, setFormData] = useState({
     studioName: '',
     studioEmail: '',
@@ -74,6 +75,11 @@ const StudioSignup: React.FC = () => {
     e.preventDefault();
     setError('');
 
+    if (!selectedPlan) {
+      setError('Please select a plan to continue');
+      return;
+    }
+
     if (formData.adminPassword !== formData.confirmPassword) {
       setError('Passwords do not match');
       return;
@@ -95,20 +101,23 @@ const StudioSignup: React.FC = () => {
           adminName: formData.adminName,
           adminEmail: formData.adminEmail,
           adminPassword: formData.adminPassword,
+          planId: Number(selectedPlan),
+          billingCycle,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to create studio');
-      navigate('/login');
+      if (data.checkoutUrl) {
+        window.location.href = data.checkoutUrl;
+      } else {
+        navigate('/login');
+      }
     } catch (err: any) {
       setError(err.message || 'An error occurred');
     } finally {
       setLoading(false);
     }
   };
-
-  const freePlan: Plan = { id: '', name: 'Free', monthly_price: 0 };
-  const allPlans = [freePlan, ...plans];
 
   return (
     <div
@@ -159,22 +168,67 @@ const StudioSignup: React.FC = () => {
 
         {/* Plan selection */}
         <div style={{ marginBottom: '1.5rem' }}>
-          <p style={{ margin: '0 0 0.6rem 0', fontWeight: 700, color: '#e0e0e0', fontSize: '1rem' }}>
+          <p style={{ margin: '0 0 0.25rem 0', fontWeight: 700, color: '#e0e0e0', fontSize: '1rem' }}>
             Select Your Plan
           </p>
-          <p style={{ color: '#a1a1aa', fontSize: '0.88rem', margin: '0 0 0.875rem 0', lineHeight: 1.5 }}>
-            Choose a plan now or sign up free and subscribe later. You'll need an active subscription to create albums and sell products.
+          <p style={{ color: '#4ade80', fontSize: '0.88rem', margin: '0 0 0.875rem 0', fontWeight: 600 }}>
+            No credit card charged today
           </p>
+
+          {/* Billing cycle toggle */}
+          {!plansLoading && plans.length > 0 && (
+            <div style={{ display: 'flex', gap: 0, marginBottom: 12, background: 'rgba(255,255,255,0.04)', borderRadius: 10, border: '1px solid rgba(102,102,204,0.2)', padding: 4, width: 'fit-content' }}>
+              {(['monthly', 'yearly'] as const).map(cycle => (
+                <button
+                  key={cycle}
+                  type="button"
+                  onClick={() => setBillingCycle(cycle)}
+                  style={{
+                    padding: '7px 16px',
+                    borderRadius: 7,
+                    border: 'none',
+                    background: billingCycle === cycle ? '#7c5cff' : 'transparent',
+                    color: billingCycle === cycle ? '#fff' : '#a1a1aa',
+                    fontWeight: 700,
+                    fontSize: 13,
+                    cursor: 'pointer',
+                    transition: 'background 0.15s, color 0.15s',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                >
+                  {cycle === 'monthly' ? 'Monthly' : 'Annual'}
+                  {cycle === 'yearly' && (
+                    <span style={{ background: 'rgba(74,222,128,0.2)', color: '#4ade80', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>
+                      Save up to 20%
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+
           {plansLoading ? (
             <div style={{ color: '#a1a1aa', fontSize: '0.9rem', padding: '8px 0' }}>Loading plans...</div>
+          ) : plans.length === 0 ? (
+            <div style={{ color: '#a1a1aa', fontSize: '0.9rem', padding: '8px 0' }}>No plans available. Please contact support.</div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(allPlans.length, 3)}, 1fr)`, gap: 10 }}>
-              {allPlans.map(plan => {
-                const isSelected = selectedPlan === String(plan.id);
+            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(plans.length, 3)}, 1fr)`, gap: 10 }}>
+              {plans.map(plan => {
+                const isSelected = selectedPlan === Number(plan.id);
+                const showYearly = billingCycle === 'yearly' && plan.yearly_price != null;
+                const displayMonthly = showYearly
+                  ? (plan.yearly_price! / 12)
+                  : plan.monthly_price;
+                const savings = plan.yearly_price != null && plan.monthly_price > 0
+                  ? Math.round(((plan.monthly_price * 12 - plan.yearly_price) / (plan.monthly_price * 12)) * 100)
+                  : 0;
+
                 return (
                   <div
                     key={plan.id}
-                    onClick={() => setSelectedPlan(String(plan.id))}
+                    onClick={() => setSelectedPlan(Number(plan.id))}
                     style={{
                       padding: '14px 10px',
                       border: isSelected ? '2px solid #7c5cff' : '2px solid #3a3656',
@@ -186,14 +240,27 @@ const StudioSignup: React.FC = () => {
                       boxShadow: isSelected ? '0 0 0 3px rgba(124,92,255,0.18)' : 'none',
                     }}
                   >
+                    <div style={{ marginBottom: 6 }}>
+                      <span style={{ background: 'rgba(74,222,128,0.18)', color: '#4ade80', fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10 }}>
+                        30-Day Free Trial
+                      </span>
+                    </div>
                     <div style={{ fontWeight: 700, color: '#fff', fontSize: '1rem', marginBottom: 4 }}>
                       {plan.name || plan.nickname || 'Plan'}
                     </div>
-                    <div style={{ fontWeight: 700, fontSize: '1.1rem', color: plan.id === '' ? '#a3ffb3' : '#a78bfa' }}>
-                      {plan.id === '' ? '$0' : `$${plan.monthly_price.toFixed(2)}/mo`}
+                    <div style={{ fontWeight: 700, fontSize: '1.1rem', color: '#a78bfa' }}>
+                      {`$${displayMonthly.toFixed(2)}/mo`}
                     </div>
-                    {plan.id === '' && (
-                      <div style={{ fontSize: '0.75rem', color: '#a1a1aa', marginTop: 3 }}>Subscribe later</div>
+                    {showYearly && plan.yearly_price != null && (
+                      <div style={{ fontSize: '0.75rem', color: '#a1a1aa', marginTop: 2 }}>
+                        ${plan.yearly_price.toFixed(2)}/yr
+                        {savings > 0 && <span style={{ marginLeft: 4, color: '#4ade80', fontWeight: 700 }}>· Save {savings}%</span>}
+                      </div>
+                    )}
+                    {!showYearly && plan.yearly_price != null && savings > 0 && (
+                      <div style={{ fontSize: '0.72rem', color: '#52525b', marginTop: 2 }}>
+                        or ${(plan.yearly_price / 12).toFixed(2)}/mo billed annually
+                      </div>
                     )}
                   </div>
                 );
@@ -300,7 +367,7 @@ const StudioSignup: React.FC = () => {
               transition: 'background 0.2s',
             }}
           >
-            {loading ? 'Creating Studio...' : 'Create Studio'}
+            {loading ? 'Creating Studio...' : 'Start 30-Day Free Trial'}
           </button>
         </form>
 

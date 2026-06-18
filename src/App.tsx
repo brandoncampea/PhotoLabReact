@@ -21,6 +21,8 @@ const AdminSubscriptionGateway = lazy(() => import('./pages/admin/AdminSubscript
 
 const AdminSubscription = lazy(() => import('./pages/admin/AdminSubscription'));
 const AdminStripe = lazy(() => import('./pages/admin/AdminStripe'));
+const StudioBilling = lazy(() => import('./pages/admin/StudioBilling'));
+const AdminPayments = lazy(() => import('./pages/admin/AdminPayments'));
 
 const SearchPage = lazy(() => import('./pages/SearchPage'));
 const SuperAdminPricing = lazy(() => import('./pages/admin/SuperAdminPricing'));
@@ -137,6 +139,8 @@ function App() {
                 <Route path="/admin/subscription" element={<AdminProtectedRoute><AdminSubscription /></AdminProtectedRoute>} />
                 <Route path="/admin/subscription-gateway" element={<AdminProtectedRoute><AdminSubscriptionGateway /></AdminProtectedRoute>} />
                 <Route path="/admin/stripe" element={<AdminProtectedRoute><AdminStripe /></AdminProtectedRoute>} />
+                <Route path="/admin/billing" element={<AdminProtectedRoute><StudioBilling /></AdminProtectedRoute>} />
+                <Route path="/admin/payments" element={<AdminProtectedRoute><AdminPayments /></AdminProtectedRoute>} />
               {/* Catch-all route to redirect to landing page */}
               <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>

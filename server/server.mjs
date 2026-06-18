@@ -1,4 +1,5 @@
 import frontendErrorRoutes from './routes/frontendError.js';
+import { expireTrials } from './jobs/trialExpiry.js';
 import { initializeDatabase } from './initializeDatabasePatch.js';
 import cors from 'cors';
 import session from 'express-session';
@@ -360,7 +361,14 @@ startServer();
 
 // Initialize DB in the background (with retries) so transient DB startup issues
 // do not crash the worker process during deployment.
-initializeDatabaseWithRetry();
+initializeDatabaseWithRetry().then(() => {
+  setTimeout(async () => {
+    try { await expireTrials(); } catch (e) { console.error('[trialExpiry] startup run failed:', e); }
+    setInterval(async () => {
+      try { await expireTrials(); } catch (e) { console.error('[trialExpiry] scheduled run failed:', e); }
+    }, 24 * 60 * 60 * 1000);
+  }, 10_000);
+});
 
 // Global error handler (must be after all routes)
 app.use(async (err, req, res, next) => {

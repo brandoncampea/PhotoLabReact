@@ -661,18 +661,54 @@ const SuperAdminDashboard: React.FC = () => {
                                 <td style={{ ...drilldownStyles.td, fontWeight: 700, color: order.is_paid ? '#7ee787' : '#fbbf24' }}>${Number(order.studio_profit || 0).toFixed(2)}</td>
                                 <td style={drilldownStyles.td}>{order.discount_code || '—'}</td>
                                 <td style={drilldownStyles.td}>
-                                  {order.items && order.items.length > 0 ? (
-                                    <details>
-                                      <summary style={drilldownStyles.summary}>{order.items.length} item{order.items.length !== 1 ? 's' : ''}</summary>
-                                      <ul style={drilldownStyles.list}>
-                                        {order.items.map((item: any) => (
-                                          <li key={item.id}>
-                                            Product {item.product_id}, Size {item.product_size_id}, Qty {item.quantity} — ${Number(item.price).toFixed(2)}
-                                          </li>
-                                        ))}
-                                      </ul>
-                                    </details>
-                                  ) : '—'}
+                                  {order.items && order.items.length > 0 ? (() => {
+                                    // Group items by package_group_id
+                                    const pkgMap = new Map<number, { name: string; price: number; items: any[] }>();
+                                    const standalone: any[] = [];
+                                    for (const item of order.items) {
+                                      if (item.package_group_id && item.package_name) {
+                                        if (!pkgMap.has(item.package_group_id)) {
+                                          pkgMap.set(item.package_group_id, { name: item.package_name, price: item.package_price, items: [] });
+                                        }
+                                        pkgMap.get(item.package_group_id)!.items.push(item);
+                                      } else {
+                                        standalone.push(item);
+                                      }
+                                    }
+                                    const pkgCount = pkgMap.size;
+                                    const n = order.items.length;
+                                    const summaryText = pkgCount > 0
+                                      ? `${n} item${n !== 1 ? 's' : ''} (${pkgCount} pkg)`
+                                      : `${n} item${n !== 1 ? 's' : ''}`;
+                                    return (
+                                      <details>
+                                        <summary style={drilldownStyles.summary}>{summaryText}</summary>
+                                        <ul style={{ ...drilldownStyles.list, marginTop: 6 }}>
+                                          {[...pkgMap.entries()].map(([pgId, pkg]) => (
+                                            <React.Fragment key={`pkg-${pgId}`}>
+                                              <li style={{ fontWeight: 700, color: '#a78bfa', listStyle: 'none', marginBottom: 2 }}>
+                                                📦 {pkg.name} — ${Number(pkg.price || 0).toFixed(2)}
+                                              </li>
+                                              {pkg.items.map((item: any) => (
+                                                <li key={item.id} style={{ marginLeft: 12, color: '#a1a1aa', fontSize: 11 }}>
+                                                  {item.product_name || `Product ${item.product_id}`}
+                                                  {item.size_name ? ` (${item.size_name})` : ''}
+                                                  {` × ${item.quantity}`}
+                                                </li>
+                                              ))}
+                                            </React.Fragment>
+                                          ))}
+                                          {standalone.map((item: any) => (
+                                            <li key={item.id}>
+                                              {item.product_name || `Product ${item.product_id}`}
+                                              {item.size_name ? ` (${item.size_name})` : ''}
+                                              {` × ${item.quantity} — $${Number(item.price).toFixed(2)}`}
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      </details>
+                                    );
+                                  })() : '—'}
                                 </td>
                               </tr>
                             ))}

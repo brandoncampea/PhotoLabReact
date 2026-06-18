@@ -387,6 +387,192 @@ router.post('/confirm-payment/:paymentIntentId', authRequired, async (req, res) 
   }
 });
 
+// Get current subscription status for the authenticated studio admin
+router.get('/subscription-status', authRequired, async (req, res) => {
+  try {
+    const studioId = req.user?.studio_id;
+    if (!studioId) return res.status(400).json({ error: 'No studio associated with this account' });
+
+    const row = await queryRow(`
+      SELECT s.id, s.name, s.email,
+             s.subscription_plan, s.subscription_status, s.billing_cycle,
+             s.subscription_start, s.subscription_end,
+             s.stripe_customer_id, s.stripe_subscription_id,
+             s.is_free_subscription, s.cancellation_requested, s.cancellation_date,
+             sp.id as plan_id, sp.monthly_price, sp.yearly_price,
+             sp.features, sp.description as plan_description,
+             sp.stripe_monthly_price_id, sp.stripe_yearly_price_id
+      FROM studios s
+      LEFT JOIN subscription_plans sp ON LOWER(sp.name) = LOWER(s.subscription_plan)
+      WHERE s.id = $1
+    `, [studioId]);
+
+    if (!row) return res.status(404).json({ error: 'Studio not found' });
+
+    let features = [];
+    try { features = row.features ? JSON.parse(row.features) : []; } catch {}
+
+    res.json({
+      studioId: row.id,
+      studioName: row.name,
+      subscriptionPlan: row.subscription_plan,
+      subscriptionStatus: row.subscription_status,
+      billingCycle: row.billing_cycle || 'monthly',
+      subscriptionStart: row.subscription_start,
+      subscriptionEnd: row.subscription_end,
+      hasStripeCustomer: !!row.stripe_customer_id,
+      hasStripeSubscription: !!row.stripe_subscription_id,
+      isFreeSubscription: !!row.is_free_subscription,
+      cancellationRequested: !!row.cancellation_requested,
+      cancellationDate: row.cancellation_date,
+      planDetails: row.plan_id ? {
+        id: row.plan_id,
+        monthlyPrice: parseFloat(row.monthly_price) || 0,
+        yearlyPrice: row.yearly_price != null ? parseFloat(row.yearly_price) : null,
+        features,
+        description: row.plan_description,
+        stripeMonthlyPriceId: row.stripe_monthly_price_id,
+        stripeYearlyPriceId: row.stripe_yearly_price_id,
+      } : null,
+    });
+  } catch (error) {
+    console.error('Error fetching subscription status:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Create a Stripe Checkout session for subscribing to a plan
+router.post('/create-subscription-checkout', authRequired, async (req, res) => {
+  try {
+    const { planId, billingCycle } = req.body;
+    const studioId = req.user?.studio_id;
+
+    if (!studioId) return res.status(400).json({ error: 'No studio associated with this account' });
+    if (!planId) return res.status(400).json({ error: 'planId is required' });
+    if (!['monthly', 'yearly'].includes(billingCycle)) return res.status(400).json({ error: 'billingCycle must be monthly or yearly' });
+
+    const plan = await queryRow('SELECT * FROM subscription_plans WHERE id = $1 AND is_active = 1', [planId]);
+    if (!plan) return res.status(404).json({ error: 'Plan not found' });
+
+    const priceId = billingCycle === 'yearly' ? plan.stripe_yearly_price_id : plan.stripe_monthly_price_id;
+    if (!priceId) return res.status(400).json({ error: `No Stripe price ID configured for ${billingCycle} billing on this plan` });
+
+    const studio = await queryRow('SELECT id, name, email, stripe_customer_id FROM studios WHERE id = $1', [studioId]);
+    if (!studio) return res.status(404).json({ error: 'Studio not found' });
+
+    const { secretKey } = getNormalizedStripeKeys();
+    if (!secretKey) return res.status(503).json({ error: 'Stripe is not configured' });
+
+    const stripe = (await import('stripe')).default(secretKey);
+
+    const origin = req.headers.origin
+      || process.env.FRONTEND_URL
+      || process.env.CANONICAL_APP_URL
+      || 'https://labs.campeaphotography.com';
+
+    const sessionParams = {
+      payment_method_types: ['card'],
+      mode: 'subscription',
+      line_items: [{ price: priceId, quantity: 1 }],
+      success_url: `${origin}/admin/billing?subscribed=1`,
+      cancel_url: `${origin}/admin/billing?cancelled=1`,
+      subscription_data: {
+        metadata: {
+          studioId: String(studioId),
+          billingCycle,
+          planId: String(planId),
+        },
+      },
+      metadata: {
+        studioId: String(studioId),
+        billingCycle,
+        planId: String(planId),
+      },
+    };
+
+    if (studio.stripe_customer_id) {
+      sessionParams.customer = studio.stripe_customer_id;
+    } else {
+      sessionParams.customer_email = studio.email;
+    }
+
+    const session = await stripe.checkout.sessions.create(sessionParams);
+    res.json({ url: session.url });
+  } catch (error) {
+    console.error('Error creating subscription checkout:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Create a Stripe Customer Portal session (for managing existing subscription)
+router.post('/billing-portal', authRequired, async (req, res) => {
+  try {
+    const studioId = req.user?.studio_id;
+    if (!studioId) return res.status(400).json({ error: 'No studio associated with this account' });
+
+    const studio = await queryRow('SELECT stripe_customer_id FROM studios WHERE id = $1', [studioId]);
+    if (!studio) return res.status(404).json({ error: 'Studio not found' });
+    if (!studio.stripe_customer_id) return res.status(400).json({ error: 'No Stripe customer on file — subscribe first.' });
+
+    const { secretKey } = getNormalizedStripeKeys();
+    if (!secretKey) return res.status(503).json({ error: 'Stripe is not configured' });
+
+    const stripe = (await import('stripe')).default(secretKey);
+
+    const origin = req.headers.origin
+      || process.env.FRONTEND_URL
+      || process.env.CANONICAL_APP_URL
+      || 'https://labs.campeaphotography.com';
+
+    const portalSession = await stripe.billingPortal.sessions.create({
+      customer: studio.stripe_customer_id,
+      return_url: `${origin}/admin/billing`,
+    });
+
+    res.json({ url: portalSession.url });
+  } catch (error) {
+    console.error('Error creating billing portal session:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Super admin: get all studios with subscription info
+router.get('/admin/studio-subscriptions', authRequired, superAdminRequired, async (req, res) => {
+  try {
+    const { rows } = await query(`
+      SELECT s.id, s.name, s.email,
+             s.subscription_plan, s.subscription_status, s.billing_cycle,
+             s.subscription_start, s.subscription_end,
+             s.stripe_customer_id, s.stripe_subscription_id,
+             s.is_free_subscription, s.cancellation_requested,
+             sp.monthly_price, sp.yearly_price
+      FROM studios s
+      LEFT JOIN subscription_plans sp ON LOWER(sp.name) = LOWER(s.subscription_plan)
+      ORDER BY s.name
+    `);
+
+    res.json((rows || []).map(r => ({
+      id: r.id,
+      name: r.name,
+      email: r.email,
+      plan: r.subscription_plan || null,
+      status: r.subscription_status || 'inactive',
+      billingCycle: r.billing_cycle || 'monthly',
+      subscriptionStart: r.subscription_start,
+      subscriptionEnd: r.subscription_end,
+      hasStripeCustomer: !!r.stripe_customer_id,
+      hasStripeSubscription: !!r.stripe_subscription_id,
+      isFreeSubscription: !!r.is_free_subscription,
+      cancellationRequested: !!r.cancellation_requested,
+      monthlyPrice: r.monthly_price != null ? parseFloat(r.monthly_price) : null,
+      yearlyPrice: r.yearly_price != null ? parseFloat(r.yearly_price) : null,
+    })));
+  } catch (error) {
+    console.error('Error fetching studio subscriptions:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // --- STRIPE WEBHOOK FOR FEES ---
 
 router.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {

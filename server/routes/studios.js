@@ -6,8 +6,10 @@ import mssql from '../mssql.cjs';
 const { queryRow, queryRows, query, transaction, tableExists, columnExists } = mssql;
 import { SUBSCRIPTION_PLANS, SUBSCRIPTION_STATUSES } from '../constants/subscriptions.js';
 import { authRequired } from '../middleware/auth.js';
+import { isStudioSubscriptionActive } from '../middleware/subscription.js';
 import stripeService from '../services/stripeService.js';
 import { getSignedReadUrl } from '../services/azureStorage.js';
+import { sendEmail } from '../services/emailService.js';
 
 const router = express.Router();
 
@@ -242,39 +244,43 @@ const getStudioProfitGross = async (studioId) => {
 // Create/signup new studio
 router.post('/signup', async (req, res) => {
   try {
-    const { studioName, studioEmail, adminEmail, adminName, adminPassword, subscriptionPlan } = req.body;
+    const {
+      studioName, studioEmail, adminEmail, adminName, adminPassword,
+      planId, billingCycle = 'monthly',
+    } = req.body;
 
-    // Validate inputs
     if (!studioName || !studioEmail || !adminEmail || !adminName || !adminPassword) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    // Subscription plan is optional now
-    if (subscriptionPlan && !SUBSCRIPTION_PLANS[subscriptionPlan]) {
-      return res.status(400).json({ error: 'Invalid subscription plan' });
-    }
+    // Ensure trial_end column exists (idempotent)
+    await query(`IF COL_LENGTH('studios', 'trial_end') IS NULL ALTER TABLE studios ADD trial_end DATETIME NULL`);
 
-    // Check if studio email already exists
+    // Look up plan if provided
+    let plan = null;
+    if (planId) {
+      plan = await queryRow(
+        `SELECT id, name, stripe_monthly_price_id, stripe_yearly_price_id FROM subscription_plans WHERE id = $1 AND is_active = 1`,
+        [Number(planId)]
+      );
+      if (!plan) return res.status(400).json({ error: 'Invalid or inactive subscription plan' });
+    }
+    const planName = plan ? plan.name : null;
+
     const existingStudio = await queryRow('SELECT id FROM studios WHERE email = $1', [studioEmail]);
-    if (existingStudio) {
-      return res.status(409).json({ error: 'Studio email already exists' });
-    }
+    if (existingStudio) return res.status(409).json({ error: 'Studio email already exists' });
 
-    // Check if admin email already exists
     const existingUser = await queryRow('SELECT id FROM users WHERE email = $1', [adminEmail]);
-    if (existingUser) {
-      return res.status(409).json({ error: 'Email already registered' });
-    }
+    if (existingUser) return res.status(409).json({ error: 'Email already registered' });
 
     const hashedPassword = await bcrypt.hash(adminPassword, 10);
 
-    // Begin transaction
     const { studioId, userId } = await transaction(async (client) => {
       const studioResult = await client.query(`
-        INSERT INTO studios (name, email, subscription_plan, subscription_status, created_at)
-        VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+        INSERT INTO studios (name, email, subscription_plan, subscription_status, billing_cycle, trial_end, created_at)
+        VALUES ($1, $2, $3, $4, $5, DATEADD(day, 30, CURRENT_TIMESTAMP), CURRENT_TIMESTAMP)
         RETURNING id
-      `, [studioName, studioEmail, subscriptionPlan || null, SUBSCRIPTION_STATUSES.inactive]);
+      `, [studioName, studioEmail, planName, SUBSCRIPTION_STATUSES.active, billingCycle]);
 
       const createdStudioId = studioResult.rows[0].id;
 
@@ -287,18 +293,65 @@ router.post('/signup', async (req, res) => {
       return { studioId: createdStudioId, userId: userResult.rows[0].id };
     });
 
-    res.status(201).json({
-      message: 'Studio created successfully',
-      studioId,
-      userId,
-      studio: {
-        id: studioId,
-        name: studioName,
-        email: studioEmail,
-        subscriptionPlan,
-        subscriptionStatus: SUBSCRIPTION_STATUSES.inactive
+    // Notify super admins of the new signup (fire and forget)
+    queryRows(`SELECT email FROM users WHERE role = 'super_admin' AND is_active = 1`)
+      .then(admins => {
+        const emails = admins.map(a => a.email).filter(Boolean);
+        if (!emails.length) return;
+        const [to, ...cc] = emails;
+        const planLabel = planName ? ` (${planName}, ${billingCycle})` : '';
+        return sendEmail({
+          to,
+          cc: cc.length ? cc : undefined,
+          subject: `New Studio Signup: ${studioName}`,
+          html: `
+            <h2>New studio signed up</h2>
+            <table cellpadding="6" cellspacing="0" style="font-family:sans-serif;font-size:14px;">
+              <tr><td><strong>Studio Name</strong></td><td>${studioName}</td></tr>
+              <tr><td><strong>Studio Email</strong></td><td>${studioEmail}</td></tr>
+              <tr><td><strong>Admin Name</strong></td><td>${adminName}</td></tr>
+              <tr><td><strong>Admin Email</strong></td><td>${adminEmail}</td></tr>
+              <tr><td><strong>Plan</strong></td><td>${planLabel || 'None selected'}</td></tr>
+              <tr><td><strong>Trial Ends</strong></td><td>30 days from now</td></tr>
+            </table>
+          `,
+          text: `New studio signed up: ${studioName} | ${studioEmail} | Admin: ${adminName} <${adminEmail}>${planLabel}`,
+        });
+      })
+      .catch(err => console.error('[signup] Super admin notification failed:', err.message));
+
+    // If plan has a Stripe price ID, create a trial checkout session
+    if (plan) {
+      const stripeSecretKey = process.env.STRIPE_SECRET_KEY || process.env.VITE_STRIPE_SECRET_KEY;
+      if (stripeSecretKey) {
+        try {
+          const priceId = billingCycle === 'yearly' ? plan.stripe_yearly_price_id : plan.stripe_monthly_price_id;
+          if (priceId) {
+            const stripe = (await import('stripe')).default(stripeSecretKey);
+            const origin = process.env.FRONTEND_URL || process.env.CANONICAL_APP_URL || 'https://labs.campeaphotography.com';
+            const session = await stripe.checkout.sessions.create({
+              mode: 'subscription',
+              payment_method_types: ['card'],
+              line_items: [{ price: priceId, quantity: 1 }],
+              subscription_data: {
+                trial_period_days: 30,
+                metadata: { studioId: String(studioId), billingCycle, planId: String(plan.id) },
+              },
+              metadata: { studioId: String(studioId), billingCycle, planId: String(plan.id) },
+              customer_email: adminEmail,
+              success_url: `${origin}/login?trial_started=1`,
+              cancel_url: `${origin}/login?trial_cancelled=1`,
+            });
+            return res.status(201).json({ message: 'Studio created successfully', studioId, userId, checkoutUrl: session.url });
+          }
+        } catch (stripeErr) {
+          console.error('[signup] Stripe checkout creation failed:', stripeErr.message);
+          // Fall through — studio is created, they can add billing later
+        }
       }
-    });
+    }
+
+    res.status(201).json({ message: 'Studio created successfully', studioId, userId });
   } catch (error) {
     console.error('Studio signup error:', error);
     res.status(500).json({ error: 'Failed to create studio' });
@@ -391,6 +444,10 @@ router.get('/public/:slug', async (req, res) => {
                   s.name,
                   s.email,
                   s.public_slug as publicSlug,
+                  s.subscription_status,
+                  s.is_free_subscription,
+                  s.billing_cycle,
+                  s.subscription_end,
                   pc.business_name as businessName,
                   pc.logo_url as logoUrl,
                   pc.instagram_url as instagramUrl,
@@ -403,6 +460,10 @@ router.get('/public/:slug', async (req, res) => {
                   name,
                   email,
                   public_slug as publicSlug,
+                  subscription_status,
+                  is_free_subscription,
+                  billing_cycle,
+                  subscription_end,
                   CAST(NULL AS NVARCHAR(255)) as businessName,
                   CAST(NULL AS NVARCHAR(MAX)) as logoUrl,
                   CAST(NULL AS NVARCHAR(500)) as instagramUrl,
@@ -415,6 +476,10 @@ router.get('/public/:slug', async (req, res) => {
 
     if (!studio) {
       return res.status(404).json({ error: 'Studio not found' });
+    }
+
+    if (!isStudioSubscriptionActive(studio)) {
+      return res.status(403).json({ error: 'This studio is not currently active' });
     }
 
     res.json({
@@ -1091,6 +1156,45 @@ router.get('/profit/summary', authRequired, async (req, res) => {
   } catch (error) {
     console.error('Get super admin profit summary error:', error);
     res.status(500).json({ error: 'Failed to fetch profit summary' });
+  }
+});
+
+// Onboarding checklist — returns completion status for each setup step
+router.get('/onboarding-checklist', authRequired, async (req, res) => {
+  try {
+    const rawStudioId = req.user.acting_studio_id || req.user.studio_id;
+    const studioId = Number(rawStudioId);
+    if (!studioId) return res.status(400).json({ error: 'No studio associated with this account' });
+
+    const [profile, watermark, priceList, shipping, packages, album, order] = await Promise.all([
+      queryRow(`SELECT logo_url FROM profile_config WHERE studio_id = $1`, [studioId]),
+      queryRow(`SELECT TOP 1 id FROM watermarks WHERE studio_id = $1`, [studioId]),
+      queryRow(`SELECT TOP 1 id FROM price_lists WHERE studio_id = $1`, [studioId]),
+      queryRow(`SELECT TOP 1 id FROM shipping_config WHERE id = $1`, [studioId]),
+      queryRow(
+        `SELECT TOP 1 p.id FROM packages p
+         JOIN price_lists pl ON pl.id = p.price_list_id
+         WHERE pl.studio_id = $1`,
+        [studioId]
+      ),
+      queryRow(`SELECT TOP 1 id FROM albums WHERE studio_id = $1`, [studioId]),
+      queryRow(`SELECT TOP 1 id FROM orders WHERE studio_id = $1`, [studioId]),
+    ]);
+
+    res.json({
+      steps: [
+        { id: 'profile',   label: 'Setup profile and logo',      done: !!(profile?.logo_url), link: '/admin/profile' },
+        { id: 'watermark', label: 'Upload watermark',            done: !!watermark,           link: '/admin/watermarks' },
+        { id: 'priceList', label: 'Create a price list',         done: !!priceList,           link: '/admin/price-lists' },
+        { id: 'shipping',  label: 'Configure shipping',          done: !!shipping,            link: '/admin/shipping' },
+        { id: 'packages',  label: 'Create packages & discounts', done: !!packages,            link: '/admin/packages' },
+        { id: 'albums',    label: 'Add albums and photos',       done: !!album,               link: '/admin/albums' },
+        { id: 'income',    label: 'Enjoy the income!',           done: !!order,               link: null },
+      ],
+    });
+  } catch (error) {
+    console.error('Onboarding checklist error:', error);
+    res.status(500).json({ error: 'Failed to fetch onboarding checklist' });
   }
 });
 
