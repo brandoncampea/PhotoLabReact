@@ -275,8 +275,23 @@ router.post('/whcc', express.raw({ type: '*/*', limit: '2mb' }), async (req, res
     return res.status(400).json({ error: 'Invalid WHCC webhook body' });
   }
 
+  // WHCC sends the verifier challenge without a signature header; all other requests must be signed.
+  const hasSignature = Boolean(req.headers['whcc-signature']);
+  if (hasSignature) {
+    try {
+      verifyWhccSignature(rawBody, req.headers['whcc-signature']);
+    } catch (error) {
+      console.error('[WHCC webhook] Signature verification failed:', error.message);
+      return res.status(400).json({ error: error.message });
+    }
+  }
+
   if (payload?.verifier) {
-    console.log('[WHCC webhook] Received verifier challenge:', payload.verifier);
+    if (hasSignature) {
+      console.log('[WHCC webhook] Received verifier challenge with valid signature');
+    } else {
+      console.log('[WHCC webhook] Received unsigned verifier challenge (WHCC initial handshake)');
+    }
     const studioId = Number(req.query?.studioId);
     if (Number.isInteger(studioId) && studioId > 0) {
       await upsertWhccWebhookConfig(studioId, {
@@ -288,11 +303,9 @@ router.post('/whcc', express.raw({ type: '*/*', limit: '2mb' }), async (req, res
     return res.status(200).json({ received: true, verifier: payload.verifier });
   }
 
-  try {
-    verifyWhccSignature(rawBody, req.headers['whcc-signature']);
-  } catch (error) {
-    console.error('[WHCC webhook] Signature verification failed:', error.message);
-    return res.status(400).json({ error: error.message });
+  if (!hasSignature) {
+    console.error('[WHCC webhook] Missing signature on non-verifier request');
+    return res.status(400).json({ error: 'Missing WHCC signature' });
   }
 
   try {

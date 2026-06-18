@@ -505,10 +505,10 @@ export interface BatchQueueSummary {
 export interface StripeConfig {
   id: number;
   publishableKey: string;
-  secretKey: string;
+  secretKeySet: boolean;
+  webhookSecretSet: boolean;
   isLiveMode: boolean;
   isActive: boolean;
-  webhookSecret?: string;
   reason?: 'live_mode_requires_https' | string;
 }
 

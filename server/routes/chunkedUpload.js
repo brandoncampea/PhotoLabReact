@@ -7,6 +7,7 @@ import { uploadImageBufferToAzure } from '../services/azureStorage.js';
 import mssql from '../mssql.cjs';
 import { extractImageMetadata } from '../utils/exif.mjs';
 import { computeImageSignature } from '../utils/imageSignature.js';
+import { authRequired } from '../middleware/auth.js';
 
 const router = express.Router();
 const CHUNKS_DIR = path.resolve(process.env.CHUNKS_DIR || './uploads/chunks');
@@ -14,13 +15,19 @@ fs.mkdirSync(CHUNKS_DIR, { recursive: true });
 
 const chunkUpload = multer({ storage: multer.memoryStorage() });
 
+const SAFE_FILE_ID = /^[a-zA-Z0-9_-]{1,128}$/;
+const ALLOWED_MIMETYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/heic', 'image/heif', 'image/tiff']);
+
 // POST /api/photos/upload-chunk
 // Fields: fileId, chunkIndex, totalChunks, chunk (file)
-router.post('/upload-chunk', chunkUpload.single('chunk'), async (req, res) => {
+router.post('/upload-chunk', authRequired, chunkUpload.single('chunk'), async (req, res) => {
   try {
     const { fileId, chunkIndex, totalChunks } = req.body;
     if (!fileId || chunkIndex == null || !req.file) {
       return res.status(400).json({ error: 'Missing fileId, chunkIndex, or chunk' });
+    }
+    if (!SAFE_FILE_ID.test(fileId)) {
+      return res.status(400).json({ error: 'Invalid fileId' });
     }
     const chunkPath = path.join(CHUNKS_DIR, `${fileId}.${chunkIndex}`);
     fs.writeFileSync(chunkPath, req.file.buffer);
@@ -32,9 +39,15 @@ router.post('/upload-chunk', chunkUpload.single('chunk'), async (req, res) => {
 
 // POST /api/photos/assemble-chunks
 // Fields: fileId, totalChunks, fileName, albumId, ...
-router.post('/assemble-chunks', express.json({ limit: '2mb' }), async (req, res) => {
+router.post('/assemble-chunks', authRequired, express.json({ limit: '2mb' }), async (req, res) => {
   try {
     const { fileId, totalChunks, fileName, albumId, mimetype, description = '', metadata = {} } = req.body;
+    if (fileId && !SAFE_FILE_ID.test(fileId)) {
+      return res.status(400).json({ error: 'Invalid fileId' });
+    }
+    if (mimetype && !ALLOWED_MIMETYPES.has(mimetype)) {
+      return res.status(400).json({ error: 'Invalid file type' });
+    }
     // Extract player name/number from filename if not provided
     let playerName = req.body.playerName;
     let playerNumber = req.body.playerNumber;
@@ -85,10 +98,11 @@ router.post('/assemble-chunks', express.json({ limit: '2mb' }), async (req, res)
     const safeFileName = fileName.replace(/\s+/g, '_');
     const blobName = `${albumId}/${Date.now()}_${safeFileName}`;
     // Store only the blob path (relative to container)
+    const safeMimetype = (mimetype && ALLOWED_MIMETYPES.has(mimetype)) ? mimetype : 'image/jpeg';
     const photoBlobPath = await uploadImageBufferToAzure(
       fileBuffer,
       blobName,
-      mimetype || 'application/octet-stream',
+      safeMimetype,
       'Cool' // Set full-size images to Cool tier
     );
 

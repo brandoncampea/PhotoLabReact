@@ -21,11 +21,18 @@ import jwt from 'jsonwebtoken';
 import mssql from '../mssql.cjs';
 const { queryRow } = mssql;
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  if (process.env.NODE_ENV === 'production') {
+    console.error('FATAL: JWT_SECRET env var is not set. Refusing to start.');
+    process.exit(1);
+  } else {
+    console.warn('WARNING: JWT_SECRET is not set. Using insecure dev fallback.');
+  }
+}
+const _JWT_SECRET = JWT_SECRET || 'dev-only-insecure-secret-do-not-use-in-prod';
 
 export const authRequired = async (req, res, next) => {
-  console.log('[AUTH REQUIRED] Called for', req.method, req.originalUrl, 'headers:', req.headers);
-  console.log('[AUTH REQUIRED] req.session:', req.session);
   // 1. Check for session-based authentication
   if (req.session && req.session.userId) {
     try {
@@ -50,7 +57,7 @@ export const authRequired = async (req, res, next) => {
     return res.status(401).json({ error: 'Authentication required' });
   }
   try {
-    const payload = jwt.verify(token, JWT_SECRET);
+    const payload = jwt.verify(token, _JWT_SECRET);
     const userId = Number(payload.userId);
     if (!userId) {
       return res.status(401).json({ error: 'Invalid token' });
@@ -63,11 +70,8 @@ export const authRequired = async (req, res, next) => {
       if (userRow && userRow.studio_id) studio_id = userRow.studio_id;
     } catch {}
     // Allow env-based override (useful in dev) even when role column exists
-    let admins = (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
-    if (admins.length === 0) {
-      admins = ['admin@photolab.com'];
-    }
-    if (role === 'customer' && admins.includes((payload.email || '').toLowerCase())) {
+    const admins = (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+    if (admins.length > 0 && role === 'customer' && admins.includes((payload.email || '').toLowerCase())) {
       role = 'admin';
     }
 
@@ -96,7 +100,7 @@ export const adminRequired = async (req, res, next) => {
   if (auth.startsWith('Bearer ')) {
     try {
       const token = auth.slice(7);
-      const payload = jwt.verify(token, JWT_SECRET);
+      const payload = jwt.verify(token, _JWT_SECRET);
       const userId = Number(payload.userId);
       if (!userId) {
         throw new Error('Invalid token payload');

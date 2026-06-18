@@ -589,8 +589,8 @@ router.get('/subscription-payment-config', authRequired, async (req, res) => {
     res.json({
       id: config.id,
       publishableKey: config.publishable_key,
-      secretKey: config.secret_key,
-      webhookSecret: config.webhook_secret,
+      secretKeySet: Boolean(config.secret_key),
+      webhookSecretSet: Boolean(config.webhook_secret),
       isLiveMode: Boolean(config.is_live_mode),
       isActive: Boolean(config.is_active),
     });
@@ -632,8 +632,8 @@ router.put('/subscription-payment-config', authRequired, async (req, res) => {
     res.json({
       id: updated.id,
       publishableKey: updated.publishable_key,
-      secretKey: updated.secret_key,
-      webhookSecret: updated.webhook_secret,
+      secretKeySet: Boolean(updated.secret_key),
+      webhookSecretSet: Boolean(updated.webhook_secret),
       isLiveMode: Boolean(updated.is_live_mode),
       isActive: Boolean(updated.is_active),
     });
@@ -1323,7 +1323,10 @@ router.get('/:studioId', authRequired, async (req, res) => {
         ]
       );
 
-      const updated = await queryRow('SELECT * FROM studios WHERE id = $1', [studioId]);
+      const updated = await queryRow(`
+        SELECT id, ship_from_name, ship_from_address1, ship_from_address2,
+               ship_from_city, ship_from_state, ship_from_zip, ship_from_country
+        FROM studios WHERE id = $1`, [studioId]);
       res.json({ success: true, studio: updated });
     } catch (error) {
       console.error('Update ship-from address error:', error);
@@ -1461,7 +1464,9 @@ router.post('/:studioId/subscription/cancel', authRequired, async (req, res) => 
       }
     }
 
-    const studio = await queryRow('SELECT * FROM studios WHERE id = $1', [studioId]);
+    const studio = await queryRow(`
+      SELECT id, subscription_status, subscription_end, cancellation_requested, stripe_subscription_id
+      FROM studios WHERE id = $1`, [studioId]);
     if (!studio) {
       return res.status(404).json({ error: 'Studio not found' });
     }
@@ -1491,7 +1496,9 @@ router.post('/:studioId/subscription/cancel', authRequired, async (req, res) => 
       }
     }
 
-    const updated = await queryRow('SELECT * FROM studios WHERE id = $1', [studioId]);
+    const updated = await queryRow(`
+      SELECT id, subscription_status, subscription_end, cancellation_requested, cancellation_date
+      FROM studios WHERE id = $1`, [studioId]);
     res.json({
       message: 'Subscription will be cancelled at the end of your billing period',
       studio: updated,
@@ -1515,7 +1522,9 @@ router.post('/:studioId/subscription/reactivate', authRequired, async (req, res)
       }
     }
 
-    const studio = await queryRow('SELECT * FROM studios WHERE id = $1', [studioId]);
+    const studio = await queryRow(`
+      SELECT id, cancellation_requested, stripe_subscription_id
+      FROM studios WHERE id = $1`, [studioId]);
     if (!studio) {
       return res.status(404).json({ error: 'Studio not found' });
     }
@@ -1540,7 +1549,9 @@ router.post('/:studioId/subscription/reactivate', authRequired, async (req, res)
       }
     }
 
-    const updated = await queryRow('SELECT * FROM studios WHERE id = $1', [studioId]);
+    const updated = await queryRow(`
+      SELECT id, subscription_status, subscription_end, cancellation_requested, cancellation_date
+      FROM studios WHERE id = $1`, [studioId]);
     res.json({
       message: 'Subscription reactivated successfully',
       studio: updated

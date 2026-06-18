@@ -1073,13 +1073,9 @@ const validateBatchEligibilityForOrder = async ({ studioId, items }) => {
 };
 
 const resolveOrderAccessStudioId = (req) => {
-  const headerStudioIdRaw = req.headers['x-acting-studio-id'];
-  const headerStudioId = Number(Array.isArray(headerStudioIdRaw) ? headerStudioIdRaw[0] : headerStudioIdRaw);
-
-  if (Number.isInteger(headerStudioId) && headerStudioId > 0) {
-    return headerStudioId;
-  }
-
+  // Only trust acting_studio_id set by the auth middleware (super admin only)
+  const actingStudioId = Number(req.user?.acting_studio_id);
+  if (Number.isInteger(actingStudioId) && actingStudioId > 0) return actingStudioId;
   return Number(req.user?.studio_id) || null;
 };
 
@@ -4498,7 +4494,8 @@ router.get('/', async (req, res) => {
     console.log('[GET /api/orders] User:', req.user);
     const canViewWhccFields = req.user?.role === 'super_admin' || req.user?.role === 'studio_admin' || req.user?.role === 'admin';
     const userId = req.user.id;
-    const actingStudioId = req.headers['x-acting-studio-id'];
+    const isSuperAdmin = req.user?.role === 'super_admin';
+    const actingStudioId = isSuperAdmin ? req.user?.acting_studio_id : null;
     const includeItems = String(req.query.includeItems || '').toLowerCase() === '1' || String(req.query.includeItems || '').toLowerCase() === 'true';
     const requestedLimit = Number(req.query.limit);
     const limit = Number.isFinite(requestedLimit) && requestedLimit > 0
@@ -4785,8 +4782,8 @@ router.get('/details/:orderId', async (req, res) => {
     }
 
     const userId = req.user.id;
-  const canViewWhccFields = req.user?.role === 'super_admin' || req.user?.role === 'studio_admin' || req.user?.role === 'admin';
-    const actingStudioId = req.headers['x-acting-studio-id'];
+    const canViewWhccFields = req.user?.role === 'super_admin' || req.user?.role === 'studio_admin' || req.user?.role === 'admin';
+    const actingStudioId = req.user?.role === 'super_admin' ? req.user?.acting_studio_id : null;
     let order;
 
     if (actingStudioId) {
@@ -5045,7 +5042,7 @@ router.get('/details/:orderId', async (req, res) => {
 // Get all orders (admin view)
 router.get('/admin/all-orders', adminRequired, async (req, res) => {
   try {
-    const actingStudioId = req.headers['x-acting-studio-id'];
+    const actingStudioId = req.user?.acting_studio_id || null;
     const canViewWhccFields = req.user.role === 'super_admin' || req.user.role === 'studio_admin' || req.user.role === 'admin';
     const includeItems = String(req.query.includeItems || '').toLowerCase() === '1' || String(req.query.includeItems || '').toLowerCase() === 'true';
     const requestedLimit = Number(req.query.limit);
@@ -5259,7 +5256,7 @@ router.get('/admin/order-details/:orderId', adminRequired, async (req, res) => {
       return res.status(400).json({ error: 'Valid orderId is required' });
     }
 
-    const actingStudioId = req.headers['x-acting-studio-id'];
+    const actingStudioId = req.user?.acting_studio_id || null;
     const canViewWhccFields = req.user.role === 'super_admin' || req.user.role === 'studio_admin' || req.user.role === 'admin';
     let queryText = `
       SELECT
