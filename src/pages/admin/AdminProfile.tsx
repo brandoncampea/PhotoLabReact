@@ -91,6 +91,8 @@ function planSavingsPct(monthly: number, yearly: number): number {
 
 const AdminProfile: React.FC = () => {
   const { user } = useAuth();
+  const viewAsStudioId = Number(localStorage.getItem('viewAsStudioId') || '0');
+  const effectiveStudioId = (user?.role === 'super_admin' && viewAsStudioId > 0) ? viewAsStudioId : user?.studioId;
   const [config, setConfig] = useState<ProfileConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -122,17 +124,18 @@ const AdminProfile: React.FC = () => {
 
   useEffect(() => {
     loadConfig();
-    if (user?.studioId) {
+    if (effectiveStudioId) {
       fetchSubscriptionInfo();
-      fetchWatermark(user.studioId);
+      fetchWatermark(effectiveStudioId);
       fetchLandingPage();
-      fetchStudioPublicSlug(user.studioId);
+      fetchStudioPublicSlug(effectiveStudioId);
       fetchDbPlans();
       fetchStripeStatus();
     }
   }, [user]);
 
-  const fetchStudioPublicSlug = async (studioId: number) => {
+  const fetchStudioPublicSlug = async (studioId: number | undefined) => {
+    if (!studioId) return;
     try {
       const token = localStorage.getItem('authToken');
       const response = await fetch(
@@ -147,7 +150,8 @@ const AdminProfile: React.FC = () => {
     }
   };
 
-  const fetchWatermark = async (studioId: number) => {
+  const fetchWatermark = async (studioId: number | undefined) => {
+    if (!studioId) return;
     try {
       const watermark = await watermarkService.getDefaultWatermark(studioId);
       setWatermarkUrl(watermark?.imageUrl || '');
@@ -198,10 +202,11 @@ const AdminProfile: React.FC = () => {
   };
 
   const fetchSubscriptionInfo = async () => {
+    if (!effectiveStudioId) return;
     try {
       const token = localStorage.getItem('authToken');
       const response = await fetch(
-        `/api/studios/${user?.studioId}/subscription`,
+        `/api/studios/${effectiveStudioId}/subscription`,
         { headers: { 'Authorization': `Bearer ${token}` } }
       );
       if (response.ok) {
@@ -228,7 +233,7 @@ const AdminProfile: React.FC = () => {
     try {
       const token = localStorage.getItem('authToken');
       const response = await fetch(
-        `/api/studios/${user?.studioId}/subscription/cancel`,
+        `/api/studios/${effectiveStudioId}/subscription/cancel`,
         { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } }
       );
       if (response.ok) await fetchSubscriptionInfo();
@@ -241,7 +246,7 @@ const AdminProfile: React.FC = () => {
     try {
       const token = localStorage.getItem('authToken');
       const response = await fetch(
-        `/api/studios/${user?.studioId}/subscription/reactivate`,
+        `/api/studios/${effectiveStudioId}/subscription/reactivate`,
         { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } }
       );
       if (response.ok) await fetchSubscriptionInfo();
@@ -278,7 +283,7 @@ const AdminProfile: React.FC = () => {
       let finalLogoUrl = logoUrl;
       if (logoFile) {
         try {
-          const uploadResult = await profileService.uploadLogo(logoFile, user?.studioId);
+          const uploadResult = await profileService.uploadLogo(logoFile, effectiveStudioId);
           finalLogoUrl = uploadResult.logoUrl;
           setLogoFile(null);
         } catch (uploadError) {
@@ -578,7 +583,7 @@ const AdminProfile: React.FC = () => {
           )}
 
           {/* Subscription section */}
-          {user?.studioId && subscription ? (
+          {effectiveStudioId && subscription ? (
             <>
               <div style={{ marginTop: '1rem', marginBottom: '1rem' }}>
                 <h2 style={sectionTitle}>Subscription</h2>

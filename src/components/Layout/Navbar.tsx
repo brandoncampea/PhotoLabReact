@@ -67,11 +67,11 @@ const Navbar: React.FC = () => {
     if (studioSlug) {
       return `public:${studioSlug}`;
     }
-    if (isLoggedIn && user?.studioId) {
+    if (isLoggedIn) {
       const viewAsStudioId = Number(localStorage.getItem('viewAsStudioId') || '0');
       const isSuperAdmin = user?.role === 'super_admin';
-      const effectiveStudioId = isSuperAdmin && viewAsStudioId > 0 ? viewAsStudioId : user.studioId;
-      return `admin:${effectiveStudioId}`;
+      const effectiveStudioId = isSuperAdmin && viewAsStudioId > 0 ? viewAsStudioId : user?.studioId;
+      if (effectiveStudioId) return `admin:${effectiveStudioId}`;
     }
     return '';
   }, [studioSlug, isLoggedIn, user?.role, user?.studioId]);
@@ -106,9 +106,11 @@ const Navbar: React.FC = () => {
         }
 
         // Admin/view-as-studio branding (auth/profile-based)
-        if (isLoggedIn && user?.studioId) {
+        if (isLoggedIn) {
           const viewAsStudioId = Number(localStorage.getItem('viewAsStudioId') || '0');
           const isSuperAdmin = user?.role === 'super_admin';
+          // Super admins without a selected studio have no brand to show
+          if (isSuperAdmin && !viewAsStudioId && !user?.studioId) return;
           const queryStudioId = isSuperAdmin && viewAsStudioId > 0 ? viewAsStudioId : undefined;
 
           const response = await api.get('/profile', queryStudioId ? { params: { studioId: queryStudioId } } : undefined);
