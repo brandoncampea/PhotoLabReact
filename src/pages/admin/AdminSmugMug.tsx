@@ -128,12 +128,9 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
 
 
   const [smugmugNickname, setSmugmugNickname] = useState('');
-  const [smugmugApiKey, setSmugmugApiKey] = useState('');
-  const [smugmugApiSecret, setSmugmugApiSecret] = useState('');
   const [smugmugAlbums, setSmugmugAlbums] = useState<SmugMugAlbumOption[]>([]);
   const [selectedSmugmugAlbums, setSelectedSmugmugAlbums] = useState<Record<string, boolean>>({});
   const [smugmugLoading, setSmugmugLoading] = useState(false);
-  const [smugmugSaving, setSmugmugSaving] = useState(false);
   const [smugmugImporting, setSmugmugImporting] = useState(false);
   const [smugmugNotice, setSmugmugNotice] = useState('');
   const [importProgress, setImportProgress] = useState<SmugMugImportProgress | null>(null);
@@ -168,8 +165,6 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
       if (!response.ok) return;
       const data = await response.json();
       setSmugmugNickname(data.nickname || '');
-      setSmugmugApiKey(data.apiKey || '');
-      setSmugmugApiSecret(data.apiSecret || '');
       setStorageMode(data.storageMode === 'smugmug-source' ? 'smugmug-source' : 'azure');
     } catch (err) {
       console.error('Failed to load SmugMug config:', err);
@@ -180,43 +175,11 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
     fetchSmugmugConfig();
   }, [effectiveStudioId]);
 
-  const saveSmugmugConfig = async () => {
-    setSmugmugSaving(true);
-    setSmugmugNotice('');
-    try {
-      const response = await fetch('/api/smugmug/config', {
-        method: 'PUT',
-        headers: {
-          ...getAuthHeaders(),
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ nickname: smugmugNickname, apiKey: smugmugApiKey, apiSecret: smugmugApiSecret }),
-      });
-
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data.error || 'Failed to save SmugMug config');
-      }
-
-      const responseData = await response.json();
-      setSmugmugNotice('SmugMug settings saved');
-      setStorageMode(responseData.storageMode === 'smugmug-source' ? 'smugmug-source' : 'azure');
-    } catch (err: any) {
-      setSmugmugNotice(err.message || 'Failed to save SmugMug settings');
-    } finally {
-      setSmugmugSaving(false);
-    }
-  };
-
   const loadSmugmugAlbums = async () => {
     setSmugmugLoading(true);
     setSmugmugNotice('');
     try {
-      const query = new URLSearchParams();
-      if (smugmugNickname) query.set('nickname', smugmugNickname);
-      if (smugmugApiKey) query.set('apiKey', smugmugApiKey);
-
-      const response = await fetch(`/api/smugmug/albums?${query.toString()}`, {
+      const response = await fetch(`/api/smugmug/albums`, {
         headers: getAuthHeaders(),
       });
 
@@ -309,9 +272,6 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
         },
         body: JSON.stringify({
           jobId,
-          nickname: smugmugNickname,
-          apiKey: smugmugApiKey,
-          apiSecret: smugmugApiSecret,
           albums: albumsToImport.map((album: SmugMugAlbumOption) => ({
             albumKey: album.albumKey,
             name: album.name,
@@ -448,44 +408,14 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
           marginBottom: '24px',
         }}
       >
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '12px' }}>
-          <div>
-            <label style={{ display: 'block', marginBottom: '6px' }}>SmugMug Nickname</label>
-            <input
-              type="text"
-              value={smugmugNickname}
-              onChange={(e) => setSmugmugNickname(e.target.value)}
-              placeholder="e.g. campeaphotography"
-              style={{ width: '100%' }}
-            />
+        {smugmugNickname && (
+          <div style={{ marginBottom: '12px', color: 'var(--text-secondary)', fontSize: '13px' }}>
+            Connected as: <strong style={{ color: 'var(--text-primary)' }}>{smugmugNickname}</strong>
           </div>
-          <div>
-            <label style={{ display: 'block', marginBottom: '6px' }}>API Key (optional for public albums)</label>
-            <input
-              type="text"
-              value={smugmugApiKey}
-              onChange={(e) => setSmugmugApiKey(e.target.value)}
-              placeholder="SmugMug API Key"
-              style={{ width: '100%' }}
-            />
-          </div>
-          <div>
-            <label style={{ display: 'block', marginBottom: '6px' }}>API Secret</label>
-            <input
-              type="text"
-              value={smugmugApiSecret}
-              onChange={(e) => setSmugmugApiSecret(e.target.value)}
-              placeholder="SmugMug API Secret"
-              style={{ width: '100%' }}
-            />
-          </div>
-        </div>
+        )}
 
-        <div style={{ display: 'flex', gap: '10px', marginTop: '12px', flexWrap: 'wrap' }}>
-          <button className="btn btn-secondary" onClick={saveSmugmugConfig} disabled={smugmugSaving || oauthRequired}>
-            {smugmugSaving ? 'Saving...' : 'Save SmugMug Settings'}
-          </button>
-          <button className="btn btn-primary" onClick={loadSmugmugAlbums} disabled={smugmugLoading || !smugmugNickname.trim() || oauthRequired}>
+        <div style={{ display: 'flex', gap: '10px', marginTop: '4px', flexWrap: 'wrap' }}>
+          <button className="btn btn-primary" onClick={loadSmugmugAlbums} disabled={smugmugLoading || oauthRequired}>
             {smugmugLoading ? 'Loading Albums...' : 'Load SmugMug Albums'}
           </button>
           <button className="btn btn-success" onClick={() => importSelectedSmugmugAlbums()} disabled={smugmugImporting || smugmugAlbums.length === 0 || oauthRequired}>
