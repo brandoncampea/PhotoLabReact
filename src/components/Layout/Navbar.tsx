@@ -161,11 +161,11 @@ const Navbar: React.FC = () => {
   const shouldShowBrandLogo = Boolean(brandLogoUrl) && !brandLogoFailed;
 
   const isAdmin = user?.role === 'super_admin' || user?.role === 'studio_admin';
-  const { open: sidebarOpen, toggle: sidebarToggle } = useSidebar();
+  const { open: sidebarOpen, pinned: sidebarPinned, toggle: sidebarToggle } = useSidebar();
 
   return (
     <nav className={styles.navbar}>
-      {isAdmin && (
+      {isAdmin && !sidebarPinned && (
         <button
           id="hamburger-btn"
           onClick={sidebarToggle}

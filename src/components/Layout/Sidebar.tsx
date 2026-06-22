@@ -18,7 +18,7 @@ const superAdminLinks = [
 const Sidebar: React.FC = () => {
   const { user } = useAuth();
   const location = useLocation();
-  const { open, close } = useSidebar();
+  const { open, pinned, close, togglePin } = useSidebar();
   const [superOpen, setSuperOpen] = useState(false);
   const drawerRef = useRef<HTMLDivElement>(null);
 
@@ -30,10 +30,10 @@ const Sidebar: React.FC = () => {
   const dashboardPath = isSuperAdmin && !isActingAsStudio ? '/super-admin' : '/admin/dashboard';
 
   // Hooks must come before any conditional return
-  useEffect(() => { close(); }, [location.pathname]);
+  useEffect(() => { if (!pinned) close(); }, [location.pathname, pinned]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || pinned) return;
     const handler = (e: MouseEvent) => {
       if (drawerRef.current && !drawerRef.current.contains(e.target as Node)) {
         const btn = document.getElementById('hamburger-btn');
@@ -43,7 +43,7 @@ const Sidebar: React.FC = () => {
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [open]);
+  }, [open, pinned]);
 
   if (!isSuperAdmin && !isStudioAdmin) return null;
 
@@ -83,18 +83,20 @@ const Sidebar: React.FC = () => {
 
   return (
     <>
-      {/* Backdrop */}
-      <div
-        onClick={close}
-        style={{
-          position: 'fixed', inset: 0, zIndex: 1050,
-          background: 'rgba(0,0,0,0.45)',
-          backdropFilter: 'blur(2px)',
-          opacity: open ? 1 : 0,
-          pointerEvents: open ? 'auto' : 'none',
-          transition: 'opacity 0.22s',
-        }}
-      />
+      {/* Backdrop — hidden when pinned */}
+      {!pinned && (
+        <div
+          onClick={close}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1050,
+            background: 'rgba(0,0,0,0.45)',
+            backdropFilter: 'blur(2px)',
+            opacity: open ? 1 : 0,
+            pointerEvents: open ? 'auto' : 'none',
+            transition: 'opacity 0.22s',
+          }}
+        />
+      )}
 
       {/* Drawer */}
       <div
@@ -111,7 +113,7 @@ const Sidebar: React.FC = () => {
           zIndex: 1060,
           display: 'flex',
           flexDirection: 'column',
-          transform: open ? 'translateX(0)' : 'translateX(-100%)',
+          transform: open || pinned ? 'translateX(0)' : 'translateX(-100%)',
           transition: 'transform 0.25s cubic-bezier(0.4,0,0.2,1)',
           overflowY: 'auto',
           overflowX: 'hidden',
@@ -120,10 +122,30 @@ const Sidebar: React.FC = () => {
         {/* Drawer header */}
         <div style={{ padding: '1.1rem 1rem 0.75rem', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.25rem' }}>
           <div style={{ width: 32, height: 32, borderRadius: 8, background: 'linear-gradient(135deg, #7c5cff, #6366f1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem', flexShrink: 0 }}>📸</div>
-          <div>
+          <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 800, color: '#fff', fontSize: '0.95rem', lineHeight: 1.2 }}>Photo Lab</div>
             <div style={{ color: '#6b6b80', fontSize: '0.72rem' }}>{isStudioAdmin ? 'Studio Admin' : isSuperAdmin ? 'Super Admin' : ''}</div>
           </div>
+          <button
+            onClick={togglePin}
+            title={pinned ? 'Unpin sidebar' : 'Pin sidebar open'}
+            style={{
+              background: pinned ? 'rgba(124,92,255,0.18)' : 'transparent',
+              border: `1px solid ${pinned ? 'rgba(124,92,255,0.4)' : 'transparent'}`,
+              borderRadius: 7,
+              color: pinned ? '#a78bfa' : '#4a4a6a',
+              cursor: 'pointer',
+              padding: '4px 7px',
+              fontSize: '0.85rem',
+              lineHeight: 1,
+              transition: 'all 0.15s',
+              flexShrink: 0,
+            }}
+            onMouseEnter={e => { if (!pinned) (e.currentTarget as HTMLElement).style.color = '#c4c4de'; }}
+            onMouseLeave={e => { if (!pinned) (e.currentTarget as HTMLElement).style.color = '#4a4a6a'; }}
+          >
+            📌
+          </button>
         </div>
 
         {/* Nav links */}
