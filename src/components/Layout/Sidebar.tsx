@@ -20,6 +20,7 @@ const Sidebar: React.FC = () => {
   const location = useLocation();
   const { open, pinned, close, togglePin } = useSidebar();
   const [superOpen, setSuperOpen] = useState(false);
+  const [navBottom, setNavBottom] = useState(64);
   const drawerRef = useRef<HTMLDivElement>(null);
 
   const isSuperAdmin = user?.role === 'super_admin';
@@ -28,6 +29,17 @@ const Sidebar: React.FC = () => {
   const isActingAsStudio = isSuperAdmin && Number.isInteger(viewAsStudioId) && viewAsStudioId > 0;
   const inStudioAdminMenu = isStudioAdmin || isActingAsStudio;
   const dashboardPath = isSuperAdmin && !isActingAsStudio ? '/super-admin' : '/admin/dashboard';
+
+  // Measure the actual bottom of the top navbar so the pinned sidebar starts right below it
+  useEffect(() => {
+    const measure = () => {
+      const nav = document.querySelector('nav');
+      if (nav) setNavBottom(nav.getBoundingClientRect().bottom);
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [pinned]);
 
   // Hooks must come before any conditional return
   useEffect(() => { if (!pinned) close(); }, [location.pathname, pinned]);
@@ -103,9 +115,9 @@ const Sidebar: React.FC = () => {
         ref={drawerRef}
         style={{
           position: 'fixed',
-          top: 0,
+          top: pinned ? navBottom : 0,
           left: 0,
-          height: '100vh',
+          height: pinned ? `calc(100vh - ${navBottom}px)` : '100vh',
           width: 260,
           background: '#1a1a24',
           borderRight: '1px solid rgba(124,92,255,0.15)',
