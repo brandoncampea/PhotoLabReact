@@ -8,8 +8,6 @@ const router = express.Router();
 // Train face signature for a player on a photo (used by face tagging UI)
 router.post('/:id/train-face', async (req, res) => {
   try {
-    await ensurePlayerRecognitionSchema();
-    await ensurePhotoUploadColumns();
     const photoId = Number(req.params.id);
     const { playerName, playerNumber } = req.body;
     if (!photoId || !playerName) {
@@ -139,7 +137,6 @@ router.post('/album/:albumId/clear-tags', async (req, res) => {
 // Batch update player names for multiple photos
 router.post('/batch-update-players', async (req, res) => {
   try {
-    await ensurePhotoUploadColumns();
     const { updates } = req.body; // [{ id, playerNames }]
     console.log('[BATCH UPDATE] Received updates:', JSON.stringify(updates, null, 2));
     if (!Array.isArray(updates) || updates.length === 0) {
@@ -296,7 +293,6 @@ const ensureCanReviewAlbumSuggestions = async (req, albumId) => {
 // Customer submits a player-name suggestion for a photo.
 router.post('/:id/suggest-player-tag', authRequired, async (req, res) => {
   try {
-    await ensurePhotoTagSuggestionSchema();
     const photoId = Number(req.params.id);
     const playerName = String(req.body?.playerName || '').trim();
     const submittedByName = String(req.user?.email || req.user?.name || '').trim();
@@ -368,7 +364,6 @@ router.post('/:id/suggest-player-tag', authRequired, async (req, res) => {
 // Admin: list tag suggestions for an album.
 router.get('/album/:albumId/tag-suggestions', authRequired, async (req, res) => {
   try {
-    await ensurePhotoTagSuggestionSchema();
     const albumId = Number(req.params.albumId);
     if (!Number.isInteger(albumId) || albumId <= 0) {
       return res.status(400).json({ error: 'Invalid album id' });
@@ -427,7 +422,6 @@ router.get('/album/:albumId/tag-suggestions', authRequired, async (req, res) => 
 // Admin: pending suggestion counts by album for current studio.
 router.get('/tag-suggestions/pending-counts', authRequired, async (req, res) => {
   try {
-    await ensurePhotoTagSuggestionSchema();
     const role = String(req.user?.role || '');
     if (!['admin', 'studio_admin', 'super_admin'].includes(role)) {
       return res.status(403).json({ error: 'Admin access required' });
@@ -469,8 +463,6 @@ router.get('/tag-suggestions/pending-counts', authRequired, async (req, res) => 
 // Admin: approve/reject a suggestion.
 router.post('/tag-suggestions/:suggestionId/review', authRequired, async (req, res) => {
   try {
-    await ensurePhotoTagSuggestionSchema();
-    await ensurePhotoUploadColumns();
 
     const suggestionId = Number(req.params.suggestionId);
     const decisionRaw = String(req.body?.decision || '').trim().toLowerCase();
@@ -549,7 +541,6 @@ router.post('/tag-suggestions/:suggestionId/review', authRequired, async (req, r
 // Direct-to-Blob: Record photo metadata and blob URL after upload
 router.post('/record-blob', requireActiveSubscription, async (req, res) => {
   try {
-    await ensurePhotoUploadColumns();
     const { albumId, fileName, blobUrl, description, metadata, width, height, fileSizeBytes } = req.body;
     const playerName = req.body.playerName;
     const playerNumber = req.body.playerNumber;
@@ -784,12 +775,6 @@ const csvUpload = multer({
     cb(new Error('Only CSV files are allowed'));
   }
 });
-
-import { ensurePlayerRecognitionSchema } from './photos.utils.js';
-
-import { ensurePhotoUploadColumns } from './photos.utils.js';
-
-import { ensurePhotoTagSuggestionSchema } from './photos.utils.js';
 
 const normalizeToken = (value) => String(value || '').trim().toLowerCase();
 
@@ -1194,17 +1179,7 @@ const saveFaceSignaturesForPlayers = async ({ studioId, taggedNames = [], tagged
     if (!Array.isArray(signatures) || signatures.length === 0) continue;
 
     for (const signatureHash of signatures) {
-      const beforeSave = await queryRow(
-        `SELECT TOP 1 id
-         FROM studio_player_face_signatures
-         WHERE studio_id = $1
-           AND LOWER(player_name) = LOWER($2)
-           AND COALESCE(LOWER(player_number), '') = COALESCE(LOWER($3), '')
-           AND signature_hash = $4`,
-        [studioId, playerName, playerNumber, signatureHash]
-      );
-      if (beforeSave?.id) continue;
-
+      // saveFaceSignature already checks for existence — no need for a pre-check here
       await saveFaceSignature({
         studioId,
         playerName,
@@ -1822,7 +1797,7 @@ router.get('/album/:albumId/roster', async (req, res) => {
     }
 
     const album = await queryRow(
-      `SELECT id, studio_id as studioId
+      `SELECT id, studio_id as studioId, school_tags as schoolTags
        FROM albums
        WHERE id = $1`,
       [albumId]
@@ -1837,9 +1812,34 @@ router.get('/album/:albumId/roster', async (req, res) => {
       return res.json([]);
     }
 
-    await ensurePlayerRecognitionSchema();
+    // Parse this album's school tags into a lowercase set for matching
+    const parseTagString = (s) => String(s || '').split(/[\n,;|]+/).map(t => t.trim().toLowerCase()).filter(Boolean);
+    const currentSchoolTags = parseTagString(album.schoolTags);
+
+    // Find all album IDs in this studio that share at least one school tag with the current album
+    const prioritySourceIds = new Set([albumId]);
+    if (currentSchoolTags.length > 0) {
+      const studioAlbums = await queryRows(
+        `SELECT id, school_tags as schoolTags FROM albums WHERE studio_id = $1 AND school_tags IS NOT NULL`,
+        [studioId]
+      );
+      for (const a of studioAlbums) {
+        const tags = parseTagString(a.schoolTags);
+        if (tags.some(t => currentSchoolTags.includes(t))) {
+          prioritySourceIds.add(Number(a.id));
+        }
+      }
+    }
+
     const roster = await fetchStudioRoster(studioId);
-    res.json(roster || []);
+
+    // Sort: players from matching-school albums first, then all others — preserve original order within each group
+    const sorted = [
+      ...roster.filter(p => prioritySourceIds.has(Number(p.sourceAlbumId))),
+      ...roster.filter(p => !prioritySourceIds.has(Number(p.sourceAlbumId))),
+    ];
+
+    res.json(sorted);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -1849,8 +1849,6 @@ router.get('/album/:albumId/roster', async (req, res) => {
 
 router.get('/:id/detections', async (req, res) => {
   try {
-    await ensurePlayerRecognitionSchema();
-    await ensurePhotoUploadColumns();
     const forceRefresh = String(req.query.refresh || '').trim() === '1';
 
     const photo = await queryRow(
@@ -2112,8 +2110,6 @@ router.post(
 // Update photo
 router.put('/:id', async (req, res) => {
   try {
-    await ensurePlayerRecognitionSchema();
-    await ensurePhotoUploadColumns();
 
     let { description, metadata, playerNames, playerNumbers } = req.body;
     // Robustly handle playerNames as array or string
@@ -2143,10 +2139,7 @@ router.put('/:id', async (req, res) => {
     );
 
 // ...existing code...
-    let faceMatchedCount = 0;
-    let numberMatchedCount = 0;
     let trainedFaceSamples = 0;
-    let autoTaggedCount = 0;
     let album = null; // hoisted so notification block can reference it
 
     // Use playerNames/playerNumbers for tagging
@@ -2206,15 +2199,21 @@ router.put('/:id', async (req, res) => {
           });
         }
 
+        // Fetch only signatures for the specific tagged players — not the full studio set
         const trainingSignatures = studioId && taggedNames.length > 0
-          ? (await fetchStudioFaceSignatures(studioId)).filter((sig) =>
-              taggedNames.some((name, index) =>
-                normalizeToken(sig.playerName) === normalizeToken(name)
-                && normalizeToken(sig.playerNumber) === normalizeToken(taggedNumbers[index] || taggedNumbers[0] || null)
-              )
-            )
+          ? await (async () => {
+              const namePlaceholders = taggedNames.map((_, i) => `LOWER($${i + 2})`).join(', ');
+              return queryRows(
+                `SELECT id, player_name as playerName, player_number as playerNumber, signature_hash as signatureHash
+                 FROM studio_player_face_signatures
+                 WHERE studio_id = $1
+                   AND LOWER(player_name) IN (${namePlaceholders})`,
+                [studioId, ...taggedNames]
+              );
+            })()
           : [];
 
+        // Run sibling auto-tagging after the response is sent — don't block the client
         const siblingPhotos = await queryRows(
           `SELECT id,
                   file_name as fileName,
@@ -2229,57 +2228,57 @@ router.put('/:id', async (req, res) => {
           [currentPhoto.albumId, currentPhoto.id]
         );
 
-        for (const sibling of siblingPhotos) {
-          let matchedByFace = false;
-          let matchedByNumber = false;
+        // Fire sibling matching in the background so response returns immediately
+        setImmediate(async () => {
+          try {
+            for (const sibling of siblingPhotos) {
+              let matchedByFace = false;
+              let matchedByNumber = false;
 
-          if (trainingSignatures.length > 0 && sibling.fullImageUrl) {
-            const siblingBuffer = await downloadImageBufferFromSource(sibling.fullImageUrl);
-            const faceMatchResult = siblingBuffer
-              ? await findBestPlayerFaceMatch({
-                  imageBuffer: siblingBuffer,
-                  signatures: trainingSignatures,
-                  allowedPlayers: taggedNames.map((name, index) => ({
-                    playerName: name,
-                    playerNumber: taggedNumbers[index] || taggedNumbers[0] || null,
-                  })),
-                })
-              : { matchedPlayers: [], bestDistance: Number.POSITIVE_INFINITY };
+              if (trainingSignatures.length > 0 && sibling.fullImageUrl) {
+                const siblingBuffer = await downloadImageBufferFromSource(sibling.fullImageUrl);
+                const faceMatchResult = siblingBuffer
+                  ? await findBestPlayerFaceMatch({
+                      imageBuffer: siblingBuffer,
+                      signatures: trainingSignatures,
+                      allowedPlayers: taggedNames.map((name, index) => ({
+                        playerName: name,
+                        playerNumber: taggedNumbers[index] || taggedNumbers[0] || null,
+                      })),
+                    })
+                  : { matchedPlayers: [], bestDistance: Number.POSITIVE_INFINITY };
 
-            matchedByFace = faceMatchResult.matchedPlayers.length > 0;
+                matchedByFace = faceMatchResult.matchedPlayers.length > 0;
+              }
+
+              if (!matchedByFace && taggedNumbers.length > 0) {
+                matchedByNumber = taggedNumbers.some((number) => photoTextContainsNumber({
+                  fileName: sibling.fileName,
+                  description: sibling.description,
+                  metadata: sibling.metadata,
+                  number,
+                }));
+              }
+
+              if (!matchedByFace && !matchedByNumber) continue;
+
+              const mergedNames = mergeCsvLists(sibling.playerNames, taggedNames);
+              const mergedNumbers = mergeCsvLists(sibling.playerNumbers, taggedNumbers);
+
+              const changed = (mergedNames || null) !== (sibling.playerNames || null)
+                || (mergedNumbers || null) !== (sibling.playerNumbers || null);
+
+              if (!changed) continue;
+
+              await query(
+                `UPDATE photos SET player_names = $1, player_numbers = $2 WHERE id = $3`,
+                [mergedNames, mergedNumbers, sibling.id]
+              );
+            }
+          } catch (err) {
+            console.error('Background sibling auto-tag failed:', err);
           }
-
-          if (!matchedByFace && taggedNumbers.length > 0) {
-            matchedByNumber = taggedNumbers.some((number) => photoTextContainsNumber({
-              fileName: sibling.fileName,
-              description: sibling.description,
-              metadata: sibling.metadata,
-              number,
-            }));
-          }
-
-          if (!matchedByFace && !matchedByNumber) continue;
-
-          const mergedNames = mergeCsvLists(sibling.playerNames, taggedNames);
-          const mergedNumbers = mergeCsvLists(sibling.playerNumbers, taggedNumbers);
-
-          const changed = (mergedNames || null) !== (sibling.playerNames || null)
-            || (mergedNumbers || null) !== (sibling.playerNumbers || null);
-
-          if (!changed) continue;
-
-          await query(
-            `UPDATE photos
-             SET player_names = $1,
-                 player_numbers = $2
-             WHERE id = $3`,
-            [mergedNames, mergedNumbers, sibling.id]
-          );
-
-          autoTaggedCount += 1;
-          if (matchedByFace) faceMatchedCount += 1;
-          if (matchedByNumber) numberMatchedCount += 1;
-        }
+        });
       } catch (recognitionError) {
         console.error('Photo tag recognition follow-up failed:', recognitionError);
       }
@@ -2315,12 +2314,9 @@ router.put('/:id', async (req, res) => {
     `, [req.params.id]);
     res.json({
       ...signPhotoForResponse(photo),
-      autoTaggedCount,
+      autoTaggedCount: 0,
       trainedFaceSamples,
-      autoTagMatches: {
-        face: faceMatchedCount,
-        number: numberMatchedCount,
-      },
+      autoTagMatches: { face: 0, number: 0 },
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -2512,7 +2508,6 @@ router.get('/search/metadata', async (req, res) => {
 // Upload player names CSV (also persists studio roster for future albums)
 router.post('/album/:albumId/upload-players', csvUpload.single('csv'), async (req, res) => {
   try {
-    await ensurePlayerRecognitionSchema();
     const albumId = Number(req.params.albumId);
     if (!Number.isInteger(albumId) || albumId <= 0) {
       return res.status(400).json({ error: 'Invalid album id' });

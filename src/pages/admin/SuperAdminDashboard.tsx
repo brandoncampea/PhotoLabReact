@@ -3,7 +3,7 @@
 
 
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import DashboardChart from '../../components/DashboardChart';
 import { superAdminService } from '../../services/adminService';
 import api from '../../services/api';
@@ -12,6 +12,15 @@ type SeriesByRange = { [key: string]: number[] };
 type LabelsByRange = { [key: string]: string[] };
 
 const SuperAdminDashboard: React.FC = () => {
+  const navigate = useNavigate();
+
+  const handleManageStudio = (studio: { id: number; name: string }) => {
+    localStorage.setItem('viewAsStudioId', String(studio.id));
+    localStorage.setItem('viewAsStudioName', studio.name);
+    localStorage.setItem('adminMenuMode', 'studio');
+    navigate('/admin/dashboard');
+  };
+
   // Studio revenue/cost drill-down
   const [studioDetails, setStudioDetails] = useState<any[]>([]);
   const [expandedStudio, setExpandedStudio] = useState<number | null>(null);
@@ -526,7 +535,13 @@ const SuperAdminDashboard: React.FC = () => {
                   {/* Card header row */}
                   <div style={{ padding: '0.8rem 1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', flex: 1 }}>
-                      <span style={{ fontWeight: 800, fontSize: '0.95rem', color: '#fff' }}>{studio.name}</span>
+                      <button
+                        onClick={() => handleManageStudio(studio)}
+                        style={{ fontWeight: 800, fontSize: '0.95rem', color: '#a78bfa', background: 'none', border: 'none', padding: 0, cursor: 'pointer', textDecoration: 'underline', textDecorationColor: 'rgba(167,139,250,0.4)', textUnderlineOffset: 3 }}
+                        title={`Manage ${studio.name}`}
+                      >
+                        {studio.name}
+                      </button>
                       <span style={{ fontSize: 11, color: '#6b6b80' }}>{summary.orderCount} order{summary.orderCount !== 1 ? 's' : ''}</span>
 
                       {/* Primary stats inline */}

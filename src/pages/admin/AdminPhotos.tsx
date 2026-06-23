@@ -44,8 +44,8 @@ import { detectFaceBoxes } from '../../utils/faceDetection';
 import { extractPlayerNameFromFilename } from '../../utils/playerTagging';
 
 const detectFaceBoxesInBrowser = async (photo: Photo): Promise<{ faceBoxes: FaceTagBox[]; error?: string | null }> => {
-  // Always use the backend asset endpoint for the full-size image (never the thumbnail)
-  return detectFaceBoxes(photo, () => Promise.resolve(`/api/photos/${photo.id}/asset`));
+  // Use thumbnail variant — no signed token required, 400px is sufficient for face detection
+  return detectFaceBoxes(photo, () => Promise.resolve(`/api/photos/${photo.id}/asset?variant=thumbnail`));
 };
 
 
@@ -1045,6 +1045,18 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
     <AdminLayout>
       <div style={{ padding: '0 1rem 2rem' }}>
 
+        {/* Breadcrumb */}
+        <div style={{ marginBottom: '0.75rem' }}>
+          <button
+            onClick={() => navigate('/admin/albums')}
+            style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, color: '#6b6b80', fontSize: '0.85rem', fontWeight: 500 }}
+            onMouseEnter={e => (e.currentTarget.style.color = '#a78bfa')}
+            onMouseLeave={e => (e.currentTarget.style.color = '#6b6b80')}
+          >
+            <span style={{ fontSize: '0.8rem' }}>←</span> Albums
+          </button>
+        </div>
+
         {/* Page header */}
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.25rem' }}>
           <div>
@@ -1194,10 +1206,12 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
                           top: `${box.topPct}%`,
                           width: `${box.widthPct}%`,
                           height: `${box.heightPct}%`,
-                          border: `2px solid ${box.playerName ? '#22c55e' : '#f59e0b'}`,
+                          border: `2px solid ${selectedFaceBoxByPhotoId[photo.id] === box.id ? '#a78bfa' : box.playerName ? '#22c55e' : '#f59e0b'}`,
                           borderRadius: 4,
-                          background: box.playerName ? 'rgba(34,197,94,0.08)' : 'rgba(245,158,11,0.08)',
-                          boxShadow: `0 0 0 1px rgba(0,0,0,0.5), 0 0 6px ${box.playerName ? 'rgba(34,197,94,0.4)' : 'rgba(245,158,11,0.4)'}`,
+                          background: selectedFaceBoxByPhotoId[photo.id] === box.id ? 'rgba(167,139,250,0.12)' : box.playerName ? 'rgba(34,197,94,0.08)' : 'rgba(245,158,11,0.08)',
+                          boxShadow: selectedFaceBoxByPhotoId[photo.id] === box.id
+                            ? '0 0 0 2px rgba(167,139,250,0.5), 0 0 10px rgba(167,139,250,0.4)'
+                            : `0 0 0 1px rgba(0,0,0,0.5), 0 0 6px ${box.playerName ? 'rgba(34,197,94,0.4)' : 'rgba(245,158,11,0.4)'}`,
                           zIndex: 2,
                           cursor: 'pointer',
                           display: 'flex',
@@ -1205,20 +1219,13 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
                           justifyContent: 'center',
                           pointerEvents: 'auto',
                         }}
-                        title={box.playerName ? `Tagged: ${box.playerName}` : 'Untagged face — click to tag'}
+                        title={box.playerName ? `Tagged: ${box.playerName} — click to re-tag` : 'Click to tag this face'}
                         onClick={() => {
-                          const name = prompt('Tag this face with a player name:', box.playerName || '');
-                          if (name !== null) {
-                            setDetectionByPhotoId(prev => ({
-                              ...prev,
-                              [photo.id]: {
-                                ...prev[photo.id],
-                                faceBoxes: prev[photo.id].faceBoxes.map((fb, idx) =>
-                                  idx === i ? { ...fb, playerName: name.trim() || null } : fb
-                                ),
-                              },
-                            }));
-                          }
+                          const isSelected = selectedFaceBoxByPhotoId[photo.id] === box.id;
+                          setSelectedFaceBoxByPhotoId(prev => ({
+                            ...prev,
+                            [photo.id]: isSelected ? null : box.id,
+                          }));
                         }}
                       >
                         <span style={{
@@ -1277,34 +1284,77 @@ const mergeDetectedBoxesWithSavedTags = (photo: Photo, faceBoxes: FaceTagBox[]) 
                       ))}
                     </div>
 
-                    {/* Tag input */}
-                    <div className="admin-photo-tag-input-row">
-                      <input
-                        type="text"
-                        placeholder="Add player tag…"
-                        style={{ flex: 1, minWidth: 0, padding: '4px 8px', borderRadius: 6, border: '1.5px solid rgba(124,92,255,0.25)', background: 'rgba(0,0,0,0.3)', color: '#e0e0f0', fontSize: '0.75rem', outline: 'none' }}
-                        value={(photo as any)._manualTagInput || ''}
-                        onChange={e => {
-                          const value = e.target.value;
-                          setPhotos(prev => prev.map(p => p.id === photo.id ? { ...p, _manualTagInput: value } : p));
-                        }}
-                        onKeyDown={e => {
-                          if (e.key === 'Enter') {
-                            const value = (photo as any)._manualTagInput;
-                            if (value && value.trim()) handleManualTagPlayer(photo, value.trim());
-                          }
-                        }}
-                      />
-                      <button
-                        onClick={() => {
-                          const value = (photo as any)._manualTagInput;
-                          if (value && value.trim()) handleManualTagPlayer(photo, value.trim());
-                        }}
-                        style={{ padding: '4px 10px', borderRadius: 6, border: '1.5px solid rgba(124,92,255,0.4)', background: 'rgba(124,92,255,0.15)', color: '#a78bfa', fontWeight: 700, fontSize: '0.72rem', cursor: 'pointer' }}
-                      >
-                        Tag
-                      </button>
-                    </div>
+                    {/* Tag input — routes to face-tag handler when a face box is selected */}
+                    {(() => {
+                      const selectedFaceId = selectedFaceBoxByPhotoId[photo.id];
+                      const detection = detectionByPhotoId[photo.id];
+                      const selectedFaceBox = detection?.faceBoxes?.find(fb => fb.id === selectedFaceId);
+                      const isFaceMode = !!selectedFaceId;
+
+                      const submitTag = (name: string) => {
+                        const trimmed = name.trim();
+                        if (!trimmed) return;
+                        if (isFaceMode) {
+                          const rosterMatch = rosterPlayers.find(p => p.playerName.toLowerCase() === trimmed.toLowerCase());
+                          handleAssignPlayerToSelectedFace(photo, { playerName: trimmed, playerNumber: rosterMatch?.playerNumber });
+                        } else {
+                          handleManualTagPlayer(photo, trimmed);
+                        }
+                        setPhotos(prev => prev.map(p => p.id === photo.id ? { ...p, _manualTagInput: '' } : p));
+                      };
+
+                      return (
+                        <>
+                          {isFaceMode && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, padding: '3px 6px', borderRadius: 5, background: 'rgba(167,139,250,0.1)', border: '1px solid rgba(167,139,250,0.25)' }}>
+                              <span style={{ fontSize: '0.68rem', color: '#a78bfa', fontWeight: 700 }}>
+                                Tagging face{selectedFaceBox?.playerName ? `: ${selectedFaceBox.playerName}` : ''}
+                              </span>
+                              <button
+                                onClick={() => setSelectedFaceBoxByPhotoId(prev => ({ ...prev, [photo.id]: null }))}
+                                style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#6b6b80', cursor: 'pointer', fontSize: '0.7rem', padding: '0 2px', lineHeight: 1 }}
+                                title="Cancel face tag"
+                              >✕</button>
+                            </div>
+                          )}
+                          {/* Roster quick-select chips */}
+                          {isFaceMode && rosterPlayers.length > 0 && (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginBottom: 4 }}>
+                              {rosterPlayers.slice(0, 12).map(p => (
+                                <button
+                                  key={p.playerName}
+                                  onClick={() => submitTag(p.playerName)}
+                                  style={{ padding: '2px 7px', borderRadius: 999, border: '1px solid rgba(124,92,255,0.35)', background: 'rgba(124,92,255,0.1)', color: '#c4b5fd', fontSize: '0.65rem', fontWeight: 600, cursor: 'pointer' }}
+                                >
+                                  {p.playerName}{p.playerNumber ? ` #${p.playerNumber}` : ''}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          <div className="admin-photo-tag-input-row">
+                            <input
+                              type="text"
+                              placeholder={isFaceMode ? 'Name this face…' : 'Add player tag…'}
+                              style={{ flex: 1, minWidth: 0, padding: '4px 8px', borderRadius: 6, border: `1.5px solid ${isFaceMode ? 'rgba(167,139,250,0.4)' : 'rgba(124,92,255,0.25)'}`, background: 'rgba(0,0,0,0.3)', color: '#e0e0f0', fontSize: '0.75rem', outline: 'none' }}
+                              value={(photo as any)._manualTagInput || ''}
+                              onChange={e => {
+                                const value = e.target.value;
+                                setPhotos(prev => prev.map(p => p.id === photo.id ? { ...p, _manualTagInput: value } : p));
+                              }}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') submitTag((photo as any)._manualTagInput || '');
+                              }}
+                            />
+                            <button
+                              onClick={() => submitTag((photo as any)._manualTagInput || '')}
+                              style={{ padding: '4px 10px', borderRadius: 6, border: `1.5px solid ${isFaceMode ? 'rgba(167,139,250,0.5)' : 'rgba(124,92,255,0.4)'}`, background: isFaceMode ? 'rgba(167,139,250,0.15)' : 'rgba(124,92,255,0.15)', color: isFaceMode ? '#c4b5fd' : '#a78bfa', fontWeight: 700, fontSize: '0.72rem', cursor: 'pointer' }}
+                            >
+                              Tag
+                            </button>
+                          </div>
+                        </>
+                      );
+                    })()}
 
                     {/* Stats */}
                     <div className="admin-photo-stats">

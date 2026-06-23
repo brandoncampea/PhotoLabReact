@@ -1,18 +1,4 @@
 // Backup: verify and fix album photo count
-async function verifyAndFixAlbumPhotoCount(albumId: number) {
-  try {
-    const res = await api.get(`/photos/album/${albumId}`);
-    const photos = Array.isArray(res.data) ? res.data : [];
-    const albumRes = await api.get(`/albums/${albumId}`);
-    const album = albumRes.data;
-    if (album && typeof album.photoCount === 'number' && album.photoCount !== photos.length) {
-      // Always send photoCount in the update payload
-      await albumAdminService.updateAlbum(albumId, { photoCount: photos.length });
-    }
-  } catch (err) {
-    // Silent fail
-  }
-}
 import React, { useEffect, useState } from 'react';
 import { useSasUrl } from '../../hooks/useSasUrl';
 import { useAuth } from '../../contexts/AuthContext';
@@ -113,8 +99,6 @@ const AdminAlbums: React.FC = () => {
       if (Array.isArray(res.data)) {
         const uniqueCategories = Array.from(new Set(res.data.map((album: any) => album.category).filter(Boolean)));
         setCategories(uniqueCategories);
-        // Backup: verify and fix photo count for each album
-        await Promise.all(res.data.map((album: any) => verifyAndFixAlbumPhotoCount(album.id)));
       }
       setLoading(false);
     } catch (error) {
@@ -303,10 +287,7 @@ const AdminAlbums: React.FC = () => {
       setNewModalCategory('');
       setNewSchoolTag('');
       setFormData(emptyFormData);
-      // Always reload albums from backend to get latest published/hidden state
-      await loadAlbums();
-      await loadSchoolRoster();
-      await loadPendingTagCounts();
+      await Promise.all([loadAlbums(), loadSchoolRoster(), loadPendingTagCounts()]);
     } catch (error: any) {
       console.error('Failed to save album:', error);
       const message = error?.response?.data?.error || 'Failed to save album. Please try again.';
@@ -318,8 +299,7 @@ const AdminAlbums: React.FC = () => {
       try {
         await albumAdminService.deleteAlbum(id);
         setAlbums(albums.filter(a => a.id !== id));
-        await loadAlbums();
-        await loadPendingTagCounts();
+        await Promise.all([loadAlbums(), loadPendingTagCounts()]);
       } catch (error) {
         console.error('Failed to delete album:', error);
       }
@@ -340,11 +320,7 @@ const AdminAlbums: React.FC = () => {
   };
 
   useEffect(() => {
-    loadAlbums();
-    loadCategories();
-    loadPriceLists();
-    loadSchoolRoster();
-    loadPendingTagCounts();
+    Promise.all([loadAlbums(), loadCategories(), loadPriceLists(), loadSchoolRoster(), loadPendingTagCounts()]);
   }, [effectiveStudioId]);
 
   const PAGE_SIZE = 12;
@@ -877,28 +853,43 @@ const AdminAlbums: React.FC = () => {
                   Hide this album from your public albums page and search
                 </span>
               </div>
-              {formData.hidden && editingAlbum && (
+              {editingAlbum ? (
                 <div className="form-group">
-                  <label>Unique Shareable URL</label>
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    <input
-                      type="text"
-                      value={getHiddenAlbumUrl(editingAlbum.id)}
-                      readOnly
-                      style={{ flex: 1, fontSize: 13, background: '#222', color: '#fff', border: '1px solid #444', borderRadius: 4, padding: '4px 8px' }}
-                    />
-                    <button
-                      type="button"
-                      className="btn"
-                      onClick={() => {
-                        navigator.clipboard.writeText(getHiddenAlbumUrl(editingAlbum.id));
-                        alert('Hidden album link copied to clipboard!');
-                      }}
-                    >Copy</button>
-                  </div>
-                  <div style={{ fontSize: 12, color: '#aaa', marginTop: 4 }}>
-                    Only users with this link can view the album. It will not appear in search or album lists.
-                  </div>
+                  <label>Share Link</label>
+                  {(() => {
+                    const studioSlug = (editingAlbum as any).studioPublicSlug || localStorage.getItem('studioSlug') || '';
+                    const shareUrl = formData.hidden
+                      ? getHiddenAlbumUrl(editingAlbum.id)
+                      : studioSlug
+                        ? `${window.location.origin}/albums/${editingAlbum.id}?studioSlug=${encodeURIComponent(studioSlug)}`
+                        : `${window.location.origin}/albums/${editingAlbum.id}`;
+                    return (
+                      <>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                          <input
+                            type="text"
+                            value={shareUrl}
+                            readOnly
+                            style={{ flex: 1, fontSize: 13, background: '#222', color: '#fff', border: '1px solid #444', borderRadius: 4, padding: '4px 8px' }}
+                          />
+                          <button
+                            type="button"
+                            className="btn"
+                            onClick={() => navigator.clipboard.writeText(shareUrl).then(() => alert('Link copied!'))}
+                          >Copy</button>
+                        </div>
+                        {formData.hidden && (
+                          <div style={{ fontSize: 12, color: '#aaa', marginTop: 4 }}>
+                            Only users with this link can view the album.
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
+              ) : (
+                <div style={{ fontSize: 12, color: '#6b6b80', marginTop: 4 }}>
+                  The share link will be available after saving the album.
                 </div>
               )}
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24 }}>

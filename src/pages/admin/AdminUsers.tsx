@@ -5,6 +5,10 @@ import { useAuth } from '../../contexts/AuthContext';
 import AdminLayout from '../../components/AdminLayout';
 
 type RoleFilter = 'all' | 'customer' | 'admin' | 'super_admin' | 'studio_admin';
+type SortCol = 'name' | 'email' | 'studio' | 'role' | 'registered' | 'lastLogin' | 'orders' | 'spent';
+type SortDir = 'asc' | 'desc';
+
+const PAGE_SIZE = 25;
 
 const ROLE_FILTERS: { key: RoleFilter; label: string }[] = [
   { key: 'all', label: 'All' },
@@ -35,11 +39,11 @@ const roleLabel: Record<string, string> = {
   super_admin: 'Super Admin',
 };
 
-const roleEmoji: Record<string, string> = {
-  customer: '👤',
-  admin: '👨‍💼',
-  studio_admin: '🏢',
-  super_admin: '👑',
+const roleOrder: Record<string, number> = {
+  super_admin: 0,
+  admin: 1,
+  studio_admin: 2,
+  customer: 3,
 };
 
 function formatDate(d?: string | null) {
@@ -66,6 +70,9 @@ const AdminUsers: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<RoleFilter>('all');
   const [search, setSearch] = useState('');
+  const [sortCol, setSortCol] = useState<SortCol>('registered');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const [page, setPage] = useState(1);
 
   const isSuperAdmin = user?.role === 'super_admin';
 
@@ -74,6 +81,9 @@ const AdminUsers: React.FC = () => {
     const interval = setInterval(() => loadUsers(true), 30000);
     return () => clearInterval(interval);
   }, []);
+
+  // Reset to page 1 when filter/search/sort changes
+  useEffect(() => { setPage(1); }, [filter, search, sortCol, sortDir]);
 
   const loadUsers = async (silent = false) => {
     try {
@@ -112,6 +122,15 @@ const AdminUsers: React.FC = () => {
     }
   };
 
+  const handleSort = (col: SortCol) => {
+    if (sortCol === col) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortCol(col);
+      setSortDir('asc');
+    }
+  };
+
   const filtered = users.filter(u => {
     const matchRole = filter === 'all' || u.role === filter;
     const q = search.toLowerCase();
@@ -122,8 +141,74 @@ const AdminUsers: React.FC = () => {
     return matchRole && matchSearch;
   });
 
+  const sorted = [...filtered].sort((a, b) => {
+    let cmp = 0;
+    switch (sortCol) {
+      case 'name':
+        cmp = `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`);
+        break;
+      case 'email':
+        cmp = a.email.localeCompare(b.email);
+        break;
+      case 'studio':
+        cmp = (a.studioName || '').localeCompare(b.studioName || '');
+        break;
+      case 'role':
+        cmp = (roleOrder[a.role] ?? 9) - (roleOrder[b.role] ?? 9);
+        break;
+      case 'registered':
+        cmp = (a.registeredDate || '').localeCompare(b.registeredDate || '');
+        break;
+      case 'lastLogin':
+        cmp = (a.lastLoginDate || '').localeCompare(b.lastLoginDate || '');
+        break;
+      case 'orders':
+        cmp = (a.totalOrders ?? 0) - (b.totalOrders ?? 0);
+        break;
+      case 'spent':
+        cmp = (a.totalSpent ?? 0) - (b.totalSpent ?? 0);
+        break;
+    }
+    return sortDir === 'asc' ? cmp : -cmp;
+  });
+
+  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+  const paginated = sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
   const count = (role: RoleFilter) =>
     role === 'all' ? users.length : users.filter(u => u.role === role).length;
+
+  const SortIndicator = ({ col }: { col: SortCol }) => {
+    if (sortCol !== col) return <span style={{ opacity: 0.3, marginLeft: 4 }}>↕</span>;
+    return <span style={{ marginLeft: 4 }}>{sortDir === 'asc' ? '↑' : '↓'}</span>;
+  };
+
+  const colHeader = (label: string, col: SortCol) => (
+    <button
+      onClick={() => handleSort(col)}
+      style={{
+        background: 'none',
+        border: 'none',
+        padding: 0,
+        color: sortCol === col ? '#c4b5fd' : '#a78bfa',
+        fontSize: 11,
+        fontWeight: 700,
+        textTransform: 'uppercase',
+        letterSpacing: '0.08em',
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {label}
+      <SortIndicator col={col} />
+    </button>
+  );
+
+  const gridCols = isSuperAdmin
+    ? '1.8fr 1.8fr 1.2fr 1.2fr 1fr 1fr 0.8fr 0.9fr 0.7fr 0.6fr'
+    : '1.8fr 1.8fr 1.2fr 1fr 1fr 0.8fr 0.9fr 0.7fr 0.6fr';
 
   return (
     <AdminLayout>
@@ -233,45 +318,36 @@ const AdminUsers: React.FC = () => {
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: isSuperAdmin
-                    ? '1.8fr 1.8fr 1.2fr 1.2fr 1fr 1fr 0.8fr 0.9fr 0.7fr 0.6fr'
-                    : '1.8fr 1.8fr 1.2fr 1fr 1fr 0.8fr 0.9fr 0.7fr 0.6fr',
+                  gridTemplateColumns: gridCols,
                   padding: '10px 20px',
                   borderBottom: '1px solid rgba(102,102,204,0.2)',
-                  color: '#a78bfa',
-                  fontSize: 11,
-                  fontWeight: 700,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.08em',
                 }}
               >
-                <div>Name</div>
-                <div>Email</div>
-                {isSuperAdmin && <div>Studio</div>}
-                <div>Role</div>
-                <div>Watched Players</div>
-                <div>Registered</div>
-                <div>Last Login</div>
-                <div>Orders</div>
-                <div>Spent</div>
-                <div>Actions</div>
+                {colHeader('Name', 'name')}
+                {colHeader('Email', 'email')}
+                {isSuperAdmin && colHeader('Studio', 'studio')}
+                {colHeader('Role', 'role')}
+                <div style={{ color: '#a78bfa', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Watched Players</div>
+                {colHeader('Registered', 'registered')}
+                {colHeader('Last Login', 'lastLogin')}
+                {colHeader('Orders', 'orders')}
+                {colHeader('Spent', 'spent')}
+                <div style={{ color: '#a78bfa', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Actions</div>
               </div>
 
-              {filtered.length === 0 ? (
+              {sorted.length === 0 ? (
                 <div style={{ color: '#a1a1aa', textAlign: 'center', padding: 48 }}>
                   {search || filter !== 'all' ? 'No users match your filters.' : 'No users found.'}
                 </div>
               ) : (
-                filtered.map((u, i) => (
+                paginated.map((u, i) => (
                   <div
                     key={u.id}
                     style={{
                       display: 'grid',
-                      gridTemplateColumns: isSuperAdmin
-                        ? '1.8fr 1.8fr 1.2fr 1.2fr 1fr 1fr 0.8fr 0.9fr 0.7fr 0.6fr'
-                        : '1.8fr 1.8fr 1.2fr 1fr 1fr 0.8fr 0.9fr 0.7fr 0.6fr',
+                      gridTemplateColumns: gridCols,
                       padding: '13px 20px',
-                      borderBottom: i < filtered.length - 1 ? '1px solid rgba(102,102,204,0.1)' : 'none',
+                      borderBottom: i < paginated.length - 1 ? '1px solid rgba(102,102,204,0.1)' : 'none',
                       alignItems: 'center',
                     }}
                   >
@@ -360,9 +436,54 @@ const AdminUsers: React.FC = () => {
             </div>
           )}
 
-          {!loading && (
+          {/* Pagination + count */}
+          {!loading && sorted.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }}>
+              <div style={{ color: '#3f3f5a', fontSize: 12 }}>
+                {sorted.length} of {users.length} users
+              </div>
+              {totalPages > 1 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <button
+                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                    style={{
+                      padding: '5px 12px',
+                      background: 'rgba(102,102,204,0.1)',
+                      border: '1px solid rgba(102,102,204,0.25)',
+                      borderRadius: 6,
+                      color: page === 1 ? '#3f3f5a' : '#c4b5fd',
+                      cursor: page === 1 ? 'default' : 'pointer',
+                      fontSize: 13,
+                    }}
+                  >
+                    ← Prev
+                  </button>
+                  <span style={{ color: '#a1a1aa', fontSize: 13 }}>
+                    Page {page} of {totalPages}
+                  </span>
+                  <button
+                    onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                    disabled={page === totalPages}
+                    style={{
+                      padding: '5px 12px',
+                      background: 'rgba(102,102,204,0.1)',
+                      border: '1px solid rgba(102,102,204,0.25)',
+                      borderRadius: 6,
+                      color: page === totalPages ? '#3f3f5a' : '#c4b5fd',
+                      cursor: page === totalPages ? 'default' : 'pointer',
+                      fontSize: 13,
+                    }}
+                  >
+                    Next →
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+          {!loading && sorted.length === 0 && (
             <div style={{ color: '#3f3f5a', fontSize: 12, marginTop: 10, textAlign: 'right' }}>
-              {filtered.length} of {users.length} users
+              0 of {users.length} users
             </div>
           )}
         </div>

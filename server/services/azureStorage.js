@@ -30,6 +30,7 @@ if (!STORAGE_CONTAINER) {
 }
 
 let containerClient;
+let containerEnsured = false;
 
 function parseConnectionString(connectionString) {
   if (!connectionString) return { accountName: null, accountKey: null };
@@ -62,7 +63,10 @@ function getContainerClient() {
 
 export async function uploadImageBufferToAzure(buffer, blobName, contentType = 'application/octet-stream', accessTier = undefined) {
   const container = getContainerClient();
-  await container.createIfNotExists();
+  if (!containerEnsured) {
+    await container.createIfNotExists();
+    containerEnsured = true;
+  }
 
   const blockBlobClient = container.getBlockBlobClient(blobName);
   await blockBlobClient.uploadData(buffer, {

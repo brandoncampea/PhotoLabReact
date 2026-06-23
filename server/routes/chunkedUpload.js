@@ -30,7 +30,7 @@ router.post('/upload-chunk', authRequired, chunkUpload.single('chunk'), async (r
       return res.status(400).json({ error: 'Invalid fileId' });
     }
     const chunkPath = path.join(CHUNKS_DIR, `${fileId}.${chunkIndex}`);
-    fs.writeFileSync(chunkPath, req.file.buffer);
+    await fs.promises.writeFile(chunkPath, req.file.buffer);
     return res.status(200).json({ ok: true });
   } catch (err) {
     return res.status(500).json({ error: err.message });
@@ -78,35 +78,26 @@ router.post('/assemble-chunks', authRequired, express.json({ limit: '2mb' }), as
     if (!fileId || !totalChunks || !fileName || !albumId) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
-    const buffers = [];
+    // Read all chunks in parallel and verify they all exist first
+    const chunkPaths = Array.from({ length: totalChunks }, (_, i) => path.join(CHUNKS_DIR, `${fileId}.${i}`));
     for (let i = 0; i < totalChunks; i++) {
-      const chunkPath = path.join(CHUNKS_DIR, `${fileId}.${i}`);
-      if (!fs.existsSync(chunkPath)) {
+      if (!fs.existsSync(chunkPaths[i])) {
         return res.status(400).json({ error: `Missing chunk ${i}` });
       }
-      buffers.push(fs.readFileSync(chunkPath));
     }
+    const buffers = await Promise.all(chunkPaths.map(p => fs.promises.readFile(p)));
     const fileBuffer = Buffer.concat(buffers);
-    // Clean up chunks
-    for (let i = 0; i < totalChunks; i++) {
-      fs.unlinkSync(path.join(CHUNKS_DIR, `${fileId}.${i}`));
-    }
+    // Clean up chunks in parallel (fire-and-forget, don't block response)
+    Promise.all(chunkPaths.map(p => fs.promises.unlink(p))).catch(() => {});
 
-
-    // Upload original image to Azure (set to 'Cool' tier)
-    // Remove spaces from filename
+    // Prepare blob names
     const safeFileName = fileName.replace(/\s+/g, '_');
-    const blobName = `${albumId}/${Date.now()}_${safeFileName}`;
-    // Store only the blob path (relative to container)
+    const ts = Date.now();
+    const blobName = `${albumId}/${ts}_${safeFileName}`;
+    const thumbBlobName = `${albumId}/thumb_${ts}_${safeFileName.replace(/\.[^.]+$/, '.jpg')}`;
     const safeMimetype = (mimetype && ALLOWED_MIMETYPES.has(mimetype)) ? mimetype : 'image/jpeg';
-    const photoBlobPath = await uploadImageBufferToAzure(
-      fileBuffer,
-      blobName,
-      safeMimetype,
-      'Cool' // Set full-size images to Cool tier
-    );
 
-    // Generate thumbnail (max 400px width/height, JPEG)
+    // Generate thumbnail while uploading full image in parallel
     let thumbnailBuffer;
     try {
       const sharp = (await import('sharp')).default;
@@ -114,15 +105,15 @@ router.post('/assemble-chunks', authRequired, express.json({ limit: '2mb' }), as
         .resize({ width: 400, height: 400, fit: 'inside', withoutEnlargement: true })
         .jpeg({ quality: 80 })
         .toBuffer();
-    } catch (err) {
-      // ...existing code...
-      thumbnailBuffer = fileBuffer; // fallback to original if sharp fails
+    } catch {
+      thumbnailBuffer = fileBuffer;
     }
 
-    // Upload thumbnail to Azure (default Hot tier)
-    const thumbBlobName = `${albumId}/thumb_${Date.now()}_${safeFileName.replace(/\.[^.]+$/, '.jpg')}`;
-    // Store only the blob path (relative to container)
-    const thumbnailBlobPath = await uploadImageBufferToAzure(thumbnailBuffer, thumbBlobName, 'image/jpeg', 'Hot');
+    // Upload full image and thumbnail to Azure in parallel
+    const [photoBlobPath, thumbnailBlobPath] = await Promise.all([
+      uploadImageBufferToAzure(fileBuffer, blobName, safeMimetype, 'Cool'),
+      uploadImageBufferToAzure(thumbnailBuffer, thumbBlobName, 'image/jpeg', 'Hot'),
+    ]);
 
     // Extract metadata
     let extractedMetadata = {};
@@ -162,11 +153,11 @@ router.post('/assemble-chunks', authRequired, express.json({ limit: '2mb' }), as
       playerNumber || null
     ]);
 
-    // Update album's photo_count after upload
-    await query(
+    // Update album's photo_count asynchronously — don't block the response
+    query(
       'UPDATE albums SET photo_count = (SELECT COUNT(*) FROM photos WHERE album_id = $1) WHERE id = $1',
       [albumId]
-    );
+    ).catch(() => {});
 
     return res.status(201).json({
       ...result,
