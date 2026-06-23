@@ -19,7 +19,7 @@ export const orderService = {
     return response.data;
   },
   async createOrder(
-    items: CartItem[], 
+    items: CartItem[],
     shippingAddress: ShippingAddress,
     shippingOption: 'batch' | 'direct' | 'none',
     shippingCost: number,
@@ -33,7 +33,9 @@ export const orderService = {
       total: number;
       subtotalBeforeDiscount?: number;
     },
-    suppressEmail?: boolean
+    suppressEmail?: boolean,
+    studioShippingCost?: number,
+    shippingMargin?: number
   ): Promise<Order> {
     // Calculate subtotal with studio fees applied to each item
     let itemsTotal = items.reduce((sum, item) => {
@@ -97,7 +99,9 @@ export const orderService = {
       paymentIntentId,
       isBatch: shippingOption === 'batch',
       labSubmitted: false,
-      ...(suppressEmail ? { suppressEmail: true } : {})
+      ...(suppressEmail ? { suppressEmail: true } : {}),
+      ...(typeof studioShippingCost === 'number' ? { studioShippingCost } : {}),
+      ...(typeof shippingMargin === 'number' ? { shippingMargin } : {}),
     });
     return response.data;
   },

@@ -986,8 +986,9 @@ const getOrderStudioIdFromItems = async (items) => {
 };
 
 const getFallbackDirectShippingChargeForStudio = async (studioId) => {
-  const fallback = 9.95;
-  if (!studioId) return fallback;
+  const fallbackAmount = 9.95;
+  const fallbackMode = 'flat_fee';
+  if (!studioId) return { amount: fallbackAmount, directPricingMode: fallbackMode };
 
   const row = await queryRow(
     `SELECT direct_pricing_mode as directPricingMode,
@@ -1003,14 +1004,14 @@ const getFallbackDirectShippingChargeForStudio = async (studioId) => {
   const directCharge = Number(row?.directShippingCharge);
 
   if (mode === 'flat_fee' && Number.isFinite(flatFee) && flatFee > 0) {
-    return roundCurrency(flatFee);
+    return { amount: roundCurrency(flatFee), directPricingMode: mode };
   }
 
   if (Number.isFinite(directCharge) && directCharge > 0) {
-    return roundCurrency(directCharge);
+    return { amount: roundCurrency(directCharge), directPricingMode: mode };
   }
 
-  return fallback;
+  return { amount: fallbackAmount, directPricingMode: mode };
 };
 
 const validateBatchEligibilityForOrder = async ({ studioId, items }) => {
@@ -3595,19 +3596,21 @@ router.post('/', requireActiveSubscription, async (req, res) => {
   try {
     const userId = req.user.id;
     const { 
-      items, 
+      items,
       subtotal,
       taxAmount,
       taxRate,
-      shippingAddress, 
-      shippingOption, 
-      shippingCost, 
+      shippingAddress,
+      shippingOption,
+      shippingCost,
       discountCode,
       paymentIntentId,
       isBatch,
       labSubmitted,
       batchShippingAddress,
       batchLabVendor,
+      studioShippingCost: clientStudioShippingCost,
+      shippingMargin: clientShippingMargin,
     } = req.body;
 
     // Determine if all items are digital-only.
@@ -3658,7 +3661,7 @@ router.post('/', requireActiveSubscription, async (req, res) => {
     const batchOrder = !!isBatch || requestedShippingOption === 'batch';
     const normalizedShippingOption = allDigital ? 'none' : (batchOrder ? 'batch' : 'direct');
     const requestedShippingCost = Number(shippingCost) || 0;
-    const fallbackDirectShippingCost = await getFallbackDirectShippingChargeForStudio(orderStudioId);
+    const { amount: fallbackDirectShippingCost, directPricingMode: studioDirectPricingMode } = await getFallbackDirectShippingChargeForStudio(orderStudioId);
     const computedShipping = allDigital
       ? 0
       : (normalizedShippingOption === 'batch'
@@ -3739,10 +3742,11 @@ router.post('/', requireActiveSubscription, async (req, res) => {
       batchReadyDate = batchEligibility.batchReadyDate || null;
     }
 
-    // studio_shipping_cost and shipping_margin are not known at order creation time
-    // (WHCC shipping is charged after lab submission). Store as 0.
-    const studioShippingCost = 0;
-    const shippingMargin = 0;
+    // For pass-through WHCC orders the live quote values are known at creation time.
+    // For all others these remain 0 until WHCC import billing updates them post-submission.
+    const studioShippingCost = Number(clientStudioShippingCost) > 0 ? roundCurrency(Number(clientStudioShippingCost)) : 0;
+    const shippingMargin = Number(clientShippingMargin) > 0 ? roundCurrency(Number(clientShippingMargin)) : 0;
+    const directPricingModeForOrder = batchOrder ? null : studioDirectPricingMode;
 
     // Set all new orders to 'pending' and do not auto-submit direct shipping orders to WHCC
     const nextStatus = 'pending';
@@ -3754,15 +3758,15 @@ router.post('/', requireActiveSubscription, async (req, res) => {
     const orderResult = await queryRow(`
       INSERT INTO orders (
         studio_id,
-        user_id, 
+        user_id,
         status,
         approval_status,
-        total, 
+        total,
         subtotal,
         tax_amount,
         tax_rate,
-        shipping_address, 
-        shipping_option, 
+        shipping_address,
+        shipping_option,
         shipping_cost,
         studio_shipping_cost,
         shipping_margin,
@@ -3776,15 +3780,16 @@ router.post('/', requireActiveSubscription, async (req, res) => {
         lab_submitted_at,
         payment_intent_id,
         stripe_fee_amount,
-        stripe_charge_id
+        stripe_charge_id,
+        direct_pricing_mode_used
       )
       VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, CASE WHEN $20 = 1 THEN CURRENT_TIMESTAMP ELSE NULL END, $21, $22, $23
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, CASE WHEN $20 = 1 THEN CURRENT_TIMESTAMP ELSE NULL END, $21, $22, $23, $24
       )
       RETURNING id
     `, [
       orderStudioId,
-      userId, 
+      userId,
       nextStatus,
       'pending', // approval_status
       total,
@@ -3806,6 +3811,7 @@ router.post('/', requireActiveSubscription, async (req, res) => {
       paymentAccounting.paymentIntentId,
       paymentAccounting.stripeFeeAmount,
       paymentAccounting.chargeId,
+      directPricingModeForOrder,
     ]);
 
     const orderId = orderResult.id;

@@ -460,9 +460,18 @@ export interface ShippingConfig {
   directShippingCharge: number;
   directPricingMode?: 'pass_through' | 'flat_fee';
   directFlatFee?: number | null;
+  directHandlingFee?: number;
   isActive: boolean;
   batchShippingAddress?: ShippingAddress | null;
   batchShippingNote?: string;
+}
+
+export interface WhccLiveQuote {
+  source: 'whcc-live' | 'rubric-fallback' | 'flat-fee';
+  customerShippingCost: number;
+  whccShippingCost?: number;
+  handlingFee?: number;
+  confirmationId?: string | null;
 }
 
 export interface ShippingQuote {
@@ -477,6 +486,8 @@ export interface ShippingQuote {
   directPricingMode: 'pass_through' | 'flat_fee';
   directFlatFee: number;
   rubricSource: string;
+  source?: 'whcc-live' | 'rubric-fallback' | 'flat-fee' | 'batch' | 'rubric';
+  confirmationId?: string | null;
 }
 
 export interface BatchQueueOrder {

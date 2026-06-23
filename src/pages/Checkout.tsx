@@ -1,9 +1,10 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useCart } from '../contexts/CartContext';
 import { ShippingAddress } from '../types';
 import { processCheckout } from '../services/checkoutService';
+import { shippingService } from '../services/shippingService';
 import { Album } from '../types';
 
 const Checkout: React.FC = () => {
@@ -29,20 +30,17 @@ const Checkout: React.FC = () => {
   });
 
   const [orderConfirmation, setOrderConfirmation] = useState<any>(null);
+  const [shippingCost, setShippingCost] = useState(0);
+  const [shippingQuoting, setShippingQuoting] = useState(false);
+  const [shippingQuoteSource, setShippingQuoteSource] = useState<string>('');
+  const [_whccConfirmationId, setWhccConfirmationId] = useState<string | null>(null);
 
   // Calculate totals
   const subtotal = useMemo(() => {
     return cart.reduce((sum: number, item: any) => sum + item.price * item.quantity, 0);
   }, [cart]);
 
-  const shippingCost = useMemo(() => {
-    if (subtotal === 0) return 0;
-    // Example: flat rate shipping
-    return 10;
-  }, [subtotal]);
-
   const tax = useMemo(() => {
-    // Example: 8% tax
     return (subtotal + shippingCost) * 0.08;
   }, [subtotal, shippingCost]);
 
@@ -84,6 +82,64 @@ const Checkout: React.FC = () => {
     return allBatch ? 'batch' : 'direct';
   };
 
+  const buildCheckoutItems = useCallback(() => {
+    return cart.map((item: any) => {
+      let attributeUIDs: number[] = [];
+      if (item.productOptionsSnapshot) {
+        let snap: any = item.productOptionsSnapshot;
+        if (typeof snap === 'string') { try { snap = JSON.parse(snap); } catch { snap = {}; } }
+        if (Array.isArray(snap?.whccItemAttributeUIDs)) {
+          attributeUIDs = snap.whccItemAttributeUIDs.filter((x: any) => typeof x === 'number');
+        }
+      }
+      return {
+        ...item,
+        attributes: attributeUIDs.length ? attributeUIDs : item.attributes,
+        productOptionsSnapshot: item.productOptions
+          ? (typeof item.productOptions === 'string' ? item.productOptions : JSON.stringify(item.productOptions))
+          : null,
+      };
+    });
+  }, [cart]);
+
+  const fetchShippingQuote = useCallback(async (address: ShippingAddress) => {
+    const shippingMode = getShippingMode();
+    if (shippingMode === 'batch') {
+      setShippingCost(0);
+      setShippingQuoteSource('batch');
+      return;
+    }
+    setShippingQuoting(true);
+    try {
+      const quote = await shippingService.whccLiveQuote({
+        items: buildCheckoutItems(),
+        shippingAddress: address,
+        shippingOption: 'direct',
+      });
+      setShippingCost(quote.customerShippingCost);
+      setShippingQuoteSource(quote.source);
+      setWhccConfirmationId(quote.confirmationId ?? null);
+    } catch {
+      setShippingQuoteSource('error');
+    } finally {
+      setShippingQuoting(false);
+    }
+  }, [buildCheckoutItems]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-fetch quote with debounce once address is complete
+  useEffect(() => {
+    if (!isShippingValid) return;
+    const timer = setTimeout(() => {
+      fetchShippingQuote(shippingInfo);
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [shippingInfo, isShippingValid]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleContinueToPayment = () => {
+    if (!isShippingValid) return;
+    setStep('payment');
+  };
+
   const handleSubmitOrder = async () => {
     if (!user) {
       setError('You must be logged in to place an order');
@@ -101,26 +157,7 @@ const Checkout: React.FC = () => {
     try {
 
       const shippingMode = getShippingMode();
-
-      // Always send attribute UIDs (not names) for each item
-      const checkoutItems = cart.map((item) => {
-        let attributeUIDs: number[] = [];
-        // Always parse productOptionsSnapshot for attribute UIDs
-        if (item.productOptionsSnapshot) {
-          let snapshot: any = item.productOptionsSnapshot;
-          if (typeof snapshot === 'string') {
-            try { snapshot = JSON.parse(snapshot); } catch { snapshot = {}; }
-          }
-          if (snapshot && Array.isArray(snapshot.whccItemAttributeUIDs)) {
-            attributeUIDs = snapshot.whccItemAttributeUIDs.filter((x: any) => typeof x === 'number');
-          }
-        }
-        return {
-          ...item,
-          attributes: attributeUIDs.length ? attributeUIDs : item.attributes,
-          productOptionsSnapshot: item.productOptions ? (typeof item.productOptions === 'string' ? item.productOptions : JSON.stringify(item.productOptions)) : null,
-        };
-      });
+      const checkoutItems = buildCheckoutItems();
 
       const checkoutRequest = {
         customer: {
@@ -473,6 +510,43 @@ const Checkout: React.FC = () => {
             </div>
           </div>
 
+          {/* Shipping cost preview — shown once address is complete */}
+          {isShippingValid && (
+            <div style={{ border: '1px solid #2a2740', borderRadius: 8, padding: 14, marginBottom: 16 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, marginBottom: 8, fontSize: 14, color: '#aaa' }}>
+                <div>Subtotal</div>
+                <div>${Number(subtotal).toFixed(2)}</div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, marginBottom: 8, fontSize: 14, color: '#aaa' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  Shipping
+                  {shippingQuoteSource === 'whcc-live' && (
+                    <span style={{ fontSize: 10, color: '#7b61ff' }}>WHCC actual</span>
+                  )}
+                  {shippingQuoteSource === 'rubric-fallback' && (
+                    <span style={{ fontSize: 10, color: '#aaa' }}>estimated</span>
+                  )}
+                  {shippingQuoteSource === 'batch' && (
+                    <span style={{ fontSize: 10, color: '#79d279' }}>included in batch</span>
+                  )}
+                </div>
+                <div>
+                  {shippingQuoting
+                    ? <span style={{ color: '#aaa', fontSize: 13 }}>Calculating…</span>
+                    : `$${Number(shippingCost).toFixed(2)}`}
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, borderTop: '1px solid #2a2740', paddingTop: 10, fontWeight: 700, color: '#7b61ff' }}>
+                <div>Total (est.)</div>
+                <div>
+                  {shippingQuoting
+                    ? '—'
+                    : `$${Number(total).toFixed(2)}`}
+                </div>
+              </div>
+            </div>
+          )}
+
           <div style={{ display: 'flex', gap: 10 }}>
             <button
               className="btn btn-secondary"
@@ -483,11 +557,11 @@ const Checkout: React.FC = () => {
             </button>
             <button
               className="btn btn-primary"
-              onClick={() => setStep('payment')}
-              disabled={!isShippingValid}
+              onClick={handleContinueToPayment}
+              disabled={!isShippingValid || shippingQuoting}
               style={{ flex: 1 }}
             >
-              Continue to Payment
+              {shippingQuoting ? 'Calculating…' : 'Continue to Payment'}
             </button>
           </div>
         </div>
@@ -517,7 +591,15 @@ const Checkout: React.FC = () => {
               <div>${Number(subtotal).toFixed(2)}</div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, marginBottom: 12 }}>
-              <div>Shipping</div>
+              <div>
+                Shipping
+                {shippingQuoteSource === 'whcc-live' && (
+                  <span style={{ fontSize: 10, color: '#7b61ff', marginLeft: 6 }}>WHCC actual</span>
+                )}
+                {shippingQuoteSource === 'rubric-fallback' && (
+                  <span style={{ fontSize: 10, color: '#aaa', marginLeft: 6 }}>estimated</span>
+                )}
+              </div>
               <div>${Number(shippingCost).toFixed(2)}</div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, marginBottom: 12, borderBottom: '1px solid #2a2740', paddingBottom: 12 }}>

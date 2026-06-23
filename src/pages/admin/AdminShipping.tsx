@@ -38,6 +38,7 @@ const AdminShipping: React.FC = () => {
   const [directShippingCharge, setDirectShippingCharge] = useState('');
   const [directPricingMode, setDirectPricingMode] = useState<'pass_through' | 'flat_fee'>('pass_through');
   const [directFlatFee, setDirectFlatFee] = useState('');
+  const [directHandlingFee, setDirectHandlingFee] = useState('0');
   const [isActive, setIsActive] = useState(true);
   const [batchShippingNote, setBatchShippingNote] = useState('');
   const [batchShippingAddress, setBatchShippingAddress] = useState<ShippingAddress>({
@@ -76,6 +77,7 @@ const AdminShipping: React.FC = () => {
         setDirectShippingCharge(data.directShippingCharge?.toString() || '');
         setDirectPricingMode(data.directPricingMode === 'flat_fee' ? 'flat_fee' : 'pass_through');
         setDirectFlatFee(data.directFlatFee == null ? '' : String(data.directFlatFee));
+        setDirectHandlingFee(data.directHandlingFee != null ? String(data.directHandlingFee) : '0');
         setIsActive(!!data.isActive);
         setBatchShippingNote(data.batchShippingNote || '');
         setBatchShippingAddress({
@@ -107,6 +109,7 @@ const AdminShipping: React.FC = () => {
         directShippingCharge: parseFloat(directShippingCharge),
         directPricingMode,
         directFlatFee: directFlatFee === '' ? null : parseFloat(directFlatFee),
+        directHandlingFee: parseFloat(directHandlingFee) || 0,
         isActive,
         batchShippingAddress,
         batchShippingNote,
@@ -233,6 +236,22 @@ const AdminShipping: React.FC = () => {
                       required
                     />
                     <small>Customers are charged this amount regardless of the WHCC rubric cost.</small>
+                  </div>
+                )}
+
+                {directPricingMode === 'pass_through' && (
+                  <div className="form-group admin-shipping-field">
+                    <label htmlFor="directHandlingFee">Handling Fee ($)</label>
+                    <input
+                      id="directHandlingFee"
+                      type="number"
+                      className="input"
+                      value={directHandlingFee}
+                      onChange={e => setDirectHandlingFee(e.target.value)}
+                      min="0"
+                      step="0.01"
+                    />
+                    <small>Added on top of the WHCC-calculated shipping cost. Set to 0 for pure pass-through.</small>
                   </div>
                 )}
               </div>

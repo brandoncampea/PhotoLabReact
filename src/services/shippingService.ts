@@ -1,5 +1,5 @@
 import api from './api';
-import { ShippingConfig, ShippingAddress, CartItem, ShippingQuote } from '../types';
+import { ShippingConfig, ShippingAddress, CartItem, ShippingQuote, WhccLiveQuote } from '../types';
 
 export interface ShippingRubricSummary {
   source: string;
@@ -29,6 +29,15 @@ export const shippingService = {
     items: CartItem[];
   }): Promise<ShippingQuote> {
     const response = await api.post<ShippingQuote>('/shipping/quote', params);
+    return response.data;
+  },
+
+  async whccLiveQuote(params: {
+    items: CartItem[];
+    shippingAddress: ShippingAddress;
+    shippingOption?: 'batch' | 'direct';
+  }): Promise<WhccLiveQuote> {
+    const response = await api.post<WhccLiveQuote>('/shipping/whcc-live-quote', params);
     return response.data;
   },
 };

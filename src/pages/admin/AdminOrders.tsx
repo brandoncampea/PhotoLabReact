@@ -1295,7 +1295,9 @@ const AdminOrders: React.FC = () => {
         const shippingRuleLabel = order.isBatch
           ? 'Batch order: customer $0, studio pays rubric cost'
           : order.directPricingModeUsed === 'pass_through'
-            ? 'Direct order: customer charged rubric cost'
+            ? shippingMargin > 0
+              ? 'Direct order: WHCC pass-through + handling fee'
+              : 'Direct order: WHCC pass-through'
             : 'Direct order: customer charged flat fee';
         const discount = resolveOrderDiscount(order);
 

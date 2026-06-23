@@ -41,6 +41,11 @@ const mssql = require('../mssql.cjs');
     `);
 
     await query(`
+      IF COL_LENGTH('shipping_config', 'direct_handling_fee') IS NULL
+        ALTER TABLE shipping_config ADD direct_handling_fee FLOAT NOT NULL DEFAULT 0
+    `);
+
+    await query(`
       IF EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'ck_shipping_config_id')
         ALTER TABLE shipping_config DROP CONSTRAINT ck_shipping_config_id
     `);

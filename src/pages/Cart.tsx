@@ -62,6 +62,7 @@ const Cart: React.FC = () => {
     // Stripe payment intent state
     const [activePaymentIntent, setActivePaymentIntent] = useState<PaymentIntent | null>(null);
     const [shippingQuote, setShippingQuote] = useState<ShippingQuote | null>(null);
+    const [shippingQuoting, setShippingQuoting] = useState(false);
     const [products, setProducts] = useState<Product[]>([]);
     const [appliedDiscount, setAppliedDiscount] = useState<any>(null);
     const [editingItem, setEditingItem] = useState<CartItemType | null>(null);
@@ -175,6 +176,9 @@ const Cart: React.FC = () => {
     };
   }, [items, albumDetailsById]);
 
+  const isAddressComplete = (addr: ShippingAddress) =>
+    !!(addr.fullName && addr.addressLine1 && addr.city && addr.state && addr.zipCode && addr.email);
+
   useEffect(() => {
     const shouldQuote = hasPhysicalProducts();
     if (!shouldQuote) {
@@ -183,22 +187,57 @@ const Cart: React.FC = () => {
     }
 
     let cancelled = false;
+    const isPassThroughLive = shippingOption === 'direct' && isAddressComplete(shippingAddress);
+    const debounceMs = isPassThroughLive ? 600 : 250;
+
+    if (isPassThroughLive) {
+      setShippingQuoting(true);
+      setShippingQuote(null);
+    }
+
     const timer = window.setTimeout(async () => {
       try {
-        const quote = await shippingService.quote({
-          shippingOption,
-          shippingAddress,
-          items,
-        });
-        if (!cancelled) {
-          setShippingQuote(quote);
+        if (isPassThroughLive) {
+          const liveQuote = await shippingService.whccLiveQuote({
+            items,
+            shippingAddress,
+            shippingOption: 'direct',
+          });
+          if (!cancelled) {
+            setShippingQuote({
+              studioId: 0,
+              shippingOption: 'direct',
+              destinationLabel: '',
+              productGroup: '',
+              whccShippingCost: liveQuote.whccShippingCost ?? liveQuote.customerShippingCost,
+              customerShippingCost: liveQuote.customerShippingCost,
+              studioShippingCost: liveQuote.whccShippingCost ?? liveQuote.customerShippingCost,
+              studioShippingDelta: liveQuote.handlingFee ?? 0,
+              directPricingMode: liveQuote.source === 'flat-fee' ? 'flat_fee' : 'pass_through',
+              directFlatFee: 0,
+              rubricSource: liveQuote.source,
+              source: liveQuote.source,
+              confirmationId: liveQuote.confirmationId,
+            });
+          }
+        } else {
+          const quote = await shippingService.quote({
+            shippingOption,
+            shippingAddress,
+            items,
+          });
+          if (!cancelled) {
+            setShippingQuote({ ...quote, source: 'rubric' });
+          }
         }
-      } catch (err) {
+      } catch {
         if (!cancelled) {
           setShippingQuote(null);
         }
+      } finally {
+        if (!cancelled) setShippingQuoting(false);
       }
-    }, 250);
+    }, debounceMs);
 
     return () => {
       cancelled = true;
@@ -344,6 +383,8 @@ const Cart: React.FC = () => {
     });
   };
 
+  const isPassThroughMode = String(shippingConfig?.directPricingMode || '').toLowerCase() === 'pass_through';
+
   // Returns the shipping cost for the given option ('batch' or 'direct')
   const getShippingCostFor = (option: 'batch' | 'direct') => {
     if (hasOnlyDigitalProducts()) return 0;
@@ -351,6 +392,8 @@ const Cart: React.FC = () => {
       return Number(shippingQuote.customerShippingCost || 0);
     }
     if (option === 'direct') {
+      // Pass-through: no quote yet means we don't know the cost — return 0 so totals aren't wrong
+      if (isPassThroughMode) return 0;
       const directPricingMode = String(shippingConfig?.directPricingMode || 'flat_fee').toLowerCase();
       if (directPricingMode === 'flat_fee') {
         return Number(shippingConfig?.directFlatFee || shippingConfig?.directShippingCharge || 0);
@@ -778,6 +821,7 @@ const Cart: React.FC = () => {
       );
       return latest ? { ...item, cropData: latest.cropData } : item;
     });
+    const whccQuote = isPassThroughMode && shippingOption === 'direct' && shippingQuote?.source === 'whcc-live' ? shippingQuote : null;
     const orderResult = await orderService.createOrder(
       itemsWithCrop,
       shippingAddress,
@@ -792,7 +836,10 @@ const Cart: React.FC = () => {
         taxRate,
         total: getFinalTotal(),
         subtotalBeforeDiscount: cartSubtotal + getStudioFeeAmount() + currentShippingCost,
-      }
+      },
+      undefined,
+      whccQuote ? whccQuote.studioShippingCost : undefined,
+      whccQuote ? whccQuote.studioShippingDelta : undefined
     );
 
     // If we have an order id and paymentIntentId, update the Stripe fee
@@ -943,6 +990,7 @@ const Cart: React.FC = () => {
         return latest ? { ...item, cropData: latest.cropData } : item;
       });
 
+      const whccQuoteTest = isPassThroughMode && shippingOption === 'direct' && shippingQuote?.source === 'whcc-live' ? shippingQuote : null;
       await orderService.createOrder(
         itemsWithCrop,
         shippingAddress,
@@ -958,7 +1006,9 @@ const Cart: React.FC = () => {
           total: getFinalTotal(),
           subtotalBeforeDiscount: cartSubtotal + getStudioFeeAmount() + currentShippingCost,
         },
-        true
+        true,
+        whccQuoteTest ? whccQuoteTest.studioShippingCost : undefined,
+        whccQuoteTest ? whccQuoteTest.studioShippingDelta : undefined
       );
 
       clearCart();
@@ -1294,7 +1344,13 @@ const Cart: React.FC = () => {
                     onChange={() => setShippingOption('direct')}
                   />
                   <span style={{ fontWeight: 600, fontSize: '1.1em', color: '#fff' }}>
-                    Direct Shipping - ${getShippingCostFor('direct').toFixed(2)}
+                    Direct Shipping
+                    {shippingQuoting && shippingOption === 'direct'
+                      ? <span style={{ fontWeight: 400, color: '#aaa', marginLeft: 6 }}>— Calculating…</span>
+                      : isPassThroughMode && !shippingQuote
+                      ? null
+                      : <span> - ${getShippingCostFor('direct').toFixed(2)}</span>
+                    }
                   </span>
                   <p style={{ color: '#bdbdbd', margin: 0 }}>
                     Ships immediately (2-3 business days)
@@ -1388,7 +1444,14 @@ const Cart: React.FC = () => {
           {hasPhysicalProducts() && (
             <div className="summary-row cart-summary-row">
               <span>Shipping</span>
-              <span>${getShippingCost().toFixed(2)}</span>
+              <span>
+                {shippingQuoting && shippingOption === 'direct'
+                  ? <span style={{ color: '#aaa', fontStyle: 'italic' }}>Calculating…</span>
+                  : isPassThroughMode && shippingOption === 'direct' && !shippingQuote
+                  ? <span style={{ color: '#aaa' }}>—</span>
+                  : `$${getShippingCost().toFixed(2)}`
+                }
+              </span>
             </div>
           )}
           
@@ -1448,14 +1511,20 @@ const Cart: React.FC = () => {
             <button
               onClick={handleCheckout}
               className="btn btn-primary btn-checkout cart-action-button"
-              disabled={loading || !stripeConfig?.publishableKey || stripeConfig.publishableKey.startsWith('sk_')}
+              disabled={
+                loading ||
+                !stripeConfig?.publishableKey ||
+                stripeConfig.publishableKey.startsWith('sk_') ||
+                shippingQuoting ||
+                (isPassThroughMode && shippingOption === 'direct' && !shippingQuote)
+              }
             >
-              {loading ? 'Processing Payment...' : '🔒 Pay with Stripe'}
+              {loading ? 'Processing Payment...' : shippingQuoting ? 'Calculating shipping…' : '🔒 Pay with Stripe'}
             </button>
             <button
               onClick={handleTestOrder}
               className="btn btn-secondary cart-action-button"
-              disabled={loading}
+              disabled={loading || shippingQuoting || (isPassThroughMode && shippingOption === 'direct' && !shippingQuote)}
               style={{ marginLeft: 8 }}
             >
               🧪 Test Order (No Payment)
