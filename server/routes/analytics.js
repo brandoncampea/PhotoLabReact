@@ -69,7 +69,6 @@ const hasAdvancedAnalyticsAccess = async (req) => {
 router.post('/track', async (req, res) => {
   try {
     const { eventType, eventData } = req.body;
-    await ensureAnalyticsTable();
     await query(`
       INSERT INTO analytics (event_type, event_data)
       VALUES ($1, $2)

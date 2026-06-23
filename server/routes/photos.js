@@ -2831,6 +2831,10 @@ router.get('/:id/recommendations', async (req, res) => {
 
 // Serve photo asset (thumbnail or full image)
 import { pipeAssetToResponse } from './photos.utils.js';
+// Thumbnail URLs are immutable after upload — cache them to avoid a DB hit per request.
+const photoAssetCache = new Map(); // photoId → { file_name, thumbnail_url, full_image_url, ts }
+const PHOTO_ASSET_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
 router.get('/:id/asset', async (req, res) => {
     console.log('[ASSET ROUTE] asset route hit', req.url);
   try {
@@ -2854,8 +2858,12 @@ router.get('/:id/asset', async (req, res) => {
         return res.status(403).json({ error: 'Photo access token does not match this image' });
       }
     }
-    // Fetch photo from DB, include file_name for download
-    const photo = await queryRow('SELECT file_name, thumbnail_url, full_image_url FROM photos WHERE id = $1', [photoId]);
+    // Fetch photo from DB (or cache for thumbnail requests)
+    const cached = photoAssetCache.get(photoId);
+    const photo = cached && Date.now() - cached.ts < PHOTO_ASSET_CACHE_TTL_MS
+      ? cached
+      : await queryRow('SELECT file_name, thumbnail_url, full_image_url FROM photos WHERE id = $1', [photoId])
+          .then(row => { if (row) photoAssetCache.set(photoId, { ...row, ts: Date.now() }); return row; });
     if (!photo) {
       console.error(`[ASSET ROUTE] Photo not found for id=${photoId}`);
       return res.status(404).json({ error: 'Photo not found', photoId });

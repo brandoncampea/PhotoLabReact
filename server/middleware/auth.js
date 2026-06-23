@@ -21,6 +21,32 @@ import jwt from 'jsonwebtoken';
 import mssql from '../mssql.cjs';
 const { queryRow } = mssql;
 
+// Short-lived in-process cache for user role/studio lookups and studio existence checks.
+// Role and studio_id change rarely; 60s TTL avoids per-request DB hits while keeping
+// the cache fresh enough that permission changes propagate quickly.
+const USER_CACHE_TTL_MS = 60_000;
+const STUDIO_CACHE_TTL_MS = 120_000;
+const userCache = new Map(); // userId → { role, studio_id, ts }
+const studioCache = new Map(); // studioId → { exists: bool, ts }
+
+const getCachedUser = (userId) => {
+  const entry = userCache.get(userId);
+  if (entry && Date.now() - entry.ts < USER_CACHE_TTL_MS) return entry;
+  return null;
+};
+const setCachedUser = (userId, role, studio_id) => {
+  userCache.set(userId, { role, studio_id, ts: Date.now() });
+};
+
+const getCachedStudio = (studioId) => {
+  const entry = studioCache.get(studioId);
+  if (entry && Date.now() - entry.ts < STUDIO_CACHE_TTL_MS) return entry;
+  return null;
+};
+const setCachedStudio = (studioId, exists) => {
+  studioCache.set(studioId, { exists, ts: Date.now() });
+};
+
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
   if (process.env.NODE_ENV === 'production') {
@@ -65,9 +91,16 @@ export const authRequired = async (req, res, next) => {
     let role = 'customer';
     let studio_id = null;
     try {
-      const userRow = await queryRow('SELECT role, studio_id FROM users WHERE id = $1', [userId]);
-      if (userRow && userRow.role) role = userRow.role;
-      if (userRow && userRow.studio_id) studio_id = userRow.studio_id;
+      const cached = getCachedUser(userId);
+      if (cached) {
+        role = cached.role;
+        studio_id = cached.studio_id;
+      } else {
+        const userRow = await queryRow('SELECT role, studio_id FROM users WHERE id = $1', [userId]);
+        if (userRow && userRow.role) role = userRow.role;
+        if (userRow && userRow.studio_id) studio_id = userRow.studio_id;
+        setCachedUser(userId, role, studio_id);
+      }
     } catch {}
     // Allow env-based override (useful in dev) even when role column exists
     const admins = (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
@@ -79,8 +112,11 @@ export const authRequired = async (req, res, next) => {
     const actingStudioIdRaw = req.headers['x-acting-studio-id'];
     const actingStudioId = Number(Array.isArray(actingStudioIdRaw) ? actingStudioIdRaw[0] : actingStudioIdRaw);
     if (role === 'super_admin' && Number.isInteger(actingStudioId) && actingStudioId > 0) {
-      const studio = await queryRow('SELECT id FROM studios WHERE id = $1', [actingStudioId]);
-      if (studio) {
+      const studioEntry = getCachedStudio(actingStudioId);
+      const studioExists = studioEntry
+        ? studioEntry.exists
+        : await queryRow('SELECT id FROM studios WHERE id = $1', [actingStudioId]).then(r => { setCachedStudio(actingStudioId, !!r); return !!r; });
+      if (studioExists) {
         acting_studio_id = actingStudioId;
         studio_id = actingStudioId;
       }
@@ -108,9 +144,16 @@ export const adminRequired = async (req, res, next) => {
 
       let role = 'customer';
       let studio_id = null;
-      const userRow = await queryRow('SELECT role, studio_id FROM users WHERE id = $1', [userId]);
-      if (userRow?.role) role = userRow.role;
-      if (userRow?.studio_id) studio_id = userRow.studio_id;
+      const cachedAdmin = getCachedUser(userId);
+      if (cachedAdmin) {
+        role = cachedAdmin.role;
+        studio_id = cachedAdmin.studio_id;
+      } else {
+        const userRow = await queryRow('SELECT role, studio_id FROM users WHERE id = $1', [userId]);
+        if (userRow?.role) role = userRow.role;
+        if (userRow?.studio_id) studio_id = userRow.studio_id;
+        setCachedUser(userId, role, studio_id);
+      }
 
       let admins = (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
       if (admins.length === 0) {
@@ -124,8 +167,11 @@ export const adminRequired = async (req, res, next) => {
       const actingStudioIdRaw = req.headers['x-acting-studio-id'];
       const actingStudioId = Number(Array.isArray(actingStudioIdRaw) ? actingStudioIdRaw[0] : actingStudioIdRaw);
       if (role === 'super_admin' && Number.isInteger(actingStudioId) && actingStudioId > 0) {
-        const studio = await queryRow('SELECT id FROM studios WHERE id = $1', [actingStudioId]);
-        if (studio) {
+        const studioEntry2 = getCachedStudio(actingStudioId);
+        const studioExists2 = studioEntry2
+          ? studioEntry2.exists
+          : await queryRow('SELECT id FROM studios WHERE id = $1', [actingStudioId]).then(r => { setCachedStudio(actingStudioId, !!r); return !!r; });
+        if (studioExists2) {
           acting_studio_id = actingStudioId;
           studio_id = actingStudioId;
         }

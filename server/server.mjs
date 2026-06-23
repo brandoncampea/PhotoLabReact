@@ -98,6 +98,8 @@ import './startup/ensureUserLastLoginColumn.js';
 import './startup/ensureSchedulingTables.js';
 import './startup/ensurePhotoSchema.js';
 import './startup/ensureAlbumSchema.js';
+import './startup/ensureProfileConfigSchema.js';
+import './startup/ensureDiscountAndAnalyticsSchema.js';
 
 import '../server/startup/ensureOrderItemAttributesColumn.js';
 import { customDomainRedirect } from './middleware/customDomainRedirect.js';

@@ -118,7 +118,6 @@ const ensureProfileConfigTable = async () => {
 // Get profile config (studio-specific, super admin can specify studioId)
 router.get('/', authRequired, async (req, res) => {
   try {
-    await ensureProfileConfigTable();
     const user = req.user;
     let studioId;
     if (user?.role === 'super_admin') {
@@ -208,7 +207,6 @@ router.get('/', authRequired, async (req, res) => {
 // Update profile config (studio-specific, super admin can specify studioId)
 router.put('/', authRequired, async (req, res) => {
   try {
-    await ensureProfileConfigTable();
     const user = req.user;
     let studioId;
     if (user?.role === 'super_admin') {

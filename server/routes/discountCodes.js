@@ -249,7 +249,6 @@ const summarizeDiscount = (discount, discountAmount) => {
 };
 
 const validateDiscountForCart = async ({ codeText, studioId, items = [], subtotal = 0, shippingCost = 0, userId = null }) => {
-  await ensureDiscountSchema();
   const normalizedCodeText = String(codeText || '').trim();
   if (!normalizedCodeText) return { valid: false, reason: 'Enter a discount code.', discountAmount: 0 };
 
@@ -426,8 +425,7 @@ const resolveAdminStudioId = (req) => {
 
 router.get('/public', async (req, res) => {
   try {
-    await ensureDiscountSchema();
-
+  
     const studioSlug = String(req.query?.studioSlug || '').trim();
     if (!studioSlug) {
       return res.status(400).json({ error: 'studioSlug is required' });
@@ -500,8 +498,7 @@ router.get('/public', async (req, res) => {
 
 router.get('/', adminRequired, async (req, res) => {
   try {
-    await ensureDiscountSchema();
-    const studioId = resolveAdminStudioId(req);
+      const studioId = resolveAdminStudioId(req);
     const rows = req.user?.role === 'super_admin' && !studioId
       ? await queryRows(`SELECT id, code, description, discount_type as discountType, discount_value as discountValue, application_type as applicationType, bundle_quantity as bundleQuantity, bundle_price as bundlePrice, applicable_category_names as applicableCategoryNames, applicable_album_ids as applicableAlbumIds, start_date as startDate, expiration_date as expirationDate, min_subtotal as minSubtotal, is_one_time_use as isOneTimeUse, usage_count as usageCount, max_usages as maxUsages, per_customer_limit as perCustomerLimit, first_order_only as firstOrderOnly, is_active as isActive, studio_id as studioId, validation_message as validationMessage, created_at as createdDate FROM discount_codes ORDER BY created_at DESC`)
       : await queryRows(`SELECT id, code, description, discount_type as discountType, discount_value as discountValue, application_type as applicationType, bundle_quantity as bundleQuantity, bundle_price as bundlePrice, applicable_category_names as applicableCategoryNames, applicable_album_ids as applicableAlbumIds, start_date as startDate, expiration_date as expirationDate, min_subtotal as minSubtotal, is_one_time_use as isOneTimeUse, usage_count as usageCount, max_usages as maxUsages, per_customer_limit as perCustomerLimit, first_order_only as firstOrderOnly, is_active as isActive, studio_id as studioId, validation_message as validationMessage, created_at as createdDate FROM discount_codes WHERE studio_id = $1 ORDER BY created_at DESC`, [studioId]);
@@ -587,8 +584,7 @@ router.post('/best', async (req, res) => {
 
 router.post('/:id/duplicate', adminRequired, async (req, res) => {
   try {
-    await ensureDiscountSchema();
-    const existing = await loadCodeById(req.params.id);
+      const existing = await loadCodeById(req.params.id);
     if (!existing) return res.status(404).json({ error: 'Discount code not found' });
     const studioId = resolveAdminStudioId(req);
     if (studioId && existing.studioId !== studioId) return res.status(403).json({ error: 'Forbidden' });
@@ -615,8 +611,7 @@ router.post('/:id/duplicate', adminRequired, async (req, res) => {
 
 router.get('/:id', adminRequired, async (req, res) => {
   try {
-    await ensureDiscountSchema();
-    const code = await loadCodeById(req.params.id);
+      const code = await loadCodeById(req.params.id);
     if (!code) return res.status(404).json({ error: 'Discount code not found' });
     const studioId = resolveAdminStudioId(req);
     if (studioId && code.studioId !== studioId) return res.status(403).json({ error: 'Forbidden' });
@@ -628,8 +623,7 @@ router.get('/:id', adminRequired, async (req, res) => {
 
 router.post('/', adminRequired, async (req, res) => {
   try {
-    await ensureDiscountSchema();
-    const studioId = resolveAdminStudioId(req);
+      const studioId = resolveAdminStudioId(req);
     if (!studioId) return res.status(403).json({ error: 'Studio ID required' });
 
     const codeText = String(req.body?.code || '').trim().toUpperCase();
@@ -657,8 +651,7 @@ router.post('/', adminRequired, async (req, res) => {
 
 router.put('/:id', adminRequired, async (req, res) => {
   try {
-    await ensureDiscountSchema();
-    const existing = await loadCodeById(req.params.id);
+      const existing = await loadCodeById(req.params.id);
     if (!existing) return res.status(404).json({ error: 'Discount code not found' });
     const studioId = resolveAdminStudioId(req);
     if (studioId && existing.studioId !== studioId) return res.status(403).json({ error: 'Forbidden' });
@@ -684,8 +677,7 @@ router.put('/:id', adminRequired, async (req, res) => {
 
 router.post('/:id/use', async (req, res) => {
   try {
-    await ensureDiscountSchema();
-    await query('UPDATE discount_codes SET usage_count = usage_count + 1, updated_at = CURRENT_TIMESTAMP WHERE id = $1', [req.params.id]);
+      await query('UPDATE discount_codes SET usage_count = usage_count + 1, updated_at = CURRENT_TIMESTAMP WHERE id = $1', [req.params.id]);
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message || 'Failed to increment usage count' });
@@ -694,8 +686,7 @@ router.post('/:id/use', async (req, res) => {
 
 router.delete('/:id', adminRequired, async (req, res) => {
   try {
-    await ensureDiscountSchema();
-    const existing = await loadCodeById(req.params.id);
+      const existing = await loadCodeById(req.params.id);
     if (!existing) return res.status(404).json({ error: 'Discount code not found' });
     const studioId = resolveAdminStudioId(req);
     if (studioId && existing.studioId !== studioId) return res.status(403).json({ error: 'Forbidden' });
