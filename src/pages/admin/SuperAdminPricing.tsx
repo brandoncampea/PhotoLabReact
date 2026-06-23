@@ -644,6 +644,47 @@ const SuperAdminPricing: React.FC = () => {
   // collapse state
   const [catCollapsed, setCatCollapsed] = useState<Record<string, boolean>>({});
   const [prodCollapsed, setProdCollapsed] = useState<Record<string, boolean>>({});
+  // whcc editor panel state (per prodKey)
+  const [editorPanelOpen, setEditorPanelOpen] = useState<Record<string, boolean>>({});
+  const [editorDrafts, setEditorDrafts] = useState<Record<string, { requiresWhccEditor: boolean; whccEditorProductId: string; whccEditorDesignId: string }>>({});
+  const [editorSaving, setEditorSaving] = useState<Record<string, boolean>>({});
+
+  const handleOpenEditorPanel = useCallback((prodKey: string, firstItem: any) => {
+    setEditorDrafts(prev => ({
+      ...prev,
+      [prodKey]: {
+        requiresWhccEditor: Boolean(firstItem?.requiresWhccEditor),
+        whccEditorProductId: String(firstItem?.whccEditorProductId || ''),
+        whccEditorDesignId: String(firstItem?.whccEditorDesignId || ''),
+      },
+    }));
+    setEditorPanelOpen(prev => ({ ...prev, [prodKey]: true }));
+  }, []);
+
+  const handleSaveEditorSettings = useCallback(async (prodKey: string, productId: number) => {
+    if (!viewList) return;
+    const draft = editorDrafts[prodKey];
+    if (!draft) return;
+    setEditorSaving(prev => ({ ...prev, [prodKey]: true }));
+    try {
+      await superPriceListService.updateProductEditor(viewList.id, productId, {
+        requiresWhccEditor: draft.requiresWhccEditor,
+        whccEditorProductId: draft.whccEditorProductId || null,
+        whccEditorDesignId: draft.whccEditorDesignId || null,
+      });
+      setViewItems(prev => prev.map(i =>
+        Number(i.product_id) === productId
+          ? { ...i, requiresWhccEditor: draft.requiresWhccEditor, whccEditorProductId: draft.whccEditorProductId || null, whccEditorDesignId: draft.whccEditorDesignId || null }
+          : i
+      ));
+      setEditorPanelOpen(prev => ({ ...prev, [prodKey]: false }));
+    } catch {
+      setViewError('Failed to save WHCC editor settings.');
+    } finally {
+      setEditorSaving(prev => ({ ...prev, [prodKey]: false }));
+    }
+  }, [viewList, editorDrafts]);
+
   // global markup
   const [globalMarkup, setGlobalMarkup] = useState('');
   const [applyingMarkup, setApplyingMarkup] = useState(false);
@@ -2718,6 +2759,19 @@ const SuperAdminPricing: React.FC = () => {
                                     )}
                                     {/* --- End Product-level WHCC Attributes Button --- */}
                                     <button
+                                      className={`btn btn-sm spl-inline-action-btn${visibleProdItems[0]?.requiresWhccEditor ? ' btn-primary' : ' btn-secondary'}`}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        const first = visibleProdItems[0];
+                                        if (!first) return;
+                                        if (editorPanelOpen[prodKey]) {
+                                          setEditorPanelOpen(prev => ({ ...prev, [prodKey]: false }));
+                                        } else {
+                                          handleOpenEditorPanel(prodKey, first);
+                                        }
+                                      }}
+                                    >{visibleProdItems[0]?.requiresWhccEditor ? 'Editor: On' : 'WHCC Editor'}</button>
+                                    <button
                                       className="btn btn-secondary btn-sm spl-inline-action-btn"
                                       onClick={(e) => {
                                         e.stopPropagation();
@@ -2795,9 +2849,62 @@ const SuperAdminPricing: React.FC = () => {
                                     </label>
                                     <span className="spl-item-count">{visibleProdItems.length} sizes</span>
                                   </div>
-                                  {/* --- Product-level WHCC Attributes Display --- */}
-                                  {/* Only the bottom (better styled) section is kept. */}
-                                  {/* --- End Product-level WHCC Attributes Display --- */}
+                                  {/* --- WHCC Editor Settings Panel --- */}
+                                  {editorPanelOpen[prodKey] && editorDrafts[prodKey] && (() => {
+                                    const draft = editorDrafts[prodKey];
+                                    const productId = Number(visibleProdItems[0]?.product_id);
+                                    return (
+                                      <div className="spl-editor-panel" onClick={e => e.stopPropagation()} style={{ padding: '12px 16px', background: 'var(--surface-2, #1e1e2e)', borderBottom: '1px solid var(--border-color, #333)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, cursor: 'pointer' }}>
+                                            <input
+                                              type="checkbox"
+                                              checked={draft.requiresWhccEditor}
+                                              onChange={e => setEditorDrafts(prev => ({ ...prev, [prodKey]: { ...draft, requiresWhccEditor: e.target.checked } }))}
+                                            />
+                                            Requires WHCC Editor
+                                          </label>
+                                          <span style={{ fontSize: 12, color: 'var(--text-secondary)', marginLeft: 4 }}>Customer customizes this product in the WHCC editor before checkout</span>
+                                        </div>
+                                        {draft.requiresWhccEditor && (
+                                          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 200 }}>
+                                              <label style={{ fontSize: 12, fontWeight: 600 }}>WHCC Editor Product ID</label>
+                                              <input
+                                                type="text"
+                                                className="input"
+                                                placeholder="e.g. 5x7-flat-card"
+                                                value={draft.whccEditorProductId}
+                                                onChange={e => setEditorDrafts(prev => ({ ...prev, [prodKey]: { ...draft, whccEditorProductId: e.target.value } }))}
+                                              />
+                                            </div>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 200 }}>
+                                              <label style={{ fontSize: 12, fontWeight: 600 }}>WHCC Editor Design ID</label>
+                                              <input
+                                                type="text"
+                                                className="input"
+                                                placeholder="optional – locks to a specific template"
+                                                value={draft.whccEditorDesignId}
+                                                onChange={e => setEditorDrafts(prev => ({ ...prev, [prodKey]: { ...draft, whccEditorDesignId: e.target.value } }))}
+                                              />
+                                            </div>
+                                          </div>
+                                        )}
+                                        <div style={{ display: 'flex', gap: 8 }}>
+                                          <button
+                                            className="btn btn-primary btn-sm"
+                                            disabled={editorSaving[prodKey]}
+                                            onClick={() => void handleSaveEditorSettings(prodKey, productId)}
+                                          >{editorSaving[prodKey] ? 'Saving…' : 'Save'}</button>
+                                          <button
+                                            className="btn btn-secondary btn-sm"
+                                            onClick={() => setEditorPanelOpen(prev => ({ ...prev, [prodKey]: false }))}
+                                          >Cancel</button>
+                                        </div>
+                                      </div>
+                                    );
+                                  })()}
+                                  {/* --- End WHCC Editor Settings Panel --- */}
 
                                   {!prodCollapsed[prodKey] && (
                                     <>

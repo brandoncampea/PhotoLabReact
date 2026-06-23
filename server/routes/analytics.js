@@ -88,7 +88,18 @@ router.get('/summary', async (req, res) => {
     let params = [];
     let dateFilter = '';
     const range = req.query.range;
-    if (range && range !== 'all') {
+    const startDate = req.query.startDate;
+    const endDate = req.query.endDate;
+    if (startDate) {
+      params.push(startDate);
+      const startIdx = params.length;
+      if (endDate) {
+        params.push(endDate);
+        dateFilter = `AND created_at >= $${startIdx} AND created_at < $${params.length}`;
+      } else {
+        dateFilter = `AND created_at >= $${startIdx}`;
+      }
+    } else if (range && range !== 'all') {
       if (range === 'today') {
         dateFilter = `AND CAST(created_at AS DATE) = CAST(GETDATE() AS DATE)`;
       } else if (range === 'week') {
@@ -98,8 +109,8 @@ router.get('/summary', async (req, res) => {
       }
     }
     if (req.user?.role === 'studio_admin' && req.user?.studio_id) {
-      studioFilter = `AND JSON_VALUE(event_data, '$.studioId') = $1`;
-      params = [req.user.studio_id];
+      studioFilter = `AND JSON_VALUE(event_data, '$.studioId') = $${params.length + 1}`;
+      params.push(req.user.studio_id);
     }
     const totalVisitsResult = await queryRow(`
       SELECT COUNT(DISTINCT JSON_VALUE(event_data, '$.sessionId')) AS count
@@ -352,7 +363,18 @@ router.get('/details', async (req, res) => {
     let params = [];
     let dateFilter = '';
     const range = req.query.range;
-    if (range && range !== 'all') {
+    const startDate = req.query.startDate;
+    const endDate = req.query.endDate;
+    if (startDate) {
+      params.push(startDate);
+      const startIdx = params.length;
+      if (endDate) {
+        params.push(endDate);
+        dateFilter = `AND an.created_at >= $${startIdx} AND an.created_at < $${params.length}`;
+      } else {
+        dateFilter = `AND an.created_at >= $${startIdx}`;
+      }
+    } else if (range && range !== 'all') {
       if (range === 'today') {
         dateFilter = `AND CAST(an.created_at AS DATE) = CAST(GETDATE() AS DATE)`;
       } else if (range === 'week') {
@@ -362,8 +384,8 @@ router.get('/details', async (req, res) => {
       }
     }
     if (req.user?.role === 'studio_admin' && req.user?.studio_id) {
-      studioFilter = `AND JSON_VALUE(an.event_data, '$.studioId') = $1`;
-      params = [req.user.studio_id];
+      studioFilter = `AND JSON_VALUE(an.event_data, '$.studioId') = $${params.length + 1}`;
+      params.push(req.user.studio_id);
     }
     // Top albums for this studio
     const albumViewRows = await queryRows(`

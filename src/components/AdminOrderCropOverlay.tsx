@@ -8,6 +8,7 @@ interface AdminOrderCropOverlayProps {
   cropData?: { x: number; y: number; width: number; height: number };
   whccCrop?: { X: number; Y: number; ZoomX: number; ZoomY: number };
   cropShape?: 'rect' | 'circle';
+  width?: number;
 }
 
 export const AdminOrderCropOverlay: React.FC<AdminOrderCropOverlayProps> = ({
@@ -18,12 +19,13 @@ export const AdminOrderCropOverlay: React.FC<AdminOrderCropOverlayProps> = ({
   cropData,
   whccCrop,
   cropShape,
+  width: widthProp,
 }) => {
   // Use thumbnail if provided, else fallback to photoUrl
   const imageUrl = thumbnailUrl || photoUrl;
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
-  const displayWidth = 400;
+  const displayWidth = widthProp ?? 300;
   const [displayHeight, setDisplayHeight] = useState(0);
 
   // On image load, set displayHeight to auto (preserve aspect ratio)
@@ -32,7 +34,7 @@ export const AdminOrderCropOverlay: React.FC<AdminOrderCropOverlayProps> = ({
     if (img) {
       const updateSize = () => {
         if (img.naturalWidth && img.naturalHeight) {
-          setDisplayHeight((img.naturalHeight / img.naturalWidth) * 400);
+          setDisplayHeight((img.naturalHeight / img.naturalWidth) * displayWidth);
         }
       };
       if (img.complete) {
@@ -59,20 +61,20 @@ export const AdminOrderCropOverlay: React.FC<AdminOrderCropOverlayProps> = ({
   }
 
   // WHCC crop overlay (magenta, dashed)
+  // X/Y are center percentages; ZoomX/ZoomY are the fraction of the source image kept (0-100)
   let whccRect = null;
-  if (whccCrop && photoWidth && photoHeight && drawnW && drawnH) {
-    // Convert percent X/Y to px, and ZoomX/ZoomY to crop size
-    const x = (whccCrop.X / 100) * photoWidth;
-    const y = (whccCrop.Y / 100) * photoHeight;
+  if (whccCrop && drawnW && drawnH) {
     const zoomX = whccCrop.ZoomX || 100;
     const zoomY = whccCrop.ZoomY || 100;
-    const w = photoWidth * (100 / zoomX);
-    const h = photoHeight * (100 / zoomY);
+    const cropW = drawnW * (zoomX / 100);
+    const cropH = drawnH * (zoomY / 100);
+    const centerX = drawnW * (whccCrop.X / 100);
+    const centerY = drawnH * (whccCrop.Y / 100);
     whccRect = {
-      left: (x / photoWidth) * drawnW,
-      top: (y / photoHeight) * drawnH,
-      width: (w / photoWidth) * drawnW,
-      height: (h / photoHeight) * drawnH,
+      left: centerX - cropW / 2,
+      top: centerY - cropH / 2,
+      width: cropW,
+      height: cropH,
     };
   }
 
@@ -82,7 +84,7 @@ export const AdminOrderCropOverlay: React.FC<AdminOrderCropOverlayProps> = ({
       style={{
         position: 'relative',
         display: 'inline-block',
-        width: 400,
+        width: displayWidth,
         height: displayHeight || 'auto',
         background: '#222',
         borderRadius: 8,
@@ -92,10 +94,10 @@ export const AdminOrderCropOverlay: React.FC<AdminOrderCropOverlayProps> = ({
       <img
         ref={imgRef}
         src={imageUrl}
-        width={400}
+        width={displayWidth}
         height={displayHeight || undefined}
         alt="Order Photo"
-        style={{ display: 'block', width: 400, height: 'auto', borderRadius: 8 }}
+        style={{ display: 'block', width: displayWidth, height: 'auto', borderRadius: 8 }}
       />
       {/* Overlay rectangles absolutely positioned over the image */}
       {customerRect && (
@@ -132,12 +134,6 @@ export const AdminOrderCropOverlay: React.FC<AdminOrderCropOverlayProps> = ({
           title="WHCC Crop"
         />
       )}
-      {/* Debug output for troubleshooting overlay visibility */}
-      <div style={{ color: '#fff', background: 'rgba(0,0,0,0.7)', fontSize: 12, padding: 8, marginTop: 8, borderRadius: 4 }}>
-        <div><b>photoWidth:</b> {photoWidth} <b>photoHeight:</b> {photoHeight}</div>
-        <div><b>cropData:</b> {cropData ? JSON.stringify(cropData) : 'null'}</div>
-        <div><b>whccCrop:</b> {whccCrop ? JSON.stringify(whccCrop) : 'null'}</div>
-      </div>
     </div>
   );
 };

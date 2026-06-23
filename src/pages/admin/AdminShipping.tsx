@@ -188,7 +188,7 @@ const AdminShipping: React.FC = () => {
                     className="input"
                     value={batchDeadline}
                     onChange={e => setBatchDeadline(e.target.value)}
-                    required
+                    required={isActive}
                   />
                   <small>Orders with batch shipping wait until this release date.</small>
                 </div>
@@ -288,7 +288,7 @@ const AdminShipping: React.FC = () => {
                     className="input"
                     value={batchShippingAddress.fullName}
                     onChange={e => updateBatchAddressField('fullName', e.target.value)}
-                    required
+                    required={isActive}
                   />
                 </div>
                 <div className="form-group admin-shipping-field admin-shipping-field--wide">
@@ -299,7 +299,7 @@ const AdminShipping: React.FC = () => {
                     className="input"
                     value={batchShippingAddress.addressLine1}
                     onChange={e => updateBatchAddressField('addressLine1', e.target.value)}
-                    required
+                    required={isActive}
                   />
                 </div>
                 <div className="form-group admin-shipping-field admin-shipping-field--wide">
@@ -320,7 +320,7 @@ const AdminShipping: React.FC = () => {
                     className="input"
                     value={batchShippingAddress.city}
                     onChange={e => updateBatchAddressField('city', e.target.value)}
-                    required
+                    required={isActive}
                   />
                 </div>
                 <div className="form-group admin-shipping-field">
@@ -331,7 +331,7 @@ const AdminShipping: React.FC = () => {
                     className="input"
                     value={batchShippingAddress.state}
                     onChange={e => updateBatchAddressField('state', e.target.value)}
-                    required
+                    required={isActive}
                   />
                 </div>
                 <div className="form-group admin-shipping-field">
@@ -342,7 +342,7 @@ const AdminShipping: React.FC = () => {
                     className="input"
                     value={batchShippingAddress.zipCode}
                     onChange={e => updateBatchAddressField('zipCode', e.target.value)}
-                    required
+                    required={isActive}
                   />
                 </div>
                 <div className="form-group admin-shipping-field">
@@ -353,7 +353,7 @@ const AdminShipping: React.FC = () => {
                     className="input"
                     value={batchShippingAddress.country}
                     onChange={e => updateBatchAddressField('country', e.target.value)}
-                    required
+                    required={isActive}
                   />
                 </div>
                 <div className="form-group admin-shipping-field">
@@ -364,7 +364,7 @@ const AdminShipping: React.FC = () => {
                     className="input"
                     value={batchShippingAddress.email}
                     onChange={e => updateBatchAddressField('email', e.target.value)}
-                    required
+                    required={isActive}
                   />
                 </div>
                 <div className="form-group admin-shipping-field">

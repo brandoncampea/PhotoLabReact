@@ -1,6 +1,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import AdminOrderCropOverlay from '../../components/AdminOrderCropOverlay';
+import { toWhccCrop } from '../../utils/whccCrop';
 import ReactDOM from 'react-dom';
 import Modal from '../../components/Modal/Modal';
 
@@ -327,27 +328,12 @@ function AdminOrderItemCard({ item }: { item: any }) {
   const photoWidth = item.photo?.width;
   const photoHeight = item.photo?.height;
 
-  let cropStyle: React.CSSProperties | null = null;
-  if (cropData && photoWidth && photoHeight) {
-    cropStyle = {
-      left: `${(cropData.x / photoWidth) * 100}%`,
-      top: `${(cropData.y / photoHeight) * 100}%`,
-      width: `${(cropData.width / photoWidth) * 100}%`,
-      height: `${(cropData.height / photoHeight) * 100}%`,
-    };
-  }
-
-  const cropDebugText = cropData
-    ? `x:${Math.round(cropData.x)} y:${Math.round(cropData.y)} w:${Math.round(cropData.width)} h:${Math.round(cropData.height)} sx:${Number(cropData.scaleX || 1).toFixed(2)} sy:${Number(cropData.scaleY || 1).toFixed(2)}`
-    : null;
-
-  const [showOverlay, setShowOverlay] = React.useState(false);
   // Digital item check
   const isDigital = item?.isDigital === true || String(item?.digitalDownloadScope || '').trim().length > 0;
 
-  // WHCC crop: you may need to fetch this from the preview payload or store it on the item if available
-  // For now, try to get from item.whccCrop or similar (you may need to wire this up)
-  const whccCrop = item.whccCrop || null;
+  // Derive WHCC crop from cropData since it isn't stored on order_items
+  const whccCrop = item.whccCrop
+    || (cropData && photoWidth && photoHeight ? toWhccCrop(cropData, photoWidth, photoHeight) : null);
 
   // Use the thumbnail for overlay, fallback to main asset
   const thumbnailUrl = item.photo?.thumbnailUrl || (photoId ? `/api/photos/${photoId}/asset?variant=thumbnail` : undefined);
@@ -355,27 +341,43 @@ function AdminOrderItemCard({ item }: { item: any }) {
 
   return (
     <div className="admin-order-item-card">
-      <div className="admin-order-item-image-container">
-        {thumbnailUrl ? (
-          <img
-            src={thumbnailUrl}
-            alt={item.photo?.fileName || 'Photo'}
-            className="admin-order-item-image"
-            style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+      {!isDigital && cropData ? (
+        <div className="admin-order-item-image-container" style={{ width: 160, minWidth: 160, height: 'auto', aspectRatio: 'unset', flexShrink: 0 }}>
+          <AdminOrderCropOverlay
+            photoUrl={photoUrl}
+            thumbnailUrl={thumbnailUrl}
+            photoWidth={photoWidth || 1}
+            photoHeight={photoHeight || 1}
+            cropData={cropData}
+            whccCrop={whccCrop ?? undefined}
+            width={160}
           />
-        ) : photoId ? (
-          <img
-            src={photoUrl}
-            alt={item.photo?.fileName || 'Photo'}
-            className="admin-order-item-image"
-            style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-          />
-        ) : (
-          <div className="admin-order-item-image-placeholder">No Image</div>
-        )}
-        {cropStyle && <div className="admin-order-crop-box" style={cropStyle} />}
-        {cropData && <div className="admin-order-crop-indicator">Cropped</div>}
-      </div>
+          <div style={{ fontSize: 10, color: '#aaa', padding: '3px 4px' }}>
+            <span style={{ color: 'yellow', fontWeight: 600 }}>&#9632;</span> Customer &nbsp;
+            <span style={{ color: 'magenta', fontWeight: 600 }}>&#9632;</span> WHCC
+          </div>
+        </div>
+      ) : (
+        <div className="admin-order-item-image-container">
+          {thumbnailUrl ? (
+            <img
+              src={thumbnailUrl}
+              alt={item.photo?.fileName || 'Photo'}
+              className="admin-order-item-image"
+              style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+            />
+          ) : photoId ? (
+            <img
+              src={photoUrl}
+              alt={item.photo?.fileName || 'Photo'}
+              className="admin-order-item-image"
+              style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+            />
+          ) : (
+            <div className="admin-order-item-image-placeholder">No Image</div>
+          )}
+        </div>
+      )}
       <div className="admin-order-item-details">
         <h4>{item.productName || 'Unknown Product'}</h4>
         <p className="admin-order-item-size">{item.productSizeName || 'Unknown Size'}</p>
@@ -440,35 +442,6 @@ function AdminOrderItemCard({ item }: { item: any }) {
             {(item as any).packageGroupId ? 'Included' : `$${Number((item.price || 0) * (item.quantity || 0)).toFixed(2)}`}
           </span>
         </div>
-        {cropDebugText && <p className="item-size-name" style={{ marginTop: 6 }}>Crop: {cropDebugText}</p>}
-        {/* Overlay button for non-digital items */}
-        {!isDigital && (
-          <button
-            className="btn btn-outline-primary"
-            style={{ marginTop: 8, fontSize: 13, padding: '4px 10px' }}
-            onClick={() => setShowOverlay(true)}
-          >
-            Show Crop Overlay
-          </button>
-        )}
-        {showOverlay && (
-          <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.7)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <div style={{ background: '#181828', borderRadius: 10, padding: 24, boxShadow: '0 2px 16px rgba(0,0,0,0.18)', position: 'relative' }}>
-              <button onClick={() => setShowOverlay(false)} style={{ position: 'absolute', top: 8, right: 8, background: 'none', border: 'none', color: '#fff', fontSize: 24, cursor: 'pointer' }}>&times;</button>
-              <AdminOrderCropOverlay
-                photoUrl={photoUrl}
-                thumbnailUrl={thumbnailUrl}
-                photoWidth={photoWidth || 1}
-                photoHeight={photoHeight || 1}
-                cropData={cropData}
-                whccCrop={whccCrop}
-              />
-              <div style={{ color: '#fff', marginTop: 12, fontSize: 13 }}>
-                <b>Yellow:</b> Customer crop &nbsp; <b>Magenta:</b> WHCC crop
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
@@ -504,18 +477,6 @@ const AdminOrders: React.FC = () => {
     }
   }, [location.search, selectedOrderId]);
 
-  // --- Ensure details panel opens after orders are loaded (for direct navigation) ---
-  useEffect(() => {
-    if (!selectedOrderId || !orders || orders.length === 0) return;
-    const found = orders.some(order => order.id === selectedOrderId);
-    if (!found) {
-      // Optionally: fetch the order directly if not in the list
-      // Example: orderService.getOrder(selectedOrderId).then(...)
-      // For now, do nothing (panel will show not found)
-    }
-    // If found, details panel will render as normal
-    // If you have a collapsed/expanded state, ensure it is set here
-  }, [selectedOrderId, orders]);
 
         // Dummy approve/reject handlers (replace with real API calls as needed)
         const approveWhccOrder = async (orderId: number) => {
@@ -1174,6 +1135,23 @@ const AdminOrders: React.FC = () => {
     await updateSelectedOrder(orderId);
     await ensureOrderDetailsLoaded(orderId);
   }, [ensureOrderDetailsLoaded, selectedOrderId, updateSelectedOrder]);
+
+  // Keep a stable ref to ensureOrderDetailsLoaded so the URL-load effect
+  // doesn't need it in its dep array (which would cause an infinite loop
+  // because loadingOrderDetails changes during each load cycle).
+  const ensureOrderDetailsLoadedRef = React.useRef(ensureOrderDetailsLoaded);
+  useEffect(() => { ensureOrderDetailsLoadedRef.current = ensureOrderDetailsLoaded; });
+
+  // When arriving via URL (?orderId=X), orders load async after selectedOrderId is set.
+  // Once orders are ready, fetch full details so financials and items are populated.
+  // Use a ref guard so we only trigger once per selectedOrderId, not on every re-render.
+  const urlOrderLoadedRef = React.useRef<number | null>(null);
+  useEffect(() => {
+    if (!selectedOrderId || orders.length === 0) return;
+    if (urlOrderLoadedRef.current === selectedOrderId) return;
+    urlOrderLoadedRef.current = selectedOrderId;
+    void ensureOrderDetailsLoadedRef.current(selectedOrderId);
+  }, [selectedOrderId, orders.length]);
 
   const [statusUpdating, setStatusUpdating] = useState(false);
   const [statusUpdateError, setStatusUpdateError] = useState<string | null>(null);

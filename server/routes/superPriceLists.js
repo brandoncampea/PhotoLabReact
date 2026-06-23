@@ -1703,6 +1703,9 @@ router.get('/:id/items', async (req, res) => {
       return {
         ...item,
         isDigital: options?.isDigital === true || options?.is_digital_only === true,
+        requiresWhccEditor: options?.requiresWhccEditor === true || options?.editorProvider === 'whcc',
+        whccEditorProductId: String(options?.whccEditorProductId ?? options?.editorProductId ?? '').trim() || null,
+        whccEditorDesignId: String(options?.whccEditorDesignId ?? options?.editorDesignId ?? '').trim() || null,
         digitalDownloadScope,
         digitalPricingMode,
         superAdminPercentage: Number.isFinite(superAdminPercentage)
@@ -1722,6 +1725,40 @@ router.get('/:id/items', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch super price list items' });
   }
+});
+
+// PUT update WHCC editor settings for a product (per-product, not per-size)
+router.put('/:id/products/:productId/editor', superAdminRequired, async (req, res) => {
+  const listId = Number(req.params.id);
+  const productId = Number(req.params.productId);
+  if (!listId || !productId) return res.status(400).json({ error: 'Invalid list or product ID' });
+
+  const { requiresWhccEditor, whccEditorProductId, whccEditorDesignId } = req.body;
+
+  // Verify product belongs to this price list
+  const productCheck = await mssql.query(`
+    SELECT TOP 1 p.id, p.options
+    FROM products p
+    INNER JOIN product_sizes ps ON ps.product_id = p.id
+    INNER JOIN super_price_list_items spi ON spi.product_size_id = ps.id
+    WHERE spi.super_price_list_id = @p1 AND p.id = @p2 AND spi.is_deleted = 0
+  `, [listId, productId]);
+
+  if (!productCheck?.length) return res.status(404).json({ error: 'Product not found in this price list' });
+
+  let options = {};
+  try { options = productCheck[0].options ? JSON.parse(productCheck[0].options) : {}; } catch (_) {}
+
+  const updatedOptions = {
+    ...options,
+    requiresWhccEditor: requiresWhccEditor === true,
+    whccEditorProductId: String(whccEditorProductId || '').trim() || null,
+    whccEditorDesignId: String(whccEditorDesignId || '').trim() || null,
+    editorProvider: requiresWhccEditor === true ? 'whcc' : (options.editorProvider === 'whcc' ? null : options.editorProvider),
+  };
+
+  await mssql.query('UPDATE products SET options = @p1 WHERE id = @p2', [JSON.stringify(updatedOptions), productId]);
+  res.json({ success: true });
 });
 
 // POST bootstrap missing WHCC variant rows and backfill queued batch order snapshots
