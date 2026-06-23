@@ -96,10 +96,6 @@ const AdminAlbums: React.FC = () => {
     try {
       const res = await api.get('/albums');
       setAlbums(res.data || []);
-      if (Array.isArray(res.data)) {
-        const uniqueCategories = Array.from(new Set(res.data.map((album: any) => album.category).filter(Boolean)));
-        setCategories(uniqueCategories);
-      }
       setLoading(false);
     } catch (error) {
       setLoading(false);
@@ -354,6 +350,15 @@ const AdminAlbums: React.FC = () => {
     : studioSchoolRoster
         .filter((school) => !formData.schoolTags.some((tag) => tag.toLowerCase() === school.toLowerCase()))
         .slice(0, 8);
+
+  const labelStyle: React.CSSProperties = { display: 'block', fontSize: 11, fontWeight: 700, color: '#a78bfa', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 };
+  const inputStyle: React.CSSProperties = { width: '100%', padding: '9px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(102,102,204,0.25)', borderRadius: 8, color: '#e4e4e7', fontSize: 13, outline: 'none', boxSizing: 'border-box' };
+  const sectionStyle: React.CSSProperties = { paddingBottom: 18, marginBottom: 18, borderBottom: '1px solid rgba(102,102,204,0.1)' };
+  const inlineAddBtnStyle: React.CSSProperties = { padding: '9px 14px', borderRadius: 8, border: '1px solid rgba(124,92,255,0.4)', background: 'rgba(124,92,255,0.15)', color: '#c4b5fd', fontWeight: 700, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 };
+  const suggestionChipStyle: React.CSSProperties = { padding: '4px 10px', borderRadius: 20, border: '1px solid rgba(102,102,204,0.25)', background: 'rgba(255,255,255,0.03)', color: '#a1a1aa', fontSize: 12, cursor: 'pointer', fontWeight: 500 };
+  const selectedChipStyle: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 5, background: 'rgba(124,92,255,0.18)', border: '1px solid rgba(124,92,255,0.45)', borderRadius: 20, padding: '4px 10px', fontSize: 12, color: '#c4b5fd', fontWeight: 600 };
+  const chipRemoveBtnStyle: React.CSSProperties = { background: 'transparent', border: 'none', color: '#7c5cff', cursor: 'pointer', lineHeight: 1, fontSize: 15, padding: 0, fontWeight: 700 };
+  const toggleRowStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '10px 0', borderBottom: '1px solid rgba(102,102,204,0.07)', cursor: 'pointer' };
 
   const pendingTagReviewTotal = Object.values(pendingTagCounts).reduce((total, count) => total + Number(count || 0), 0);
   const hasPendingTagReviews = pendingTagReviewTotal > 0;
@@ -699,202 +704,157 @@ const AdminAlbums: React.FC = () => {
               <h2>{editingAlbum ? 'Edit Album' : 'Create Album'}</h2>
               <button onClick={() => setShowModal(false)} className="btn-close">×</button>
             </div>
-            <form onSubmit={handleSubmit} className="modal-body admin-modal-body" autoComplete="off">
-              <div className="form-group">
-                <label>Name</label>
-                <input type="text" value={formData.name} onChange={e => setFormData(f => ({ ...f, name: e.target.value }))} required />
+            <form onSubmit={handleSubmit} autoComplete="off" style={{ display: 'flex', flexDirection: 'column', gap: 0, overflowY: 'auto', maxHeight: '75vh', padding: '20px 24px 0' }}>
+
+              {/* ── Basic info ── */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 20 }}>
+                <div>
+                  <label style={labelStyle}>Album Name</label>
+                  <input style={inputStyle} type="text" value={formData.name} onChange={e => setFormData(f => ({ ...f, name: e.target.value }))} placeholder="e.g. 2026 Whitworth Football" required />
+                </div>
+                <div>
+                  <label style={labelStyle}>Description <span style={{ fontWeight: 400, color: '#4a4a6a' }}>(optional)</span></label>
+                  <textarea style={{ ...inputStyle, minHeight: 72, resize: 'vertical' }} value={formData.description} onChange={e => setFormData(f => ({ ...f, description: e.target.value }))} placeholder="Short description visible to customers" />
+                </div>
               </div>
-              <div className="form-group">
-                <label>Description</label>
-                <textarea value={formData.description} onChange={e => setFormData(f => ({ ...f, description: e.target.value }))} />
-              </div>
-              <div className="form-group">
-                <label>Category</label>
-                <select value={formData.category} onChange={e => setFormData(f => ({ ...f, category: e.target.value }))}>
-                  <option value="">Select category</option>
+
+              {/* ── Category ── */}
+              <div style={sectionStyle}>
+                <label style={labelStyle}>Category</label>
+                <select style={inputStyle} value={formData.category} onChange={e => setFormData(f => ({ ...f, category: e.target.value }))}>
+                  <option value="">No category</option>
                   {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
                 </select>
-                <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
                   <input
+                    style={{ ...inputStyle, flex: 1 }}
                     type="text"
-                    placeholder="Add new category"
+                    placeholder="New category name…"
                     value={newModalCategory}
                     onChange={e => setNewModalCategory(e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleAddCategoryFromModal();
-                      }
-                    }}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddCategoryFromModal(); } }}
                   />
-                  <button type="button" className="btn" onClick={handleAddCategoryFromModal}>Add</button>
+                  <button type="button" onClick={handleAddCategoryFromModal} style={inlineAddBtnStyle}>+ Add</button>
                 </div>
               </div>
-              <div className="form-group">
-                <label>Tagged Schools</label>
-                <div style={{ display: 'flex', gap: 8 }}>
+
+              {/* ── Tagged Schools ── */}
+              <div style={sectionStyle}>
+                <label style={labelStyle}>Tagged Schools</label>
+                <div style={{ display: 'flex', gap: 6 }}>
                   <input
+                    style={{ ...inputStyle, flex: 1 }}
                     type="text"
-                    placeholder="Add school (e.g., Riverside High School)"
+                    placeholder="Search or type a school name…"
                     value={newSchoolTag}
                     onChange={e => setNewSchoolTag(e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        addSchoolTag(newSchoolTag);
-                      }
-                    }}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addSchoolTag(newSchoolTag); } }}
                   />
-                  <button type="button" className="btn" onClick={() => addSchoolTag(newSchoolTag)}>Add</button>
+                  <button type="button" onClick={() => addSchoolTag(newSchoolTag)} style={inlineAddBtnStyle}>+ Add</button>
                 </div>
-
                 {schoolSuggestions.length > 0 && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 8 }}>
                     {schoolSuggestions.map((school) => (
-                      <button
-                        key={school}
-                        type="button"
-                        className="btn"
-                        style={{ padding: '4px 8px', fontSize: 12 }}
-                        onClick={() => addSchoolTag(school)}
-                      >
+                      <button key={school} type="button" onClick={() => addSchoolTag(school)} style={suggestionChipStyle}>
                         + {school}
                       </button>
                     ))}
                   </div>
                 )}
-
                 {formData.schoolTags.length > 0 && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
                     {formData.schoolTags.map((school) => (
-                      <span
-                        key={school}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 6,
-                          background: 'rgba(123, 97, 255, 0.2)',
-                          border: '1px solid rgba(123, 97, 255, 0.5)',
-                          borderRadius: 999,
-                          padding: '4px 10px',
-                          fontSize: 13,
-                        }}
-                      >
+                      <span key={school} style={selectedChipStyle}>
                         {school}
-                        <button
-                          type="button"
-                          onClick={() => removeSchoolTag(school)}
-                          style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer', lineHeight: 1 }}
-                          aria-label={`Remove ${school}`}
-                        >
-                          ×
-                        </button>
+                        <button type="button" onClick={() => removeSchoolTag(school)} style={chipRemoveBtnStyle} aria-label={`Remove ${school}`}>×</button>
                       </span>
                     ))}
                   </div>
                 )}
               </div>
-              <div className="form-group">
-                <label>Price List</label>
-                <select value={formData.priceListId ?? ''} onChange={e => setFormData(f => ({ ...f, priceListId: e.target.value ? Number(e.target.value) : undefined }))}>
+
+              {/* ── Price List ── */}
+              <div style={sectionStyle}>
+                <label style={labelStyle}>Price List</label>
+                <select style={{ ...inputStyle, maxWidth: 220 }} value={formData.priceListId ?? ''} onChange={e => setFormData(f => ({ ...f, priceListId: e.target.value ? Number(e.target.value) : undefined }))}>
                   <option value="">Default</option>
                   {priceLists.map(pl => <option key={pl.id} value={pl.id}>{pl.name}</option>)}
                 </select>
               </div>
-              <div className="form-group">
-                <label>Protected</label>
-                <input type="checkbox" checked={formData.isPasswordProtected} onChange={e => setFormData(f => ({ ...f, isPasswordProtected: e.target.checked }))} />
+
+              {/* ── Visibility & access ── */}
+              <div style={{ ...sectionStyle, display: 'flex', flexDirection: 'column', gap: 0 }}>
+                <div style={{ fontSize: 10, fontWeight: 800, color: '#4a4a6a', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 10 }}>Visibility &amp; Access</div>
+                {([
+                  { key: 'published', label: 'Published', desc: 'Customers can view and search this album' },
+                  { key: 'hidden', label: 'Hidden', desc: 'Only accessible via direct share link' },
+                  { key: 'isPasswordProtected', label: 'Password Protected', desc: 'Require a password to view' },
+                  { key: 'batchShippingActive', label: 'Batch Shipping', desc: 'Enable batch shipping for this album' },
+                  { key: 'albumPurchaseEnabled', label: 'Album Purchase', desc: 'Allow customers to buy the entire album' },
+                ] as { key: keyof typeof formData; label: string; desc: string }[]).map(({ key, label, desc }) => (
+                  <label key={key} style={toggleRowStyle}>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#e4e4e7' }}>{label}</div>
+                      <div style={{ fontSize: 11, color: '#4a4a6a', marginTop: 1 }}>{desc}</div>
+                    </div>
+                    <div
+                      onClick={() => setFormData(f => ({ ...f, [key]: !f[key] }))}
+                      style={{
+                        width: 40, height: 22, borderRadius: 11, flexShrink: 0, cursor: 'pointer', position: 'relative',
+                        background: formData[key] ? '#7c5cff' : 'rgba(255,255,255,0.1)',
+                        transition: 'background 0.2s',
+                      }}
+                    >
+                      <div style={{
+                        position: 'absolute', top: 3, left: formData[key] ? 21 : 3,
+                        width: 16, height: 16, borderRadius: '50%', background: '#fff',
+                        transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.4)',
+                      }} />
+                    </div>
+                  </label>
+                ))}
               </div>
+
+              {/* ── Password fields ── */}
               {formData.isPasswordProtected && (
-                <>
-                  <div className="form-group">
-                    <label>Password</label>
-                    <input type="text" value={formData.password} onChange={e => setFormData(f => ({ ...f, password: e.target.value }))} />
+                <div style={{ ...sectionStyle, display: 'flex', gap: 12 }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={labelStyle}>Password</label>
+                    <input style={inputStyle} type="text" value={formData.password} onChange={e => setFormData(f => ({ ...f, password: e.target.value }))} />
                   </div>
-                  <div className="form-group">
-                    <label>Password Hint</label>
-                    <input type="text" value={formData.passwordHint} onChange={e => setFormData(f => ({ ...f, passwordHint: e.target.value }))} />
+                  <div style={{ flex: 1 }}>
+                    <label style={labelStyle}>Password Hint</label>
+                    <input style={inputStyle} type="text" value={formData.passwordHint} onChange={e => setFormData(f => ({ ...f, passwordHint: e.target.value }))} />
                   </div>
-                </>
-              )}
-              <div className="form-group">
-                <label>Batch Shipping</label>
-                <input type="checkbox" checked={!!formData.batchShippingActive} onChange={e => setFormData(f => ({ ...f, batchShippingActive: e.target.checked }))} />
-                <span style={{ marginLeft: 8, fontSize: '0.92em', color: '#aaa' }}>
-                  Enable batch shipping for this album
-                </span>
-              </div>
-              <div className="form-group">
-                <label>Album Purchase</label>
-                <input type="checkbox" checked={formData.albumPurchaseEnabled !== false} onChange={e => setFormData(f => ({ ...f, albumPurchaseEnabled: e.target.checked }))} />
-                <span style={{ marginLeft: 8, fontSize: '0.92em', color: '#aaa' }}>
-                  Allow customers to buy the entire album (enabled by default)
-                </span>
-              </div>
-              <div className="form-group">
-                <label>Published</label>
-                <input
-                  type="checkbox"
-                  checked={!!formData.published}
-                  onChange={e => setFormData(f => ({ ...f, published: e.target.checked }))}
-                />
-                <span style={{ marginLeft: 8, fontSize: '0.92em', color: '#aaa' }}>
-                  Customers can view and search this album when published
-                </span>
-              </div>
-              <div className="form-group">
-                <label>Hidden</label>
-                <input
-                  type="checkbox"
-                  checked={!!formData.hidden}
-                  onChange={e => setFormData(f => ({ ...f, hidden: e.target.checked }))}
-                />
-                <span style={{ marginLeft: 8, fontSize: '0.92em', color: '#aaa' }}>
-                  Hide this album from your public albums page and search
-                </span>
-              </div>
-              {editingAlbum ? (
-                <div className="form-group">
-                  <label>Share Link</label>
-                  {(() => {
-                    const studioSlug = (editingAlbum as any).studioPublicSlug || localStorage.getItem('studioSlug') || '';
-                    const shareUrl = formData.hidden
-                      ? getHiddenAlbumUrl(editingAlbum.id)
-                      : studioSlug
-                        ? `${window.location.origin}/albums/${editingAlbum.id}?studioSlug=${encodeURIComponent(studioSlug)}`
-                        : `${window.location.origin}/albums/${editingAlbum.id}`;
-                    return (
-                      <>
-                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                          <input
-                            type="text"
-                            value={shareUrl}
-                            readOnly
-                            style={{ flex: 1, fontSize: 13, background: '#222', color: '#fff', border: '1px solid #444', borderRadius: 4, padding: '4px 8px' }}
-                          />
-                          <button
-                            type="button"
-                            className="btn"
-                            onClick={() => navigator.clipboard.writeText(shareUrl).then(() => alert('Link copied!'))}
-                          >Copy</button>
-                        </div>
-                        {formData.hidden && (
-                          <div style={{ fontSize: 12, color: '#aaa', marginTop: 4 }}>
-                            Only users with this link can view the album.
-                          </div>
-                        )}
-                      </>
-                    );
-                  })()}
-                </div>
-              ) : (
-                <div style={{ fontSize: 12, color: '#6b6b80', marginTop: 4 }}>
-                  The share link will be available after saving the album.
                 </div>
               )}
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24 }}>
-                <button type="button" className="btn" onClick={() => setShowModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary">Save</button>
+
+              {/* ── Share Link ── */}
+              {editingAlbum ? (() => {
+                const studioSlug = (editingAlbum as any).studioPublicSlug || localStorage.getItem('studioSlug') || '';
+                const shareUrl = formData.hidden
+                  ? getHiddenAlbumUrl(editingAlbum.id)
+                  : studioSlug
+                    ? `${window.location.origin}/albums/${editingAlbum.id}?studioSlug=${encodeURIComponent(studioSlug)}`
+                    : `${window.location.origin}/albums/${editingAlbum.id}`;
+                return (
+                  <div style={sectionStyle}>
+                    <label style={labelStyle}>Share Link</label>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <input type="text" value={shareUrl} readOnly style={{ ...inputStyle, flex: 1, color: '#a78bfa', fontSize: 12 }} />
+                      <button type="button" onClick={() => navigator.clipboard.writeText(shareUrl).then(() => alert('Link copied!'))} style={inlineAddBtnStyle}>Copy</button>
+                    </div>
+                    {formData.hidden && <div style={{ fontSize: 11, color: '#6b6b80', marginTop: 4 }}>Only users with this link can view the album.</div>}
+                  </div>
+                );
+              })() : (
+                <div style={{ fontSize: 11, color: '#4a4a6a', marginBottom: 8 }}>Share link available after saving.</div>
+              )}
+
+              {/* ── Actions ── */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, padding: '16px 0 20px', position: 'sticky', bottom: 0, background: 'rgba(18,18,30,0.98)', marginTop: 4 }}>
+                <button type="button" onClick={() => setShowModal(false)} style={{ padding: '9px 20px', borderRadius: 8, border: '1px solid rgba(102,102,204,0.3)', background: 'transparent', color: '#a1a1aa', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>Cancel</button>
+                <button type="submit" style={{ padding: '9px 24px', borderRadius: 8, border: 'none', background: 'linear-gradient(135deg,#7c5cff,#6366f1)', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>Save Album</button>
               </div>
             </form>
           </div>

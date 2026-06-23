@@ -145,7 +145,6 @@ const syncStudioSchoolRoster = async (studioId, schoolTags = [], sourceAlbumId =
 // Public: Get albums by studioSlug (for customer view)
 router.get('/public', async (req, res) => {
   try {
-    await ensureAlbumSchema();
     const { studioSlug, player } = req.query;
     if (!studioSlug) {
       return res.status(400).json({ error: 'studioSlug is required' });
@@ -281,7 +280,6 @@ const addAlbumPreviewImages = async (albums) => {
 // Get all albums (auth required)
 router.get('/', authRequired, async (req, res) => {
   try {
-    await ensureAlbumSchema();
     const user = req.user;
     let albums;
     const studioId = user?.studio_id;
@@ -343,11 +341,12 @@ router.get('/', authRequired, async (req, res) => {
       return res.json([]);
     }
 
-    // Fetch product count and net revenue for each album
     const albumIds = albums.map(a => a.id);
     let statsMap = new Map();
     let viewsMap = new Map();
-    if (albumIds.length > 0) {
+
+    const fetchStats = async () => {
+      if (!albumIds.length) return;
       const placeholders = albumIds.map((_, i) => `$${i + 1}`).join(',');
       const statsRows = await queryRows(`
         SELECT ph.album_id as albumId,
@@ -373,8 +372,11 @@ router.get('/', authRequired, async (req, res) => {
         GROUP BY ph.album_id
       `, albumIds);
       statsMap = new Map(statsRows.map(row => [row.albumId, row]));
+    };
 
-      // Fetch total album views from analytics (if available)
+    const fetchAnalytics = async () => {
+      if (!albumIds.length) return;
+      const placeholders = albumIds.map((_, i) => `$${i + 1}`).join(',');
       try {
         const viewRows = await queryRows(`
           SELECT
@@ -393,12 +395,16 @@ router.get('/', authRequired, async (req, res) => {
           viewClickCount: Number(row.viewClickCount) || 0,
         }]));
       } catch (analyticsError) {
-        // Analytics table may not exist in all environments.
         console.warn('[GET /albums] analytics unavailable:', analyticsError?.message || analyticsError);
       }
-    }
+    };
 
-    const albumsWithPreviews = await addAlbumPreviewImages(albums);
+    // Run stats, analytics, and preview queries in parallel
+    const [albumsWithPreviews] = await Promise.all([
+      addAlbumPreviewImages(albums),
+      fetchStats(),
+      fetchAnalytics(),
+    ]);
     const albumsWithStats = albumsWithPreviews.map(album => {
       const stats = statsMap.get(album.id) || {};
       const views = viewsMap.get(Number(album.id)) || {};
@@ -421,7 +427,6 @@ router.get('/', authRequired, async (req, res) => {
 
 router.get('/school-roster', authRequired, async (req, res) => {
   try {
-    await ensureAlbumSchema();
     const studioId = req.user?.studio_id;
     if (!studioId) {
       return res.json([]);
@@ -452,7 +457,6 @@ router.get('/school-roster', authRequired, async (req, res) => {
 // Get album by ID
 router.get('/:id', async (req, res) => {
   try {
-    await ensureAlbumSchema();
     const album = await queryRow(`
       SELECT 
         a.id,
@@ -500,7 +504,6 @@ router.get('/:id', async (req, res) => {
 // Create new album (requires active subscription)
 router.post('/', requireActiveSubscription, async (req, res) => {
   try {
-    await ensureAlbumSchema();
     const { title, name, description, coverImageUrl, coverPhotoId, category, priceListId, isPasswordProtected, password, passwordHint, batchShippingActive, schoolTags, albumPurchaseEnabled, published, hidden } = req.body;
     const albumName = title || name || '';
     const normalizedSchoolTags = parseSchoolTags(schoolTags);
@@ -572,7 +575,6 @@ router.post('/', requireActiveSubscription, async (req, res) => {
 // Update album
 router.put('/:id', async (req, res) => {
   try {
-    await ensureAlbumSchema();
     const { title, name, description, coverImageUrl, coverPhotoId, category, priceListId, isPasswordProtected, password, passwordHint, batchShippingActive, schoolTags, albumPurchaseEnabled, published, hidden, photoCount } = req.body;
 
     // Log incoming payload
