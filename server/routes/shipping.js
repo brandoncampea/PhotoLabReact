@@ -167,7 +167,6 @@ const resolveStudioId = (req) => {
 // Get shipping configuration (studio-specific, super admin can specify studioId)
 router.get('/config', async (req, res) => {
   try {
-    await ensureShippingConfigSchema();
     const studioId = resolveStudioId(req);
     if (!studioId) {
       return res.status(403).json({ error: 'Studio ID required' });
@@ -183,7 +182,6 @@ router.get('/config', async (req, res) => {
 // Update shipping configuration (studio-specific, super admin can specify studioId)
 router.put('/config', async (req, res) => {
   try {
-    await ensureShippingConfigSchema();
     const studioId = resolveStudioId(req);
     if (!studioId) {
       return res.status(403).json({ error: 'Studio ID required' });
@@ -276,8 +274,6 @@ router.put('/rubric', async (req, res) => {
 // Quote shipping cost using WHCC rubric + studio pricing policy
 router.post('/quote', async (req, res) => {
   try {
-    await ensureShippingConfigSchema();
-
     const { shippingOption = 'direct', shippingAddress = null, items = [] } = req.body || {};
 
     let studioId = resolveStudioId(req);

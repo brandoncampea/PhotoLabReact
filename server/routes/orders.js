@@ -3593,7 +3593,6 @@ router.get('/user/:userId', async (req, res) => {
 // Create order for current user (requires active subscription for studio selling)
 router.post('/', requireActiveSubscription, async (req, res) => {
   try {
-    await ensureOrderItemAccountingSchema();
     const userId = req.user.id;
     const { 
       items, 
@@ -5954,17 +5953,27 @@ router.get('/admin/batch-queue', adminRequired, async (req, res) => {
 
     const queuedOrders = await queryRows(queryText, params);
     // Filter out orders that are digital-only (all items are digital) and those that are cancelled
-    const filteredOrders = [];
-    for (const order of queuedOrders) {
-      if (String(order.status).toLowerCase() === 'cancelled') continue;
-      // Fetch order items for this order
-      const items = await queryRows(
-        `SELECT oi.id, oi.product_id, oi.product_size_id, p.options as productOptions, p.category as productCategory, p.name as productName
+    const activeOrders = queuedOrders.filter(o => String(o.status).toLowerCase() !== 'cancelled');
+    let allOrderItems = [];
+    if (activeOrders.length > 0) {
+      const orderIds = activeOrders.map(o => o.id);
+      const placeholders = orderIds.map((_, i) => `$${i + 1}`).join(', ');
+      allOrderItems = await queryRows(
+        `SELECT oi.id, oi.order_id as orderId, oi.product_id, oi.product_size_id, p.options as productOptions, p.category as productCategory, p.name as productName
          FROM order_items oi
          LEFT JOIN products p ON p.id = oi.product_id
-         WHERE oi.order_id = $1`,
-        [order.id]
+         WHERE oi.order_id IN (${placeholders})`,
+        orderIds
       );
+    }
+    const itemsByOrderId = {};
+    for (const item of allOrderItems) {
+      if (!itemsByOrderId[item.orderId]) itemsByOrderId[item.orderId] = [];
+      itemsByOrderId[item.orderId].push(item);
+    }
+    const filteredOrders = [];
+    for (const order of activeOrders) {
+      const items = itemsByOrderId[order.id] || [];
       // If there are no items, keep the order (to avoid hiding empty orders by accident)
       if (!items.length) {
         filteredOrders.push(order);

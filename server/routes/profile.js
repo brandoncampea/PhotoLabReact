@@ -131,10 +131,29 @@ router.get('/', authRequired, async (req, res) => {
       }
     }
     studioId = Number(studioId);
-    const hasStudioId = await columnExists('profile_config', 'studio_id');
 
-    let profile = hasStudioId
-      ? await queryRow(`
+    let profile = await queryRow(`
+        SELECT id, owner_name as ownerName, business_name as businessName,
+               email, receive_order_notifications as receiveOrderNotifications,
+               logo_url as logoUrl,
+               instagram_url as instagramUrl, facebook_url as facebookUrl,
+               timezone, custom_domain as customDomain
+        FROM profile_config
+        WHERE studio_id = $1
+      `, [studioId]);
+
+    // Initialize if doesn't exist
+    if (!profile) {
+      await query(`
+        IF NOT EXISTS (SELECT 1 FROM profile_config WHERE studio_id = $1)
+        BEGIN
+          INSERT INTO profile_config (id, studio_id, owner_name, business_name, email, receive_order_notifications, logo_url)
+          SELECT ISNULL(MAX(id), 0) + 1, $1, 'John Smith', 'PhotoLab Studio', 'admin@photolab.com', 1, ''
+          FROM profile_config
+        END
+      `, [studioId]);
+
+      profile = await queryRow(`
           SELECT id, owner_name as ownerName, business_name as businessName,
                  email, receive_order_notifications as receiveOrderNotifications,
                  logo_url as logoUrl,
@@ -142,57 +161,7 @@ router.get('/', authRequired, async (req, res) => {
                  timezone, custom_domain as customDomain
           FROM profile_config
           WHERE studio_id = $1
-        `, [studioId])
-      : await queryRow(`
-          SELECT id, owner_name as ownerName, business_name as businessName,
-                 email, receive_order_notifications as receiveOrderNotifications,
-                 logo_url as logoUrl,
-                 instagram_url as instagramUrl, facebook_url as facebookUrl,
-                 timezone, custom_domain as customDomain
-          FROM profile_config
-          WHERE id = 1
-        `);
-
-    // Initialize if doesn't exist
-    if (!profile) {
-      if (hasStudioId) {
-        await query(`
-          IF NOT EXISTS (SELECT 1 FROM profile_config WHERE studio_id = $1)
-          BEGIN
-            INSERT INTO profile_config (id, studio_id, owner_name, business_name, email, receive_order_notifications, logo_url)
-            SELECT ISNULL(MAX(id), 0) + 1, $1, 'John Smith', 'PhotoLab Studio', 'admin@photolab.com', 1, ''
-            FROM profile_config
-          END
         `, [studioId]);
-      } else {
-        await query(`
-          IF NOT EXISTS (SELECT 1 FROM profile_config WHERE id = 1)
-          BEGIN
-            INSERT INTO profile_config (id, owner_name, business_name, email, receive_order_notifications, logo_url)
-            VALUES (1, 'John Smith', 'PhotoLab Studio', 'admin@photolab.com', 1, '')
-          END
-        `);
-      }
-
-      profile = hasStudioId
-        ? await queryRow(`
-            SELECT id, owner_name as ownerName, business_name as businessName,
-                   email, receive_order_notifications as receiveOrderNotifications,
-                   logo_url as logoUrl,
-                   instagram_url as instagramUrl, facebook_url as facebookUrl,
-                   timezone, custom_domain as customDomain
-            FROM profile_config
-            WHERE studio_id = $1
-          `, [studioId])
-        : await queryRow(`
-            SELECT id, owner_name as ownerName, business_name as businessName,
-                   email, receive_order_notifications as receiveOrderNotifications,
-                   logo_url as logoUrl,
-                   instagram_url as instagramUrl, facebook_url as facebookUrl,
-                   timezone, custom_domain as customDomain
-            FROM profile_config
-            WHERE id = 1
-          `);
     }
     res.json(withResolvedLogoUrl({
       ...(profile || defaultProfile),
@@ -233,77 +202,40 @@ router.put('/', authRequired, async (req, res) => {
       }
     }
     const finalCustomDomain = customDomain ? customDomain.trim() : null;
-    const hasStudioId = await columnExists('profile_config', 'studio_id');
 
-    if (hasStudioId) {
-      await query(`
-        IF EXISTS (SELECT 1 FROM profile_config WHERE studio_id = $1)
-        BEGIN
-          UPDATE profile_config
-          SET owner_name = $2,
-              business_name = $3,
-              email = $4,
-              receive_order_notifications = $5,
-              logo_url = $6,
-              instagram_url = $7,
-              facebook_url = $8,
-              timezone = $9,
-              custom_domain = $10,
-              updated_at = CURRENT_TIMESTAMP
-          WHERE studio_id = $1
-        END
-        ELSE
-        BEGIN
-          INSERT INTO profile_config (id, studio_id, owner_name, business_name, email, receive_order_notifications, logo_url, instagram_url, facebook_url, timezone, custom_domain)
-          SELECT ISNULL(MAX(id), 0) + 1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
-          FROM profile_config
-        END
-      `, [studioId, ownerName, businessName, email, !!receiveOrderNotifications, logoUrl, instagramUrl || null, facebookUrl || null, timezone, finalCustomDomain]);
-    } else {
-      // Legacy single-row schema fallback
-      await query(`
-        IF EXISTS (SELECT 1 FROM profile_config WHERE id = 1)
-        BEGIN
-          UPDATE profile_config
-          SET owner_name = $1,
-              business_name = $2,
-              email = $3,
-              receive_order_notifications = $4,
-              logo_url = $5,
-              instagram_url = $6,
-              facebook_url = $7,
-              timezone = $8,
-              custom_domain = $9,
-              updated_at = CURRENT_TIMESTAMP
-          WHERE id = 1
-        END
-        ELSE
-        BEGIN
-          INSERT INTO profile_config (id, owner_name, business_name, email, receive_order_notifications, logo_url, instagram_url, facebook_url, timezone, custom_domain)
-          VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9)
-        END
-      `, [ownerName, businessName, email, !!receiveOrderNotifications, logoUrl, instagramUrl || null, facebookUrl || null, timezone, finalCustomDomain]);
-    }
+    await query(`
+      IF EXISTS (SELECT 1 FROM profile_config WHERE studio_id = $1)
+      BEGIN
+        UPDATE profile_config
+        SET owner_name = $2,
+            business_name = $3,
+            email = $4,
+            receive_order_notifications = $5,
+            logo_url = $6,
+            instagram_url = $7,
+            facebook_url = $8,
+            timezone = $9,
+            custom_domain = $10,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE studio_id = $1
+      END
+      ELSE
+      BEGIN
+        INSERT INTO profile_config (id, studio_id, owner_name, business_name, email, receive_order_notifications, logo_url, instagram_url, facebook_url, timezone, custom_domain)
+        SELECT ISNULL(MAX(id), 0) + 1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
+        FROM profile_config
+      END
+    `, [studioId, ownerName, businessName, email, !!receiveOrderNotifications, logoUrl, instagramUrl || null, facebookUrl || null, timezone, finalCustomDomain]);
 
-    const profile = hasStudioId
-      ? await queryRow(`
-          SELECT id, owner_name as ownerName, business_name as businessName,
-                 email, receive_order_notifications as receiveOrderNotifications,
-                 logo_url as logoUrl,
-                 instagram_url as instagramUrl, facebook_url as facebookUrl,
-                 timezone
-          FROM profile_config
-          WHERE studio_id = $1
-        `, [studioId])
-      : await queryRow(`
-          SELECT id, owner_name as ownerName, business_name as businessName,
-                 email, receive_order_notifications as receiveOrderNotifications,
-                 logo_url as logoUrl,
-                 instagram_url as instagramUrl, facebook_url as facebookUrl,
-                 timezone
-          FROM profile_config
-          WHERE id = 1
-        `);
+    const profile = await queryRow(`
+        SELECT id, owner_name as ownerName, business_name as businessName,
+               email, receive_order_notifications as receiveOrderNotifications,
+               logo_url as logoUrl,
+               instagram_url as instagramUrl, facebook_url as facebookUrl,
+               timezone
+        FROM profile_config
+        WHERE studio_id = $1
+      `, [studioId]);
     res.json(withResolvedLogoUrl({
       ...defaultProfile,
       ownerName,

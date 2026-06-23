@@ -47,6 +47,37 @@ const setCachedStudio = (studioId, exists) => {
   studioCache.set(studioId, { exists, ts: Date.now() });
 };
 
+// In-flight maps coalesce concurrent DB lookups for the same key so a burst of
+// simultaneous requests (e.g. 5 parallel fetches on page load) only fires one query.
+const userInflight = new Map();
+const studioInflight = new Map();
+
+const lookupUser = (userId) => {
+  const cached = getCachedUser(userId);
+  if (cached) return Promise.resolve({ role: cached.role, studio_id: cached.studio_id });
+  if (userInflight.has(userId)) return userInflight.get(userId);
+  const p = queryRow('SELECT role, studio_id FROM users WHERE id = $1', [userId])
+    .then(row => {
+      const result = { role: row?.role || 'customer', studio_id: row?.studio_id || null };
+      setCachedUser(userId, result.role, result.studio_id);
+      return result;
+    })
+    .finally(() => userInflight.delete(userId));
+  userInflight.set(userId, p);
+  return p;
+};
+
+const lookupStudio = (studioId) => {
+  const cached = getCachedStudio(studioId);
+  if (cached) return Promise.resolve(cached.exists);
+  if (studioInflight.has(studioId)) return studioInflight.get(studioId);
+  const p = queryRow('SELECT id FROM studios WHERE id = $1', [studioId])
+    .then(r => { const exists = !!r; setCachedStudio(studioId, exists); return exists; })
+    .finally(() => studioInflight.delete(studioId));
+  studioInflight.set(studioId, p);
+  return p;
+};
+
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
   if (process.env.NODE_ENV === 'production') {
@@ -91,16 +122,9 @@ export const authRequired = async (req, res, next) => {
     let role = 'customer';
     let studio_id = null;
     try {
-      const cached = getCachedUser(userId);
-      if (cached) {
-        role = cached.role;
-        studio_id = cached.studio_id;
-      } else {
-        const userRow = await queryRow('SELECT role, studio_id FROM users WHERE id = $1', [userId]);
-        if (userRow && userRow.role) role = userRow.role;
-        if (userRow && userRow.studio_id) studio_id = userRow.studio_id;
-        setCachedUser(userId, role, studio_id);
-      }
+      const user = await lookupUser(userId);
+      role = user.role;
+      studio_id = user.studio_id;
     } catch {}
     // Allow env-based override (useful in dev) even when role column exists
     const admins = (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
@@ -112,10 +136,7 @@ export const authRequired = async (req, res, next) => {
     const actingStudioIdRaw = req.headers['x-acting-studio-id'];
     const actingStudioId = Number(Array.isArray(actingStudioIdRaw) ? actingStudioIdRaw[0] : actingStudioIdRaw);
     if (role === 'super_admin' && Number.isInteger(actingStudioId) && actingStudioId > 0) {
-      const studioEntry = getCachedStudio(actingStudioId);
-      const studioExists = studioEntry
-        ? studioEntry.exists
-        : await queryRow('SELECT id FROM studios WHERE id = $1', [actingStudioId]).then(r => { setCachedStudio(actingStudioId, !!r); return !!r; });
+      const studioExists = await lookupStudio(actingStudioId);
       if (studioExists) {
         acting_studio_id = actingStudioId;
         studio_id = actingStudioId;
@@ -144,16 +165,9 @@ export const adminRequired = async (req, res, next) => {
 
       let role = 'customer';
       let studio_id = null;
-      const cachedAdmin = getCachedUser(userId);
-      if (cachedAdmin) {
-        role = cachedAdmin.role;
-        studio_id = cachedAdmin.studio_id;
-      } else {
-        const userRow = await queryRow('SELECT role, studio_id FROM users WHERE id = $1', [userId]);
-        if (userRow?.role) role = userRow.role;
-        if (userRow?.studio_id) studio_id = userRow.studio_id;
-        setCachedUser(userId, role, studio_id);
-      }
+      const lookedUp = await lookupUser(userId);
+      role = lookedUp.role;
+      studio_id = lookedUp.studio_id;
 
       let admins = (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
       if (admins.length === 0) {
@@ -167,11 +181,8 @@ export const adminRequired = async (req, res, next) => {
       const actingStudioIdRaw = req.headers['x-acting-studio-id'];
       const actingStudioId = Number(Array.isArray(actingStudioIdRaw) ? actingStudioIdRaw[0] : actingStudioIdRaw);
       if (role === 'super_admin' && Number.isInteger(actingStudioId) && actingStudioId > 0) {
-        const studioEntry2 = getCachedStudio(actingStudioId);
-        const studioExists2 = studioEntry2
-          ? studioEntry2.exists
-          : await queryRow('SELECT id FROM studios WHERE id = $1', [actingStudioId]).then(r => { setCachedStudio(actingStudioId, !!r); return !!r; });
-        if (studioExists2) {
+        const studioExists = await lookupStudio(actingStudioId);
+        if (studioExists) {
           acting_studio_id = actingStudioId;
           studio_id = actingStudioId;
         }

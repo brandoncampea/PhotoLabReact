@@ -84,16 +84,6 @@ router.post('/track', async (req, res) => {
 // Get analytics summary
 router.get('/summary', async (req, res) => {
   try {
-    const exists = await tableExists('analytics');
-    if (!exists) {
-      return res.json({
-        totalVisits: 0,
-        albumViews: 0,
-        photoViews: 0,
-        totalPageViews: 0,
-      });
-    }
-
     let studioFilter = '';
     let params = [];
     let dateFilter = '';
