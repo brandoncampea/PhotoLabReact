@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import api from '../services/api';
 import playerService from '../services/playerService';
 import { useAuth } from '../contexts/AuthContext';
 import playerWatchlistService, { WatchlistEntry } from '../services/playerWatchlistService';
@@ -141,9 +142,9 @@ const CustomerAccount: React.FC = () => {
     loadingPanelRef.current[entryId] = true;
     setPhotoPanels(prev => ({ ...prev, [entryId]: { ...prev[entryId], loading: true, page } }));
     try {
-      const res = await fetch(`/api/player-watchlist/${entryId}/photos?page=${page}&pageSize=24`);
-      const data: PhotoPanelData = await res.json();
-      setPhotoPanels(prev => ({ ...prev, [entryId]: { loading: false, page, data } }));
+      const res = await api.get(`/player-watchlist/${entryId}/photos?page=${page}&pageSize=24`);
+      const data: PhotoPanelData = res.data;
+      setPhotoPanels(prev => ({ ...prev, [entryId]: { loading: false, page, data: data?.items ? data : null } }));
     } catch {
       setPhotoPanels(prev => ({ ...prev, [entryId]: { loading: false, page, data: null } }));
     } finally {
