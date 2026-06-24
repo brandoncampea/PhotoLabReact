@@ -13,37 +13,68 @@ const getStudioId = (req) => {
 
 // ─── SCHOOLS ─────────────────────────────────────────────────────────────────
 
-// List all schools for the studio with usage counts
+// List all schools for the studio with paging + filtering
 router.get('/schools', adminRequired, async (req, res) => {
   const studioId = getStudioId(req);
   if (!studioId) return res.status(403).json({ error: 'No studio context' });
   try {
-    const rows = await queryRows(`
-      SELECT
-        ssr.id,
-        ssr.school_name AS schoolName,
-        (
-          SELECT COUNT(*)
-          FROM albums a
-          WHERE a.studio_id = $1
-            AND a.school_tags IS NOT NULL
-            AND ',' + REPLACE(a.school_tags, ' ', '') + ',' LIKE '%,' + REPLACE(ssr.school_name, ' ', '') + ',%'
-        ) AS albumCount,
-        (
-          SELECT COUNT(*)
-          FROM customer_school_watchlist csw
-          WHERE csw.school_id = ssr.school_name
-        ) AS watchlistCount
-      FROM studio_school_roster ssr
-      WHERE ssr.studio_id = $1
-      ORDER BY ssr.school_name
-    `, [studioId]);
-    res.json(rows.map(r => ({
-      id: Number(r.id),
-      schoolName: r.schoolName,
-      albumCount: Number(r.albumCount || 0),
-      watchlistCount: Number(r.watchlistCount || 0),
-    })));
+    const rosterExists = Number((await queryRow(
+      `SELECT CASE WHEN OBJECT_ID('studio_school_roster','U') IS NOT NULL THEN 1 ELSE 0 END AS v`
+    ))?.v || 0);
+    if (!rosterExists) return res.json({ items: [], total: 0, page: 1, pageSize: 50 });
+
+    const watchlistExists = Number((await queryRow(
+      `SELECT CASE WHEN OBJECT_ID('customer_school_watchlist','U') IS NOT NULL THEN 1 ELSE 0 END AS v`
+    ))?.v || 0);
+
+    const search = String(req.query.search || '').trim();
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const pageSize = Math.min(200, Math.max(1, parseInt(req.query.pageSize) || 50));
+    const offset = (page - 1) * pageSize;
+
+    const searchFilter = search ? `AND ssr.school_name LIKE '%' + $2 + '%'` : '';
+    const params = search ? [studioId, search] : [studioId];
+
+    const watchlistSubquery = watchlistExists
+      ? `(SELECT COUNT(*) FROM customer_school_watchlist csw WHERE csw.school_id = ssr.school_name)`
+      : `0`;
+
+    const [countRow, rows] = await Promise.all([
+      queryRow(`
+        SELECT COUNT(*) AS total
+        FROM studio_school_roster ssr
+        WHERE ssr.studio_id = $1 ${searchFilter}
+      `, params),
+      queryRows(`
+        SELECT
+          ssr.id,
+          ssr.school_name AS schoolName,
+          (
+            SELECT COUNT(*)
+            FROM albums a
+            WHERE a.studio_id = $1
+              AND a.school_tags IS NOT NULL
+              AND ',' + REPLACE(a.school_tags, ' ', '') + ',' LIKE '%,' + REPLACE(ssr.school_name, ' ', '') + ',%'
+          ) AS albumCount,
+          ${watchlistSubquery} AS watchlistCount
+        FROM studio_school_roster ssr
+        WHERE ssr.studio_id = $1 ${searchFilter}
+        ORDER BY ssr.school_name
+        OFFSET ${offset} ROWS FETCH NEXT ${pageSize} ROWS ONLY
+      `, params),
+    ]);
+
+    res.json({
+      items: rows.map(r => ({
+        id: Number(r.id),
+        schoolName: r.schoolName,
+        albumCount: Number(r.albumCount || 0),
+        watchlistCount: Number(r.watchlistCount || 0),
+      })),
+      total: Number(countRow?.total || 0),
+      page,
+      pageSize,
+    });
   } catch (err) {
     console.error('[roster] GET /schools error:', err);
     res.status(500).json({ error: 'Failed to fetch schools' });
@@ -166,43 +197,75 @@ router.delete('/schools/:id', adminRequired, async (req, res) => {
 
 // ─── PLAYERS ─────────────────────────────────────────────────────────────────
 
-// List all players for the studio with usage counts
+// List all players for the studio with paging + filtering
 router.get('/players', adminRequired, async (req, res) => {
   const studioId = getStudioId(req);
   if (!studioId) return res.status(403).json({ error: 'No studio context' });
   try {
-    const rows = await queryRows(`
-      SELECT
-        spr.id,
-        spr.player_name AS playerName,
-        spr.player_number AS playerNumber,
-        spr.roster_name AS rosterName,
-        (
-          SELECT COUNT(*)
-          FROM photos p
-          INNER JOIN albums a ON a.id = p.album_id
-          WHERE a.studio_id = $1
-            AND p.player_names IS NOT NULL
-            AND ',' + REPLACE(p.player_names, ' ', '') + ',' LIKE '%,' + REPLACE(spr.player_name, ' ', '') + ',%'
-        ) AS photoCount,
-        (
-          SELECT COUNT(*)
-          FROM customer_player_watchlist cpw
-          WHERE cpw.studio_id = $1
-            AND LOWER(cpw.player_name) = LOWER(spr.player_name)
-        ) AS watchlistCount
-      FROM studio_player_roster spr
-      WHERE spr.studio_id = $1
-      ORDER BY spr.player_name
-    `, [studioId]);
-    res.json(rows.map(r => ({
-      id: Number(r.id),
-      playerName: r.playerName,
-      playerNumber: r.playerNumber || null,
-      rosterName: r.rosterName || null,
-      photoCount: Number(r.photoCount || 0),
-      watchlistCount: Number(r.watchlistCount || 0),
-    })));
+    const rosterExists = Number((await queryRow(
+      `SELECT CASE WHEN OBJECT_ID('studio_player_roster','U') IS NOT NULL THEN 1 ELSE 0 END AS v`
+    ))?.v || 0);
+    if (!rosterExists) return res.json({ items: [], total: 0, page: 1, pageSize: 50 });
+
+    const watchlistExists = Number((await queryRow(
+      `SELECT CASE WHEN OBJECT_ID('customer_player_watchlist','U') IS NOT NULL THEN 1 ELSE 0 END AS v`
+    ))?.v || 0);
+
+    const search = String(req.query.search || '').trim();
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const pageSize = Math.min(200, Math.max(1, parseInt(req.query.pageSize) || 50));
+    const offset = (page - 1) * pageSize;
+
+    const searchFilter = search
+      ? `AND (spr.player_name LIKE '%' + $2 + '%' OR spr.player_number LIKE '%' + $2 + '%' OR spr.roster_name LIKE '%' + $2 + '%')`
+      : '';
+    const params = search ? [studioId, search] : [studioId];
+
+    const watchlistSubquery = watchlistExists
+      ? `(SELECT COUNT(*) FROM customer_player_watchlist cpw WHERE cpw.studio_id = $1 AND LOWER(cpw.player_name) = LOWER(spr.player_name))`
+      : `0`;
+
+    const [countRow, rows] = await Promise.all([
+      queryRow(`
+        SELECT COUNT(*) AS total
+        FROM studio_player_roster spr
+        WHERE spr.studio_id = $1 ${searchFilter}
+      `, params),
+      queryRows(`
+        SELECT
+          spr.id,
+          spr.player_name AS playerName,
+          spr.player_number AS playerNumber,
+          spr.roster_name AS rosterName,
+          (
+            SELECT COUNT(*)
+            FROM photos p
+            INNER JOIN albums a ON a.id = p.album_id
+            WHERE a.studio_id = $1
+              AND p.player_names IS NOT NULL
+              AND ',' + REPLACE(p.player_names, ' ', '') + ',' LIKE '%,' + REPLACE(spr.player_name, ' ', '') + ',%'
+          ) AS photoCount,
+          ${watchlistSubquery} AS watchlistCount
+        FROM studio_player_roster spr
+        WHERE spr.studio_id = $1 ${searchFilter}
+        ORDER BY spr.player_name
+        OFFSET ${offset} ROWS FETCH NEXT ${pageSize} ROWS ONLY
+      `, params),
+    ]);
+
+    res.json({
+      items: rows.map(r => ({
+        id: Number(r.id),
+        playerName: r.playerName,
+        playerNumber: r.playerNumber || null,
+        rosterName: r.rosterName || null,
+        photoCount: Number(r.photoCount || 0),
+        watchlistCount: Number(r.watchlistCount || 0),
+      })),
+      total: Number(countRow?.total || 0),
+      page,
+      pageSize,
+    });
   } catch (err) {
     console.error('[roster] GET /players error:', err);
     res.status(500).json({ error: 'Failed to fetch players' });
@@ -354,6 +417,74 @@ router.delete('/players/:id', adminRequired, async (req, res) => {
   } catch (err) {
     console.error('[roster] DELETE /players/:id error:', err);
     res.status(500).json({ error: 'Failed to delete player' });
+  }
+});
+
+// ─── PLAYER PHOTOS ───────────────────────────────────────────────────────────
+
+// GET /players/:id/photos — all photos tagged with this player, paginated
+router.get('/players/:id/photos', adminRequired, async (req, res) => {
+  const studioId = getStudioId(req);
+  if (!studioId) return res.status(403).json({ error: 'No studio context' });
+  const id = Number(req.params.id);
+  const page = Math.max(1, parseInt(req.query.page) || 1);
+  const pageSize = Math.min(200, Math.max(1, parseInt(req.query.pageSize) || 48));
+  const offset = (page - 1) * pageSize;
+
+  try {
+    const existing = await queryRow(
+      `SELECT player_name FROM studio_player_roster WHERE id = $1 AND studio_id = $2`,
+      [id, studioId]
+    );
+    if (!existing) return res.status(404).json({ error: 'Player not found' });
+    const playerName = existing.player_name;
+
+    const [countRow, rows] = await Promise.all([
+      queryRow(`
+        SELECT COUNT(*) AS total
+        FROM photos p
+        INNER JOIN albums a ON a.id = p.album_id
+        WHERE a.studio_id = $1
+          AND p.player_names IS NOT NULL
+          AND ',' + REPLACE(p.player_names, ' ', '') + ',' LIKE '%,' + REPLACE($2, ' ', '') + ',%'
+      `, [studioId, playerName]),
+      queryRows(`
+        SELECT
+          p.id, p.file_name AS fileName,
+          p.thumbnail_url AS thumbnailUrl,
+          p.full_image_url AS fullImageUrl,
+          p.player_names AS playerNames,
+          p.player_numbers AS playerNumbers,
+          a.id AS albumId, a.name AS albumName
+        FROM photos p
+        INNER JOIN albums a ON a.id = p.album_id
+        WHERE a.studio_id = $1
+          AND p.player_names IS NOT NULL
+          AND ',' + REPLACE(p.player_names, ' ', '') + ',' LIKE '%,' + REPLACE($2, ' ', '') + ',%'
+        ORDER BY a.name, p.file_name
+        OFFSET ${offset} ROWS FETCH NEXT ${pageSize} ROWS ONLY
+      `, [studioId, playerName]),
+    ]);
+
+    res.json({
+      playerName,
+      items: (rows || []).map(r => ({
+        id: Number(r.id),
+        fileName: r.fileName,
+        thumbnailUrl: r.thumbnailUrl || null,
+        fullImageUrl: r.fullImageUrl || null,
+        playerNames: r.playerNames || null,
+        playerNumbers: r.playerNumbers || null,
+        albumId: Number(r.albumId),
+        albumName: r.albumName,
+      })),
+      total: Number(countRow?.total || 0),
+      page,
+      pageSize,
+    });
+  } catch (err) {
+    console.error('[roster] GET /players/:id/photos error:', err);
+    res.status(500).json({ error: 'Failed to fetch player photos' });
   }
 });
 

@@ -165,6 +165,64 @@ router.delete('/:id', async (req, res) => {
 });
 
 
+// ─── GET /api/player-watchlist/:id/photos — photos for a watched player ──────
+router.get('/:id/photos', authRequired, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ error: 'Invalid id' });
+
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const pageSize = Math.min(48, Math.max(1, parseInt(req.query.pageSize) || 24));
+    const offset = (page - 1) * pageSize;
+
+    const entry = await queryRow(
+      `SELECT id, studio_id, player_name FROM customer_player_watchlist WHERE id = $1 AND user_id = $2`,
+      [id, userId]
+    );
+    if (!entry) return res.status(404).json({ error: 'Not found' });
+
+    const studioId = entry.studio_id;
+    const playerName = entry.player_name;
+
+    const [countRow, rows] = await Promise.all([
+      queryRow(`
+        SELECT COUNT(*) AS total
+        FROM photos p
+        INNER JOIN albums a ON a.id = p.album_id
+        WHERE a.studio_id = $1
+          AND p.player_names IS NOT NULL
+          AND ',' + REPLACE(p.player_names, ' ', '') + ',' LIKE '%,' + REPLACE($2, ' ', '') + ',%'
+      `, [studioId, playerName]),
+      queryRows(`
+        SELECT p.id, p.file_name AS fileName, a.id AS albumId, a.name AS albumName, p.created_at AS createdAt
+        FROM photos p
+        INNER JOIN albums a ON a.id = p.album_id
+        WHERE a.studio_id = $1
+          AND p.player_names IS NOT NULL
+          AND ',' + REPLACE(p.player_names, ' ', '') + ',' LIKE '%,' + REPLACE($2, ' ', '') + ',%'
+        ORDER BY p.created_at DESC, p.id DESC
+        OFFSET ${offset} ROWS FETCH NEXT ${pageSize} ROWS ONLY
+      `, [studioId, playerName]),
+    ]);
+
+    res.json({
+      playerName,
+      items: (rows || []).map(r => ({
+        id: Number(r.id),
+        fileName: r.fileName,
+        albumId: Number(r.albumId),
+        albumName: r.albumName,
+      })),
+      total: Number(countRow?.total || 0),
+      page,
+      pageSize,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── GET /api/player-watchlist/available — all available players (public) ───
 // Returns a deduplicated list of all players from all studio rosters
 router.get('/available', async (req, res) => {

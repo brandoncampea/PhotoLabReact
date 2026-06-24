@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import playerService from '../services/playerService';
 import { useAuth } from '../contexts/AuthContext';
 import playerWatchlistService, { WatchlistEntry } from '../services/playerWatchlistService';
@@ -131,6 +131,34 @@ const CustomerAccount: React.FC = () => {
     playerWatchlistService.getAvailablePlayers().then(setAvailablePlayers).catch(() => setAvailablePlayers([]));
   }, []);
 
+  // Per-player photo panels: map from watchlist entry id → { loading, page, data }
+  type PhotoPanelData = { playerName: string; items: { id: number; fileName: string; albumId: number; albumName: string }[]; total: number; page: number; pageSize: number };
+  const [photoPanels, setPhotoPanels] = useState<Record<number, { loading: boolean; page: number; data: PhotoPanelData | null }>>({});
+  const loadingPanelRef = useRef<Record<number, boolean>>({});
+
+  const loadPhotos = async (entryId: number, page = 1) => {
+    if (loadingPanelRef.current[entryId]) return;
+    loadingPanelRef.current[entryId] = true;
+    setPhotoPanels(prev => ({ ...prev, [entryId]: { ...prev[entryId], loading: true, page } }));
+    try {
+      const res = await fetch(`/api/player-watchlist/${entryId}/photos?page=${page}&pageSize=24`);
+      const data: PhotoPanelData = await res.json();
+      setPhotoPanels(prev => ({ ...prev, [entryId]: { loading: false, page, data } }));
+    } catch {
+      setPhotoPanels(prev => ({ ...prev, [entryId]: { loading: false, page, data: null } }));
+    } finally {
+      loadingPanelRef.current[entryId] = false;
+    }
+  };
+
+  const togglePhotoPanel = (entryId: number) => {
+    if (photoPanels[entryId]) {
+      setPhotoPanels(prev => { const next = { ...prev }; delete next[entryId]; return next; });
+    } else {
+      loadPhotos(entryId, 1);
+    }
+  };
+
   if (!user) {
     return (
       <div className="customer-account-page">
@@ -260,31 +288,114 @@ const CustomerAccount: React.FC = () => {
             </p>
           ) : (
             <ul className="watchlist-list">
-              {watchlist.map((entry) => (
-                <li key={entry.id} className="watchlist-item">
-                  <span className="watchlist-player-name">{entry.playerName}</span>
-                  {entry.playerNumber && (
-                    <span className="watchlist-player-number">#{entry.playerNumber}</span>
-                  )}
-                  <button
-                    className="watchlist-remove-btn"
-                    disabled={actionInProgress === entry.playerName.toLowerCase()}
-                    onClick={() => {
-                      setActionInProgress(entry.playerName.toLowerCase());
-                      playerWatchlistService.removePlayer(entry.id)
-                        .then(() => {
-                          showMessage('success', `Stopped watching ${entry.playerName}`);
-                          return loadWatchlist();
-                        })
-                        .catch(() => showMessage('error', 'Failed to remove player.'))
-                        .finally(() => setActionInProgress(''));
-                    }}
-                    title="Stop watching"
-                  >
-                    {actionInProgress === entry.playerName.toLowerCase() ? '…' : '✕'}
-                  </button>
-                </li>
-              ))}
+              {watchlist.map((entry) => {
+                const panel = photoPanels[entry.id];
+                const isOpen = !!panel;
+                const totalPhotos = panel?.data?.total ?? null;
+                return (
+                  <li key={entry.id} style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                    <div className="watchlist-item" style={{ borderRadius: isOpen ? '8px 8px 0 0' : undefined }}>
+                      <span className="watchlist-player-name">{entry.playerName}</span>
+                      {entry.playerNumber && (
+                        <span className="watchlist-player-number">#{entry.playerNumber}</span>
+                      )}
+                      <button
+                        onClick={() => togglePhotoPanel(entry.id)}
+                        title={isOpen ? 'Hide photos' : 'View photos'}
+                        style={{
+                          marginLeft: 'auto',
+                          background: isOpen ? 'rgba(124,92,255,0.25)' : 'rgba(255,255,255,0.06)',
+                          border: `1px solid ${isOpen ? 'rgba(124,92,255,0.5)' : 'rgba(255,255,255,0.12)'}`,
+                          color: isOpen ? '#c4b5fd' : '#9fb0c6',
+                          borderRadius: 6,
+                          padding: '3px 10px',
+                          fontSize: '0.78rem',
+                          cursor: 'pointer',
+                          fontWeight: 600,
+                          whiteSpace: 'nowrap',
+                          flexShrink: 0,
+                        }}
+                      >
+                        {panel?.loading ? '…' : isOpen ? 'Hide' : totalPhotos !== null ? `${totalPhotos} photo${totalPhotos !== 1 ? 's' : ''}` : 'View Photos'}
+                      </button>
+                      <button
+                        className="watchlist-remove-btn"
+                        disabled={actionInProgress === entry.playerName.toLowerCase()}
+                        onClick={() => {
+                          setActionInProgress(entry.playerName.toLowerCase());
+                          playerWatchlistService.removePlayer(entry.id)
+                            .then(() => {
+                              showMessage('success', `Stopped watching ${entry.playerName}`);
+                              setPhotoPanels(prev => { const next = { ...prev }; delete next[entry.id]; return next; });
+                              return loadWatchlist();
+                            })
+                            .catch(() => showMessage('error', 'Failed to remove player.'))
+                            .finally(() => setActionInProgress(''));
+                        }}
+                        title="Stop watching"
+                      >
+                        {actionInProgress === entry.playerName.toLowerCase() ? '…' : '✕'}
+                      </button>
+                    </div>
+                    {isOpen && (
+                      <div style={{ background: '#0f131a', border: '1px solid #2e3642', borderTop: 'none', borderRadius: '0 0 8px 8px', padding: '14px 12px' }}>
+                        {panel.loading && <div style={{ color: '#5a6a7a', fontSize: '0.85rem', padding: '8px 0' }}>Loading photos…</div>}
+                        {!panel.loading && panel.data && panel.data.items.length === 0 && (
+                          <div style={{ color: '#5a6a7a', fontSize: '0.85rem', padding: '8px 0' }}>No photos found for {entry.playerName} yet.</div>
+                        )}
+                        {!panel.loading && panel.data && panel.data.items.length > 0 && (
+                          <>
+                            <div style={{ fontSize: '0.75rem', color: '#5a6a7a', marginBottom: 10 }}>
+                              Showing {((panel.page - 1) * panel.data.pageSize) + 1}–{Math.min(panel.page * panel.data.pageSize, panel.data.total)} of {panel.data.total} photo{panel.data.total !== 1 ? 's' : ''}
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(90px, 1fr))', gap: 6 }}>
+                              {panel.data.items.map(photo => (
+                                <a
+                                  key={photo.id}
+                                  href={`/albums/${photo.albumId}?photo=${photo.id}`}
+                                  title={`${photo.albumName} — tap to view & order`}
+                                  style={{ display: 'block', borderRadius: 7, overflow: 'hidden', aspectRatio: '1', position: 'relative', background: 'rgba(0,0,0,0.35)', textDecoration: 'none', border: '1px solid rgba(255,255,255,0.07)' }}
+                                >
+                                  <img
+                                    src={`/api/photos/${photo.id}/asset?variant=thumbnail`}
+                                    alt={photo.albumName}
+                                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                                  />
+                                  <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'linear-gradient(transparent, rgba(0,0,0,0.75))', padding: '12px 4px 4px' }}>
+                                    <div style={{ fontSize: '0.58rem', color: '#c4c4de', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{photo.albumName}</div>
+                                  </div>
+                                </a>
+                              ))}
+                            </div>
+                            {panel.data.total > panel.data.pageSize && (
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }}>
+                                <span style={{ fontSize: '0.75rem', color: '#5a6a7a' }}>
+                                  Page {panel.page} of {Math.ceil(panel.data.total / panel.data.pageSize)}
+                                </span>
+                                <div style={{ display: 'flex', gap: 6 }}>
+                                  <button
+                                    disabled={panel.page <= 1}
+                                    onClick={() => loadPhotos(entry.id, panel.page - 1)}
+                                    style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #2e3642', background: panel.page <= 1 ? '#1a1f2a' : '#1e2533', color: panel.page <= 1 ? '#3a4a5a' : '#9fb0c6', cursor: panel.page <= 1 ? 'default' : 'pointer', fontSize: '0.8rem' }}
+                                  >‹ Prev</button>
+                                  <button
+                                    disabled={panel.page >= Math.ceil(panel.data.total / panel.data.pageSize)}
+                                    onClick={() => loadPhotos(entry.id, panel.page + 1)}
+                                    style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #2e3642', background: panel.page >= Math.ceil(panel.data.total / panel.data.pageSize) ? '#1a1f2a' : '#1e2533', color: panel.page >= Math.ceil(panel.data.total / panel.data.pageSize) ? '#3a4a5a' : '#9fb0c6', cursor: panel.page >= Math.ceil(panel.data.total / panel.data.pageSize) ? 'default' : 'pointer', fontSize: '0.8rem' }}
+                                  >Next ›</button>
+                                </div>
+                              </div>
+                            )}
+                            <div style={{ marginTop: 10, fontSize: '0.75rem', color: '#4a5a6a' }}>
+                              Tap a photo to view it in the album and order prints.
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </section>

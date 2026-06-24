@@ -127,10 +127,13 @@ router.get('/oauth/callback', async (req, res) => {
       access_token_secret: result.oauth_token_secret
     });
     const updateResult = await query(
-      `UPDATE studio_smugmug_config SET access_token = $1, access_token_secret = $2, updated_at = CURRENT_TIMESTAMP WHERE studio_id = $3`,
+      `IF EXISTS (SELECT 1 FROM studio_smugmug_config WHERE studio_id = $3)
+         UPDATE studio_smugmug_config SET access_token = $1, access_token_secret = $2, updated_at = CURRENT_TIMESTAMP WHERE studio_id = $3
+       ELSE
+         INSERT INTO studio_smugmug_config (studio_id, access_token, access_token_secret, updated_at) VALUES ($3, $1, $2, CURRENT_TIMESTAMP)`,
       [result.oauth_token, result.oauth_token_secret, studioId]
     );
-    console.log('[SmugMug OAuth] Update result:', updateResult);
+    console.log('[SmugMug OAuth] Upsert result:', updateResult);
     await query(
       `DELETE FROM studio_smugmug_token_map
        WHERE oauth_token = $1`,
