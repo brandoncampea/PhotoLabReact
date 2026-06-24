@@ -84,14 +84,60 @@ const getEditorIdsFromOptions = (options) => {
   };
 };
 
+// Module-level caches
+let _tokenCache = null; // { token, expiresAt }
+let _productsCache = null; // { products, fetchedAt }
+const TOKEN_TTL_MS = 80 * 60 * 1000; // 80 min (tokens live 90 min)
+const PRODUCTS_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+const getEditorConfig = () => ({
+  key: String(process.env.WHCC_EDITOR_KEY || '').trim(),
+  secret: String(process.env.WHCC_EDITOR_SECRET || '').trim(),
+  apiBase: String(process.env.WHCC_EDITOR_API_BASE || 'https://prospector.dragdrop.design/api/v1').trim().replace(/\/$/, ''),
+});
+
+async function getEditorAccessToken() {
+  const { key, secret, apiBase } = getEditorConfig();
+  if (!key || !secret) throw new Error('WHCC_EDITOR_KEY and WHCC_EDITOR_SECRET are not configured');
+  if (_tokenCache && _tokenCache.expiresAt > Date.now()) return _tokenCache.token;
+  const response = await axios.post(`${apiBase}/auth/access-token`, { key, secret, claims: { accountId: 'server' } }, {
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+  });
+  const token = response?.data?.accessToken;
+  if (!token) throw new Error('WHCC Editor access token was not returned');
+  _tokenCache = { token, expiresAt: Date.now() + TOKEN_TTL_MS };
+  return token;
+}
+
+// GET /whcc-editor/products — returns WHCC editor product catalog (super admin only)
+router.get('/products', authRequired, async (req, res) => {
+  try {
+    if (req.user?.role !== 'super_admin' && req.user?.role !== 'admin') {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    if (_productsCache && (Date.now() - _productsCache.fetchedAt) < PRODUCTS_TTL_MS) {
+      return res.json({ products: _productsCache.products, cached: true });
+    }
+    const { apiBase } = getEditorConfig();
+    const token = await getEditorAccessToken();
+    const response = await axios.get(`${apiBase}/products`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    });
+    const products = Array.isArray(response.data) ? response.data : (response.data?.products || []);
+    _productsCache = { products, fetchedAt: Date.now() };
+    return res.json({ products, cached: false });
+  } catch (error) {
+    console.error('[WHCC Editor] Failed to fetch products:', error?.response?.data || error?.message);
+    return res.status(500).json({ error: 'Failed to fetch WHCC editor products', details: error?.response?.data || error?.message });
+  }
+});
+
 router.post('/session/create', authRequired, async (req, res) => {
   try {
     const userId = Number(req.user?.id || 0);
     if (!userId) return res.status(401).json({ error: 'Authentication required' });
 
-    const key = String(process.env.WHCC_EDITOR_KEY || '').trim();
-    const secret = String(process.env.WHCC_EDITOR_SECRET || '').trim();
-    const apiBase = String(process.env.WHCC_EDITOR_API_BASE || 'https://prospector.dragdrop.design/api/v1').trim().replace(/\/$/, '');
+    const { key, secret, apiBase } = getEditorConfig();
     const apiPublicBase = getRequestBaseUrl(req);
     const frontendBase = getFrontendBaseUrl(req);
 
@@ -212,25 +258,7 @@ router.post('/session/create', authRequired, async (req, res) => {
     const studioName = String(primaryPhoto?.studioName || configuredStudioName || 'Photo Lab').trim();
     const accentColor = normalizeHexColor(process.env.WHCC_EDITOR_ACCENT_COLOR, '#7b61ff');
     const editorVendor = String(process.env.WHCC_EDITOR_VENDOR || 'default').trim() || 'default';
-    const tokenResponse = await axios.post(
-      `${apiBase}/auth/access-token`,
-      {
-        key,
-        secret,
-        claims: { accountId },
-      },
-      {
-        headers: {
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-
-    const accessToken = tokenResponse?.data?.accessToken;
-    if (!accessToken) {
-      return res.status(502).json({ error: 'WHCC Editor access token was not returned' });
-    }
+    const accessToken = await getEditorAccessToken();
 
     const fallbackComplete = frontendBase
       ? `${frontendBase}/cart?whccEditorComplete=1&editorId=%EDITOR_ID%`

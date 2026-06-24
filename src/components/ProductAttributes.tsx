@@ -28,15 +28,10 @@ export default function ProductAttributes({ attributes, productOptionsSnapshot }
         (v: any) => v.id === snapshot.whccSelectedVariantId
       );
       // Debug log removed
-      if (selectedVariant && Array.isArray(selectedVariant.whccItemAttributeUIDs)) {
-        // For WHCC, always show displayName if UID matches selectedVariant's UID(s)
-        for (const uid of attrUIDs) {
-          if (selectedVariant.whccItemAttributeUIDs.includes(uid) || selectedVariant.id === uid || selectedVariant.whccProductUID === uid) {
-            resolvedNames.push(selectedVariant.displayName);
-          } else {
-            resolvedNames.push(String(uid)); // fallback
-          }
-        }
+      if (selectedVariant) {
+        // The variant is already identified by whccSelectedVariantId — show its name once
+        // regardless of how many individual attribute UIDs it contains.
+        resolvedNames.push(selectedVariant.displayName);
       } else {
         resolvedNames = attrUIDs.map(String);
       }

@@ -24,6 +24,7 @@ import Modal from '../../components/Modal/Modal';
 import { PriceList } from '../../types/index';
 import { superPriceListService } from '../../services/superPriceListService';
 import { whccService } from '../../services/whccService';
+import { productService } from '../../services/productService';
 
 // ...existing code...
 
@@ -648,8 +649,30 @@ const SuperAdminPricing: React.FC = () => {
   const [editorPanelOpen, setEditorPanelOpen] = useState<Record<string, boolean>>({});
   const [editorDrafts, setEditorDrafts] = useState<Record<string, { requiresWhccEditor: boolean; whccEditorProductId: string; whccEditorDesignId: string }>>({});
   const [editorSaving, setEditorSaving] = useState<Record<string, boolean>>({});
+  const [whccEditorProducts, setWhccEditorProducts] = useState<Array<{ _id: string; name: string; category?: string | { id: string; name: string } }>>([]);
+  const [whccEditorProductsLoading, setWhccEditorProductsLoading] = useState(false);
+  const [whccEditorProductsError, setWhccEditorProductsError] = useState<string | null>(null);
+  const [editorCatalogVisible, setEditorCatalogVisible] = useState(false);
 
-  const handleOpenEditorPanel = useCallback((prodKey: string, firstItem: any) => {
+  const fetchWhccEditorProducts = useCallback(async () => {
+    if (whccEditorProducts.length > 0 || whccEditorProductsLoading) return whccEditorProducts;
+    setWhccEditorProductsLoading(true);
+    setWhccEditorProductsError(null);
+    try {
+      const res = await import('../../services/api').then(m => m.default.get('/whcc-editor/products'));
+      const products = res.data?.products || [];
+      setWhccEditorProducts(products);
+      return products;
+    } catch (err: any) {
+      const msg = err?.response?.data?.details || err?.response?.data?.error || err?.message || 'Failed to load products';
+      setWhccEditorProductsError(msg);
+      return [];
+    } finally {
+      setWhccEditorProductsLoading(false);
+    }
+  }, [whccEditorProducts, whccEditorProductsLoading]);
+
+  const handleOpenEditorPanel = useCallback(async (prodKey: string, firstItem: any) => {
     setEditorDrafts(prev => ({
       ...prev,
       [prodKey]: {
@@ -659,7 +682,29 @@ const SuperAdminPricing: React.FC = () => {
       },
     }));
     setEditorPanelOpen(prev => ({ ...prev, [prodKey]: true }));
-  }, []);
+
+    const products = await fetchWhccEditorProducts();
+
+    // Auto-match if no product ID is already set
+    const existingId = String(firstItem?.whccEditorProductId || '').trim();
+    if (!existingId && products.length > 0) {
+      const productName = String(firstItem?.productName || firstItem?.product_name || '').toLowerCase();
+      const tokens = productName.split(/[\s\-_\/x]+/).filter(Boolean);
+      let bestMatch: { _id: string; name: string } | null = null;
+      let bestScore = 0;
+      for (const p of products) {
+        const pName = String(p.name || '').toLowerCase();
+        const score = tokens.reduce((s: number, t: string) => s + (pName.includes(t) ? 1 : 0), 0);
+        if (score > bestScore) { bestScore = score; bestMatch = p; }
+      }
+      if (bestMatch && bestScore >= 2) {
+        setEditorDrafts(prev => ({
+          ...prev,
+          [prodKey]: { ...prev[prodKey], whccEditorProductId: bestMatch!._id },
+        }));
+      }
+    }
+  }, [fetchWhccEditorProducts]);
 
   const handleSaveEditorSettings = useCallback(async (prodKey: string, productId: number) => {
     if (!viewList) return;
@@ -685,6 +730,58 @@ const SuperAdminPricing: React.FC = () => {
     }
   }, [viewList, editorDrafts]);
 
+  const handleAutoFillEditorIds = async () => {
+    if (!viewList || autoFillingEditorIds) return;
+    setAutoFillingEditorIds(true);
+    setViewError('');
+    try {
+      const products = await fetchWhccEditorProducts();
+      if (!products.length) {
+        setViewError('Could not load WHCC editor product catalog.');
+        return;
+      }
+      const seen = new Set<number>();
+      const groups: Array<{ productId: number; productName: string; existingId: string | null }> = [];
+      for (const item of viewItems) {
+        const pid = Number(item.product_id);
+        if (!seen.has(pid)) {
+          seen.add(pid);
+          groups.push({ productId: pid, productName: String(item.product_name || ''), existingId: item.whccEditorProductId || null });
+        }
+      }
+      let matched = 0;
+      let skipped = 0;
+      for (const group of groups) {
+        if (group.existingId) { skipped++; continue; }
+        const name = group.productName.toLowerCase();
+        const tokens = name.split(/[\s\-_\/x]+/).filter(Boolean);
+        let best: typeof products[0] | null = null;
+        let bestScore = 0;
+        for (const p of products) {
+          const pName = String(p.name || '').toLowerCase();
+          const score = tokens.reduce((s: number, t: string) => s + (pName.includes(t) ? 1 : 0), 0);
+          if (score > bestScore) { bestScore = score; best = p; }
+        }
+        if (best && bestScore >= 2) {
+          try {
+            await superPriceListService.updateProductEditor(viewList.id, group.productId, {
+              requiresWhccEditor: false,
+              whccEditorProductId: best._id,
+              whccEditorDesignId: null,
+            });
+            matched++;
+          } catch { /* skip failed */ }
+        }
+      }
+      await refreshViewItems();
+      setViewError(`Editor auto-fill complete: ${matched} matched, ${skipped} already set, ${groups.length - matched - skipped} no match found.`);
+    } catch {
+      setViewError('Failed to auto-fill editor product IDs.');
+    } finally {
+      setAutoFillingEditorIds(false);
+    }
+  };
+
   // global markup
   const [globalMarkup, setGlobalMarkup] = useState('');
   const [applyingMarkup, setApplyingMarkup] = useState(false);
@@ -695,19 +792,47 @@ const SuperAdminPricing: React.FC = () => {
   const [uploadingProduct, setUploadingProduct] = useState<number | null>(null);
   const catImgInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const prodImgInputRefs = useRef<Record<number, HTMLInputElement | null>>({});
-    // Product image upload
-    // Upload product image at the product group (product_id) level
-    const handleProductImageUpload = async (productId: number, file: File) => {
-      setUploadingProduct(productId);
-      try {
-        const formData = new FormData();
-        formData.append('image', file);
-        formData.append('product_id', String(productId));
-        const url = await superPriceListService.uploadProductImage(viewList!.id, formData);
-        setProductImages(prev => ({ ...prev, [productId]: url }));
-      } catch { setViewError('Failed to upload product image.'); }
-      finally { setUploadingProduct(null); }
-    };
+  const [productPhotos, setProductPhotos] = useState<Record<number, { id: number; image_url: string; sort_order: number }[]>>({});
+  const [deletingProductPhoto, setDeletingProductPhoto] = useState<number | null>(null);
+  const [photoPanelOpen, setPhotoPanelOpen] = useState<Record<string, boolean>>({});
+
+  const loadProductPhotos = async (productId: number, prodKey: string) => {
+    if (productPhotos[productId] !== undefined) {
+      setPhotoPanelOpen(prev => ({ ...prev, [prodKey]: !prev[prodKey] }));
+      return;
+    }
+    try {
+      const photos = await productService.getProductPhotos(productId);
+      setProductPhotos(prev => ({ ...prev, [productId]: photos }));
+      if (photos.length > 0) {
+        setProductImages(prev => ({ ...prev, [productId]: photos[0].image_url }));
+      }
+    } catch { /* silent */ }
+    setPhotoPanelOpen(prev => ({ ...prev, [prodKey]: true }));
+  };
+
+  const handleProductPhotoUpload = async (productId: number, file: File) => {
+    setUploadingProduct(productId);
+    try {
+      const photo = await productService.uploadProductPhoto(productId, file);
+      setProductPhotos(prev => ({ ...prev, [productId]: [...(prev[productId] || []), photo] }));
+      if (!productImages[productId]) {
+        setProductImages(prev => ({ ...prev, [productId]: photo.image_url }));
+      }
+    } catch { setViewError('Failed to upload product photo.'); }
+    finally { setUploadingProduct(null); }
+  };
+
+  const handleDeleteProductPhoto = async (productId: number, photoId: number) => {
+    setDeletingProductPhoto(photoId);
+    try {
+      await productService.deleteProductPhoto(productId, photoId);
+      const remaining = (productPhotos[productId] || []).filter(p => p.id !== photoId);
+      setProductPhotos(prev => ({ ...prev, [productId]: remaining }));
+      setProductImages(prev => ({ ...prev, [productId]: remaining[0]?.image_url || '' }));
+    } catch { setViewError('Failed to delete product photo.'); }
+    finally { setDeletingProductPhoto(null); }
+  };
   // manual add inputs
   const [manualProductName, setManualProductName] = useState('');
   const [manualSizeName, setManualSizeName] = useState('');
@@ -723,6 +848,7 @@ const SuperAdminPricing: React.FC = () => {
   const [, setWhccCatalogError] = useState('');
   const [showZeroCostOnly, setShowZeroCostOnly] = useState(false);
   const [autoMatchingWhcc, setAutoMatchingWhcc] = useState(false);
+  const [autoFillingEditorIds, setAutoFillingEditorIds] = useState(false);
   const [syncingWhccCosts, setSyncingWhccCosts] = useState(false);
   const [fillingWhccNodes, setFillingWhccNodes] = useState(false);
   const [bootstrappingWhccVariants, setBootstrappingWhccVariants] = useState(false);
@@ -2504,6 +2630,68 @@ const SuperAdminPricing: React.FC = () => {
                 </div>
                 <span className="spl-item-count">{viewItems.length} sizes total</span>
               </div>
+              <div className="spl-toolbar" style={{ marginTop: -6 }}>
+                <label>WHCC Editor:</label>
+                <button
+                  className={`btn btn-sm ${editorCatalogVisible ? 'btn-primary' : 'btn-secondary'}`}
+                  disabled={whccEditorProductsLoading}
+                  onClick={async () => {
+                    if (!editorCatalogVisible) await fetchWhccEditorProducts();
+                    setEditorCatalogVisible(v => !v);
+                  }}
+                >
+                  {whccEditorProductsLoading ? 'Loading…' : 'Browse Editor Products'}
+                </button>
+                <button
+                  className="btn btn-sm btn-secondary"
+                  disabled={autoFillingEditorIds || viewItems.length === 0}
+                  onClick={handleAutoFillEditorIds}
+                >
+                  {autoFillingEditorIds ? 'Filling…' : 'Auto-fill All Editor IDs'}
+                </button>
+              </div>
+
+              {/* WHCC Editor Product Catalog */}
+              {editorCatalogVisible && (
+                <div style={{ marginBottom: 12, padding: 12, borderRadius: 10, border: '1px solid rgba(123,97,255,0.3)', background: 'rgba(123,97,255,0.06)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                    <strong style={{ fontSize: 14 }}>WHCC Editor Product Catalog</strong>
+                    <span style={{ fontSize: 12, color: '#aaa' }}>{whccEditorProducts.length} products — copy an ID and paste it into any product's WHCC Editor panel</span>
+                  </div>
+                  {whccEditorProductsError ? (
+                    <div style={{ fontSize: 12, color: '#f87171', padding: '6px 10px', background: 'rgba(248,113,113,0.08)', borderRadius: 6 }}>
+                      Error: {whccEditorProductsError}
+                    </div>
+                  ) : whccEditorProducts.length === 0 ? (
+                    <div style={{ fontSize: 12, color: '#aaa' }}>No products loaded.</div>
+                  ) : (
+                    Object.entries(
+                      whccEditorProducts.reduce((acc: Record<string, typeof whccEditorProducts>, p) => {
+                        const cat = (typeof p.category === 'object' && p.category !== null ? (p.category as any).name : p.category) || 'Other';
+                        if (!acc[cat]) acc[cat] = [];
+                        acc[cat].push(p);
+                        return acc;
+                      }, {})
+                    ).map(([cat, items]) => (
+                      <div key={cat} style={{ marginBottom: 10 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: '#7b61ff', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>{cat}</div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                          {items.map(p => (
+                            <div key={p._id} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, padding: '3px 6px', borderRadius: 4, background: 'rgba(255,255,255,0.04)' }}>
+                              <span style={{ flex: 1 }}>{p.name}</span>
+                              <code
+                                style={{ fontSize: 11, background: 'rgba(0,0,0,0.3)', padding: '1px 6px', borderRadius: 4, color: '#a5b4fc', cursor: 'pointer', userSelect: 'all' }}
+                                title="Click to copy"
+                                onClick={() => void navigator.clipboard?.writeText(p._id)}
+                              >{p._id}</code>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
 
               {whccReportVisible && (
                 <div style={{ marginBottom: 12, padding: 12, borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.04)' }}>
@@ -2767,10 +2955,23 @@ const SuperAdminPricing: React.FC = () => {
                                         if (editorPanelOpen[prodKey]) {
                                           setEditorPanelOpen(prev => ({ ...prev, [prodKey]: false }));
                                         } else {
-                                          handleOpenEditorPanel(prodKey, first);
+                                          void handleOpenEditorPanel(prodKey, first);
                                         }
                                       }}
                                     >{visibleProdItems[0]?.requiresWhccEditor ? 'Editor: On' : 'WHCC Editor'}</button>
+                                    <button
+                                      className={`btn btn-sm spl-inline-action-btn${photoPanelOpen[prodKey] ? ' btn-primary' : ' btn-secondary'}`}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        const first = visibleProdItems[0];
+                                        if (!first) return;
+                                        void loadProductPhotos(first.product_id, prodKey);
+                                      }}
+                                    >
+                                      {productPhotos[visibleProdItems[0]?.product_id]?.length
+                                        ? `Photos (${productPhotos[visibleProdItems[0].product_id].length})`
+                                        : 'Photos'}
+                                    </button>
                                     <button
                                       className="btn btn-secondary btn-sm spl-inline-action-btn"
                                       onClick={(e) => {
@@ -2854,9 +3055,10 @@ const SuperAdminPricing: React.FC = () => {
                                     const draft = editorDrafts[prodKey];
                                     const productId = Number(visibleProdItems[0]?.product_id);
                                     return (
-                                      <div className="spl-editor-panel" onClick={e => e.stopPropagation()} style={{ padding: '12px 16px', background: 'var(--surface-2, #1e1e2e)', borderBottom: '1px solid var(--border-color, #333)', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                                          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, cursor: 'pointer' }}>
+                                      <div className="spl-editor-panel" onClick={e => e.stopPropagation()} style={{ padding: '8px 12px', background: 'var(--surface-2, #1e1e2e)', borderBottom: '1px solid var(--border-color, #333)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                        {/* Row 1: toggle + IDs + actions */}
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', fontSize: 13 }}>
                                             <input
                                               type="checkbox"
                                               checked={draft.requiresWhccEditor}
@@ -2864,40 +3066,56 @@ const SuperAdminPricing: React.FC = () => {
                                             />
                                             Requires WHCC Editor
                                           </label>
-                                          <span style={{ fontSize: 12, color: 'var(--text-secondary)', marginLeft: 4 }}>Customer customizes this product in the WHCC editor before checkout</span>
-                                        </div>
-                                        {draft.requiresWhccEditor && (
-                                          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 200 }}>
-                                              <label style={{ fontSize: 12, fontWeight: 600 }}>WHCC Editor Product ID</label>
-                                              <input
-                                                type="text"
-                                                className="input"
-                                                placeholder="e.g. 5x7-flat-card"
-                                                value={draft.whccEditorProductId}
-                                                onChange={e => setEditorDrafts(prev => ({ ...prev, [prodKey]: { ...draft, whccEditorProductId: e.target.value } }))}
-                                              />
-                                            </div>
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 200 }}>
-                                              <label style={{ fontSize: 12, fontWeight: 600 }}>WHCC Editor Design ID</label>
-                                              <input
-                                                type="text"
-                                                className="input"
-                                                placeholder="optional – locks to a specific template"
-                                                value={draft.whccEditorDesignId}
-                                                onChange={e => setEditorDrafts(prev => ({ ...prev, [prodKey]: { ...draft, whccEditorDesignId: e.target.value } }))}
-                                              />
-                                            </div>
-                                          </div>
-                                        )}
-                                        <div style={{ display: 'flex', gap: 8 }}>
+                                          {whccEditorProducts.length > 0 ? (
+                                            <select
+                                              className="input"
+                                              style={{ fontSize: 12, padding: '3px 8px', height: 28, flex: '1 1 200px', minWidth: 150 }}
+                                              value={draft.whccEditorProductId}
+                                              onChange={e => setEditorDrafts(prev => ({ ...prev, [prodKey]: { ...draft, whccEditorProductId: e.target.value } }))}
+                                            >
+                                              <option value="">— Select WHCC editor product —</option>
+                                              {Object.entries(
+                                                whccEditorProducts.reduce((acc: Record<string, typeof whccEditorProducts>, p) => {
+                                                  const cat = (typeof p.category === 'object' && p.category !== null ? (p.category as any).name : p.category) || 'Other';
+                                                  if (!acc[cat]) acc[cat] = [];
+                                                  acc[cat].push(p);
+                                                  return acc;
+                                                }, {})
+                                              ).map(([cat, items]) => (
+                                                <optgroup key={cat} label={cat}>
+                                                  {items.map(p => (
+                                                    <option key={p._id} value={p._id}>{p.name}</option>
+                                                  ))}
+                                                </optgroup>
+                                              ))}
+                                            </select>
+                                          ) : (
+                                            <input
+                                              type="text"
+                                              className="input"
+                                              placeholder={whccEditorProductsLoading ? 'Loading products…' : 'Editor Product ID'}
+                                              style={{ fontSize: 12, padding: '3px 8px', height: 28, flex: '1 1 160px', minWidth: 120 }}
+                                              value={draft.whccEditorProductId}
+                                              onChange={e => setEditorDrafts(prev => ({ ...prev, [prodKey]: { ...draft, whccEditorProductId: e.target.value } }))}
+                                            />
+                                          )}
+                                          <input
+                                            type="text"
+                                            className="input"
+                                            placeholder="Design ID (optional)"
+                                            style={{ fontSize: 12, padding: '3px 8px', height: 28, flex: '1 1 140px', minWidth: 100 }}
+                                            value={draft.whccEditorDesignId}
+                                            onChange={e => setEditorDrafts(prev => ({ ...prev, [prodKey]: { ...draft, whccEditorDesignId: e.target.value } }))}
+                                          />
                                           <button
                                             className="btn btn-primary btn-sm"
+                                            style={{ height: 28, padding: '0 12px', fontSize: 12 }}
                                             disabled={editorSaving[prodKey]}
                                             onClick={() => void handleSaveEditorSettings(prodKey, productId)}
                                           >{editorSaving[prodKey] ? 'Saving…' : 'Save'}</button>
                                           <button
                                             className="btn btn-secondary btn-sm"
+                                            style={{ height: 28, padding: '0 10px', fontSize: 12 }}
                                             onClick={() => setEditorPanelOpen(prev => ({ ...prev, [prodKey]: false }))}
                                           >Cancel</button>
                                         </div>
@@ -2905,6 +3123,51 @@ const SuperAdminPricing: React.FC = () => {
                                     );
                                   })()}
                                   {/* --- End WHCC Editor Settings Panel --- */}
+
+                                  {/* --- Product Photos Panel --- */}
+                                  {photoPanelOpen[prodKey] && (() => {
+                                    const first = visibleProdItems[0];
+                                    if (!first) return null;
+                                    const pid = first.product_id;
+                                    const photos = productPhotos[pid] ?? [];
+                                    return (
+                                      <div className="spl-editor-panel" onClick={e => e.stopPropagation()}
+                                        style={{ padding: '10px 14px', background: 'var(--surface-2, #1e1e2e)', borderBottom: '1px solid var(--border-color, #333)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                          <strong style={{ fontSize: 13 }}>Product Photos</strong>
+                                          <span style={{ fontSize: 11, color: '#aaa' }}>First photo is shown as the product preview to customers and studio admins</span>
+                                        </div>
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+                                          {photos.map((photo, idx) => (
+                                            <div key={photo.id} style={{ position: 'relative', flexShrink: 0 }}>
+                                              <img src={photo.image_url} alt={`Photo ${idx + 1}`}
+                                                style={{ width: 80, height: 80, borderRadius: 6, objectFit: 'cover', border: idx === 0 ? '2px solid #7b61ff' : '1px solid #444', display: 'block' }} />
+                                              {idx === 0 && (
+                                                <span style={{ position: 'absolute', bottom: 2, left: 2, fontSize: 9, background: '#7b61ff', color: '#fff', borderRadius: 3, padding: '1px 4px' }}>Primary</span>
+                                              )}
+                                              <button
+                                                disabled={deletingProductPhoto === photo.id}
+                                                onClick={() => void handleDeleteProductPhoto(pid, photo.id)}
+                                                style={{ position: 'absolute', top: -6, right: -6, width: 18, height: 18, borderRadius: '50%', border: 'none', background: '#e53935', color: '#fff', fontSize: 11, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, lineHeight: 1 }}
+                                              >×</button>
+                                            </div>
+                                          ))}
+                                          <label style={{ cursor: 'pointer', width: 80, height: 80, borderRadius: 6, border: '2px dashed #7b61ff', background: 'rgba(123,97,255,0.08)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, color: '#7b61ff', fontSize: 12, fontWeight: 600, flexShrink: 0 }}>
+                                            <span style={{ fontSize: 24, lineHeight: 1 }}>{uploadingProduct === pid ? '…' : '+'}</span>
+                                            <span>Add Photo</span>
+                                            <input type="file" accept="image/*" multiple style={{ display: 'none' }}
+                                              onChange={async e => {
+                                                const files = Array.from(e.target.files || []);
+                                                for (const f of files) await handleProductPhotoUpload(pid, f);
+                                                e.target.value = '';
+                                              }}
+                                            />
+                                          </label>
+                                        </div>
+                                      </div>
+                                    );
+                                  })()}
+                                  {/* --- End Product Photos Panel --- */}
 
                                   {!prodCollapsed[prodKey] && (
                                     <>
@@ -3434,32 +3697,6 @@ const SuperAdminPricing: React.FC = () => {
                                   onClick={() => setProdCollapsed(p => ({ ...p, [prodKey]: !p[prodKey] }))}
                                 >
                                   <button className="spl-collapse-btn">{prodCollapsed[prodKey] ? '▶' : '▼'}</button>
-                                  {/* Product image upload and display at product group level */}
-                                  {(() => {
-                                    // Find the first item in this product group to get product_id and product_name
-                                    const firstItem = viewGrouped[cat][prod][0];
-                                    if (!firstItem) return null;
-                                    return (
-                                      <div className="spl-prod-img-wrap" title="Click to upload product image"
-                                        style={{ cursor: 'pointer', width: 36, height: 36, position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginRight: 8 }}
-                                        onClick={e => { e.stopPropagation(); prodImgInputRefs.current[firstItem.product_id]?.click(); }}>
-                                        {productImages[firstItem.product_id] ? (
-                                          <img src={productImages[firstItem.product_id]} alt={firstItem.product_name} style={{ width: 32, height: 32, borderRadius: 4, objectFit: 'cover', border: '1px solid #444' }} />
-                                        ) : categoryImages[cat] ? (
-                                          <img src={categoryImages[cat]} alt={cat} style={{ width: 32, height: 32, borderRadius: 4, objectFit: 'cover', border: '1px solid #444', opacity: 0.5 }} />
-                                        ) : (
-                                          <span style={{ fontSize: 18, opacity: 0.5 }}>🖼</span>
-                                        )}
-                                        <div className="spl-prod-img-overlay" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', background: uploadingProduct === firstItem.product_id ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.15)', fontSize: 16, borderRadius: 4 }}>
-                                          {uploadingProduct === firstItem.product_id ? '⏳' : '📷'}
-                                        </div>
-                                        <input type="file" accept="image/*" style={{ display: 'none' }}
-                                          ref={el => { prodImgInputRefs.current[firstItem.product_id] = el; }}
-                                          onChange={e => { const f = e.target.files?.[0]; if (f) handleProductImageUpload(firstItem.product_id, f); e.target.value = ''; }}
-                                        />
-                                      </div>
-                                    );
-                                  })()}
                                   <span>{prod}</span>
                                   {(() => {
                                     const prodWhccUids = Array.from(new Set(

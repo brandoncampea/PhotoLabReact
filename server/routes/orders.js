@@ -2816,7 +2816,17 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
       ? roundCurrency(whccTotalShippingCost / targetOrderIds.length)
       : whccTotalShippingCost;
     const customerShippingCost = roundCurrency(Number(order?.shipping_cost ?? order?.shippingCost ?? 0) || 0);
-    const shippingMarginAmount = roundCurrency(customerShippingCost - perOrderWhccShippingCost);
+
+    // For pass-through orders, the customer owes exactly what WHCC charges (including any delivery
+    // area surcharges). If the upfront live-quote included the surcharge the delta will be 0.
+    // If the live-quote fell back to the rubric the delta captures the difference and is added to
+    // the order so the recorded total matches the true pass-through amount.
+    const isPassThrough = String(order?.direct_pricing_mode_used || '').toLowerCase() === 'pass_through';
+    const passThruShippingAdjust = (isPassThrough && perOrderWhccShippingCost > customerShippingCost)
+      ? roundCurrency(perOrderWhccShippingCost - customerShippingCost)
+      : 0;
+
+    const shippingMarginAmount = roundCurrency((customerShippingCost + passThruShippingAdjust) - perOrderWhccShippingCost);
 
     // Extract WHCC order-level billing totals (SubTotal, Tax, Total)
     const whccBillingRaw = extractWhccOrderBillingTotals(importResponseData);
@@ -2826,10 +2836,10 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
     const perOrderWhccLabTotal = roundCurrency(whccBillingRaw.total / orderCount);
 
     if (whccTotalShippingCost > 0 || whccBillingRaw.total > 0) {
-      console.log(`[WHCC] Import billing totals: labSubtotal=$${perOrderWhccLabSubtotal} labTax=$${perOrderWhccLabTax} labTotal=$${perOrderWhccLabTotal} shipping=$${perOrderWhccShippingCost} shippingMargin=$${shippingMarginAmount}`);
+      console.log(`[WHCC] Import billing totals: labSubtotal=$${perOrderWhccLabSubtotal} labTax=$${perOrderWhccLabTax} labTotal=$${perOrderWhccLabTotal} shipping=$${perOrderWhccShippingCost} shippingMargin=$${shippingMarginAmount}${passThruShippingAdjust > 0 ? ` passThruAdjust=+$${passThruShippingAdjust}` : ''}`);
     }
 
-    const updateImportPlaceholders = targetOrderIds.map((_, index) => `$${index + 12}`).join(',');
+    const updateImportPlaceholders = targetOrderIds.map((_, index) => `$${index + 13}`).join(',');
     await query(
       `UPDATE orders
        SET whcc_confirmation_id = $1,
@@ -2844,6 +2854,8 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
            whcc_lab_subtotal = CASE WHEN $9 > 0 THEN $9 ELSE whcc_lab_subtotal END,
            whcc_lab_tax = CASE WHEN $10 > 0 THEN $10 ELSE whcc_lab_tax END,
            whcc_lab_total = CASE WHEN $11 > 0 THEN $11 ELSE whcc_lab_total END,
+           shipping_cost = CASE WHEN $12 > 0 THEN shipping_cost + $12 ELSE shipping_cost END,
+           total = CASE WHEN $12 > 0 THEN total + $12 ELSE total END,
            whcc_last_error = NULL
        WHERE id IN (${updateImportPlaceholders})`,
       [
@@ -2858,6 +2870,7 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
         perOrderWhccLabSubtotal,
         perOrderWhccLabTax,
         perOrderWhccLabTotal,
+        passThruShippingAdjust,
         ...targetOrderIds,
       ]
     );
@@ -4352,42 +4365,53 @@ router.post('/', requireActiveSubscription, async (req, res) => {
 
     // Generate studio invoice line items for each order item
     try {
-      // Collect per-studio invoice items
+      // Collect per-studio invoice items — batch all lookups upfront to avoid N+1
       const studioItemMap = new Map(); // studio_id -> { subscriptionEnd, items: [] }
+
+      // Gather unique IDs needed across all items
+      const uniquePhotoIds = [...new Set(itemsWithAccounting
+        .map(item => (Array.isArray(item.photoIds) ? item.photoIds[0] : item.photoId))
+        .filter(Boolean).map(Number))];
+      const uniqueSizeIds = [...new Set(itemsWithAccounting
+        .map(item => item.productSizeId).filter(Boolean).map(Number))];
+
+      // Batch fetch photos, albums, product sizes, and studios in 4 queries total
+      const photoRows = uniquePhotoIds.length
+        ? await queryRows(`SELECT id, album_id FROM photos WHERE id IN (${uniquePhotoIds.map((_, i) => `$${i + 1}`).join(',')})`, uniquePhotoIds)
+        : [];
+      const albumIds = [...new Set(photoRows.map(r => Number(r.album_id)).filter(Boolean))];
+      const albumRows = albumIds.length
+        ? await queryRows(`SELECT id, studio_id, price_list_id FROM albums WHERE id IN (${albumIds.map((_, i) => `$${i + 1}`).join(',')})`, albumIds)
+        : [];
+      const sizeRows = uniqueSizeIds.length
+        ? await queryRows(`SELECT id, price FROM product_sizes WHERE id IN (${uniqueSizeIds.map((_, i) => `$${i + 1}`).join(',')})`, uniqueSizeIds)
+        : [];
+      const studioIds = [...new Set(albumRows.map(r => Number(r.studio_id)).filter(Boolean))];
+      const studioRows = studioIds.length
+        ? await queryRows(`SELECT id, subscription_end FROM studios WHERE id IN (${studioIds.map((_, i) => `$${i + 1}`).join(',')})`, studioIds)
+        : [];
+
+      // Build lookup maps
+      const photoAlbumMap = new Map(photoRows.map(r => [Number(r.id), Number(r.album_id)]));
+      const albumStudioMap = new Map(albumRows.map(r => [Number(r.id), Number(r.studio_id)]));
+      const sizePriceMap = new Map(sizeRows.map(r => [Number(r.id), Number(r.price) || 0]));
+      const studioMetaMap = new Map(studioRows.map(r => [Number(r.id), r.subscription_end || null]));
 
       for (const item of itemsWithAccounting) {
         if (!item.productSizeId && !item.productId) continue;
         const photoIds = Array.isArray(item.photoIds) ? item.photoIds : item.photoId ? [item.photoId] : [];
-        const primaryPhotoId = photoIds[0];
+        const primaryPhotoId = Number(photoIds[0]);
         if (!primaryPhotoId) continue;
 
-        // Resolve studio via photo -> album
-        const photo = await queryRow('SELECT album_id FROM photos WHERE id = $1', [primaryPhotoId]);
-        if (!photo?.album_id) continue;
+        const albumId = photoAlbumMap.get(primaryPhotoId);
+        if (!albumId) continue;
+        const studioId = albumStudioMap.get(albumId);
+        if (!studioId) continue;
 
-        const album = await queryRow(
-          'SELECT a.studio_id, a.price_list_id FROM albums a WHERE a.id = $1',
-          [photo.album_id]
-        );
-        if (!album?.studio_id) continue;
+        const unitCost = item.productSizeId ? (sizePriceMap.get(Number(item.productSizeId)) || 0) : 0;
 
-        // Get the super admin price for this size (studio's cost)
-        let unitCost = 0;
-        if (item.productSizeId) {
-          const sizeRow = await queryRow(
-            'SELECT price FROM product_sizes WHERE id = $1',
-            [item.productSizeId]
-          );
-          unitCost = Number(sizeRow?.price) || 0;
-        }
-
-        const studioId = Number(album.studio_id);
         if (!studioItemMap.has(studioId)) {
-          const studio = await queryRow(
-            'SELECT subscription_end FROM studios WHERE id = $1',
-            [studioId]
-          );
-          studioItemMap.set(studioId, { subscriptionEnd: studio?.subscription_end || null, items: [] });
+          studioItemMap.set(studioId, { subscriptionEnd: studioMetaMap.get(studioId) || null, items: [] });
         }
         studioItemMap.get(studioId).items.push({
           productId: item.productId || null,

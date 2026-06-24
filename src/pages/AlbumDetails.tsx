@@ -1192,6 +1192,18 @@ const AlbumDetails: React.FC = () => {
   // Album title for meta tag
   const ogTitle = album?.name ? `Photo Album: ${album.name}` : 'Photo Album';
 
+  const ProductImageHover = ({ imageUrl, name }: { imageUrl?: string | null; name: string }) => {
+    if (!imageUrl) return null;
+    return (
+      <span className="product-img-wrap">
+        <img src={imageUrl} alt={name} className="product-img-thumb" />
+        <span className="product-img-tooltip">
+          <img src={imageUrl} alt={name} />
+        </span>
+      </span>
+    );
+  };
+
   return (
     <>
       <Helmet>
@@ -1904,6 +1916,7 @@ const AlbumDetails: React.FC = () => {
                                     {products.map(({ name, items }) => (
                                       <div key={`${category}-${name}`} style={{ border: '1px solid #232036', borderRadius: 6, padding: '6px 8px', background: '#232036' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 4 }}>
+                                          <ProductImageHover imageUrl={items[0]?.imageUrl} name={name} />
                                           <strong>{name}</strong>
                                           <span className="badge" style={{ background: '#2e2a52' }}>Recommended</span>
                                         </div>
@@ -2056,7 +2069,10 @@ const AlbumDetails: React.FC = () => {
                                         const sizeGroups = getRowsGroupedBySize(product);
                                         return (
                                           <div key={product.id}>
-                                            <div style={{ fontWeight: 700, marginBottom: 6 }}>{product.name}</div>
+                                            <div style={{ fontWeight: 700, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                              <ProductImageHover imageUrl={product.imageUrl} name={product.name} />
+                                              {product.name}
+                                            </div>
                                             <div style={{ display: 'grid', gap: 6 }}>
                                               {sizeGroups.length > 0 ? sizeGroups.map((group) => {
                                                 const hasChildVariants = group.rows.length > 1 || group.rows.some((row) => !!getVariantLabel(row));

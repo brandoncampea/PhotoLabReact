@@ -22,4 +22,22 @@ export const productService = {
     const response = await api.get<Product[]>(`/products/active?studioId=${studioId}`);
     return response.data;
   },
+
+  async getProductPhotos(productId: number): Promise<{ id: number; image_url: string; sort_order: number }[]> {
+    const response = await api.get(`/products/${productId}/photos`);
+    return response.data.photos || [];
+  },
+
+  async uploadProductPhoto(productId: number, file: File): Promise<{ id: number; image_url: string; sort_order: number }> {
+    const formData = new FormData();
+    formData.append('image', file);
+    const response = await api.post(`/products/${productId}/photos`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data.photo;
+  },
+
+  async deleteProductPhoto(productId: number, photoId: number): Promise<void> {
+    await api.delete(`/products/${productId}/photos/${photoId}`);
+  },
 };

@@ -116,10 +116,11 @@ const AdminShipping: React.FC = () => {
       });
       // Removed unused setConfig
       setMessage('Shipping config updated!');
+      setTimeout(() => setMessage(''), 3000);
     } catch (e) {
       setMessage('Failed to update shipping config');
+      // Don't auto-clear errors so the user can read them
     }
-    setTimeout(() => setMessage(''), 2000);
   };
 
   return (

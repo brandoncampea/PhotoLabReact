@@ -1,10 +1,30 @@
 
 import express from 'express';
+import multer from 'multer';
 import mssql from '../mssql.cjs';
 const { queryRow, queryRows, query } = mssql;
-import { adminRequired } from '../middleware/auth.js';
+import { adminRequired, superAdminRequired } from '../middleware/auth.js';
 import { requireActiveSubscription } from '../middleware/subscription.js';
+import { uploadImageBufferToAzure } from '../services/azureStorage.js';
 const router = express.Router();
+
+const photoUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+
+const ensureProductPhotosTable = async () => {
+  await mssql.query(`
+    IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'product_photos')
+    BEGIN
+      CREATE TABLE product_photos (
+        id INT IDENTITY(1,1) PRIMARY KEY,
+        product_id INT NOT NULL,
+        image_url NVARCHAR(2048) NOT NULL,
+        sort_order INT DEFAULT 0,
+        created_at DATETIME DEFAULT GETDATE()
+      );
+      CREATE INDEX IX_product_photos_product_id ON product_photos(product_id);
+    END
+  `);
+};
 
 const SIZE_DIMENSION_DELIMITER = '__';
 
@@ -56,11 +76,12 @@ const extractEditorConfig = (options) => {
   ).trim();
 
   const editorProvider = editorProviderRaw || (whccEditorProductId || whccEditorDesignId ? 'whcc' : null);
+  // requiresWhccEditor must be explicitly enabled — having a whccEditorProductId configured
+  // does NOT automatically enable the editor (user can store the ID without turning it on).
   const requiresWhccEditor =
     direct.useWhccEditor === true ||
     direct.requiresWhccEditor === true ||
-    editorProvider === 'whcc' ||
-    (!!whccEditorProductId && !!whccEditorDesignId);
+    editorProviderRaw === 'whcc';
 
   return {
     editorProvider,
@@ -278,6 +299,7 @@ router.get('/active', async (req, res) => {
       const rows = await queryRows(
         `SELECT
            p.id as productId, p.name as productName, p.category, p.description, p.options,
+           p.image_url as imageUrl,
            ps.id as sizeId, ps.size_name as sizeName, ps.cost as sizeCost,
            COALESCE(spi.price, ps.price) as sizePrice,
            spi.whcc_variants_json as whccVariantsJson,
@@ -356,6 +378,7 @@ router.get('/active', async (req, res) => {
             name: row.productName,
             category: row.category,
             description: row.description,
+            imageUrl: row.imageUrl || null,
             price: 0,
             sizes: [],
             isActive: options?.isActive !== undefined ? !!options.isActive : true,
@@ -592,6 +615,69 @@ router.post('/', adminRequired, requireActiveSubscription, async (req, res) => {
     res.status(201).json(product);
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /products/:id/photos
+router.get('/:id/photos', async (req, res) => {
+  try {
+    await ensureProductPhotosTable();
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ error: 'Invalid product id' });
+    const photos = await queryRows(
+      `SELECT id, image_url, sort_order FROM product_photos WHERE product_id = $1 ORDER BY sort_order ASC, id ASC`,
+      [id]
+    );
+    return res.json({ photos: photos || [] });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /products/:id/photos — super admin only
+router.post('/:id/photos', superAdminRequired, photoUpload.single('image'), async (req, res) => {
+  try {
+    await ensureProductPhotosTable();
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ error: 'Invalid product id' });
+    if (!req.file) return res.status(400).json({ error: 'image file required' });
+    const blobName = `product-photos/${id}/${Date.now()}-${req.file.originalname}`;
+    const imageUrl = await uploadImageBufferToAzure(req.file.buffer, blobName, req.file.mimetype);
+    const countRow = await queryRow(
+      `SELECT COUNT(*) as cnt FROM product_photos WHERE product_id = $1`, [id]
+    );
+    const sortOrder = Number(countRow?.cnt || 0);
+    const inserted = await queryRow(
+      `INSERT INTO product_photos (product_id, image_url, sort_order) VALUES ($1, $2, $3); SELECT SCOPE_IDENTITY() as id`,
+      [id, imageUrl, sortOrder]
+    );
+    const photoId = Number(inserted?.id || 0);
+    // Sync primary image on products table if this is the first photo
+    if (sortOrder === 0) {
+      await mssql.query(`UPDATE products SET image_url = $1 WHERE id = $2`, [imageUrl, id]);
+    }
+    return res.json({ photo: { id: photoId, image_url: imageUrl, sort_order: sortOrder } });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /products/:id/photos/:photoId — super admin only
+router.delete('/:id/photos/:photoId', superAdminRequired, async (req, res) => {
+  try {
+    await ensureProductPhotosTable();
+    const id = Number(req.params.id);
+    const photoId = Number(req.params.photoId);
+    if (!id || !photoId) return res.status(400).json({ error: 'Invalid ids' });
+    await mssql.query(`DELETE FROM product_photos WHERE id = $1 AND product_id = $2`, [photoId, id]);
+    // Re-sync primary image to next first photo (or null)
+    const first = await queryRow(
+      `SELECT TOP 1 image_url FROM product_photos WHERE product_id = $1 ORDER BY sort_order ASC, id ASC`, [id]
+    );
+    await mssql.query(`UPDATE products SET image_url = $1 WHERE id = $2`, [first?.image_url || null, id]);
+    return res.json({ success: true });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
   }
 });
 

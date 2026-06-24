@@ -383,6 +383,7 @@ export interface Product {
   whccEditorDesignId?: string | null;
   minPhotos?: number; // Minimum photos required for multi-photo products
   maxPhotos?: number; // Maximum photos allowed for multi-photo products
+  imageUrl?: string | null;
 }
 
 export interface ProductSize {

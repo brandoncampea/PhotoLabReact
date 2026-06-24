@@ -250,7 +250,7 @@ const normalizeReceiptAmounts = (order = {}, items = []) => {
   const tax = storedTax;
   let total = storedTotal;
 
-  if (Number.isFinite(Number(itemSubtotal))) {
+  if (itemSubtotal !== null && Number.isFinite(itemSubtotal)) {
     const expectedSubtotal = Number(itemSubtotal.toFixed(2));
     const looksDoubleShipping =
       Math.abs(storedSubtotal - Number((expectedSubtotal + storedShipping).toFixed(2))) < 0.01 &&
@@ -722,7 +722,7 @@ export const orderReceiptService = {
   async sendStudioReceipt({ to, bcc, studioName, order, items, customerEmail }) {
     if (!isConfigured() || !to) return false;
     // Only show studio markup, stripe fee, and studio profit in studio emails
-    const html = `${renderStudioSaleHtml({ order, items, customerEmail, studioName })}${renderInternalAccounting(order)}`;
+    const html = `${renderStudioSaleHtml({ order, items, customerEmail, studioName })}${renderInternalAccounting({ ...order, items })}`;
     const discount = resolveDiscountDetails(order);
     const discountText = discount.hasDiscount
       ? `\nDiscount code: ${discount.code || 'N/A'}${discount.amount > 0 ? `\nDiscount amount: -${currency(discount.amount)}` : ''}`

@@ -220,6 +220,13 @@ const Cart: React.FC = () => {
               confirmationId: liveQuote.confirmationId,
             });
           }
+        } else if (
+          String(shippingConfig?.directPricingMode || '').toLowerCase() === 'pass_through' &&
+          shippingOption === 'direct'
+        ) {
+          // Pass-through with no complete address yet — don't show a rubric estimate,
+          // just clear the quote so the UI prompts for an address.
+          if (!cancelled) setShippingQuote(null);
         } else {
           const quote = await shippingService.quote({
             shippingOption,
@@ -243,7 +250,7 @@ const Cart: React.FC = () => {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [shippingOption, shippingAddress, items]);
+  }, [shippingOption, shippingAddress, items, products, shippingConfig]);
 
   const loadStudioFees = async () => {
     try {
