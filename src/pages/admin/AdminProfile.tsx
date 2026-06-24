@@ -117,6 +117,8 @@ const AdminProfile: React.FC = () => {
   const [landingPageHtml, setLandingPageHtml] = useState('');
   const [showLandingPageEditor, setShowLandingPageEditor] = useState(false);
   const [savingLandingPage, setSavingLandingPage] = useState(false);
+  const [brandColor, setBrandColor] = useState('#7b61ff');
+  const [customEmailMessage, setCustomEmailMessage] = useState('');
   const [studioPublicSlug, setStudioPublicSlug] = useState('');
   const [dbPlans, setDbPlans] = useState<DbPlan[]>([]);
   const [stripeStatus, setStripeStatus] = useState<StripeStatus | null>(null);
@@ -172,6 +174,8 @@ const AdminProfile: React.FC = () => {
       setLogoPreview(data.logoUrl || '');
       setInstagramUrl(data.instagramUrl || '');
       setFacebookUrl(data.facebookUrl || '');
+      setBrandColor((data as any).brandColor || '#7b61ff');
+      setCustomEmailMessage((data as any).customEmailMessage || '');
       setCustomDomain(data.customDomain || '');
       setTimezoneValue(data.timezone || getBrowserTimezone());
       setStudioTimezone(data.timezone || getBrowserTimezone());
@@ -296,7 +300,8 @@ const AdminProfile: React.FC = () => {
       const updatedConfig = await profileService.updateConfig({
         ownerName, businessName, email, receiveOrderNotifications,
         logoUrl: finalLogoUrl, instagramUrl, facebookUrl, customDomain, timezone,
-      });
+        brandColor, customEmailMessage,
+      } as any);
       setConfig(updatedConfig);
       setLogoUrl(finalLogoUrl);
       setLogoPreview(finalLogoUrl);
@@ -488,6 +493,44 @@ const AdminProfile: React.FC = () => {
                 </label>
                 <p style={{ ...helpText, marginTop: 0 }}>Get email notifications when new orders are placed</p>
               </div>
+            </div>
+
+            <div style={divider} />
+            <h3 style={{ ...sectionTitle, fontSize: '1rem', marginBottom: '0.15rem' }}>Order Confirmation Emails</h3>
+            <p style={{ ...sectionSubtitle, marginBottom: '1rem' }}>Customize how your studio appears to customers in order receipts</p>
+
+            <div style={fieldGroup}>
+              <label htmlFor="brandColor" style={labelStyle}>Brand Accent Color</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <input
+                  type="color"
+                  id="brandColor"
+                  value={brandColor}
+                  onChange={(e) => setBrandColor(e.target.value)}
+                  style={{ width: 44, height: 36, padding: 2, borderRadius: 6, border: '1px solid #3a3656', background: 'none', cursor: 'pointer' }}
+                />
+                <input
+                  type="text"
+                  value={brandColor}
+                  onChange={(e) => setBrandColor(e.target.value)}
+                  placeholder="#7b61ff"
+                  style={{ flex: 1 }}
+                />
+              </div>
+              <p style={helpText}>Used as the accent color in customer order confirmation emails</p>
+            </div>
+
+            <div style={fieldGroup}>
+              <label htmlFor="customEmailMessage" style={labelStyle}>Custom Message in Receipt Email</label>
+              <textarea
+                id="customEmailMessage"
+                value={customEmailMessage}
+                onChange={(e) => setCustomEmailMessage(e.target.value)}
+                placeholder="Thank you for your order! We'll have it ready shortly. — Smith Photography"
+                rows={3}
+                style={{ width: '100%', padding: '9px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid #3a3656', borderRadius: 8, color: '#e4e4e7', fontSize: 13, resize: 'vertical', boxSizing: 'border-box' }}
+              />
+              <p style={helpText}>Shown in the customer's order confirmation email below the order status</p>
             </div>
           </div>
 

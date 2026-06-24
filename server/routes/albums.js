@@ -758,4 +758,323 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+// ─── Per-album pricing overrides ─────────────────────────────────────────────
+
+const ensureAlbumPriceOverridesTable = async () => {
+  // called eagerly at module load below
+  await query(`
+    IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'album_price_overrides')
+    BEGIN
+      CREATE TABLE album_price_overrides (
+        id INT IDENTITY(1,1) PRIMARY KEY,
+        album_id INT NOT NULL,
+        product_size_id INT NOT NULL,
+        price DECIMAL(10,2) NOT NULL,
+        created_at DATETIME2 DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT uq_album_size_override UNIQUE (album_id, product_size_id)
+      );
+      CREATE INDEX IX_album_price_overrides_album_id ON album_price_overrides(album_id);
+    END
+  `);
+};
+
+// GET /albums/:id/price-overrides
+router.get('/:id/price-overrides', authRequired, async (req, res) => {
+  try {
+    await ensureAlbumPriceOverridesTable();
+    const albumId = Number(req.params.id);
+    const overrides = await queryRows(
+      `SELECT apo.product_size_id as productSizeId, apo.price,
+              ps.size_name as sizeName, p.name as productName, p.id as productId
+       FROM album_price_overrides apo
+       JOIN product_sizes ps ON ps.id = apo.product_size_id
+       JOIN products p ON p.id = ps.product_id
+       WHERE apo.album_id = $1`,
+      [albumId]
+    );
+    res.json({ overrides: overrides || [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /albums/:id/price-overrides — body: { overrides: [{ productSizeId, price }] }
+router.put('/:id/price-overrides', authRequired, async (req, res) => {
+  try {
+    await ensureAlbumPriceOverridesTable();
+    const albumId = Number(req.params.id);
+    const overrides = Array.isArray(req.body.overrides) ? req.body.overrides : [];
+
+    // Delete all existing overrides for this album, then insert new ones
+    await query(`DELETE FROM album_price_overrides WHERE album_id = $1`, [albumId]);
+
+    for (const o of overrides) {
+      const sizeId = Number(o.productSizeId);
+      const price = parseFloat(o.price);
+      if (!sizeId || isNaN(price) || price < 0) continue;
+      await query(
+        `INSERT INTO album_price_overrides (album_id, product_size_id, price)
+         VALUES ($1, $2, $3)`,
+        [albumId, sizeId, price]
+      );
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Run table creation at startup so products.js / orders.js can query them immediately
+ensureAlbumPriceOverridesTable().catch(err => console.error('[albums] ensureAlbumPriceOverridesTable:', err.message));
+
+// ─── Referral / share link tracking ─────────────────────────────────────────
+
+const ensureReferralTables = async () => {
+  await query(`
+    IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'album_share_codes')
+    BEGIN
+      CREATE TABLE album_share_codes (
+        id INT IDENTITY(1,1) PRIMARY KEY,
+        album_id INT NOT NULL,
+        studio_id INT NULL,
+        code NVARCHAR(16) NOT NULL UNIQUE,
+        label NVARCHAR(255) NULL,
+        created_at DATETIME2 DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IX_album_share_codes_album ON album_share_codes(album_id);
+    END
+  `);
+  await query(`
+    IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'album_referral_events')
+    BEGIN
+      CREATE TABLE album_referral_events (
+        id INT IDENTITY(1,1) PRIMARY KEY,
+        code NVARCHAR(16) NOT NULL,
+        event_type NVARCHAR(20) NOT NULL, -- 'visit' or 'order'
+        order_id INT NULL,
+        created_at DATETIME2 DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IX_album_referral_events_code ON album_referral_events(code);
+    END
+  `);
+};
+
+ensureReferralTables().catch(err => console.error('[albums] ensureReferralTables:', err.message));
+
+// GET /albums/:id/share-codes — list codes with visit/order counts
+router.get('/:id/share-codes', authRequired, async (req, res) => {
+  try {
+    await ensureReferralTables();
+    const albumId = Number(req.params.id);
+    const codes = await queryRows(
+      `SELECT sc.id, sc.code, sc.label, sc.created_at as createdAt,
+              SUM(CASE WHEN re.event_type = 'visit' THEN 1 ELSE 0 END) as visits,
+              SUM(CASE WHEN re.event_type = 'order' THEN 1 ELSE 0 END) as orders
+       FROM album_share_codes sc
+       LEFT JOIN album_referral_events re ON re.code = sc.code
+       WHERE sc.album_id = $1
+       GROUP BY sc.id, sc.code, sc.label, sc.created_at
+       ORDER BY sc.created_at DESC`,
+      [albumId]
+    );
+    res.json({ codes: codes || [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /albums/:id/share-codes — generate a new code
+router.post('/:id/share-codes', authRequired, async (req, res) => {
+  try {
+    await ensureReferralTables();
+    const albumId = Number(req.params.id);
+    const label = String(req.body.label || '').trim() || null;
+    const studioId = req.user?.studio_id || null;
+    // Generate a short unique alphanumeric code
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+    let code = '';
+    for (let i = 0; i < 8; i++) code += chars[Math.floor(Math.random() * chars.length)];
+    await query(
+      `INSERT INTO album_share_codes (album_id, studio_id, code, label) VALUES ($1, $2, $3, $4)`,
+      [albumId, studioId, code, label]
+    );
+    res.json({ code, label });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /albums/:id/track-visit — called from frontend when album loads with ?ref=
+router.post('/:id/track-visit', async (req, res) => {
+  try {
+    await ensureReferralTables();
+    const code = String(req.body.code || '').trim();
+    if (!code) return res.json({ ok: false });
+    const exists = await queryRow(`SELECT id FROM album_share_codes WHERE code = $1`, [code]);
+    if (!exists) return res.json({ ok: false });
+    await query(
+      `INSERT INTO album_referral_events (code, event_type) VALUES ($1, 'visit')`,
+      [code]
+    );
+    res.json({ ok: true });
+  } catch {
+    res.json({ ok: false });
+  }
+});
+
+// ─── Photo favorites ──────────────────────────────────────────────────────────
+
+// GET /albums/favorites/all?token= — cross-album favorites for a session
+router.get('/favorites/all', async (req, res) => {
+  try {
+    await ensurePhotoFavoritesTable();
+    const token = String(req.query.token || '').trim();
+    if (!token) return res.json({ photos: [] });
+    const rows = await queryRows(
+      `SELECT pf.photo_id as photoId, pf.album_id as albumId,
+              ph.file_name as fileName, ph.player_names as playerNames, ph.player_numbers as playerNumbers,
+              ph.width, ph.height,
+              al.name as albumName, al.studio_id as studioId
+       FROM photo_favorites pf
+       LEFT JOIN photos ph ON ph.id = pf.photo_id
+       LEFT JOIN albums al ON al.id = pf.album_id
+       WHERE pf.session_token = $1
+       ORDER BY pf.created_at DESC`,
+      [token]
+    );
+    res.json({ photos: rows || [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+const ensurePhotoFavoritesTable = async () => {
+  await query(`
+    IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'photo_favorites')
+    BEGIN
+      CREATE TABLE photo_favorites (
+        id INT IDENTITY(1,1) PRIMARY KEY,
+        session_token NVARCHAR(64) NOT NULL,
+        email NVARCHAR(255) NULL,
+        album_id INT NOT NULL,
+        photo_id INT NOT NULL,
+        created_at DATETIME2 DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT uq_favorite UNIQUE (session_token, album_id, photo_id)
+      );
+      CREATE INDEX IX_photo_favorites_token ON photo_favorites(session_token);
+      CREATE INDEX IX_photo_favorites_email ON photo_favorites(email);
+    END
+  `);
+};
+
+// GET /albums/:id/favorites?token= — load favorites for a session
+router.get('/:id/favorites', async (req, res) => {
+  try {
+    await ensurePhotoFavoritesTable();
+    const albumId = Number(req.params.id);
+    const token = String(req.query.token || '').trim();
+    if (!token) return res.json({ favorites: [] });
+    const rows = await queryRows(
+      `SELECT photo_id as photoId FROM photo_favorites WHERE session_token = $1 AND album_id = $2`,
+      [token, albumId]
+    );
+    res.json({ favorites: (rows || []).map(r => r.photoId) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /albums/:id/favorites — toggle a favorite
+router.post('/:id/favorites', async (req, res) => {
+  try {
+    await ensurePhotoFavoritesTable();
+    const albumId = Number(req.params.id);
+    const photoId = Number(req.body.photoId);
+    const token = String(req.body.token || '').trim();
+    if (!token || !photoId) return res.status(400).json({ error: 'token and photoId required' });
+
+    const existing = await queryRow(
+      `SELECT id FROM photo_favorites WHERE session_token = $1 AND album_id = $2 AND photo_id = $3`,
+      [token, albumId, photoId]
+    );
+    if (existing) {
+      await query(
+        `DELETE FROM photo_favorites WHERE session_token = $1 AND album_id = $2 AND photo_id = $3`,
+        [token, albumId, photoId]
+      );
+      return res.json({ favorited: false });
+    }
+    await query(
+      `INSERT INTO photo_favorites (session_token, album_id, photo_id) VALUES ($1, $2, $3)`,
+      [token, albumId, photoId]
+    );
+    res.json({ favorited: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /albums/:id/favorites/save-email — attach email to session + send magic link
+router.post('/:id/favorites/save-email', async (req, res) => {
+  try {
+    await ensurePhotoFavoritesTable();
+    const albumId = Number(req.params.id);
+    const email = String(req.body.email || '').trim().toLowerCase();
+    const token = String(req.body.token || '').trim();
+    if (!token || !email) return res.status(400).json({ error: 'token and email required' });
+
+    // Attach email to all favorites in this session (across all albums)
+    await query(
+      `UPDATE photo_favorites SET email = $1 WHERE session_token = $2`,
+      [email, token]
+    );
+
+    const appBase = String(process.env.APP_BASE_URL || '').trim().replace(/\/$/, '');
+    const link = `${appBase}/favorites?favToken=${encodeURIComponent(token)}`;
+
+    // Send magic link email if SMTP is configured
+    try {
+      const { default: receiptSvc } = await import('../services/orderReceiptService.js');
+      if (receiptSvc.isConfigured()) {
+        await receiptSvc.sendRaw({
+          to: email,
+          subject: 'Your saved favorites',
+          html: `<div style="font-family:Arial,sans-serif;background:#0f131a;color:#eaf1fb;max-width:560px;margin:0 auto;padding:24px;border-radius:12px;">
+            <div style="font-size:22px;font-weight:700;margin-bottom:12px;">Your saved favorites</div>
+            <p style="color:#b8c2d1;">Use the link below to come back to your saved photos at any time.</p>
+            <a href="${link}" style="display:inline-block;margin-top:16px;padding:12px 24px;background:#7b61ff;color:#fff;text-decoration:none;border-radius:8px;font-weight:700;">View My Favorites</a>
+            <p style="margin-top:20px;font-size:12px;color:#6b7280;">This link is unique to your session — bookmark it to return to your favorites.</p>
+          </div>`,
+          text: `Your saved favorites — use this link to come back: ${link}`,
+        });
+      }
+    } catch { /* email failure is non-fatal */ }
+
+    res.json({ ok: true, link });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /albums/:id/favorite-stats — which photos are favorited most (studio admin)
+router.get('/:id/favorite-stats', authRequired, async (req, res) => {
+  try {
+    await ensurePhotoFavoritesTable();
+    const albumId = Number(req.params.id);
+    const stats = await queryRows(
+      `SELECT pf.photo_id as photoId, COUNT(*) as favoriteCount, ph.file_name as fileName
+       FROM photo_favorites pf
+       LEFT JOIN photos ph ON ph.id = pf.photo_id
+       WHERE pf.album_id = $1
+       GROUP BY pf.photo_id, ph.file_name
+       ORDER BY favoriteCount DESC`,
+      [albumId]
+    );
+    res.json({ stats: stats || [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;

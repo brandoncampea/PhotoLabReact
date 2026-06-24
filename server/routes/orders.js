@@ -3239,6 +3239,19 @@ const sendOrderReceipts = async (orderId) => {
       );
       replyToStudioEmail = normalizeEmail(studio?.email);
     }
+    // Fetch studio branding for the customer receipt (first studio in the order)
+    let studioBranding = {};
+    const firstStudioId = items.length > 0 ? Number(items[0].studioId) : 0;
+    if (firstStudioId) {
+      const brandingRow = await queryRow(
+        `SELECT pc.logo_url as logoUrl, pc.brand_color as brandColor,
+                pc.custom_email_message as customEmailMessage, pc.business_name as businessName
+         FROM profile_config pc WHERE pc.studio_id = $1`,
+        [firstStudioId]
+      ).catch(() => null);
+      if (brandingRow) studioBranding = brandingRow;
+    }
+
     customerSent = await orderReceiptService.sendCustomerReceipt({
       to: parsedShippingAddress?.email || order.customerEmail,
       customerName: parsedShippingAddress?.fullName || order.customerName,
@@ -3246,6 +3259,7 @@ const sendOrderReceipts = async (orderId) => {
       items,
       digitalDownloads,
       replyTo: replyToStudioEmail,
+      studioBranding,
     });
 
     // Add delay to avoid Mailtrap rate limiting (free tier: too many emails per second)
@@ -3624,6 +3638,7 @@ router.post('/', requireActiveSubscription, async (req, res) => {
       batchLabVendor,
       studioShippingCost: clientStudioShippingCost,
       shippingMargin: clientShippingMargin,
+      refCode,
     } = req.body;
 
     // Determine if all items are digital-only.
@@ -3829,6 +3844,13 @@ router.post('/', requireActiveSubscription, async (req, res) => {
 
     const orderId = orderResult.id;
 
+    if (refCode && typeof refCode === 'string' && refCode.trim()) {
+      await query(
+        `INSERT INTO album_referral_events (code, event_type, order_id) VALUES ($1, 'order', $2)`,
+        [refCode.trim(), orderId]
+      ).catch(() => {});
+    }
+
     if (discountCode) {
       await query(
         `UPDATE discount_codes
@@ -4002,6 +4024,17 @@ router.post('/', requireActiveSubscription, async (req, res) => {
          WHERE id = $1`,
         [primaryPhotoId]
       );
+
+      // Apply per-album price override if one exists for this size + album combo
+      if (item.productSizeId && photoRow?.albumId) {
+        const albumOverride = await queryRow(
+          `SELECT price FROM album_price_overrides WHERE album_id = $1 AND product_size_id = $2`,
+          [photoRow.albumId, item.productSizeId]
+        ).catch(() => null);
+        if (albumOverride != null) {
+          item.price = Number(albumOverride.price);
+        }
+      }
 
       let productRow = null;
       if (item.productSizeId) {

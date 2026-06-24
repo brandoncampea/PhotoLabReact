@@ -35,7 +35,8 @@ export const orderService = {
     },
     suppressEmail?: boolean,
     studioShippingCost?: number,
-    shippingMargin?: number
+    shippingMargin?: number,
+    refCode?: string
   ): Promise<Order> {
     // Calculate subtotal with studio fees applied to each item
     let itemsTotal = items.reduce((sum, item) => {
@@ -102,6 +103,7 @@ export const orderService = {
       ...(suppressEmail ? { suppressEmail: true } : {}),
       ...(typeof studioShippingCost === 'number' ? { studioShippingCost } : {}),
       ...(typeof shippingMargin === 'number' ? { shippingMargin } : {}),
+      ...(refCode ? { refCode } : {}),
     });
     return response.data;
   },

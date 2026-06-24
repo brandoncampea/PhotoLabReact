@@ -20,4 +20,28 @@ export const albumAdminService = {
   async deleteAlbum(id: number): Promise<void> {
     await api.delete(`/albums/${id}`);
   },
+
+  async getPriceOverrides(albumId: number): Promise<{ productSizeId: number; sizeName: string; productName: string; productId: number; price: number }[]> {
+    const response = await api.get(`/albums/${albumId}/price-overrides`);
+    return response.data.overrides || [];
+  },
+
+  async savePriceOverrides(albumId: number, overrides: { productSizeId: number; price: number }[]): Promise<void> {
+    await api.put(`/albums/${albumId}/price-overrides`, { overrides });
+  },
+
+  async getShareCodes(albumId: number): Promise<{ id: number; code: string; label: string | null; createdAt: string; visits: number; orders: number }[]> {
+    const response = await api.get(`/albums/${albumId}/share-codes`);
+    return response.data.codes || [];
+  },
+
+  async createShareCode(albumId: number, label?: string): Promise<{ code: string; label: string | null }> {
+    const response = await api.post(`/albums/${albumId}/share-codes`, { label: label || null });
+    return response.data;
+  },
+
+  async getFavoriteStats(albumId: number): Promise<{ photoId: number; favoriteCount: number; fileName: string }[]> {
+    const response = await api.get(`/albums/${albumId}/favorite-stats`);
+    return response.data.stats || [];
+  },
 };

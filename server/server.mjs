@@ -84,6 +84,9 @@ import whccEditorRoutes from './routes/whccEditor.js';
 import ticketRoutes from './tickets/routes.js';
 import notifyWatchersRoutes from './routes/notifyWatchers.js';
 import reportsRoutes from './routes/reports.js';
+import releaseNotesRoutes from './routes/releaseNotes.js';
+import { autoGenerateReleaseNotes } from './startup/autoGenerateReleaseNotes.js';
+import rosterManagementRoutes from './routes/rosterManagement.js';
 
 import runWhccEditorBackfillOnce from './startup/runWhccEditorBackfillOnce.js';
 import runWhccVariantSchemaMigrations from './startup/runWhccVariantSchemaMigrations.js';
@@ -268,6 +271,8 @@ app.use('/api/admin-invites', adminInviteAcceptRouter);
 app.use('/api/whcc-editor', whccEditorRoutes);
 app.use('/api/tickets', ticketRoutes);
 app.use('/api/reports', reportsRoutes);
+app.use('/api/release-notes', releaseNotesRoutes);
+app.use('/api/roster', rosterManagementRoutes);
 
 // Notify watchers endpoint
 app.use('/api/notify-watchers', notifyWatchersRoutes);
@@ -374,6 +379,11 @@ initializeDatabaseWithRetry().then(() => {
       try { await expireTrials(); } catch (e) { console.error('[trialExpiry] scheduled run failed:', e); }
     }, 24 * 60 * 60 * 1000);
   }, 10_000);
+
+  // Auto-generate release notes for any new commits since the last note
+  setTimeout(async () => {
+    try { await autoGenerateReleaseNotes(); } catch (e) { console.error('[release-notes] startup run failed:', e); }
+  }, 15_000);
 });
 
 // Global error handler (must be after all routes)

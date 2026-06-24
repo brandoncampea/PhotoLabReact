@@ -1023,5 +1023,383 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
     }
 });
 
+router.get('/favorites-stats', adminRequired, async (req, res) => {
+  try {
+    const isSuperAdmin = req.user?.role === 'super_admin';
+    const studioId = isSuperAdmin && req.query.globalStats === 'true' ? null : (
+      req.user?.acting_studio_id
+        ? Number(req.user.acting_studio_id)
+        : (!isSuperAdmin && req.user?.studio_id ? Number(req.user.studio_id) : null)
+    );
+
+    const tableExistsRow = await queryRow(
+      `SELECT CASE WHEN OBJECT_ID('photo_favorites', 'U') IS NOT NULL THEN 1 ELSE 0 END AS v`
+    );
+    if (!Number(tableExistsRow?.v)) {
+      return res.json({ exists: false, summary: null, topPhotos: [], topAlbums: [], topPlayers: [], conversion: null });
+    }
+
+    const sf  = studioId ? `AND al.studio_id = ${studioId}` : '';
+    const sf2 = studioId ? `AND al2.studio_id = ${studioId}` : '';
+    const osf = studioId ? `AND o.studio_id = ${studioId}` : '';
+
+    const cwlExists = Number((await queryRow(`SELECT CASE WHEN OBJECT_ID('customer_player_watchlist','U') IS NOT NULL THEN 1 ELSE 0 END AS v`))?.v || 0) === 1;
+    const swlExists = Number((await queryRow(`SELECT CASE WHEN OBJECT_ID('customer_school_watchlist','U') IS NOT NULL THEN 1 ELSE 0 END AS v`))?.v || 0) === 1;
+
+    const wsf  = studioId ? `AND cpw.studio_id = ${studioId}` : '';
+    const sAlbumFilter = studioId ? `AND al2.studio_id = ${studioId}` : '';
+
+    const [summaryRow, topPhotosRows, topAlbumsRows, topPlayersRows, conversionRow,
+           watchlistSummaryRow, topWatchedPlayersRows, topWatchedSchoolsRows, topWatchedCategoriesRows] = await Promise.all([
+      queryRow(`
+        SELECT
+          COUNT(*) as totalFavorites,
+          SUM(CASE WHEN pf.created_at >= DATEADD(day, -7,  GETDATE()) THEN 1 ELSE 0 END) as last7Days,
+          SUM(CASE WHEN pf.created_at >= DATEADD(day, -30, GETDATE()) THEN 1 ELSE 0 END) as last30Days,
+          COUNT(DISTINCT pf.session_token) as uniqueSessions,
+          COUNT(DISTINCT CASE WHEN pf.email IS NOT NULL AND LTRIM(RTRIM(pf.email)) != '' THEN pf.email ELSE NULL END) as emailCaptures
+        FROM photo_favorites pf
+        JOIN albums al ON al.id = pf.album_id
+        WHERE 1=1 ${sf}
+      `),
+      queryRows(`
+        SELECT TOP 10
+          ph.id as photoId, ph.file_name as fileName,
+          ph.player_names as playerNames, ph.player_numbers as playerNumbers,
+          al.name as albumName, al.id as albumId,
+          COUNT(*) as favoriteCount
+        FROM photo_favorites pf
+        JOIN photos ph ON ph.id = pf.photo_id
+        JOIN albums al ON al.id = pf.album_id
+        WHERE 1=1 ${sf}
+        GROUP BY ph.id, ph.file_name, ph.player_names, ph.player_numbers, al.name, al.id
+        ORDER BY favoriteCount DESC
+      `),
+      queryRows(`
+        SELECT TOP 10
+          al.id as albumId, al.name as albumName,
+          COUNT(*) as favoriteCount,
+          COUNT(DISTINCT pf.photo_id) as uniquePhotos,
+          COUNT(DISTINCT pf.session_token) as uniqueSessions
+        FROM photo_favorites pf
+        JOIN albums al ON al.id = pf.album_id
+        WHERE 1=1 ${sf}
+        GROUP BY al.id, al.name
+        ORDER BY favoriteCount DESC
+      `),
+      queryRows(`
+        SELECT TOP 10
+          ph.player_names as playerNames,
+          COUNT(*) as favoriteCount,
+          COUNT(DISTINCT pf.photo_id) as uniquePhotos,
+          COUNT(DISTINCT pf.session_token) as uniqueSessions
+        FROM photo_favorites pf
+        JOIN photos ph ON ph.id = pf.photo_id
+        JOIN albums al ON al.id = pf.album_id
+        WHERE ph.player_names IS NOT NULL AND LTRIM(RTRIM(ph.player_names)) != '' ${sf}
+        GROUP BY ph.player_names
+        ORDER BY favoriteCount DESC
+      `),
+      queryRow(`
+        SELECT
+          COUNT(DISTINCT pf.photo_id) as totalFavoritedPhotos,
+          ISNULL((
+            SELECT COUNT(DISTINCT oi.photo_id)
+            FROM order_items oi
+            JOIN orders o ON o.id = oi.order_id
+              AND LOWER(o.status) NOT IN ('cancelled', 'refunded') ${osf}
+            JOIN photo_favorites pf2 ON pf2.photo_id = oi.photo_id
+            JOIN albums al2 ON al2.id = pf2.album_id
+            WHERE 1=1 ${sf2}
+          ), 0) as purchasedFavoritedPhotos
+        FROM photo_favorites pf
+        JOIN albums al ON al.id = pf.album_id
+        WHERE 1=1 ${sf}
+      `),
+      // Player watchlist summary (studio-scoped via studio_id)
+      cwlExists ? queryRow(`
+        SELECT
+          COUNT(*) as totalWatches,
+          COUNT(DISTINCT cpw.user_id) as uniqueWatchers,
+          COUNT(DISTINCT cpw.player_name) as uniquePlayers,
+          SUM(CASE WHEN cpw.created_at >= DATEADD(day, -7,  GETDATE()) THEN 1 ELSE 0 END) as last7Days,
+          SUM(CASE WHEN cpw.created_at >= DATEADD(day, -30, GETDATE()) THEN 1 ELSE 0 END) as last30Days
+        FROM customer_player_watchlist cpw
+        WHERE 1=1 ${wsf}
+      `) : Promise.resolve(null),
+      // Top watched players
+      cwlExists ? queryRows(`
+        SELECT TOP 10
+          cpw.player_name as playerName,
+          COUNT(DISTINCT cpw.user_id) as watcherCount
+        FROM customer_player_watchlist cpw
+        WHERE 1=1 ${wsf}
+        GROUP BY cpw.player_name
+        ORDER BY watcherCount DESC
+      `) : Promise.resolve([]),
+      // Top watched schools (scoped to this studio's albums via school_tags LIKE match)
+      swlExists ? queryRows(`
+        SELECT TOP 10
+          csw.school_id as schoolName,
+          COUNT(DISTINCT csw.user_id) as watcherCount
+        FROM customer_school_watchlist csw
+        WHERE 1=1 ${studioId ? `AND EXISTS (
+          SELECT 1 FROM albums al2
+          WHERE al2.school_tags IS NOT NULL
+            AND al2.school_tags LIKE '%' + csw.school_id + '%'
+            ${sAlbumFilter}
+        )` : ''}
+        GROUP BY csw.school_id
+        ORDER BY watcherCount DESC
+      `) : Promise.resolve([]),
+      // Top watched categories (same studio scope)
+      swlExists ? queryRows(`
+        SELECT TOP 10
+          csw.category,
+          COUNT(DISTINCT csw.user_id) as watcherCount
+        FROM customer_school_watchlist csw
+        WHERE 1=1 ${studioId ? `AND EXISTS (
+          SELECT 1 FROM albums al2
+          WHERE al2.school_tags IS NOT NULL
+            AND al2.school_tags LIKE '%' + csw.school_id + '%'
+            ${sAlbumFilter}
+        )` : ''}
+        GROUP BY csw.category
+        ORDER BY watcherCount DESC
+      `) : Promise.resolve([]),
+    ]);
+
+    const totalFav = Number(conversionRow?.totalFavoritedPhotos || 0);
+    const purchased = Number(conversionRow?.purchasedFavoritedPhotos || 0);
+
+    res.json({
+      exists: true,
+      summary: {
+        totalFavorites: Number(summaryRow?.totalFavorites || 0),
+        last7Days: Number(summaryRow?.last7Days || 0),
+        last30Days: Number(summaryRow?.last30Days || 0),
+        uniqueSessions: Number(summaryRow?.uniqueSessions || 0),
+        emailCaptures: Number(summaryRow?.emailCaptures || 0),
+      },
+      conversion: {
+        totalFavoritedPhotos: totalFav,
+        purchasedFavoritedPhotos: purchased,
+        rate: totalFav > 0 ? Number(((purchased / totalFav) * 100).toFixed(1)) : 0,
+      },
+      topPhotos: (topPhotosRows || []).map(r => ({
+        photoId: Number(r.photoId), fileName: r.fileName,
+        playerNames: r.playerNames, playerNumbers: r.playerNumbers,
+        albumName: r.albumName, albumId: Number(r.albumId),
+        favoriteCount: Number(r.favoriteCount),
+      })),
+      topAlbums: (topAlbumsRows || []).map(r => ({
+        albumId: Number(r.albumId), albumName: r.albumName,
+        favoriteCount: Number(r.favoriteCount),
+        uniquePhotos: Number(r.uniquePhotos),
+        uniqueSessions: Number(r.uniqueSessions),
+      })),
+      topPlayers: (topPlayersRows || []).map(r => ({
+        playerNames: r.playerNames,
+        favoriteCount: Number(r.favoriteCount),
+        uniquePhotos: Number(r.uniquePhotos),
+        uniqueSessions: Number(r.uniqueSessions),
+      })),
+      watchlist: {
+        summary: watchlistSummaryRow ? {
+          totalWatches: Number(watchlistSummaryRow.totalWatches || 0),
+          uniqueWatchers: Number(watchlistSummaryRow.uniqueWatchers || 0),
+          uniquePlayers: Number(watchlistSummaryRow.uniquePlayers || 0),
+          last7Days: Number(watchlistSummaryRow.last7Days || 0),
+          last30Days: Number(watchlistSummaryRow.last30Days || 0),
+        } : null,
+        topPlayers: (topWatchedPlayersRows || []).map(r => ({
+          playerName: r.playerName,
+          watcherCount: Number(r.watcherCount),
+        })),
+        topSchools: (topWatchedSchoolsRows || []).map(r => ({
+          schoolName: r.schoolName,
+          watcherCount: Number(r.watcherCount),
+        })),
+        topCategories: (topWatchedCategoriesRows || []).map(r => ({
+          category: r.category,
+          watcherCount: Number(r.watcherCount),
+        })),
+      },
+    });
+  } catch (err) {
+    console.error('[favorites-stats] error:', err);
+    res.status(500).json({ error: 'Failed to fetch favorites stats' });
+  }
+});
+
+router.get('/package-stats', adminRequired, async (req, res) => {
+  try {
+    const isSuperAdmin = req.user?.role === 'super_admin';
+    const studioId = isSuperAdmin && req.query.globalStats === 'true' ? null : (
+      req.user?.acting_studio_id
+        ? Number(req.user.acting_studio_id)
+        : (!isSuperAdmin && req.user?.studio_id ? Number(req.user.studio_id) : null)
+    );
+
+    const hasColRow = await queryRow(
+      `SELECT CASE WHEN COL_LENGTH('order_items','package_name') IS NOT NULL THEN 1 ELSE 0 END AS v`
+    );
+    if (!Number(hasColRow?.v)) {
+      return res.json({ exists: false, summary: null, topPackages: [] });
+    }
+
+    const sf = studioId ? `AND o.studio_id = ${studioId}` : '';
+
+    const [summaryRow, topPackagesRows] = await Promise.all([
+      queryRow(`
+        SELECT
+          COUNT(DISTINCT o.id) as totalOrders,
+          COUNT(DISTINCT CASE WHEN pkg.order_id IS NOT NULL THEN o.id END) as ordersWithPackages,
+          ISNULL(SUM(CASE WHEN oi.package_name IS NOT NULL THEN oi.price * oi.quantity ELSE 0 END), 0) as packageRevenue,
+          ISNULL(SUM(CASE WHEN oi.package_name IS NULL THEN oi.price * oi.quantity ELSE 0 END), 0) as individualRevenue
+        FROM orders o
+        JOIN order_items oi ON oi.order_id = o.id
+        LEFT JOIN (
+          SELECT DISTINCT order_id FROM order_items WHERE package_name IS NOT NULL
+        ) pkg ON pkg.order_id = o.id
+        WHERE LOWER(o.status) NOT IN ('cancelled','refunded') ${sf}
+      `),
+      queryRows(`
+        SELECT TOP 10
+          oi.package_name as packageName,
+          COUNT(DISTINCT o.id) as orderCount,
+          SUM(oi.quantity) as totalSold,
+          ISNULL(SUM(oi.price * oi.quantity), 0) as totalRevenue
+        FROM order_items oi
+        JOIN orders o ON o.id = oi.order_id
+        WHERE oi.package_name IS NOT NULL
+          AND LOWER(o.status) NOT IN ('cancelled','refunded') ${sf}
+        GROUP BY oi.package_name
+        ORDER BY orderCount DESC
+      `),
+    ]);
+
+    const totalOrders = Number(summaryRow?.totalOrders || 0);
+    const ordersWithPackages = Number(summaryRow?.ordersWithPackages || 0);
+    const packageRevenue = Number(summaryRow?.packageRevenue || 0);
+    const individualRevenue = Number(summaryRow?.individualRevenue || 0);
+
+    res.json({
+      exists: true,
+      summary: {
+        totalOrders,
+        ordersWithPackages,
+        adoptionRate: totalOrders > 0 ? Number(((ordersWithPackages / totalOrders) * 100).toFixed(1)) : 0,
+        packageRevenue: Number(packageRevenue.toFixed(2)),
+        individualRevenue: Number(individualRevenue.toFixed(2)),
+        packageRevenueShare: (packageRevenue + individualRevenue) > 0
+          ? Number(((packageRevenue / (packageRevenue + individualRevenue)) * 100).toFixed(1))
+          : 0,
+      },
+      topPackages: (topPackagesRows || []).map(r => ({
+        packageName: r.packageName,
+        orderCount: Number(r.orderCount),
+        totalSold: Number(r.totalSold),
+        totalRevenue: Number(Number(r.totalRevenue).toFixed(2)),
+      })),
+    });
+  } catch (err) {
+    console.error('[package-stats] error:', err);
+    res.status(500).json({ error: 'Failed to fetch package stats' });
+  }
+});
+
+router.get('/share-stats', adminRequired, async (req, res) => {
+  try {
+    const isSuperAdmin = req.user?.role === 'super_admin';
+    const studioId = isSuperAdmin && req.query.globalStats === 'true' ? null : (
+      req.user?.acting_studio_id
+        ? Number(req.user.acting_studio_id)
+        : (!isSuperAdmin && req.user?.studio_id ? Number(req.user.studio_id) : null)
+    );
+
+    const [scRow, sreRow] = await Promise.all([
+      queryRow(`SELECT CASE WHEN OBJECT_ID('album_share_codes','U') IS NOT NULL THEN 1 ELSE 0 END AS v`),
+      queryRow(`SELECT CASE WHEN OBJECT_ID('album_referral_events','U') IS NOT NULL THEN 1 ELSE 0 END AS v`),
+    ]);
+    if (!Number(scRow?.v) || !Number(sreRow?.v)) {
+      return res.json({ exists: false, summary: null, topAlbums: [], topCodes: [] });
+    }
+
+    const sf = studioId ? `AND sc.studio_id = ${studioId}` : '';
+
+    const [summaryRow, topAlbumsRows, topCodesRows] = await Promise.all([
+      queryRow(`
+        SELECT
+          COUNT(DISTINCT sc.id) as totalCodes,
+          ISNULL(SUM(CASE WHEN re.event_type = 'visit' THEN 1 ELSE 0 END), 0) as totalVisits,
+          ISNULL(SUM(CASE WHEN re.event_type = 'order' THEN 1 ELSE 0 END), 0) as totalOrders,
+          ISNULL(SUM(CASE WHEN re.event_type = 'visit' AND re.created_at >= DATEADD(day,-7,GETDATE()) THEN 1 ELSE 0 END), 0) as last7Days,
+          ISNULL(SUM(CASE WHEN re.event_type = 'visit' AND re.created_at >= DATEADD(day,-30,GETDATE()) THEN 1 ELSE 0 END), 0) as last30Days
+        FROM album_share_codes sc
+        LEFT JOIN album_referral_events re ON re.code = sc.code
+        WHERE 1=1 ${sf}
+      `),
+      queryRows(`
+        SELECT TOP 10
+          al.id as albumId, al.name as albumName,
+          COUNT(DISTINCT sc.id) as totalCodes,
+          ISNULL(SUM(CASE WHEN re.event_type = 'visit' THEN 1 ELSE 0 END), 0) as totalVisits,
+          ISNULL(SUM(CASE WHEN re.event_type = 'order' THEN 1 ELSE 0 END), 0) as totalOrders
+        FROM album_share_codes sc
+        JOIN albums al ON al.id = sc.album_id
+        LEFT JOIN album_referral_events re ON re.code = sc.code
+        WHERE 1=1 ${sf}
+        GROUP BY al.id, al.name
+        ORDER BY totalVisits DESC
+      `),
+      queryRows(`
+        SELECT TOP 10
+          sc.code, sc.label,
+          al.id as albumId, al.name as albumName,
+          ISNULL(SUM(CASE WHEN re.event_type = 'visit' THEN 1 ELSE 0 END), 0) as totalVisits,
+          ISNULL(SUM(CASE WHEN re.event_type = 'order' THEN 1 ELSE 0 END), 0) as totalOrders,
+          sc.created_at as createdAt
+        FROM album_share_codes sc
+        JOIN albums al ON al.id = sc.album_id
+        LEFT JOIN album_referral_events re ON re.code = sc.code
+        WHERE 1=1 ${sf}
+        GROUP BY sc.code, sc.label, al.id, al.name, sc.created_at
+        ORDER BY totalVisits DESC
+      `),
+    ]);
+
+    const totalVisits = Number(summaryRow?.totalVisits || 0);
+    const totalOrders = Number(summaryRow?.totalOrders || 0);
+
+    res.json({
+      exists: true,
+      summary: {
+        totalCodes: Number(summaryRow?.totalCodes || 0),
+        totalVisits,
+        totalOrders,
+        last7Days: Number(summaryRow?.last7Days || 0),
+        last30Days: Number(summaryRow?.last30Days || 0),
+        conversionRate: totalVisits > 0 ? Number(((totalOrders / totalVisits) * 100).toFixed(1)) : 0,
+      },
+      topAlbums: (topAlbumsRows || []).map(r => ({
+        albumId: Number(r.albumId), albumName: r.albumName,
+        totalCodes: Number(r.totalCodes),
+        totalVisits: Number(r.totalVisits),
+        totalOrders: Number(r.totalOrders),
+      })),
+      topCodes: (topCodesRows || []).map(r => ({
+        code: r.code, label: r.label || '',
+        albumId: Number(r.albumId), albumName: r.albumName,
+        totalVisits: Number(r.totalVisits),
+        totalOrders: Number(r.totalOrders),
+      })),
+    });
+  } catch (err) {
+    console.error('[share-stats] error:', err);
+    res.status(500).json({ error: 'Failed to fetch share stats' });
+  }
+});
+
 console.log('[adminDashboard.js] Router loaded');
 export default router;

@@ -1,6 +1,7 @@
 
 import mssql from '../mssql.js';
 import { getWhccCatalogMap, matchWhccProduct } from '../services/whccCatalog.js';
+import { getCatalogProductNodeIDs, resolveAttributeParents } from '../utils/whccItemBuilder.js';
 // Super Admin Price List Routes
 import express from 'express';
 import multer from 'multer';
@@ -1253,6 +1254,135 @@ router.post('/:id/sync-whcc-costs', superAdminRequired, async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ error: 'Failed to sync WHCC costs', details: err?.message || String(err) });
+  }
+});
+
+// POST live WHCC cost lookup — calls OrderImport (no submit) to retrieve the actual WHCC cost
+// for a given productUID + nodeIDs + attributeUIDs without placing a real order.
+router.post('/:id/whcc-live-cost', superAdminRequired, async (req, res) => {
+  try {
+    const { productUID, productNodeIDs = [], itemAttributeUIDs = [], quantity = 1 } = req.body || {};
+
+    const uid = Number(productUID || 0);
+    if (!Number.isInteger(uid) || uid <= 0) {
+      return res.status(400).json({ error: 'productUID (positive integer) is required' });
+    }
+
+    const consumerKey = String(process.env.WHCC_CONSUMER_KEY || process.env.WHCC_API_KEY || '').trim();
+    const consumerSecret = String(process.env.WHCC_CONSUMER_SECRET || process.env.WHCC_API_SECRET || '').trim();
+    if (!consumerKey || !consumerSecret) {
+      return res.status(503).json({ error: 'WHCC credentials are not configured on this server' });
+    }
+
+    const isSandbox = process.env.WHCC_SANDBOX === 'true';
+    const baseUrl = isSandbox ? 'https://sandbox.apps.whcc.com' : 'https://apps.whcc.com';
+    const axios = (await import('axios')).default;
+    // Use same token helper as shipping/orders
+    const { fetchToken } = await import('./whccProxy.js');
+    const token = await fetchToken(consumerKey, consumerSecret, isSandbox);
+
+    // Fetch catalog — same as shipping.js whcc-live-quote
+    let catalogProducts = [];
+    try {
+      const catalogResp = await axios.get(`${baseUrl}/api/catalog`, {
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+      });
+      const categories = Array.isArray(catalogResp.data?.Categories) ? catalogResp.data.Categories : [];
+      catalogProducts = categories.flatMap((c) => (Array.isArray(c?.ProductList) ? c.ProductList : []));
+    } catch (err) {
+      console.warn('[whcc-live-cost] catalog fetch failed:', err?.message);
+    }
+
+    // Resolve node IDs using shared helper (same as shipping.js)
+    const catalogMatch = catalogProducts.find((p) => getCatalogProductUID(p) === uid) || null;
+    const catalogNodeIDs = catalogMatch ? getCatalogProductNodeIDs(catalogMatch) : [];
+    const nodeIDs = catalogNodeIDs.length > 0
+      ? catalogNodeIDs
+      : (Array.isArray(productNodeIDs) ? productNodeIDs.map(Number).filter((v) => Number.isInteger(v) && v > 0) : []);
+
+    // Resolve attribute parent dependencies using shared helper (same as shipping.js)
+    const rawAttrUIDs = (Array.isArray(itemAttributeUIDs) ? itemAttributeUIDs : []).map(Number).filter((v) => Number.isInteger(v) && v > 0);
+    const finalAttrUIDs = catalogMatch ? resolveAttributeParents(rawAttrUIDs, catalogMatch) : rawAttrUIDs;
+
+    // Placeholder asset — content doesn't affect pricing, only product/attributes matter
+    const PLACEHOLDER_ASSET = 'https://www.whcc.com/images/shared/logo.png';
+
+    const orderItem = {
+      ProductUID: uid,
+      Quantity: Math.max(1, Number(quantity) || 1),
+      LineItemID: '1',
+      ...(nodeIDs.length > 0 ? {
+        ItemAssets: nodeIDs.map((nodeId) => ({ ProductNodeID: nodeId, AssetPath: PLACEHOLDER_ASSET, AutoRotate: false })),
+      } : {}),
+      ...(finalAttrUIDs.length > 0 ? {
+        ItemAttributes: finalAttrUIDs.map((attrUid) => ({ AttributeUID: attrUid })),
+      } : {}),
+    };
+
+    const dummyAddress = { Name: 'Cost Lookup', Attn: null, Addr1: '2800 Rockcreek Pkwy', Addr2: null, City: 'Kansas City', State: 'MO', Zip: '64117', Country: 'US' };
+    const entryId = `cost-lookup-${Date.now()}`;
+    const whccPayload = {
+      EntryId: entryId,
+      Orders: [{
+        SequenceNumber: 1,
+        Reference: `CostLookup-${entryId}`,
+        ShipToAddress: dummyAddress,
+        ShipFromAddress: dummyAddress,
+        OrderAttributes: [{ AttributeUID: 96 }, { AttributeUID: 545 }],
+        OrderItems: [orderItem],
+        DropShipFlag: 1,
+      }],
+    };
+
+    console.log('[whcc-live-cost] → POST /api/OrderImport payload:\n', JSON.stringify(whccPayload, null, 2));
+
+    const importResp = await axios.post(
+      `${baseUrl}/api/OrderImport`,
+      whccPayload,
+      { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
+    );
+    const importData = importResp.data;
+
+    console.log('[whcc-live-cost] ← WHCC response:\n', JSON.stringify(importData, null, 2));
+
+    const brokenRules = Array.isArray(importData?.BrokenRules) ? importData.BrokenRules : [];
+    if (brokenRules.length > 0) {
+      return res.status(422).json({
+        error: 'WHCC rejected the cost lookup',
+        rules: brokenRules.map((r) => r?.Description || String(r)),
+      });
+    }
+
+    const SHIPPING_KEYWORDS = ['fulfillment shipping', 'delivery area surcharge', 'shipping surcharge', 'residential delivery', 'fuel surcharge', 'delivery surcharge', 'extended surcharge', 'shipping & handling', 'handling'];
+    const orders = importData?.Orders ?? importData?.orders ?? [];
+    const lineItems = [];
+    let totalCost = 0;
+    let hasNonShipping = false;
+
+    for (const order of (Array.isArray(orders) ? orders : [])) {
+      const products = order?.Products ?? order?.products ?? [];
+      for (const product of (Array.isArray(products) ? products : [])) {
+        const desc = String(product?.ProductDescription ?? product?.productDescription ?? '').toLowerCase();
+        const isShipping = SHIPPING_KEYWORDS.some((kw) => desc.includes(kw));
+        const price = parseFloat(product?.Price ?? product?.price ?? 0) || 0;
+        const qty = Math.max(1, Number(product?.Quantity ?? product?.quantity ?? 1));
+        lineItems.push({ description: product?.ProductDescription ?? product?.productDescription, price, quantity: qty, isShipping });
+        if (!isShipping) {
+          totalCost += price;
+          hasNonShipping = true;
+        }
+      }
+    }
+
+    // Sum all non-shipping line items for total unit cost
+    const unitCost = hasNonShipping ? totalCost : null;
+
+    res.json({ unitCost, lineItems, confirmationId: importData?.confirmationId || importData?.ConfirmationID || null, sandbox: isSandbox });
+  } catch (err) {
+    const status = err?.response?.status;
+    const detail = err?.response?.data || err?.message || String(err);
+    console.error('[whcc-live-cost] error:', detail);
+    res.status(status && status >= 400 ? status : 500).json({ error: 'WHCC cost lookup failed', details: typeof detail === 'string' ? detail : JSON.stringify(detail) });
   }
 });
 

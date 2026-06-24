@@ -165,6 +165,13 @@ const CustomerAccount: React.FC = () => {
           <a href="/orders" style={{ display: 'inline-block', padding: '8px 20px', background: '#7c5cff', color: '#fff', borderRadius: 8, fontWeight: 700, fontSize: '0.92rem', textDecoration: 'none' }}>View Orders</a>
         </section>
 
+        {/* ── Saved Photos ─────────────────────────────────────────── */}
+        <section className="account-section">
+          <h2 className="account-section-title">♥ Saved Photos</h2>
+          <p className="account-section-desc">View and order your favorited photos across all albums.</p>
+          <a href="/favorites" style={{ display: 'inline-block', padding: '8px 20px', background: '#ec4899', color: '#fff', borderRadius: 8, fontWeight: 700, fontSize: '0.92rem', textDecoration: 'none' }}>View Saved Photos</a>
+        </section>
+
         {/* ── Current Player Watchlist ─────────────────────────────── */}
                 {/* ── Current School Watchlist ─────────────────────────────── */}
                 <section className="account-section">

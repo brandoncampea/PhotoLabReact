@@ -653,6 +653,7 @@ const SuperAdminPricing: React.FC = () => {
   const [whccEditorProductsLoading, setWhccEditorProductsLoading] = useState(false);
   const [whccEditorProductsError, setWhccEditorProductsError] = useState<string | null>(null);
   const [editorCatalogVisible, setEditorCatalogVisible] = useState(false);
+  const [whccCostFetching, setWhccCostFetching] = useState<Record<string | number, boolean>>({});
 
   const fetchWhccEditorProducts = useCallback(async () => {
     if (whccEditorProducts.length > 0 || whccEditorProductsLoading) return whccEditorProducts;
@@ -1074,6 +1075,71 @@ const SuperAdminPricing: React.FC = () => {
       setViewError(String(details));
     } finally {
       setAddingManual(false);
+    }
+  };
+
+  // ── Live WHCC cost lookup ──────────────────────────────────────────────────
+  const fetchWhccCostForVariant = async (item: any, row: any) => {
+    if (!viewList) return;
+    const productUID = Number(itemDrafts[item.id]?.whccProductUID || item.whccProductUID || 0);
+    if (!productUID) { alert('No WHCC Product UID configured for this item.'); return; }
+    const nodeID = Number(itemDrafts[item.id]?.whccProductNodeID || item.whccProductNodeID || 0);
+    const attrUIDs = String(row.whccItemAttributeUIDs || '').split(',').map(Number).filter((v: number) => Number.isInteger(v) && v > 0);
+    if (!attrUIDs.length) { alert('No attribute UIDs on this variant row.'); return; }
+    const fetchKey = `v-${item.id}-${row.localId}`;
+    setWhccCostFetching((p) => ({ ...p, [fetchKey]: true }));
+    try {
+      const result = await superPriceListService.fetchWhccLiveCost(viewList.id, {
+        productUID,
+        productNodeIDs: nodeID > 0 ? [nodeID] : [],
+        itemAttributeUIDs: attrUIDs,
+        quantity: 1,
+      });
+      if (result.unitCost !== null && result.unitCost !== undefined) {
+        const cost = String(Number(result.unitCost).toFixed(2));
+        const updatedRows = (variantDraftsByItem[item.id] || []).map((r) =>
+          r.localId === row.localId ? { ...r, baseCost: cost } : r
+        );
+        setVariantDraftsByItem((prev) => ({ ...prev, [item.id]: updatedRows }));
+        await saveVariantRows(item, updatedRows);
+      } else {
+        alert('WHCC returned no product cost for this attribute. Check the UIDs.');
+      }
+    } catch (err: any) {
+      const msg = err?.response?.data?.error || err?.response?.data?.rules?.join(' | ') || err?.message || 'Unknown error';
+      alert(`WHCC cost lookup failed: ${msg}`);
+    } finally {
+      setWhccCostFetching((p) => ({ ...p, [fetchKey]: false }));
+    }
+  };
+
+  const fetchWhccCostForItem = async (item: any) => {
+    if (!viewList) return;
+    const productUID = Number(itemDrafts[item.id]?.whccProductUID || item.whccProductUID || 0);
+    if (!productUID) { alert('No WHCC Product UID configured for this item.'); return; }
+    const nodeID = Number(itemDrafts[item.id]?.whccProductNodeID || item.whccProductNodeID || 0);
+    const attrStr = String(itemDrafts[item.id]?.whccItemAttributeUIDs || item.whccItemAttributeUIDs || '');
+    const attrUIDs = attrStr.split(',').map(Number).filter((v) => Number.isInteger(v) && v > 0);
+    setWhccCostFetching((p) => ({ ...p, [item.id]: true }));
+    try {
+      const result = await superPriceListService.fetchWhccLiveCost(viewList.id, {
+        productUID,
+        productNodeIDs: nodeID > 0 ? [nodeID] : [],
+        itemAttributeUIDs: attrUIDs,
+        quantity: 1,
+      });
+      if (result.unitCost !== null && result.unitCost !== undefined) {
+        const cost = String(Number(result.unitCost).toFixed(2));
+        setItemDrafts((p) => ({ ...p, [item.id]: { ...p[item.id], base_cost: cost } }));
+        autoSaveItem(item.id, { ...itemDrafts[item.id], base_cost: cost });
+      } else {
+        alert('WHCC returned no product cost. Check the WHCC UID and attributes.');
+      }
+    } catch (err: any) {
+      const msg = err?.response?.data?.error || err?.response?.data?.rules?.join(' | ') || err?.message || 'Unknown error';
+      alert(`WHCC cost lookup failed: ${msg}`);
+    } finally {
+      setWhccCostFetching((p) => ({ ...p, [item.id]: false }));
     }
   };
 
@@ -1556,11 +1622,11 @@ const SuperAdminPricing: React.FC = () => {
     }));
   };
 
-  const saveVariantRows = async (item: any) => {
+  const saveVariantRows = async (item: any, rowsOverride?: EditableWhccVariant[]) => {
     const itemId = Number(item?.id || 0);
     if (!Number.isInteger(itemId) || itemId <= 0) return;
 
-    const rows = variantDraftsByItem[itemId] || [];
+    const rows = rowsOverride ?? variantDraftsByItem[itemId] ?? [];
     const normalized = rows
       .map(fromEditableWhccVariant)
       .filter(Boolean) as WhccVariant[];
@@ -1616,7 +1682,6 @@ const SuperAdminPricing: React.FC = () => {
         attributePriceRoundingSuffix: normalizedAttributePriceRoundingSuffix,
       });
       await refreshViewItems();
-      setActiveVariantItemId(null);
     } catch {
       setViewError('Failed to save product attributes.');
     } finally {
@@ -3342,6 +3407,16 @@ const SuperAdminPricing: React.FC = () => {
                                                       onChange={(e) => setItemDrafts((p) => ({ ...p, [item.id]: { ...p[item.id], base_cost: e.target.value } }))}
                                                       onBlur={() => autoSaveItem(item.id)}
                                                     />
+                                                    {Number(itemDrafts[item.id]?.whccProductUID || item.whccProductUID || 0) > 0 && (
+                                                      <button
+                                                        title="Fetch live WHCC cost for this product/size"
+                                                        disabled={!!whccCostFetching[item.id]}
+                                                        onClick={() => void fetchWhccCostForItem(item)}
+                                                        style={{ flexShrink: 0, width: 22, height: 22, padding: 0, border: '1px solid #4a4070', borderRadius: 4, background: 'transparent', color: '#9b8fff', cursor: 'pointer', fontSize: 13, lineHeight: 1 }}
+                                                      >
+                                                        {whccCostFetching[item.id] ? '…' : '↻'}
+                                                      </button>
+                                                    )}
                                                     <input
                                                       className={`spl-num-input${autoSaving[item.id] ? ' spl-saving' : ''}`}
                                                       style={{ maxWidth: 92 }}
@@ -3395,14 +3470,36 @@ const SuperAdminPricing: React.FC = () => {
                                                   {activeVariantRows.length === 0 ? (
                                                     <div className="spl-variant-empty">No active attributes. Activate product attributes above.</div>
                                                   ) : (
-                                                    activeVariantRows.map((row) => (
-                                                      <div key={`compact-var-${row.localId}`} className="spl-variant-grid spl-variant-grid-row" style={{ marginBottom: 6 }}>
+                                                    <>
+                                                    <div className="spl-variant-grid spl-variant-grid-header" style={{ gridTemplateColumns: 'minmax(130px, 1.5fr) minmax(140px, 1.2fr) minmax(110px, 0.9fr) 80px 72px', marginBottom: 4 }}>
+                                                      <span>Name</span>
+                                                      <span>Cost</span>
+                                                      <span>Price</span>
+                                                      <span>Default</span>
+                                                      <span>Active</span>
+                                                    </div>
+                                                    {activeVariantRows.map((row) => (
+                                                      <div key={`compact-var-${row.localId}`} className="spl-variant-grid spl-variant-grid-row" style={{ marginBottom: 6, gridTemplateColumns: 'minmax(130px, 1.5fr) minmax(140px, 1.2fr) minmax(110px, 0.9fr) 80px 72px' }}>
                                                         <input className="spl-variant-input" value={row.displayName} onChange={(e) => updateVariantRow(itemId, row.localId, { displayName: e.target.value })} placeholder="Attribute name" />
-                                                        <input className="spl-variant-input" type="number" min={0} step="0.01" value={row.baseCost} onChange={(e) => updateVariantRow(itemId, row.localId, { baseCost: e.target.value })} placeholder="Cost" />
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+                                                          <input className="spl-variant-input" type="number" min={0} step="0.01" value={row.baseCost} onChange={(e) => updateVariantRow(itemId, row.localId, { baseCost: e.target.value })} placeholder="Cost" style={{ flex: 1, minWidth: 0 }} />
+                                                          {String(row.whccItemAttributeUIDs || '').trim() && (
+                                                            <>
+                                                              <button
+                                                                title={`Fetch live WHCC cost for UID ${row.whccItemAttributeUIDs}`}
+                                                                disabled={!!whccCostFetching[`v-${item.id}-${row.localId}`]}
+                                                                onClick={() => void fetchWhccCostForVariant(item, row)}
+                                                                style={{ flexShrink: 0, width: 22, height: 22, padding: 0, border: '1px solid #4a4070', borderRadius: 4, background: 'transparent', color: '#9b8fff', cursor: 'pointer', fontSize: 13, lineHeight: 1 }}
+                                                              >
+                                                                {whccCostFetching[`v-${item.id}-${row.localId}`] ? '…' : '↻'}
+                                                              </button>
+                                                              <span style={{ fontSize: 10, color: '#8ec9ff', fontFamily: 'monospace', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                                                                {String(row.whccItemAttributeUIDs).trim()}
+                                                              </span>
+                                                            </>
+                                                          )}
+                                                        </div>
                                                         <input className="spl-variant-input" type="number" min={0} step="0.01" value={row.price} onChange={(e) => updateVariantRow(itemId, row.localId, { price: e.target.value })} placeholder="Price" />
-                                                        <span style={{ fontSize: 11, color: '#8ec9ff', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
-                                                          UID: {String(row.whccItemAttributeUIDs || '').trim() || '—'}
-                                                        </span>
                                                         <label className="spl-variant-toggle">
                                                           <input type="radio" name={`compact-default-${itemId}`} checked={row.isDefault} onChange={() => makeVariantDefault(itemId, row.localId)} />
                                                           <span>Default</span>
@@ -3412,7 +3509,8 @@ const SuperAdminPricing: React.FC = () => {
                                                           <span>Active</span>
                                                         </label>
                                                       </div>
-                                                    ))
+                                                    ))}
+                                                    </>
                                                   )}
                                                 </div>
                                               )}

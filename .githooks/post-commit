@@ -1,0 +1,18 @@
+#!/bin/sh
+# Auto-generate release notes after each commit.
+# Writes to server/data/release-notes.json and creates a follow-up commit if it changed.
+# Requires ANTHROPIC_API_KEY in .env.local. Skips silently if key is not set.
+
+# Don't trigger recursively (the chore commit for the JSON file)
+LAST_MSG=$(git log -1 --pretty=%s)
+if [ "$LAST_MSG" = "chore: update release notes" ]; then
+  exit 0
+fi
+
+node server/scripts/generateReleaseNotes.mjs
+
+# If the notes file changed, commit it automatically
+if ! git diff --quiet server/data/release-notes.json; then
+  git add server/data/release-notes.json
+  git commit --no-verify -m "chore: update release notes"
+fi

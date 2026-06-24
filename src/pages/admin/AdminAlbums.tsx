@@ -91,6 +91,24 @@ const AdminAlbums: React.FC = () => {
   const [tagSuggestionsActionId, setTagSuggestionsActionId] = useState<number | null>(null);
   const [tagSuggestionsMessage, setTagSuggestionsMessage] = useState('');
 
+  // Per-album price overrides
+  const [priceOverrides, setPriceOverrides] = useState<{ productSizeId: number; sizeName: string; productName: string; productId: number; price: number }[]>([]);
+  const [overrideDrafts, setOverrideDrafts] = useState<Record<number, string>>({});
+  const [overridesLoading, setOverridesLoading] = useState(false);
+  const [overridesSaving, setOverridesSaving] = useState(false);
+  const [showPriceOverrides, setShowPriceOverrides] = useState(false);
+
+  // Share codes
+  const [shareCodes, setShareCodes] = useState<{ id: number; code: string; label: string | null; createdAt: string; visits: number; orders: number }[]>([]);
+  const [shareCodesLoading, setShareCodesLoading] = useState(false);
+  const [newCodeLabel, setNewCodeLabel] = useState('');
+  const [showShareCodes, setShowShareCodes] = useState(false);
+
+  // Favorites stats
+  const [favStatsAlbum, setFavStatsAlbum] = useState<Album | null>(null);
+  const [favStats, setFavStats] = useState<{ photoId: number; favoriteCount: number; fileName: string }[]>([]);
+  const [favStatsLoading, setFavStatsLoading] = useState(false);
+
   // Load albums from API
   const loadAlbums = async () => {
     try {
@@ -245,6 +263,59 @@ const AdminAlbums: React.FC = () => {
     });
     setShowModal(true);
   };
+  const loadPriceOverrides = async (albumId: number) => {
+    setOverridesLoading(true);
+    try {
+      const overrides = await albumAdminService.getPriceOverrides(albumId);
+      setPriceOverrides(overrides);
+      const drafts: Record<number, string> = {};
+      overrides.forEach(o => { drafts[o.productSizeId] = String(o.price); });
+      setOverrideDrafts(drafts);
+    } catch { /* silent */ }
+    setOverridesLoading(false);
+  };
+
+  const savePriceOverrides = async () => {
+    if (!editingAlbum) return;
+    setOverridesSaving(true);
+    try {
+      const overrides = Object.entries(overrideDrafts)
+        .filter(([, v]) => v !== '' && !isNaN(parseFloat(v)))
+        .map(([k, v]) => ({ productSizeId: Number(k), price: parseFloat(v) }));
+      await albumAdminService.savePriceOverrides(editingAlbum.id, overrides);
+      alert('Price overrides saved!');
+    } catch { alert('Failed to save price overrides.'); }
+    setOverridesSaving(false);
+  };
+
+  const loadShareCodes = async (albumId: number) => {
+    setShareCodesLoading(true);
+    try {
+      const codes = await albumAdminService.getShareCodes(albumId);
+      setShareCodes(codes);
+    } catch { /* silent */ }
+    setShareCodesLoading(false);
+  };
+
+  const createShareCode = async () => {
+    if (!editingAlbum) return;
+    try {
+      await albumAdminService.createShareCode(editingAlbum.id, newCodeLabel || undefined);
+      setNewCodeLabel('');
+      await loadShareCodes(editingAlbum.id);
+    } catch { alert('Failed to create share code.'); }
+  };
+
+  const openFavStats = async (album: Album) => {
+    setFavStatsAlbum(album);
+    setFavStatsLoading(true);
+    try {
+      const stats = await albumAdminService.getFavoriteStats(album.id);
+      setFavStats(stats);
+    } catch { setFavStats([]); }
+    setFavStatsLoading(false);
+  };
+
   const getHiddenAlbumUrl = (albumId: number) => {
     const studioSlug = (editingAlbum as any)?.studioPublicSlug || localStorage.getItem('studioSlug') || '';
     return studioSlug
@@ -587,10 +658,11 @@ const AdminAlbums: React.FC = () => {
                   </div>
 
                   {/* Action buttons */}
-                  <div style={{ padding: '0.65rem 1rem 0.85rem', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', gap: 6 }}>
+                  <div style={{ padding: '0.65rem 1rem 0.85rem', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                     {actionBtn('Edit', '#a78bfa', () => handleEdit(album))}
                     {actionBtn('Photos', '#79c0ff', () => { window.location.href = `/admin/photos?album=${album.id}`; }, 'View Photos')}
                     {actionBtn('Share', '#7ee787', () => { navigator.clipboard.writeText(shareUrl); alert('Link copied!'); }, 'Copy Share Link')}
+                    {actionBtn('Favorites', '#f472b6', () => openFavStats(album), 'View favorited photos')}
                     {pendingCount > 0
                       ? actionBtn(`Tags (${pendingCount})`, '#fbbf24', () => openTagReviewModal(album), 'Review tag suggestions')
                       : actionBtn('Tags', '#4a4a6a', () => openTagReviewModal(album), 'Review tag suggestions')}
@@ -829,10 +901,10 @@ const AdminAlbums: React.FC = () => {
                 </div>
               )}
 
-              {/* ── Share Link ── */}
+              {/* ── Share Links & Referral Tracking ── */}
               {editingAlbum ? (() => {
                 const studioSlug = (editingAlbum as any).studioPublicSlug || localStorage.getItem('studioSlug') || '';
-                const shareUrl = formData.hidden
+                const baseUrl = formData.hidden
                   ? getHiddenAlbumUrl(editingAlbum.id)
                   : studioSlug
                     ? `${window.location.origin}/albums/${editingAlbum.id}?studioSlug=${encodeURIComponent(studioSlug)}`
@@ -840,15 +912,118 @@ const AdminAlbums: React.FC = () => {
                 return (
                   <div style={sectionStyle}>
                     <label style={labelStyle}>Share Link</label>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <input type="text" value={shareUrl} readOnly style={{ ...inputStyle, flex: 1, color: '#a78bfa', fontSize: 12 }} />
-                      <button type="button" onClick={() => navigator.clipboard.writeText(shareUrl).then(() => alert('Link copied!'))} style={inlineAddBtnStyle}>Copy</button>
+                    <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+                      <input type="text" value={baseUrl} readOnly style={{ ...inputStyle, flex: 1, color: '#a78bfa', fontSize: 12 }} />
+                      <button type="button" onClick={() => navigator.clipboard.writeText(baseUrl).then(() => alert('Link copied!'))} style={inlineAddBtnStyle}>Copy</button>
                     </div>
-                    {formData.hidden && <div style={{ fontSize: 11, color: '#6b6b80', marginTop: 4 }}>Only users with this link can view the album.</div>}
+                    {formData.hidden && <div style={{ fontSize: 11, color: '#6b6b80', marginBottom: 8 }}>Only users with this link can view the album.</div>}
+
+                    {/* Referral tracking codes */}
+                    <button
+                      type="button"
+                      style={{ ...suggestionChipStyle, fontSize: 12, padding: '5px 12px', marginBottom: showShareCodes ? 10 : 0 }}
+                      onClick={() => {
+                        if (!showShareCodes) loadShareCodes(editingAlbum.id);
+                        setShowShareCodes(v => !v);
+                      }}
+                    >{showShareCodes ? 'Hide' : 'Track Referrals'}</button>
+
+                    {showShareCodes && (
+                      <div style={{ background: 'rgba(124,92,255,0.06)', border: '1px solid rgba(124,92,255,0.2)', borderRadius: 8, padding: '10px 12px', marginTop: 8 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: '#a78bfa', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Referral Codes</div>
+                        {shareCodesLoading ? (
+                          <div style={{ fontSize: 12, color: '#6b6b80' }}>Loading…</div>
+                        ) : (
+                          <>
+                            {shareCodes.length === 0 && <div style={{ fontSize: 12, color: '#6b6b80', marginBottom: 8 }}>No codes yet. Generate one to track visits and orders from a specific link.</div>}
+                            {shareCodes.map(c => {
+                              const refUrl = `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}ref=${c.code}`;
+                              return (
+                                <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+                                  <span style={{ fontSize: 11, background: 'rgba(0,0,0,0.3)', borderRadius: 4, padding: '2px 8px', color: '#c4b5fd', fontFamily: 'monospace' }}>{c.code}</span>
+                                  {c.label && <span style={{ fontSize: 11, color: '#9ca3af' }}>{c.label}</span>}
+                                  <span style={{ fontSize: 11, color: '#6b7280' }}>{c.visits} visits · {c.orders} orders</span>
+                                  <button type="button" onClick={() => navigator.clipboard.writeText(refUrl).then(() => alert('Referral link copied!'))} style={{ ...suggestionChipStyle, fontSize: 10, padding: '2px 8px' }}>Copy Link</button>
+                                </div>
+                              );
+                            })}
+                            <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                              <input
+                                type="text"
+                                placeholder="Label (e.g. Instagram)"
+                                value={newCodeLabel}
+                                onChange={e => setNewCodeLabel(e.target.value)}
+                                style={{ ...inputStyle, flex: 1, fontSize: 12, padding: '6px 10px' }}
+                              />
+                              <button type="button" onClick={createShareCode} style={inlineAddBtnStyle}>+ New Code</button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })() : (
                 <div style={{ fontSize: 11, color: '#4a4a6a', marginBottom: 8 }}>Share link available after saving.</div>
+              )}
+
+              {/* ── Per-Album Price Overrides ── */}
+              {editingAlbum && (
+                <div style={sectionStyle}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: showPriceOverrides ? 10 : 0 }}>
+                    <label style={labelStyle}>Price Overrides</label>
+                    <button
+                      type="button"
+                      style={{ ...suggestionChipStyle, fontSize: 12, padding: '5px 12px' }}
+                      onClick={() => {
+                        if (!showPriceOverrides) loadPriceOverrides(editingAlbum.id);
+                        setShowPriceOverrides(v => !v);
+                      }}
+                    >{showPriceOverrides ? 'Hide' : 'Edit Prices'}</button>
+                  </div>
+                  {showPriceOverrides && (
+                    <div style={{ background: 'rgba(124,92,255,0.06)', border: '1px solid rgba(124,92,255,0.2)', borderRadius: 8, padding: '10px 12px' }}>
+                      <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 10 }}>Set a price override for specific product sizes in this album. Leave blank to use the default price list price.</div>
+                      {overridesLoading ? (
+                        <div style={{ fontSize: 12, color: '#6b6b80' }}>Loading…</div>
+                      ) : priceOverrides.length === 0 ? (
+                        <div style={{ fontSize: 12, color: '#6b6b80' }}>No overridable sizes found. Add products to this album's price list first.</div>
+                      ) : (
+                        <>
+                          {Object.entries(
+                            priceOverrides.reduce((acc: Record<string, typeof priceOverrides>, o) => {
+                              if (!acc[o.productName]) acc[o.productName] = [];
+                              acc[o.productName].push(o);
+                              return acc;
+                            }, {})
+                          ).map(([productName, sizes]) => (
+                            <div key={productName} style={{ marginBottom: 10 }}>
+                              <div style={{ fontSize: 11, fontWeight: 700, color: '#a78bfa', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{productName}</div>
+                              {sizes.map(o => (
+                                <div key={o.productSizeId} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                                  <span style={{ flex: 1, fontSize: 12, color: '#d1d5db' }}>{o.sizeName}</span>
+                                  <span style={{ fontSize: 11, color: '#6b7280' }}>Default: ${o.price.toFixed(2)}</span>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    placeholder="Override"
+                                    value={overrideDrafts[o.productSizeId] ?? ''}
+                                    onChange={e => setOverrideDrafts(d => ({ ...d, [o.productSizeId]: e.target.value }))}
+                                    style={{ ...inputStyle, width: 90, padding: '4px 8px', fontSize: 12 }}
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                          ))}
+                          <button type="button" disabled={overridesSaving} onClick={savePriceOverrides} style={{ ...inlineAddBtnStyle, fontSize: 12, marginTop: 4 }}>
+                            {overridesSaving ? 'Saving…' : 'Save Overrides'}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
               )}
 
               {/* ── Actions ── */}
@@ -857,6 +1032,42 @@ const AdminAlbums: React.FC = () => {
                 <button type="submit" style={{ padding: '9px 24px', borderRadius: 8, border: 'none', background: 'linear-gradient(135deg,#7c5cff,#6366f1)', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>Save Album</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* Favorites stats modal */}
+      {favStatsAlbum && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div style={{ background: '#16162a', border: '1px solid rgba(124,92,255,0.3)', borderRadius: 16, padding: 24, maxWidth: 520, width: '100%', maxHeight: '80vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: '#fff' }}>Favorited Photos</div>
+                <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 2 }}>{favStatsAlbum.name}</div>
+              </div>
+              <button type="button" onClick={() => setFavStatsAlbum(null)} style={{ background: 'transparent', border: 'none', color: '#9ca3af', fontSize: 20, cursor: 'pointer', lineHeight: 1 }}>×</button>
+            </div>
+            {favStatsLoading ? (
+              <div style={{ color: '#6b7280', fontSize: 14 }}>Loading…</div>
+            ) : favStats.length === 0 ? (
+              <div style={{ color: '#6b7280', fontSize: 14 }}>No favorites yet for this album.</div>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ color: '#9ca3af', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    <th style={{ textAlign: 'left', padding: '6px 0' }}>Photo</th>
+                    <th style={{ textAlign: 'right', padding: '6px 0' }}>Favorites</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {favStats.map(s => (
+                    <tr key={s.photoId} style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                      <td style={{ padding: '7px 0', color: '#e4e4e7' }}>{s.fileName || `Photo #${s.photoId}`}</td>
+                      <td style={{ padding: '7px 0', textAlign: 'right', color: '#f472b6', fontWeight: 700 }}>♥ {s.favoriteCount}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
       )}

@@ -282,7 +282,11 @@ function getDigitalDownloadFileName(entry) {
   return entry.photoFileName || entry.fileName || entry.filename || entry.productName || 'Digital Product';
 }
 
-const renderCustomerReceiptHtml = ({ customerName, order, items, digitalDownloads, customMessage, isUpdate }) => {
+const renderCustomerReceiptHtml = ({ customerName, order, items, digitalDownloads, customMessage, isUpdate, studioBranding = {} }) => {
+  const studioLogoUrl = studioBranding.logoUrl || null;
+  const brandColor = studioBranding.brandColor || '#7cc7ff';
+  const studioName = studioBranding.businessName || studioBranding.studioName || 'Photo Lab';
+  const studioCustomMessage = studioBranding.customEmailMessage || null;
   const discount = resolveDiscountDetails(order);
   // Only show discount code/amount if there is a real discount (amount > 0 and code is not empty)
   let discountCodeRow = '';
@@ -310,13 +314,17 @@ const renderCustomerReceiptHtml = ({ customerName, order, items, digitalDownload
   const computedTax = normalizedAmounts.tax;
   const computedTotal = normalizedAmounts.total;
 
+  const accentBorder = `border:1px solid ${brandColor}44`;
   return `
     <div style="font-family:Arial,sans-serif;background:#0f131a;color:#eaf1fb;max-width:760px;margin:0 auto;padding:20px;border:1px solid #2e3642;border-radius:12px;">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
-        <div>
-          <div style="font-size:14px;color:#9fb0c6;">Photo Lab</div>
-          <div style="font-size:28px;font-weight:700;color:#fff;">Customer Invoice</div>
-          <div style="font-size:13px;color:#9fb0c6;margin-top:6px;">Order #${esc(order.id)} • ${esc(formatDateTime(order.createdAt))}</div>
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding-bottom:16px;border-bottom:2px solid ${brandColor}44;">
+        <div style="display:flex;align-items:center;gap:14px;">
+          ${studioLogoUrl ? `<img src="${esc(studioLogoUrl)}" alt="${esc(studioName)}" style="height:48px;max-width:160px;object-fit:contain;border-radius:6px;" />` : ''}
+          <div>
+            <div style="font-size:14px;color:#9fb0c6;">${esc(studioName)}</div>
+            <div style="font-size:28px;font-weight:700;color:#fff;">Customer Invoice</div>
+            <div style="font-size:13px;color:#9fb0c6;margin-top:6px;">Order #${esc(order.id)} • ${esc(formatDateTime(order.createdAt))}</div>
+          </div>
         </div>
       </div>
 
@@ -329,7 +337,8 @@ const renderCustomerReceiptHtml = ({ customerName, order, items, digitalDownload
             : esc(order.status || 'processing')
         }
       </div>
-      ${customMessage ? `<div style=\"margin-top:10px;font-size:15px;color:#7cc7ff;\"><strong>Message:</strong> ${esc(customMessage)}</div>` : ''}
+      ${studioCustomMessage ? `<div style=\"margin-top:12px;padding:10px 14px;background:rgba(255,255,255,0.04);border-left:3px solid ${brandColor};border-radius:0 6px 6px 0;font-size:14px;color:#d3dceb;\">${esc(studioCustomMessage)}</div>` : ''}
+      ${customMessage ? `<div style=\"margin-top:10px;font-size:15px;color:${brandColor};\"><strong>Message:</strong> ${esc(customMessage)}</div>` : ''}
 
       <table style="width:100%;border-collapse:collapse;margin-top:18px;background:#111722;border:1px solid #303846;border-radius:8px;overflow:hidden;">
         <thead>
@@ -692,9 +701,9 @@ export const orderReceiptService = {
     return true;
   },
 
-  async sendCustomerReceipt({ to, customerName, order, items, digitalDownloads = [], customMessage, isUpdate, replyTo }) {
+  async sendCustomerReceipt({ to, customerName, order, items, digitalDownloads = [], customMessage, isUpdate, replyTo, studioBranding = {} }) {
     if (!isConfigured() || !to) return false;
-    const html = renderCustomerReceiptHtml({ customerName, order, items, digitalDownloads, customMessage, isUpdate });
+    const html = renderCustomerReceiptHtml({ customerName, order, items, digitalDownloads, customMessage, isUpdate, studioBranding });
     const discount = resolveDiscountDetails(order);
     const discountText = discount.hasDiscount
       ? `\nDiscount code: ${discount.code || 'N/A'}${discount.amount > 0 ? `\nDiscount amount: -${currency(discount.amount)}` : ''}`
@@ -710,7 +719,7 @@ export const orderReceiptService = {
         name: mailtrapSenderName,
       },
       to: Array.isArray(to) ? to.map(email => ({ email })) : [{ email: to }],
-      subject: `Photo Lab receipt — Order #${order.id}`,
+      subject: `${studioBranding.businessName || studioBranding.studioName || 'Photo Lab'} receipt — Order #${order.id}`,
       html,
       text: `Order #${order.id}\nStatus: ${order.status || 'processing'}${customMessage ? `\nMessage: ${customMessage}` : ''}\nTotal charged: ${currency(order.totalAmount ?? order.total ?? 0)}\nSubtotal: ${currency(order.subtotal ?? order.sub_total ?? 0)}\nShipping: ${currency(order.shippingCost ?? order.shipping_cost ?? 0)}\nTax: ${currency(order.taxAmount ?? order.tax_amount ?? 0)}${discountText}${digitalDownloads.length ? `\nDigital downloads:\n${digitalDownloads.map((entry) => `- ${getDigitalDownloadFileName(entry)}: ${entry.url}`).join('\n')}` : ''}`,
       ...(replyToObj ? { reply_to: replyToObj } : {}),
@@ -743,6 +752,19 @@ export const orderReceiptService = {
       text: `Order #${order.id}\nStudio: ${studioName || 'Unknown'}\nCustomer: ${customerEmail || 'Unknown'}\nTotal charged: ${currency(order.totalAmount)}\nStudio price total: ${currency(order.studioRevenue)}\nBase cost total: ${currency(order.baseRevenue ?? order.productionCost)}\nCustomer shipping charged: ${currency(order.shippingCost)}\nStudio shipping cost: ${currency(order.studioShippingCost ?? order.shippingCost)}\nOther order costs: ${currency(Math.max(0, Number(order.studioShippingCost ?? order.shippingCost ?? 0) - Number(order.shippingCost ?? 0)))}\nStripe fee: ${currency(order.stripeFeeAmount)}\nGross margin: ${currency((Number(order.studioRevenue || 0) - Number(order.baseRevenue ?? order.productionCost ?? 0) - Math.max(0, Number(order.studioShippingCost ?? order.shippingCost ?? 0) - Number(order.shippingCost ?? 0)) - Number(order.stripeFeeAmount || 0)))}${discountText}${order.orderUrl ? `\nOrder link: ${order.orderUrl}` : ''}`,
       ...(replyToObj ? { reply_to: replyToObj } : {}),
       category: 'Studio Receipt',
+    });
+    return true;
+  },
+
+  async sendRaw({ to, subject, html, text }) {
+    if (!isConfigured() || !to) return false;
+    await mailtrapClient.send({
+      from: { email: mailtrapSenderEmail, name: mailtrapSenderName },
+      to: Array.isArray(to) ? to.map(email => ({ email })) : [{ email: to }],
+      subject,
+      html,
+      text: text || '',
+      category: 'Transactional',
     });
     return true;
   },

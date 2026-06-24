@@ -491,6 +491,25 @@ router.get('/active', async (req, res) => {
       if (effectiveStudioId) {
         const parsedProducts = await getOfferedProductsFromStudioPriceList(effectiveStudioId, album?.priceListId || null);
         if (Array.isArray(parsedProducts)) {
+          // Apply per-album price overrides
+          let overrides = [];
+          try {
+            overrides = await queryRows(
+              `SELECT product_size_id as productSizeId, price FROM album_price_overrides WHERE album_id = $1`,
+              [albumId]
+            );
+          } catch { /* table may not exist yet */ }
+          if (overrides.length > 0) {
+            const overrideMap = new Map(overrides.map(o => [Number(o.productSizeId), Number(o.price)]));
+            for (const product of parsedProducts) {
+              if (Array.isArray(product.sizes)) {
+                for (const size of product.sizes) {
+                  const ov = overrideMap.get(Number(size.id));
+                  if (ov !== undefined) size.price = ov;
+                }
+              }
+            }
+          }
           return res.json(parsedProducts);
         }
       }

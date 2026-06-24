@@ -32,9 +32,12 @@
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:debug": "playwright test --debug",
     "test:e2e:headed": "playwright test --headed",
-    "deploy:azure:appservice": "./scripts/deploy-azure-appservice.sh"
+    "deploy:azure:appservice": "./scripts/deploy-azure-appservice.sh",
+    "release-notes": "node server/scripts/generateReleaseNotes.mjs",
+    "prepare": "git config core.hooksPath .githooks"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.106.0",
     "@azure/storage-blob": "^12.31.0",
     "@hello-pangea/dnd": "^18.0.1",
     "@stripe/react-stripe-js": "^6.1.0",

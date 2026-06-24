@@ -44,7 +44,6 @@ const AdminPriceLists = lazy(() => import('./pages/admin/AdminPriceLists'));
 const AdminPackagesPage = lazy(() => import('./pages/admin/AdminPackages'));
 const AdminConfiguration = lazy(() => import('./pages/admin/AdminConfiguration'));
 const AdminVendorIntegrations = lazy(() => import('./pages/admin/AdminVendorIntegrations'));
-const StudioAdminDashboard = lazy(() => import('./pages/admin/StudioAdminDashboard'));
 const AdminAlbums = lazy(() => import('./pages/admin/AdminAlbums'));
 const AdminPhotos = lazy(() => import('./pages/admin/AdminPhotos'));
 const AdminProducts = lazy(() => import('./pages/admin/AdminProducts'));
@@ -65,6 +64,10 @@ const AdminStudioAdmins = lazy(() => import('./pages/admin/AdminStudioAdmins'));
 const AdminLogin = lazy(() => import('./pages/admin/AdminLogin'));
 const SuperAdminLogin = lazy(() => import('./pages/admin/SuperAdminLogin'));
 const CustomerAccount = lazy(() => import('./pages/CustomerAccount'));
+const FavoritePhotos = lazy(() => import('./pages/FavoritePhotos'));
+const ReleaseNotes = lazy(() => import('./pages/admin/ReleaseNotes'));
+const SuperAdminReleaseNotes = lazy(() => import('./pages/admin/SuperAdminReleaseNotes'));
+const RosterManagement = lazy(() => import('./pages/admin/RosterManagement'));
 
 
 
@@ -91,6 +94,7 @@ function App() {
                 <Route path="/checkout" element={<Checkout />} />
                 <Route path="/orders" element={<Orders />} />
                 <Route path="/account" element={<CustomerAccount />} />
+                <Route path="/favorites" element={<FavoritePhotos />} />
                 <Route path="/search" element={<SearchPage />} />
                 <Route path="/studio/:studioSlug" element={<StudioPublicPage />} />
                 <Route path="/s/:studioSlug/albums/:albumId" element={<AlbumDetails />} />
@@ -101,7 +105,6 @@ function App() {
                 <Route path="/super-admin" element={<AdminProtectedRoute><SuperAdminDashboard /></AdminProtectedRoute>} />
                 <Route path="/super-admin-pricing" element={<AdminProtectedRoute><SuperAdminPricing /></AdminProtectedRoute>} />
                 <Route path="/admin/super-pricing" element={<AdminProtectedRoute><SuperAdminPricing /></AdminProtectedRoute>} />
-                <Route path="/admin/studio-dashboard" element={<AdminProtectedRoute><StudioAdminDashboard /></AdminProtectedRoute>} />
                 <Route path="/admin/dashboard" element={<AdminProtectedRoute><AdminDashboard /></AdminProtectedRoute>} />
                 <Route path="/admin/analytics" element={<Navigate to="/admin/dashboard" replace />} />
                 <Route path="/admin/albums" element={<AdminProtectedRoute><AdminAlbums /></AdminProtectedRoute>} />
@@ -136,6 +139,9 @@ function App() {
                 {/* Super Admin: All Tickets */}
                 <Route path="/admin/tickets" element={<AdminProtectedRoute><AdminTickets /></AdminProtectedRoute>} />
                 <Route path="/admin/studio-admins" element={<AdminProtectedRoute><AdminStudioAdmins /></AdminProtectedRoute>} />
+                <Route path="/admin/whats-new" element={<AdminProtectedRoute><ReleaseNotes /></AdminProtectedRoute>} />
+                <Route path="/admin/release-notes" element={<AdminProtectedRoute><SuperAdminReleaseNotes /></AdminProtectedRoute>} />
+                <Route path="/admin/roster" element={<AdminProtectedRoute><RosterManagement /></AdminProtectedRoute>} />
                 <Route path="/admin/subscription" element={<AdminProtectedRoute><AdminSubscription /></AdminProtectedRoute>} />
                 <Route path="/admin/subscription-gateway" element={<AdminProtectedRoute><AdminSubscriptionGateway /></AdminProtectedRoute>} />
                 <Route path="/admin/stripe" element={<AdminProtectedRoute><AdminStripe /></AdminProtectedRoute>} />

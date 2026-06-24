@@ -63,6 +63,10 @@ export const superPriceListService = {
     const res = await api.post(`/super-price-lists/${listId}/sync-whcc-costs`, { onlyIfZero });
     return res.data;
   },
+  async fetchWhccLiveCost(listId: number, params: { productUID: number; productNodeIDs?: number[]; itemAttributeUIDs?: number[]; quantity?: number }) {
+    const res = await api.post(`/super-price-lists/${listId}/whcc-live-cost`, params);
+    return res.data as { unitCost: number | null; lineItems: { description: string; price: number; quantity: number; isShipping: boolean }[]; confirmationId: string | null; sandbox: boolean };
+  },
   async fillMissingWhccNodeIds(listId: number) {
     const res = await api.post(`/super-price-lists/${listId}/fill-missing-whcc-node-ids`);
     return res.data;

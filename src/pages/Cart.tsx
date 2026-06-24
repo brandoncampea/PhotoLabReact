@@ -707,7 +707,9 @@ const Cart: React.FC = () => {
     const albumDetails = effectiveAlbumId ? albumDetailsById[effectiveAlbumId] : undefined;
     const isDigital = !!(resolvedProduct?.isDigital || item.isDigital || item.digitalDownloadScope);
     const editorProvider = String((resolvedProduct as any)?.editorProvider || (item as any)?.editorProvider || '').trim().toLowerCase() || null;
-    const requiresWhccEditor = Boolean((resolvedProduct as any)?.requiresWhccEditor || (item as any)?.requiresWhccEditor || editorProvider === 'whcc');
+    const requiresWhccEditor = resolvedProduct
+      ? Boolean((resolvedProduct as any)?.requiresWhccEditor)
+      : Boolean((item as any)?.requiresWhccEditor || editorProvider === 'whcc');
     const whccEditorProductId = String((item as any)?.whccEditorProductId || (resolvedProduct as any)?.whccEditorProductId || '').trim() || null;
     const whccEditorDesignId = String((item as any)?.whccEditorDesignId || (resolvedProduct as any)?.whccEditorDesignId || '').trim() || null;
 
@@ -829,6 +831,7 @@ const Cart: React.FC = () => {
       return latest ? { ...item, cropData: latest.cropData } : item;
     });
     const whccQuote = isPassThroughMode && shippingOption === 'direct' && shippingQuote?.source === 'whcc-live' ? shippingQuote : null;
+    const pendingRefCode = localStorage.getItem('albumRefCode') || undefined;
     const orderResult = await orderService.createOrder(
       itemsWithCrop,
       shippingAddress,
@@ -846,7 +849,8 @@ const Cart: React.FC = () => {
       },
       undefined,
       whccQuote ? whccQuote.studioShippingCost : undefined,
-      whccQuote ? whccQuote.studioShippingDelta : undefined
+      whccQuote ? whccQuote.studioShippingDelta : undefined,
+      pendingRefCode
     );
 
     // If we have an order id and paymentIntentId, update the Stripe fee
@@ -861,6 +865,7 @@ const Cart: React.FC = () => {
 
     // Removed debug logs
 
+    localStorage.removeItem('albumRefCode');
     clearCart();
     setShowPaymentModal(false);
     setActivePaymentIntent(null);
@@ -998,6 +1003,7 @@ const Cart: React.FC = () => {
       });
 
       const whccQuoteTest = isPassThroughMode && shippingOption === 'direct' && shippingQuote?.source === 'whcc-live' ? shippingQuote : null;
+      const testRefCode = localStorage.getItem('albumRefCode') || undefined;
       await orderService.createOrder(
         itemsWithCrop,
         shippingAddress,
@@ -1015,7 +1021,8 @@ const Cart: React.FC = () => {
         },
         true,
         whccQuoteTest ? whccQuoteTest.studioShippingCost : undefined,
-        whccQuoteTest ? whccQuoteTest.studioShippingDelta : undefined
+        whccQuoteTest ? whccQuoteTest.studioShippingDelta : undefined,
+        testRefCode
       );
 
       clearCart();

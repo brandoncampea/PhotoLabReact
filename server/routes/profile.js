@@ -51,6 +51,8 @@ const ensureProfileConfigTable = async () => {
     await query(`IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='profile_config' AND COLUMN_NAME='facebook_url') ALTER TABLE profile_config ADD facebook_url NVARCHAR(500) NULL`);
     await query(`IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='profile_config' AND COLUMN_NAME='timezone') ALTER TABLE profile_config ADD timezone NVARCHAR(100) NULL`);
     await query(`IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='profile_config' AND COLUMN_NAME='custom_domain') ALTER TABLE profile_config ADD custom_domain NVARCHAR(255) NULL`);
+    await query(`IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='profile_config' AND COLUMN_NAME='brand_color') ALTER TABLE profile_config ADD brand_color NVARCHAR(20) NULL`);
+    await query(`IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='profile_config' AND COLUMN_NAME='custom_email_message') ALTER TABLE profile_config ADD custom_email_message NVARCHAR(MAX) NULL`);
 
     // Legacy schema could have CHECK constraints forcing id=1. Drop all CHECK constraints on this table.
     await query(`
@@ -115,6 +117,8 @@ const ensureProfileConfigTable = async () => {
   return true;
 };
 
+ensureProfileConfigTable().catch(err => console.error('[profile] schema migration error:', err));
+
 // Get profile config (studio-specific, super admin can specify studioId)
 router.get('/', authRequired, async (req, res) => {
   try {
@@ -137,7 +141,8 @@ router.get('/', authRequired, async (req, res) => {
                email, receive_order_notifications as receiveOrderNotifications,
                logo_url as logoUrl,
                instagram_url as instagramUrl, facebook_url as facebookUrl,
-               timezone, custom_domain as customDomain
+               timezone, custom_domain as customDomain,
+               brand_color as brandColor, custom_email_message as customEmailMessage
         FROM profile_config
         WHERE studio_id = $1
       `, [studioId]);
@@ -158,7 +163,8 @@ router.get('/', authRequired, async (req, res) => {
                  email, receive_order_notifications as receiveOrderNotifications,
                  logo_url as logoUrl,
                  instagram_url as instagramUrl, facebook_url as facebookUrl,
-                 timezone, custom_domain as customDomain
+                 timezone, custom_domain as customDomain,
+                 brand_color as brandColor, custom_email_message as customEmailMessage
           FROM profile_config
           WHERE studio_id = $1
         `, [studioId]);
@@ -190,7 +196,7 @@ router.put('/', authRequired, async (req, res) => {
     if (!studioId) {
       return res.status(403).json({ error: 'Studio ID required' });
     }
-    const { ownerName, businessName, email, receiveOrderNotifications, logoUrl, instagramUrl, facebookUrl, customDomain } = req.body;
+    const { ownerName, businessName, email, receiveOrderNotifications, logoUrl, instagramUrl, facebookUrl, customDomain, brandColor, customEmailMessage } = req.body;
     const timezone = normalizeTimezone(req.body?.timezone);
     
     // Validate custom domain if provided (basic validation)
@@ -202,6 +208,9 @@ router.put('/', authRequired, async (req, res) => {
       }
     }
     const finalCustomDomain = customDomain ? customDomain.trim() : null;
+
+    const finalBrandColor = brandColor ? String(brandColor).trim() : null;
+    const finalCustomEmailMessage = customEmailMessage ? String(customEmailMessage).trim() : null;
 
     await query(`
       IF EXISTS (SELECT 1 FROM profile_config WHERE studio_id = $1)
@@ -216,23 +225,25 @@ router.put('/', authRequired, async (req, res) => {
             facebook_url = $8,
             timezone = $9,
             custom_domain = $10,
+            brand_color = $11,
+            custom_email_message = $12,
             updated_at = CURRENT_TIMESTAMP
         WHERE studio_id = $1
       END
       ELSE
       BEGIN
-        INSERT INTO profile_config (id, studio_id, owner_name, business_name, email, receive_order_notifications, logo_url, instagram_url, facebook_url, timezone, custom_domain)
-        SELECT ISNULL(MAX(id), 0) + 1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
+        INSERT INTO profile_config (id, studio_id, owner_name, business_name, email, receive_order_notifications, logo_url, instagram_url, facebook_url, timezone, custom_domain, brand_color, custom_email_message)
+        SELECT ISNULL(MAX(id), 0) + 1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
         FROM profile_config
       END
-    `, [studioId, ownerName, businessName, email, !!receiveOrderNotifications, logoUrl, instagramUrl || null, facebookUrl || null, timezone, finalCustomDomain]);
+    `, [studioId, ownerName, businessName, email, !!receiveOrderNotifications, logoUrl, instagramUrl || null, facebookUrl || null, timezone, finalCustomDomain, finalBrandColor, finalCustomEmailMessage]);
 
     const profile = await queryRow(`
         SELECT id, owner_name as ownerName, business_name as businessName,
                email, receive_order_notifications as receiveOrderNotifications,
                logo_url as logoUrl,
                instagram_url as instagramUrl, facebook_url as facebookUrl,
-               timezone
+               timezone, brand_color as brandColor, custom_email_message as customEmailMessage
         FROM profile_config
         WHERE studio_id = $1
       `, [studioId]);
@@ -246,6 +257,8 @@ router.put('/', authRequired, async (req, res) => {
       instagramUrl: instagramUrl || null,
       facebookUrl: facebookUrl || null,
       timezone,
+      brandColor: finalBrandColor,
+      customEmailMessage: finalCustomEmailMessage,
       ...(profile || {}),
     }));
   } catch (error) {

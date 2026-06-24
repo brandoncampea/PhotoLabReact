@@ -16,6 +16,7 @@ import { usePackageBuilder } from '../contexts/PackageBuilderContext';
 import PackageProgressBar from '../components/PackageProgressBar';
 import './AlbumDetails.css';
 import { Helmet } from 'react-helmet-async';
+import PhotoOrderPanel from '../components/PhotoOrderPanel';
 
 
 type ProductWithMatch = Product & {
@@ -108,8 +109,26 @@ const AlbumDetails: React.FC = () => {
   const autoBuyAttemptedRef = useRef(false);
   const [orderRowToCrop, setOrderRowToCrop] = useState<ProductOrderRow | null>(null);
 
-
-
+  // Favorites
+  const [favToken, setFavToken] = useState<string>(() => {
+    const fromQuery = new URLSearchParams(window.location.search).get('favToken');
+    if (fromQuery) {
+      localStorage.setItem('favToken', fromQuery);
+      return fromQuery;
+    }
+    const stored = localStorage.getItem('favToken');
+    if (stored) return stored;
+    const newToken = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+    localStorage.setItem('favToken', newToken);
+    return newToken;
+  });
+  const [favorites, setFavorites] = useState<Set<number>>(new Set());
+  const [favTogglingId, setFavTogglingId] = useState<number | null>(null);
+  const [showFavOnly, setShowFavOnly] = useState(false);
+  const [showFavEmailPrompt, setShowFavEmailPrompt] = useState(false);
+  const [favEmail, setFavEmail] = useState('');
+  const [favEmailSending, setFavEmailSending] = useState(false);
+  const [favEmailSent, setFavEmailSent] = useState(false);
 
 
 
@@ -136,7 +155,8 @@ const AlbumDetails: React.FC = () => {
 
   const filteredPhotos = useMemo(() => {
     const query = photoQuery.trim().toLowerCase();
-    if (!query) return photos;
+    if (!query && !showFavOnly) return photos;
+    if (!query && showFavOnly) return photos.filter(p => favorites.has(p.id));
 
     return photos.filter((photo) => {
       const fileName = String(photo.fileName || '').toLowerCase();
@@ -181,8 +201,8 @@ const AlbumDetails: React.FC = () => {
       }
 
       return false;
-    });
-  }, [photos, photoQuery, metadataFilter]);
+    }).filter(photo => !showFavOnly || favorites.has(photo.id));
+  }, [photos, photoQuery, metadataFilter, showFavOnly, favorites]);
 
   const selectedPhoto = useMemo(
     () => filteredPhotos.find((p) => p.id === selectedPhotoId) || null,
@@ -228,6 +248,19 @@ const AlbumDetails: React.FC = () => {
           albumRes.data?.name || '',
           Number((albumRes.data as any)?.studioId || 0) || undefined
         );
+
+        // Load favorites for this session
+        try {
+          const favRes = await api.get(`/albums/${id}/favorites?token=${encodeURIComponent(favToken)}`);
+          setFavorites(new Set((favRes.data.favorites || []).map(Number)));
+        } catch { /* non-fatal */ }
+
+        // Track referral visit if ?ref= is in URL
+        const refCode = new URLSearchParams(window.location.search).get('ref');
+        if (refCode) {
+          localStorage.setItem('albumRefCode', refCode);
+          api.post(`/albums/${id}/track-visit`, { code: refCode }).catch(() => {});
+        }
       } catch {
         setError('Failed to load album');
       } finally {
@@ -252,6 +285,31 @@ const AlbumDetails: React.FC = () => {
     const url = new URL(window.location.href);
     url.searchParams.set('photo', String(photo.id));
     navigate(url.pathname + url.search, { replace: false });
+  };
+
+  const toggleFavorite = async (photoId: number) => {
+    if (!album || favTogglingId === photoId) return;
+    setFavTogglingId(photoId);
+    try {
+      const res = await api.post(`/albums/${album.id}/favorites`, { token: favToken, photoId });
+      setFavorites(prev => {
+        const next = new Set(prev);
+        if (res.data.favorited) next.add(photoId);
+        else next.delete(photoId);
+        return next;
+      });
+    } catch { /* non-fatal */ }
+    setFavTogglingId(null);
+  };
+
+  const saveFavoritesEmail = async () => {
+    if (!album || !favEmail.trim()) return;
+    setFavEmailSending(true);
+    try {
+      await api.post(`/albums/${album.id}/favorites/save-email`, { token: favToken, email: favEmail.trim() });
+      setFavEmailSent(true);
+    } catch { /* non-fatal */ }
+    setFavEmailSending(false);
   };
 
   const handleSubmitTagSuggestion = async () => {
@@ -1466,8 +1524,33 @@ const AlbumDetails: React.FC = () => {
             <option value="dateTaken">Date Taken</option>
           </select>
         </div>
-        <div style={{ marginTop: 8, fontSize: 12, color: '#aaa' }}>
-          Showing {filteredPhotos.length} of {photos.length} photo{photos.length === 1 ? '' : 's'}
+        <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+          <span style={{ fontSize: 12, color: '#aaa' }}>
+            Showing {filteredPhotos.length} of {photos.length} photo{photos.length === 1 ? '' : 's'}
+          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button
+              type="button"
+              onClick={() => setShowFavOnly(v => !v)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 20,
+                border: `1px solid ${showFavOnly ? '#f472b6' : 'rgba(244,114,182,0.3)'}`,
+                background: showFavOnly ? 'rgba(244,114,182,0.15)' : 'transparent',
+                color: showFavOnly ? '#f472b6' : '#9ca3af', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+              }}
+            >
+              ♥ {favorites.size > 0 ? `${favorites.size} Saved` : 'Favorites'}
+            </button>
+            {favorites.size > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowFavEmailPrompt(true)}
+                style={{ padding: '5px 12px', borderRadius: 20, border: '1px solid rgba(123,97,255,0.4)', background: 'rgba(123,97,255,0.1)', color: '#a78bfa', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+              >
+                Save & Share
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1517,6 +1600,23 @@ const AlbumDetails: React.FC = () => {
                       />
                     );
                   })()}
+                  {/* Heart / favorite button */}
+                  <button
+                    type="button"
+                    onClick={e => { e.stopPropagation(); toggleFavorite(photo.id); }}
+                    disabled={favTogglingId === photo.id}
+                    style={{
+                      position: 'absolute', bottom: 6, right: 6, zIndex: 10,
+                      width: 28, height: 28, borderRadius: '50%', border: 'none',
+                      background: favorites.has(photo.id) ? 'rgba(244,114,182,0.9)' : 'rgba(0,0,0,0.5)',
+                      color: favorites.has(photo.id) ? '#fff' : '#f472b6',
+                      fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      transition: 'background 0.15s',
+                    }}
+                    aria-label={favorites.has(photo.id) ? 'Remove from favorites' : 'Add to favorites'}
+                  >
+                    {favorites.has(photo.id) ? '♥' : '♡'}
+                  </button>
                   {hasPlayers && (
                     <div
                       style={{
@@ -1561,644 +1661,21 @@ const AlbumDetails: React.FC = () => {
                 </div>
                 {/* Inline order panel below selected photo, spanning all columns */}
                 {isSelected && (
-                  <div
-                    style={{
-                      gridColumn: '1 / -1',
-                      margin: '0 0 24px 0',
-                      border: '2px solid #7b61ff',
-                      borderRadius: 12,
-                      padding: 18,
-                      background: '#18162a',
-                      boxShadow: '0 4px 24px 0 rgba(123,97,255,0.10)',
-                      width: '100%',
-                      maxWidth: '100%',
-                      boxSizing: 'border-box',
-                      zIndex: 2,
-                      display: 'block',
-                      position: 'relative',
+                  <PhotoOrderPanel
+                    photo={photo}
+                    albumId={Number(album.id)}
+                    albumName={String(album?.name || '')}
+                    studioId={Number((album as any)?.studioId || 0) || undefined}
+                    albumCoverImageUrl={String((album as any)?.coverImageUrl || '').trim() || undefined}
+                    products={products}
+                    albumPhotos={photos}
+                    albumPurchaseEnabled={album?.albumPurchaseEnabled !== false}
+                    onClose={() => {
+                      const url = new URL(window.location.href);
+                      url.searchParams.delete('photo');
+                      navigate(url.pathname + url.search, { replace: false });
                     }}
-                  >
-                    {/* Close (X) button */}
-                    <button
-                      aria-label="Close order panel"
-                      onClick={() => {
-                        const url = new URL(window.location.href);
-                        url.searchParams.delete('photo');
-                        navigate(url.pathname + url.search, { replace: false });
-                      }}
-                      style={{
-                        position: 'absolute',
-                        top: 10,
-                        right: 14,
-                        background: 'transparent',
-                        border: 'none',
-                        color: '#b9aaff',
-                        fontSize: 22,
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        zIndex: 10,
-                        lineHeight: 1,
-                        padding: 0,
-                      }}
-                    >
-                      ×
-                    </button>
-                    <h3 style={{ marginTop: 0, marginBottom: 8, fontSize: 20, color: '#fff', textAlign: 'center' }}>Order this photo</h3>
-                    {/* Enlarged photo preview */}
-                    {selectedPhoto && (
-                      <div style={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', marginBottom: 18 }}>
-                        <div style={{ width: 400, height: 267, maxWidth: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', background: '#18162a', borderRadius: 10, boxShadow: '0 2px 12px 0 rgba(123,97,255,0.10)', overflow: 'hidden' }}>
-                          {(() => {
-                            const studioId = (album as any)?.studioId || (album as any)?.studio_id || (photos.length > 0 ? (photos[0] as any)?.studioId || (photos[0] as any)?.studio_id : undefined);
-                            return (
-                              <WatermarkedImage
-                                src={`/api/photos/${selectedPhoto.id}/asset?variant=thumbnail`}
-                                alt={selectedPhoto.fileName}
-                                style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
-                                studioId={studioId}
-                                lazy={false}
-                              />
-                            );
-                          })()}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Package builder CTA — shown when a package is active */}
-                    {packageBuilder.isActive && packageBuilder.currentSlot && (
-                      <div style={{
-                        margin: '0 auto 16px auto',
-                        maxWidth: 540,
-                        border: '2px solid #7b61ff',
-                        borderRadius: 12,
-                        padding: '12px 14px',
-                        background: 'rgba(123, 97, 255, 0.1)',
-                        boxShadow: '0 0 20px rgba(123, 97, 255, 0.18)',
-                      }}>
-                        <div style={{ fontSize: 11, color: '#8d81ff', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>
-                          📦 {packageBuilder.activePackage?.name}
-                        </div>
-                        <div style={{ fontSize: 13, color: '#c7bcff', marginBottom: 10 }}>
-                          Slot {packageBuilder.currentSlotIndex + 1} of {packageBuilder.slots.length}:{' '}
-                          <strong style={{ color: '#fff' }}>
-                            {packageBuilder.currentSlot.sizeName
-                              ? `${packageBuilder.currentSlot.sizeName} ${packageBuilder.currentSlot.productName}`
-                              : packageBuilder.currentSlot.productName}
-                          </strong>
-                        </div>
-                        <button
-                          className="btn btn-primary"
-                          onClick={handleUsePhotoForPackage}
-                          style={{ width: '100%', fontWeight: 700, fontSize: 15, padding: '10px 20px', borderRadius: 12, marginBottom: 8 }}
-                        >
-                          {packageBuilder.currentSlot.isDigital ? '✓ ' : ''}
-                          Use this photo for {packageBuilder.currentSlot.sizeName || packageBuilder.currentSlot.productName}
-                          {!packageBuilder.currentSlot.isDigital && ' →'}
-                        </button>
-                        {/* Mini slot progress pills */}
-                        {packageBuilder.slots.length > 1 && (
-                          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 8 }}>
-                            {packageBuilder.slots.map((slot, i) => (
-                              <span
-                                key={i}
-                                style={{
-                                  fontSize: 11,
-                                  padding: '2px 9px',
-                                  borderRadius: 999,
-                                  background: slot.filled
-                                    ? 'rgba(121, 210, 121, 0.13)'
-                                    : i === packageBuilder.currentSlotIndex
-                                    ? 'rgba(123, 97, 255, 0.22)'
-                                    : 'rgba(255,255,255,0.04)',
-                                  border: `1px solid ${slot.filled ? '#79d279' : i === packageBuilder.currentSlotIndex ? '#7b61ff' : '#3a3656'}`,
-                                  color: slot.filled ? '#79d279' : i === packageBuilder.currentSlotIndex ? '#c7bcff' : '#555',
-                                  cursor: 'default',
-                                }}
-                              >
-                                {slot.filled ? '✓ ' : i === packageBuilder.currentSlotIndex ? '→ ' : ''}
-                                {slot.sizeName || slot.productName}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                        <div style={{ borderTop: '1px solid rgba(123, 97, 255, 0.2)', paddingTop: 8, fontSize: 12, color: '#555', textAlign: 'center' }}>
-                          — or order individually below —
-                        </div>
-                      </div>
-                    )}
-
-                    <div
-                      style={{
-                        margin: '0 auto 16px auto',
-                        maxWidth: 540,
-                        border: '1px solid #3a3656',
-                        borderRadius: 10,
-                        padding: 12,
-                        background: '#141320',
-                      }}
-                    >
-                      <button
-                        onClick={() => setTagPanelOpen(v => !v)}
-                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: 0, gap: 8 }}
-                      >
-                        <span style={{ fontWeight: 700, color: '#ddd7ff', fontSize: 13 }}>🏷️ Help tag this photo</span>
-                        <span style={{ color: '#6b6b80', fontSize: 11, transition: 'transform 0.18s', display: 'inline-block', transform: tagPanelOpen ? 'rotate(180deg)' : 'none' }}>▼</span>
-                      </button>
-                      {tagPanelOpen && (
-                        <div style={{ marginTop: 10 }}>
-                          <div style={{ fontSize: 12, color: '#aaa', marginBottom: 10 }}>
-                            Know the player in this photo? Log in and submit a name for studio review.
-                          </div>
-                          {!user && (
-                            <div style={{ marginBottom: 10, fontSize: 12, color: '#cbd5e1' }}>
-                              You must be logged in to suggest tags.{' '}
-                              <Link to="/login" style={{ color: '#9f7aea', fontWeight: 700 }}>Log in</Link>
-                            </div>
-                          )}
-                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                            <input
-                              type="text"
-                              value={tagSuggestionName}
-                              onChange={(e) => setTagSuggestionName(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  e.preventDefault();
-                                  handleSubmitTagSuggestion();
-                                }
-                              }}
-                              disabled={!user}
-                              placeholder="Enter player name"
-                              style={{
-                                flex: '1 1 200px',
-                                padding: '8px 10px',
-                                borderRadius: 6,
-                                border: '1px solid #3a3656',
-                                background: '#10101a',
-                                color: '#fff',
-                                fontSize: 13,
-                              }}
-                            />
-                            <button
-                              type="button"
-                              className="btn btn-primary"
-                              disabled={!user || tagSuggestionSubmitting}
-                              onClick={handleSubmitTagSuggestion}
-                              style={{ fontSize: 13, padding: '8px 14px' }}
-                            >
-                              {tagSuggestionSubmitting ? 'Submitting...' : 'Submit Tag'}
-                            </button>
-                          </div>
-                          {!!tagSuggestionMessage && (
-                            <div style={{ marginTop: 8, fontSize: 12, color: tagSuggestionMessage.toLowerCase().includes('failed') || tagSuggestionMessage.toLowerCase().includes('error') ? '#ff9a9a' : '#79d279' }}>
-                              {tagSuggestionMessage}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    {addMessage && <div style={{ marginBottom: 8, color: addMessage.includes('Failed') ? '#ff9a9a' : '#79d279', textAlign: 'center' }}>{addMessage}</div>}
-                    <div style={{ marginBottom: 12 }}>
-                      <input
-                        type="text"
-                        placeholder="Filter products by name or size..."
-                        value={recommendationFilter}
-                        onChange={e => setRecommendationFilter(e.target.value)}
-                        style={{ padding: 8, width: '100%', borderRadius: 6, border: '1px solid #3a3656', background: '#141320', color: '#fff' }}
-                      />
-                    </div>
-                    {orderedProducts.length === 0 ? (
-                      <div style={{ color: '#999', textAlign: 'center' }}>No products available for this album.</div>
-                    ) : (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                        {/* Digital Products Section */}
-                        {productsBySection.digital.length > 0 && (
-                          <div>
-                            <h4 style={{ marginTop: 0, marginBottom: 10, color: '#7b61ff', fontSize: 14, fontWeight: 600 }}>Digital</h4>
-                            <div style={{ display: 'grid', gap: 8 }}>
-                              {productsBySection.digital.map((product) => {
-                                const sizeGroups = getRowsGroupedBySize(product);
-                                return (
-                                  <div key={product.id} style={{ display: 'grid', gap: 6 }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                                      <strong>{product.name}</strong>
-                                      <span className="badge">Digital</span>
-                                      {getDigitalScope(product) === 'album' && <span className="badge" style={{ background: '#2f5dff' }}>Full Album</span>}
-                                    </div>
-                                    {sizeGroups.length > 0 ? sizeGroups.map((group) => {
-                                      const hasChildVariants = group.rows.length > 1 || group.rows.some((row) => !!getVariantLabel(row));
-
-                                      if (!hasChildVariants) {
-                                        const row = group.rows[0];
-                                        const rowKey = row.key;
-                                        return (
-                                          <div
-                                            key={group.key}
-                                            className="order-product-row"
-                                            style={{
-                                              display: 'flex',
-                                              flexDirection: 'row',
-                                              alignItems: 'center',
-                                              border: '1px solid #232036',
-                                              borderRadius: 6,
-                                              padding: '8px 10px',
-                                              background: '#232036',
-                                              gap: 10,
-                                              flexWrap: 'wrap',
-                                            }}
-                                          >
-                                            <div className="order-size-cell">
-                                              <div style={{ fontSize: 12, color: '#aaa' }}>{group.sizeLabel}</div>
-                                              {!!product.requiresWhccEditor && (
-                                                <div style={{ fontSize: 11, color: '#9fb2ea', marginTop: 4 }}>
-                                                  {getWhccSelectionHint(product)}
-                                                </div>
-                                              )}
-                                            </div>
-                                            <div
-                                              className="order-price-cell"
-                                              style={{
-                                                minWidth: 90,
-                                                textAlign: 'right',
-                                                fontWeight: 700,
-                                                flex: '0 0 auto',
-                                                width: 'auto',
-                                              }}
-                                            >
-                                              ${Number(row.price || 0).toFixed(2)}
-                                            </div>
-                                            <button
-                                              className="btn btn-primary btn-sm order-add-cart-btn"
-                                              disabled={!row.size || addingKey === rowKey}
-                                              onClick={() => handleAddToCart(product, row.size, row)}
-                                              style={{
-                                                fontSize: 'clamp(13px, 3vw, 16px)',
-                                                padding: 'clamp(7px, 2vw, 12px) clamp(18px, 5vw, 28px)',
-                                                borderRadius: 24,
-                                                minWidth: 110,
-                                                width: 'auto',
-                                                whiteSpace: 'nowrap',
-                                                fontWeight: 700,
-                                                boxShadow: '0 2px 8px 0 rgba(123,97,255,0.10)',
-                                                marginLeft: 4,
-                                                letterSpacing: 0.1,
-                                                flex: '1 1 100%',
-                                                maxWidth: '100%',
-                                                marginTop: 8,
-                                              }}
-                                            >
-                                              {addingKey === rowKey ? 'Adding...' : (product.requiresWhccEditor ? 'Select Photos' : 'Add to Cart')}
-                                            </button>
-                                          </div>
-                                        );
-                                      }
-
-                                      return (
-                                        <div
-                                          key={group.key}
-                                          className="order-product-row order-size-group"
-                                          style={{
-                                            border: '1px solid #1f1c33',
-                                            borderRadius: 6,
-                                            padding: '6px 8px',
-                                            background: '#29264a',
-                                            display: 'grid',
-                                            gap: 6,
-                                          }}
-                                        >
-                                          <div className="order-size-group-label" style={{ fontSize: 12, color: '#aaa', fontWeight: 700 }}>{group.sizeLabel}</div>
-                                          <div className="order-size-group-children" style={{ display: 'grid', gap: 6, paddingLeft: 10, borderLeft: '2px solid #3c3568' }}>
-                                            {group.rows.map((row) => {
-                                              const rowKey = row.key;
-                                              return (
-                                                <div key={rowKey} className="order-variant-row">
-                                                  <div className="order-variant-name" style={{ fontSize: 12, color: '#bdb7ee' }}>{getVariantLabel(row) || 'Default'}</div>
-                                                  <div className="order-variant-price" style={{ minWidth: 90, textAlign: 'right', fontWeight: 700 }}>${Number(row.price || 0).toFixed(2)}</div>
-                                                  <button
-                                                    className="btn btn-primary btn-sm order-variant-add-btn"
-                                                    disabled={!row.size || addingKey === rowKey}
-                                                    onClick={() => handleAddToCart(product, row.size, row)}
-                                                    style={{ minWidth: 110, fontWeight: 700 }}
-                                                  >
-                                                    {addingKey === rowKey ? 'Adding...' : (product.requiresWhccEditor ? 'Select Photos' : 'Add to Cart')}
-                                                  </button>
-                                                </div>
-                                              );
-                                            })}
-                                          </div>
-                                          {!!product.requiresWhccEditor && (
-                                            <div style={{ fontSize: 11, color: '#9fb2ea' }}>
-                                              {getWhccSelectionHint(product)}
-                                            </div>
-                                          )}
-                                        </div>
-                                      );
-                                    }) : (
-                                      <div style={{ color: '#aaa', fontSize: 12 }}>No size available</div>
-                                    )}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
-                        {/* Recommended Products Section */}
-                        {productsBySection.recommended.length > 0 && (
-                          <div>
-                            <h4 style={{ marginTop: 0, marginBottom: 10, color: '#7b61ff', fontSize: 14, fontWeight: 600 }}>Recommended</h4>
-                            <div style={{ display: 'grid', gap: 8 }}>
-                              {recommendedGrouped.map(({ category, products }) => (
-                                <details key={category} open style={{ border: '1px solid #232036', borderRadius: 8, padding: '6px 8px', background: 'rgba(123, 97, 255, 0.05)' }}>
-                                  <summary style={{ cursor: 'pointer', fontSize: 13, color: '#8d81ff', fontWeight: 700 }}>
-                                    {category}
-                                  </summary>
-                                  <div style={{ display: 'grid', gap: 8, marginTop: 6 }}>
-                                    {products.map(({ name, items }) => (
-                                      <div key={`${category}-${name}`} style={{ border: '1px solid #232036', borderRadius: 6, padding: '6px 8px', background: '#232036' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 4 }}>
-                                          <ProductImageHover imageUrl={items[0]?.imageUrl} name={name} />
-                                          <strong>{name}</strong>
-                                          <span className="badge" style={{ background: '#2e2a52' }}>Recommended</span>
-                                        </div>
-                                        <div style={{ display: 'grid', gap: 6 }}>
-                                          {items.map((product) => {
-                                            const sizeGroups = getRowsGroupedBySize(product);
-                                            return (
-                                              <div key={product.id}>
-                                                <div style={{ fontWeight: 700, marginBottom: 6 }}>{product.name}</div>
-                                                <div style={{ display: 'grid', gap: 6 }}>
-                                                  {sizeGroups.length > 0 ? sizeGroups.map((group) => {
-                                                    const hasChildVariants = group.rows.length > 1 || group.rows.some((row) => !!getVariantLabel(row));
-
-                                                    if (!hasChildVariants) {
-                                                      const row = group.rows[0];
-                                                      const rowKey = row.key;
-                                                      return (
-                                                        <div
-                                                          key={group.key}
-                                                          className="order-product-row"
-                                                          style={{
-                                                            display: 'flex',
-                                                            flexDirection: 'row',
-                                                            alignItems: 'center',
-                                                            border: '1px solid #1f1c33',
-                                                            borderRadius: 6,
-                                                            padding: '6px 8px',
-                                                            background: '#29264a',
-                                                            gap: 10,
-                                                            flexWrap: 'wrap',
-                                                          }}
-                                                        >
-                                                          <div className="order-size-cell" style={{ fontSize: 12, color: '#bbb', flex: '1 1 100%' }}>
-                                                            <div>{group.sizeLabel}</div>
-                                                            {!!product.requiresWhccEditor && (
-                                                              <div style={{ fontSize: 11, color: '#9fb2ea', marginTop: 4 }}>
-                                                                {getWhccSelectionHint(product)}
-                                                              </div>
-                                                            )}
-                                                          </div>
-                                                          <div
-                                                            className="order-price-cell"
-                                                            style={{
-                                                              minWidth: 90,
-                                                              textAlign: 'right',
-                                                              fontWeight: 700,
-                                                              flex: '0 0 auto',
-                                                              width: 'auto',
-                                                            }}
-                                                          >
-                                                            ${Number(row?.price || 0).toFixed(2)}
-                                                          </div>
-                                                          <button
-                                                            className="btn btn-primary btn-sm order-add-cart-btn"
-                                                            disabled={!row.size || addingKey === rowKey}
-                                                            onClick={() => handleAddToCart(product, row.size, row)}
-                                                            style={{
-                                                              fontSize: 'clamp(13px, 3vw, 16px)',
-                                                              padding: 'clamp(7px, 2vw, 12px) clamp(18px, 5vw, 28px)',
-                                                              borderRadius: 24,
-                                                              minWidth: 110,
-                                                              width: 'auto',
-                                                              whiteSpace: 'nowrap',
-                                                              fontWeight: 700,
-                                                              boxShadow: '0 2px 8px 0 rgba(123,97,255,0.10)',
-                                                              marginLeft: 4,
-                                                              letterSpacing: 0.1,
-                                                              flex: '1 1 100%',
-                                                              maxWidth: '100%',
-                                                              marginTop: 8,
-                                                            }}
-                                                          >
-                                                            {addingKey === rowKey ? 'Adding...' : (product.requiresWhccEditor ? 'Select Photos' : 'Add to Cart')}
-                                                          </button>
-                                                        </div>
-                                                      );
-                                                    }
-
-                                                    return (
-                                                      <div
-                                                        key={group.key}
-                                                        className="order-product-row order-size-group"
-                                                        style={{
-                                                          border: '1px solid #1f1c33',
-                                                          borderRadius: 6,
-                                                          padding: '6px 8px',
-                                                          background: '#29264a',
-                                                          display: 'grid',
-                                                          gap: 6,
-                                                        }}
-                                                      >
-                                                        <div className="order-size-group-label" style={{ fontSize: 12, color: '#aaa', fontWeight: 700 }}>{group.sizeLabel}</div>
-                                                        <div className="order-size-group-children" style={{ display: 'grid', gap: 6, paddingLeft: 10, borderLeft: '2px solid #3c3568' }}>
-                                                          {group.rows.map((row) => {
-                                                            const rowKey = row.key;
-                                                            return (
-                                                              <div key={rowKey} className="order-variant-row">
-                                                                <div className="order-variant-name" style={{ fontSize: 12, color: '#c7c1f6' }}>{getVariantLabel(row) || 'Default'}</div>
-                                                                <div className="order-variant-price" style={{ minWidth: 90, textAlign: 'right', fontWeight: 700 }}>${Number(row?.price || 0).toFixed(2)}</div>
-                                                                <button
-                                                                  className="btn btn-primary btn-sm order-variant-add-btn"
-                                                                  disabled={!row.size || addingKey === rowKey}
-                                                                  onClick={() => handleAddToCart(product, row.size, row)}
-                                                                  style={{ minWidth: 110, fontWeight: 700 }}
-                                                                >
-                                                                  {addingKey === rowKey ? 'Adding...' : (product.requiresWhccEditor ? 'Select Photos' : 'Add to Cart')}
-                                                                </button>
-                                                              </div>
-                                                            );
-                                                          })}
-                                                        </div>
-                                                        {!!product.requiresWhccEditor && (
-                                                          <div style={{ fontSize: 11, color: '#9fb2ea' }}>
-                                                            {getWhccSelectionHint(product)}
-                                                          </div>
-                                                        )}
-                                                      </div>
-                                                    );
-                                                  }) : (
-                                                    <div style={{ fontSize: 12, color: '#aaa' }}>No size available</div>
-                                                  )}
-                                                </div>
-                                              </div>
-                                            );
-                                          })}
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </details>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                        {/* All Products Section */}
-                        {allProductsGrouped.length > 0 && (
-                          <div>
-                            <details style={{ border: '1px solid #232036', borderRadius: 8, padding: '10px 12px', background: '#232036' }}>
-                              <summary style={{ cursor: 'pointer', color: '#7b61ff', fontSize: 14, fontWeight: 700 }}>
-                                All Products
-                              </summary>
-                              <div style={{ display: 'grid', gap: 14, marginTop: 10 }}>
-                                {allProductsGrouped.map(({ category, items }) => (
-                                  <details key={category} style={{ border: '1px solid #232036', borderRadius: 8, padding: '10px 12px', background: '#232036' }}>
-                                    <summary style={{ cursor: 'pointer', fontSize: 13, color: '#8d81ff', fontWeight: 700 }}>
-                                      {category}
-                                    </summary>
-                                    <div style={{ display: 'grid', gap: 10, marginTop: 10 }}>
-                                      {items.map((product) => {
-                                        const sizeGroups = getRowsGroupedBySize(product);
-                                        return (
-                                          <div key={product.id}>
-                                            <div style={{ fontWeight: 700, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
-                                              <ProductImageHover imageUrl={product.imageUrl} name={product.name} />
-                                              {product.name}
-                                            </div>
-                                            <div style={{ display: 'grid', gap: 6 }}>
-                                              {sizeGroups.length > 0 ? sizeGroups.map((group) => {
-                                                const hasChildVariants = group.rows.length > 1 || group.rows.some((row) => !!getVariantLabel(row));
-
-                                                if (!hasChildVariants) {
-                                                  const row = group.rows[0];
-                                                  const rowKey = row.key;
-                                                  return (
-                                                    <div
-                                                      key={group.key}
-                                                      className="order-product-row"
-                                                      style={{
-                                                        display: 'flex',
-                                                        flexDirection: 'row',
-                                                        alignItems: 'center',
-                                                        border: '1px solid #1f1c33',
-                                                        borderRadius: 6,
-                                                        padding: '6px 8px',
-                                                        background: '#29264a',
-                                                        gap: 10,
-                                                        flexWrap: 'wrap',
-                                                      }}
-                                                    >
-                                                      <div className="order-size-cell" style={{ fontSize: 12, color: '#bbb', flex: '1 1 100%' }}>
-                                                        <div>{group.sizeLabel}</div>
-                                                        {!!product.requiresWhccEditor && (
-                                                          <div style={{ fontSize: 11, color: '#9fb2ea', marginTop: 4 }}>
-                                                            {getWhccSelectionHint(product)}
-                                                          </div>
-                                                        )}
-                                                      </div>
-                                                      <div
-                                                        className="order-price-cell"
-                                                        style={{
-                                                          minWidth: 90,
-                                                          textAlign: 'right',
-                                                          fontWeight: 700,
-                                                          flex: '0 0 auto',
-                                                          width: 'auto',
-                                                        }}
-                                                      >
-                                                        ${Number(row?.price || 0).toFixed(2)}
-                                                      </div>
-                                                      <button
-                                                        className="btn btn-primary btn-sm order-add-cart-btn"
-                                                        disabled={!row.size || addingKey === rowKey}
-                                                        onClick={() => handleAddToCart(product, row.size, row)}
-                                                        style={{
-                                                          fontSize: 'clamp(13px, 3vw, 16px)',
-                                                          padding: 'clamp(7px, 2vw, 12px) clamp(18px, 5vw, 28px)',
-                                                          borderRadius: 24,
-                                                          minWidth: 110,
-                                                          width: 'auto',
-                                                          whiteSpace: 'nowrap',
-                                                          fontWeight: 700,
-                                                          boxShadow: '0 2px 8px 0 rgba(123,97,255,0.10)',
-                                                          marginLeft: 4,
-                                                          letterSpacing: 0.1,
-                                                          flex: '1 1 100%',
-                                                          maxWidth: '100%',
-                                                          marginTop: 8,
-                                                        }}
-                                                      >
-                                                        {addingKey === rowKey ? 'Adding...' : (product.requiresWhccEditor ? 'Select Photos' : 'Add to Cart')}
-                                                      </button>
-                                                    </div>
-                                                  );
-                                                }
-
-                                                return (
-                                                  <div
-                                                    key={group.key}
-                                                    className="order-product-row order-size-group"
-                                                    style={{
-                                                      border: '1px solid #1f1c33',
-                                                      borderRadius: 6,
-                                                      padding: '6px 8px',
-                                                      background: '#29264a',
-                                                      display: 'grid',
-                                                      gap: 6,
-                                                    }}
-                                                  >
-                                                    <div className="order-size-group-label" style={{ fontSize: 12, color: '#aaa', fontWeight: 700 }}>{group.sizeLabel}</div>
-                                                    <div className="order-size-group-children" style={{ display: 'grid', gap: 6, paddingLeft: 10, borderLeft: '2px solid #3c3568' }}>
-                                                      {group.rows.map((row) => {
-                                                        const rowKey = row.key;
-                                                        return (
-                                                          <div key={rowKey} className="order-variant-row">
-                                                            <div className="order-variant-name" style={{ fontSize: 12, color: '#c7c1f6' }}>{getVariantLabel(row) || 'Default'}</div>
-                                                            <div className="order-variant-price" style={{ minWidth: 90, textAlign: 'right', fontWeight: 700 }}>${Number(row?.price || 0).toFixed(2)}</div>
-                                                            <button
-                                                              className="btn btn-primary btn-sm order-variant-add-btn"
-                                                              disabled={!row.size || addingKey === rowKey}
-                                                              onClick={() => handleAddToCart(product, row.size, row)}
-                                                              style={{ minWidth: 110, fontWeight: 700 }}
-                                                            >
-                                                              {addingKey === rowKey ? 'Adding...' : (product.requiresWhccEditor ? 'Select Photos' : 'Add to Cart')}
-                                                            </button>
-                                                          </div>
-                                                        );
-                                                      })}
-                                                    </div>
-                                                    {!!product.requiresWhccEditor && (
-                                                      <div style={{ fontSize: 11, color: '#9fb2ea' }}>
-                                                        {getWhccSelectionHint(product)}
-                                                      </div>
-                                                    )}
-                                                  </div>
-                                                );
-                                              }) : (
-                                                <div style={{ fontSize: 12, color: '#aaa' }}>No size available</div>
-                                              )}
-                                            </div>
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-                                  </details>
-                                ))}
-                              </div>
-                            </details>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
+                  />
                 )}
               </React.Fragment>
             );
@@ -2206,183 +1683,39 @@ const AlbumDetails: React.FC = () => {
         </div>
       )}
 
-      {showWhccPhotoModal && whccProductToConfigure && whccSizeToConfigure && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <div style={{ background: '#1a1a24', borderRadius: 12, border: '1px solid #2a2740', maxWidth: 900, width: '100%', maxHeight: '90vh', overflow: 'auto', padding: 20 }}>
-            {(() => {
-              const { minPhotos, maxPhotos } = getWhccPhotoSelectionRequirements(whccProductToConfigure);
-              const selectedCount = whccSelectedPhotoIds.length;
-              const minLabel = minPhotos === maxPhotos ? `${minPhotos}` : `${minPhotos}-${maxPhotos}`;
-              const canContinue = selectedCount >= minPhotos && selectedCount <= maxPhotos;
-              const modalKey = `${whccProductToConfigure.id}-${whccSizeToConfigure.id}`;
-
-              return (
-                <>
-                  <h3 style={{ marginTop: 0, marginBottom: 8 }}>
-                    Select photos for {whccProductToConfigure.name}
-                  </h3>
-                  <div style={{ fontSize: 13, color: '#a9a6c7', marginBottom: 12 }}>
-                    Choose {minLabel} photo{minPhotos === 1 && maxPhotos === 1 ? '' : 's'} from this album before launching the editor.
-                  </div>
-
-                  <div style={{ marginBottom: 14, display: 'inline-flex', alignItems: 'center', gap: 8, border: '1px solid #3a3656', borderRadius: 999, padding: '6px 10px', background: '#141320', color: '#ddd' }}>
-                    <span>Selected:</span>
-                    <strong>{selectedCount}</strong>
-                    <span>of</span>
-                    <strong>{minLabel}</strong>
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 10, marginBottom: 14 }}>
-                    {photos.map((photo) => {
-                      const photoId = Number(photo.id);
-                      const isSelected = whccSelectedPhotoIds.includes(photoId);
-                      const disableUnchecked = !isSelected && whccSelectedPhotoIds.length >= maxPhotos;
-
-                      return (
-                        <button
-                          key={photo.id}
-                          type="button"
-                          onClick={() => handleWhccPhotoToggle(photoId)}
-                          disabled={disableUnchecked}
-                          style={{
-                            border: isSelected ? '2px solid #7b61ff' : '1px solid #2e2b46',
-                            borderRadius: 8,
-                            padding: 6,
-                            background: isSelected ? 'rgba(123, 97, 255, 0.12)' : '#161526',
-                            cursor: disableUnchecked ? 'not-allowed' : 'pointer',
-                            opacity: disableUnchecked ? 0.6 : 1,
-                            textAlign: 'left',
-                            color: '#fff',
-                          }}
-                        >
-                          <img
-                            src={`/api/photos/${photo.id}/asset?variant=thumbnail`}
-                            alt={photo.fileName}
-                            style={{ width: '100%', height: 88, objectFit: 'cover', borderRadius: 6, marginBottom: 6 }}
-                          />
-                          <div style={{ fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {photo.fileName || `Photo ${photo.id}`}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-                    <button className="btn btn-secondary" onClick={closeWhccPhotoModal}>
-                      Cancel
-                    </button>
-                    <button
-                      className="btn btn-primary"
-                      disabled={!canContinue || addingKey === modalKey}
-                      onClick={handleConfirmWhccPhotoSelection}
-                    >
-                      {addingKey === modalKey ? 'Preparing...' : 'Continue to Editor'}
-                    </button>
-                  </div>
-                </>
-              );
-            })()}
-          </div>
-        </div>
-      )}
-
-      {showTagWatchPrompt && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.65)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <div style={{ background: '#1a1a24', borderRadius: 12, border: '1px solid #2a2740', maxWidth: 520, width: '100%', padding: 20 }}>
-            <h3 style={{ marginTop: 0, marginBottom: 10, color: '#fff' }}>Add to watch list?</h3>
-            <p style={{ marginTop: 0, marginBottom: 14, color: '#cfc9f7', lineHeight: 1.45 }}>
-              You suggested <strong>{pendingWatchPlayerName}</strong>. Do you also want to add this player to your watch list to get notified when new photos are added?
-            </p>
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <button className="btn btn-secondary" onClick={handleSkipAddToWatchlist} disabled={addingPendingWatchPlayer}>
-                Not now
-              </button>
-              <button className="btn btn-primary" onClick={handleConfirmAddToWatchlist} disabled={addingPendingWatchPlayer}>
-                {addingPendingWatchPlayer ? 'Adding...' : 'Add to Watch List'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Crop Modal */}
-      {showCropModal && selectedPhoto && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: '#1a1a24', borderRadius: 12, border: '1px solid #2a2740', maxWidth: 600, maxHeight: 600, overflow: 'auto', padding: 20 }}>
-            <h3 style={{ marginTop: 0, marginBottom: 16 }}>Crop photo for {productToCrop?.name}</h3>
-            <div style={{ marginBottom: 16, maxHeight: 400 }}>
-              <Cropper
-                ref={setCropperRef}
-                src={selectedPhoto ? `/api/photos/${selectedPhoto.id}/asset?variant=thumbnail` : ''}
-                crossOrigin="anonymous"
-                style={{ maxHeight: 400, width: '100%' }}
-                aspectRatio={getCropAspectRatio(productToCrop)}
-                viewMode={1}
-                guides={true}
-                responsive={true}
-                autoCropArea={1}
-                minContainerHeight={200}
-                minContainerWidth={200}
-                onInitialized={cropper => {
-                  setCropperRef(cropper);
-                  // Load cropData from cart item if available and scale to displayed image
-                  const cart = JSON.parse(localStorage.getItem('cart') || '[]');
-                  const cartItem = cart.find((item: any) => item.photoId === selectedPhoto.id && item.productId === productToCrop?.id && item.productSizeId === sizeToCrop?.id);
-                  if (cartItem && cartItem.cropData && selectedPhoto) {
-                    // Get displayed (thumbnail) and original image sizes
-                    const checkAndSet = () => {
-                      const imgData = cropper.getImageData();
-                      const displayedWidth = imgData.naturalWidth;
-                      const displayedHeight = imgData.naturalHeight;
-                      const originalWidth = Number(selectedPhoto.width || selectedPhoto.metadata?.width || 0);
-                      const originalHeight = Number(selectedPhoto.height || selectedPhoto.metadata?.height || 0);
-                      if (displayedWidth > 0 && displayedHeight > 0 && originalWidth > 0 && originalHeight > 0) {
-                        // Scale from original to displayed
-                        const scaleX = displayedWidth / originalWidth;
-                        const scaleY = displayedHeight / originalHeight;
-                        cropper.setData({
-                          x: cartItem.cropData.x * scaleX,
-                          y: cartItem.cropData.y * scaleY,
-                          width: cartItem.cropData.width * scaleX,
-                          height: cartItem.cropData.height * scaleY,
-                        });
-                      } else {
-                        // Retry after a short delay if image not ready
-                        setTimeout(checkAndSet, 50);
-                      }
-                    };
-                    checkAndSet();
-                  }
-                }}
-              />
-            </div>
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <button
-                className="btn btn-secondary"
-                onClick={handleResetCrop}
-              >
-                Reset Crop
-              </button>
-              <button
-                className="btn btn-secondary"
-                onClick={handleCancelCrop}
-              >
-                Cancel
-              </button>
-              <button
-                className="btn btn-primary"
-                disabled={addingKey !== ''}
-                onClick={handleCropConfirm}
-              >
-                {addingKey !== '' ? 'Adding...' : 'Add to Cart'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
     </div>
+
+      {/* Favorites email prompt modal */}
+      {showFavEmailPrompt && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div style={{ background: '#16162a', border: '1px solid rgba(244,114,182,0.3)', borderRadius: 16, padding: 28, maxWidth: 420, width: '100%' }}>
+            <div style={{ fontSize: 20, fontWeight: 700, color: '#fff', marginBottom: 8 }}>Save your favorites</div>
+            {favEmailSent ? (
+              <>
+                <div style={{ fontSize: 14, color: '#86efac', marginBottom: 16 }}>We've emailed you a link to your saved favorites.</div>
+                <button type="button" onClick={() => { setShowFavEmailPrompt(false); setFavEmailSent(false); }} style={{ padding: '9px 20px', borderRadius: 8, border: 'none', background: '#7b61ff', color: '#fff', fontWeight: 700, cursor: 'pointer', width: '100%' }}>Close</button>
+              </>
+            ) : (
+              <>
+                <div style={{ fontSize: 13, color: '#9ca3af', marginBottom: 16 }}>Enter your email and we'll send you a link so you can come back to your {favorites.size} saved photo{favorites.size !== 1 ? 's' : ''} anytime.</div>
+                <input
+                  type="email"
+                  value={favEmail}
+                  onChange={e => setFavEmail(e.target.value)}
+                  placeholder="your@email.com"
+                  style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid rgba(244,114,182,0.4)', background: '#1a1a2e', color: '#fff', fontSize: 14, boxSizing: 'border-box', marginBottom: 12 }}
+                />
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button type="button" onClick={() => setShowFavEmailPrompt(false)} style={{ flex: 1, padding: '9px 0', borderRadius: 8, border: '1px solid #3a3656', background: 'transparent', color: '#9ca3af', fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
+                  <button type="button" disabled={!favEmail.trim() || favEmailSending} onClick={saveFavoritesEmail} style={{ flex: 2, padding: '9px 0', borderRadius: 8, border: 'none', background: '#f472b6', color: '#fff', fontWeight: 700, cursor: 'pointer', opacity: (!favEmail.trim() || favEmailSending) ? 0.6 : 1 }}>
+                    {favEmailSending ? 'Sending…' : 'Send Magic Link'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
   </>
   );
 };

@@ -13,6 +13,7 @@ const superAdminLinks = [
   { to: '/admin/payments', label: 'Studio Payments', icon: '💸' },
   { to: '/admin/scheduling-fees', label: 'Scheduling Fees', icon: '📅' },
   { to: '/admin/configuration', label: 'Lab Configuration', icon: '⚙️' },
+  { to: '/admin/release-notes', label: 'Release Notes', icon: '📝' },
 ];
 
 const Sidebar: React.FC = () => {
@@ -168,6 +169,7 @@ const Sidebar: React.FC = () => {
           {link(dashboardPath, 'Dashboard', '🏠')}
           {link('/admin/albums', 'Albums', '📸')}
           {inStudioAdminMenu && link('/admin/scheduling', 'Scheduling', '📅')}
+          {inStudioAdminMenu && link('/admin/roster', 'Roster', '🏫')}
 
           {/* Commerce */}
           {sectionLabel('Commerce')}
@@ -190,6 +192,9 @@ const Sidebar: React.FC = () => {
           {link('/admin/profile', 'Profile', '👤')}
           {inStudioAdminMenu && link('/admin/team', 'Team', '👥')}
           {isStudioAdmin && link('/admin/billing', 'Billing', '💳')}
+
+          {/* What's New */}
+          {link('/admin/whats-new', "What's New", '🆕')}
 
           {/* Support */}
           {sectionLabel('Support')}
