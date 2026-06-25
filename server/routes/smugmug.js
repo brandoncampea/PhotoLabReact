@@ -935,36 +935,41 @@ const uploadImportedImage = async (albumId, image, imageBuffer) => {
   const blobName = makeBlobName(albumId, image.fileName);
 
   if (!isAzureStorageConfigured()) {
-    return {
-      url: image.sourceUrl,
-      thumbUrl: image.sourceUrl,
-      storage: 'smugmug-source',
-    };
+    return { url: image.sourceUrl, thumbUrl: image.sourceUrl, storage: 'smugmug-source', width: null, height: null };
   }
 
-  // Upload full-size image
-  const uploadedUrl = await uploadImageBufferToAzure(imageBuffer, blobName, 'image/jpeg');
+  const safeBase = image.fileName.replace(/\s+/g, '_').replace(/\.[^.]+$/, '.jpg');
+  const thumbBlobName = `albums/${albumId}/thumb_${safeBase}`;
 
-  // Generate and upload 400px thumbnail
-  let thumbUrl = uploadedUrl;
+  // Get metadata and generate thumbnail in one sharp pass, then upload both blobs in parallel
+  let thumbBuffer = null;
+  let width = null;
+  let height = null;
   try {
     const sharp = await import('sharp');
-    const safeBase = image.fileName.replace(/\s+/g, '_').replace(/\.[^.]+$/, '.jpg');
-    const thumbBlobName = `albums/${albumId}/thumb_${safeBase}`;
-    const thumbBuffer = await sharp.default(imageBuffer)
-      .resize({ width: 400, withoutEnlargement: true })
-      .jpeg({ quality: 80 })
-      .toBuffer();
-    thumbUrl = await uploadImageBufferToAzure(thumbBuffer, thumbBlobName, 'image/jpeg');
-  } catch (thumbErr) {
-    console.warn('[SmugMug import] Thumbnail generation failed, using full image:', thumbErr?.message);
+    const img = sharp.default(imageBuffer);
+    const [metadata, resized] = await Promise.all([
+      img.metadata(),
+      img.clone().resize({ width: 400, withoutEnlargement: true }).jpeg({ quality: 80 }).toBuffer(),
+    ]);
+    width = metadata.width ?? null;
+    height = metadata.height ?? null;
+    thumbBuffer = resized;
+  } catch (sharpErr) {
+    console.warn('[SmugMug import] Sharp processing failed:', sharpErr?.message);
   }
 
-  return {
-    url: uploadedUrl,
-    thumbUrl,
-    storage: 'azure',
-  };
+  const [uploadedUrl, thumbUrl] = await Promise.all([
+    uploadImageBufferToAzure(imageBuffer, blobName, 'image/jpeg'),
+    thumbBuffer
+      ? uploadImageBufferToAzure(thumbBuffer, thumbBlobName, 'image/jpeg').catch((e) => {
+          console.warn('[SmugMug import] Thumbnail upload failed:', e?.message);
+          return null;
+        })
+      : Promise.resolve(null),
+  ]);
+
+  return { url: uploadedUrl, thumbUrl: thumbUrl || uploadedUrl, storage: 'azure', width, height };
 };
 
 router.get('/admin/vendor-integrations', adminRequired, async (req, res) => {
@@ -1186,7 +1191,7 @@ router.get('/import-progress/:jobId', adminRequired, async (req, res) => {
 
     const job = smugMugImportJobs.get(jobId);
     if (!job || Number(job.studioId) !== Number(studioId)) {
-      return res.status(404).json({ error: 'Import job not found' });
+      return res.json({ status: 'expired', jobId, error: 'Import job no longer active — it may have completed or the server was restarted.' });
     }
 
     res.json(job);
@@ -1421,7 +1426,8 @@ router.post('/import', adminRequired, async (req, res) => {
       let importedPhotoCount = 0;
       let firstImportedPhotoId = null;
       let matchedCoverPhotoId = null;
-      for (const image of images) {
+      const imageQueue = [...images];
+      const processPhoto = async (image) => {
         const exists = await queryRow(
           'SELECT TOP 1 id, width, height FROM photos WHERE album_id = $1 AND file_name = $2',
           [albumId, image.fileName]
@@ -1441,9 +1447,7 @@ router.post('/import', adminRequired, async (req, res) => {
             albumProgress.photosProcessed += 1;
             albumProgress.photosSkipped += 1;
           }
-          if (!firstImportedPhotoId) {
-            firstImportedPhotoId = Number(exists.id || 0) || null;
-          }
+          if (!firstImportedPhotoId) firstImportedPhotoId = Number(exists.id || 0) || null;
           if (
             !matchedCoverPhotoId
             && smugMugCoverImageKey
@@ -1452,85 +1456,38 @@ router.post('/import', adminRequired, async (req, res) => {
           ) {
             matchedCoverPhotoId = Number(exists.id || 0) || null;
           }
-          pushPhotoProgress(importJob, {
-            albumKey,
-            albumName,
-            fileName: image.fileName,
-            status: 'skipped',
-            detail: 'Already imported',
-          });
-          continue;
+          pushPhotoProgress(importJob, { albumKey, albumName, fileName: image.fileName, status: 'skipped', detail: 'Already imported' });
+          return;
         }
 
         let imageBuffer;
-        let width = null;
-        let height = null;
         try {
           const downloadHeaders = {};
           if (authContext?.oauth && authContext?.token?.key && authContext?.token?.secret && /^https:\/\/api\.smugmug\.com/i.test(String(image.sourceUrl || ''))) {
             Object.assign(
               downloadHeaders,
-              authContext.oauth.toHeader(
-                authContext.oauth.authorize(
-                  {
-                    url: image.sourceUrl,
-                    method: 'GET',
-                  },
-                  authContext.token
-                )
-              )
+              authContext.oauth.toHeader(authContext.oauth.authorize({ url: image.sourceUrl, method: 'GET' }, authContext.token))
             );
           }
-
-          const response = await fetch(image.sourceUrl, {
-            headers: downloadHeaders,
-          });
+          const response = await fetch(image.sourceUrl, { headers: downloadHeaders });
           if (!response.ok) {
             importJob.totals.photosProcessed += 1;
             importJob.totals.photosFailed += 1;
-            if (albumProgress) {
-              albumProgress.photosProcessed += 1;
-              albumProgress.photosFailed += 1;
-            }
-            pushPhotoProgress(importJob, {
-              albumKey,
-              albumName,
-              fileName: image.fileName,
-              status: 'failed',
-              detail: `Download failed (${response.status})`,
-            });
-            continue;
+            if (albumProgress) { albumProgress.photosProcessed += 1; albumProgress.photosFailed += 1; }
+            pushPhotoProgress(importJob, { albumKey, albumName, fileName: image.fileName, status: 'failed', detail: `Download failed (${response.status})` });
+            return;
           }
-          const arrayBuffer = await response.arrayBuffer();
-          imageBuffer = Buffer.from(arrayBuffer);
-
-          // Log imageBuffer size and image dimensions
-          try {
-            const sharp = await import('sharp');
-            const metadata = await sharp.default(imageBuffer).metadata();
-            width = metadata.width;
-            height = metadata.height;
-          } catch (metaErr) {
-            console.warn('Failed to get image dimensions:', metaErr);
-          }
+          imageBuffer = Buffer.from(await response.arrayBuffer());
         } catch (error) {
           importJob.totals.photosProcessed += 1;
           importJob.totals.photosFailed += 1;
-          if (albumProgress) {
-            albumProgress.photosProcessed += 1;
-            albumProgress.photosFailed += 1;
-          }
-          pushPhotoProgress(importJob, {
-            albumKey,
-            albumName,
-            fileName: image.fileName,
-            status: 'failed',
-            detail: error instanceof Error ? error.message : 'Download failed',
-          });
-          continue;
+          if (albumProgress) { albumProgress.photosProcessed += 1; albumProgress.photosFailed += 1; }
+          pushPhotoProgress(importJob, { albumKey, albumName, fileName: image.fileName, status: 'failed', detail: error instanceof Error ? error.message : 'Download failed' });
+          return;
         }
 
         const uploadedImage = await uploadImportedImage(albumId, image, imageBuffer);
+        const { width, height } = uploadedImage;
 
         const metadataJson = JSON.stringify({
           source: 'smugmug',
@@ -1543,29 +1500,10 @@ router.post('/import', adminRequired, async (req, res) => {
 
         if (exists?.id && existingIsThumbnail) {
           await query(
-            `UPDATE photos
-             SET thumbnail_url = $1,
-                 full_image_url = $2,
-                 description = $3,
-                 metadata = $4,
-                 file_size_bytes = $5,
-                 width = $6,
-                 height = $7
-             WHERE id = $8`,
-            [
-              uploadedImage.thumbUrl,
-              uploadedImage.url,
-              image.description || '',
-              metadataJson,
-              imageBuffer.length,
-              width,
-              height,
-              exists.id,
-            ]
+            `UPDATE photos SET thumbnail_url = $1, full_image_url = $2, description = $3, metadata = $4, file_size_bytes = $5, width = $6, height = $7 WHERE id = $8`,
+            [uploadedImage.thumbUrl, uploadedImage.url, image.description || '', metadataJson, imageBuffer.length, width, height, exists.id]
           );
-          if (!firstImportedPhotoId) {
-            firstImportedPhotoId = Number(exists.id || 0) || null;
-          }
+          if (!firstImportedPhotoId) firstImportedPhotoId = Number(exists.id || 0) || null;
           if (
             !matchedCoverPhotoId
             && smugMugCoverImageKey
@@ -1577,24 +1515,11 @@ router.post('/import', adminRequired, async (req, res) => {
         } else {
           const insertedPhoto = await queryRow(
             `INSERT INTO photos (album_id, file_name, thumbnail_url, full_image_url, description, metadata, file_size_bytes, width, height)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-             RETURNING id`,
-            [
-              albumId,
-              image.fileName,
-              uploadedImage.thumbUrl,
-              uploadedImage.url,
-              image.description || '',
-              metadataJson,
-              imageBuffer.length,
-              width,
-              height,
-            ]
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+            [albumId, image.fileName, uploadedImage.thumbUrl, uploadedImage.url, image.description || '', metadataJson, imageBuffer.length, width, height]
           );
           const insertedPhotoId = Number(insertedPhoto?.id || 0) || null;
-          if (!firstImportedPhotoId) {
-            firstImportedPhotoId = insertedPhotoId;
-          }
+          if (!firstImportedPhotoId) firstImportedPhotoId = insertedPhotoId;
           if (
             !matchedCoverPhotoId
             && insertedPhotoId
@@ -1608,21 +1533,24 @@ router.post('/import', adminRequired, async (req, res) => {
 
         importJob.totals.photosProcessed += 1;
         importJob.totals.photosImported += 1;
-        if (albumProgress) {
-          albumProgress.photosProcessed += 1;
-          albumProgress.photosImported += 1;
-        }
+        if (albumProgress) { albumProgress.photosProcessed += 1; albumProgress.photosImported += 1; }
         pushPhotoProgress(importJob, {
-          albumKey,
-          albumName,
-          fileName: image.fileName,
-          status: 'imported',
-          detail: existingIsThumbnail
-            ? 'Upgraded existing thumbnail to full-size import'
+          albumKey, albumName, fileName: image.fileName, status: 'imported',
+          detail: existingIsThumbnail ? 'Upgraded existing thumbnail to full-size import'
             : (uploadedImage.storage === 'azure' ? 'Imported successfully' : 'Imported using SmugMug source URL'),
         });
         importedPhotoCount += 1;
-      }
+      };
+
+      // Process up to 5 photos concurrently
+      await Promise.all(
+        Array.from({ length: Math.min(5, images.length) }, async () => {
+          let img;
+          while ((img = imageQueue.shift()) !== undefined) {
+            await processPhoto(img);
+          }
+        })
+      );
 
       await query(
         `UPDATE albums

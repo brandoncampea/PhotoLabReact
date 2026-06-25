@@ -243,6 +243,8 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
       error: null,
     });
 
+    let pollInterval: number | null = null;
+
     const pollProgress = async () => {
       try {
         const progressResponse = await fetch(`/api/smugmug/import-progress/${jobId}`, {
@@ -250,14 +252,17 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
         });
         if (!progressResponse.ok) return;
         const progressData = await progressResponse.json();
+        if (progressData.status === 'expired') {
+          if (pollInterval !== null) { window.clearInterval(pollInterval); pollInterval = null; }
+          setImportProgress((prev: any) => prev ? { ...prev, status: 'completed' } : null);
+          return;
+        }
         setStorageMode(progressData.storageMode === 'smugmug-source' ? 'smugmug-source' : 'azure');
         setImportProgress(progressData);
       } catch (err) {
         console.error('Failed to load import progress:', err);
       }
     };
-
-    let pollInterval: number | null = null;
 
     try {
       pollInterval = window.setInterval(() => {
