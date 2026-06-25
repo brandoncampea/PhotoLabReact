@@ -440,8 +440,11 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
                 o.created_at,
                 u.email as customer_email,
                 COALESCE(SUM(${studioRevenueExpr}), 0) as studioRevenue,
-                COALESCE(SUM(${whccExpr}), 0) as baseCost,
-                COALESCE(MAX(COALESCE(o.stripe_fee_amount, 0)), 0) as stripeFeeAmount
+                COALESCE(SUM(CASE WHEN ${baseRevExpr} > 0 THEN ${baseRevExpr} ELSE ${whccExpr} END), 0) as baseCost,
+                COALESCE(MAX(COALESCE(o.stripe_fee_amount, 0)), 0) as stripeFeeAmount,
+                COALESCE(MAX(COALESCE(o.whcc_lab_tax, 0)), 0) as whccLabTax,
+                COALESCE(MAX(COALESCE(o.shipping_cost, 0)), 0) as customerShipping,
+                COALESCE(MAX(COALESCE(o.studio_shipping_cost, 0)), 0) as studioShipping
              FROM orders o
              LEFT JOIN users u ON u.id = o.user_id
              LEFT JOIN order_items oi ON oi.order_id = o.id
@@ -454,7 +457,9 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
             const studioRevenue = Number(order.studioRevenue || 0);
             const baseCost = Number(order.baseCost || 0);
             const stripeFeeAmount = Number(order.stripeFeeAmount || 0);
-            const studioProfit = studioRevenue - baseCost - stripeFeeAmount;
+            const whccLabTax = Number(order.whccLabTax || 0);
+            const uncoveredShipping = Math.max(0, Number(order.studioShipping || 0) - Number(order.customerShipping || 0));
+            const studioProfit = studioRevenue - baseCost - whccLabTax - uncoveredShipping - stripeFeeAmount;
             return {
                 ...order,
                 total: Number(order.total || 0),
