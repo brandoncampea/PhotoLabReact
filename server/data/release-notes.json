@@ -1,5 +1,17 @@
 [
   {
+    "version": "June 25, 2026",
+    "title": "Fix: Orders Page Shipping Stats and Studio Dashboard Recent Orders Profit",
+    "summary": "The Studio Profit widget on the orders page was showing a large negative number due to a calculation error. The studio dashboard recent orders table was also showing incorrect studio profit amounts.",
+    "content": "Two profit display bugs are fixed in this release.\n\nOn the admin Orders page, the shipping statistics row showed a 'Studio Profit' widget that was calculating a large negative number (for example, -$183.60). This happened because the orders list loads without individual item details for performance reasons, so the item-level revenue and cost data needed for a profit calculation was never available. With no revenue and no costs, the formula reduced to just the negative sum of Stripe processing fees across all orders — a meaningless and misleading figure. The widget has been replaced with Shipping Margin, which is the difference between customer shipping collected and the studio's actual shipping cost. This is computable from order-level data, is accurate, and is the natural fourth metric alongside the three other shipping statistics in that row.\n\nOn the studio admin dashboard, the Studio Profit column in the Recent Orders table was showing a small incorrect amount for each order — typically a few cents — instead of the actual margin. The calculation was using the platform's gross revenue share (the super admin's cut) as the base figure rather than the studio's own retail revenue. The correct formula is studio retail revenue minus lab production cost minus Stripe fee, which matches the Gross Margin shown when you open an individual order's detail view. Both places now agree."
+  },
+  {
+    "version": "June 24, 2026",
+    "title": "Fix: Studio Profit Shown Correctly in Recent Orders on Studio Dashboard",
+    "summary": "The Studio Profit column in the Recent Orders table on the studio admin dashboard was showing a small incorrect amount (the platform's cut) instead of the studio's actual margin.",
+    "content": "The Studio Profit column in the Recent Orders table on the studio admin dashboard was calculated using the wrong value. It was using the platform's gross revenue share per order — the amount the platform earns as its cut — instead of the studio's own margin.\n\nFor example, an order with a $9.99 subtotal, $1.00 lab cost, and $0.61 Stripe fee has a studio profit of $8.38, but the dashboard was showing $0.39 (the platform's share). This affected every order in the Recent Orders list.\n\nThe fix changes the calculation to: studio retail revenue minus lab production cost minus Stripe processing fee. This matches the Gross Margin figure shown in the detailed order breakdown view, so both places now agree."
+  },
+  {
     "version": "June 24, 2026",
     "title": "Fix: Watchlist Photo Panel Authentication and Crash on Load Error",
     "summary": "Fixed a 401 error and page crash when opening the photo panel for a watched player on the customer account page.",

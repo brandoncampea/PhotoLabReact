@@ -440,7 +440,7 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
                 o.created_at,
                 u.email as customer_email,
                 COALESCE(SUM(${studioRevenueExpr}), 0) as studioRevenue,
-                COALESCE(SUM(${grossRevExpr}), 0) as platformRevenue,
+                COALESCE(SUM(${whccExpr}), 0) as baseCost,
                 COALESCE(MAX(COALESCE(o.stripe_fee_amount, 0)), 0) as stripeFeeAmount
              FROM orders o
              LEFT JOIN users u ON u.id = o.user_id
@@ -451,9 +451,10 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
         );
 
         const recentOrders = (recentOrderRows || []).map((order) => {
-            const platformRevenue = Number(order.platformRevenue || 0);
+            const studioRevenue = Number(order.studioRevenue || 0);
+            const baseCost = Number(order.baseCost || 0);
             const stripeFeeAmount = Number(order.stripeFeeAmount || 0);
-            const studioProfit = platformRevenue - stripeFeeAmount;
+            const studioProfit = studioRevenue - baseCost - stripeFeeAmount;
             return {
                 ...order,
                 total: Number(order.total || 0),

@@ -2113,8 +2113,8 @@ const AdminOrders: React.FC = () => {
               <div>${shippingReport.studioShippingTotal.toFixed(2)}</div>
             </div>
             <div className="batch-stat-card">
-              <strong>Studio Profit</strong>
-              <div>${shippingReport.studioProfitTotal.toFixed(2)}</div>
+              <strong>Shipping Margin</strong>
+              <div>${shippingReport.shippingMarginTotal.toFixed(2)}</div>
             </div>
             <div className="batch-stat-card">
               <strong>Orders with Shipping</strong>
