@@ -322,6 +322,15 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
     }
   };
 
+  const retryIncompleteAlbums = () => {
+    if (!importProgress) return;
+    const incomplete = importProgress.albums
+      .filter((a: any) => a.status !== 'completed')
+      .map((a: any) => ({ albumKey: a.albumKey, name: a.name, description: '' }));
+    if (!incomplete.length) return;
+    importSelectedSmugmugAlbums({ albumsToImport: incomplete });
+  };
+
   const handleSelectAllAlbums = () => {
     const next: Record<string, boolean> = {};
     smugmugAlbums.forEach((album) => {
@@ -539,6 +548,27 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
 
             {importProgress.error && (
               <div style={{ marginTop: '10px', color: '#fca5a5', fontSize: '13px' }}>{importProgress.error}</div>
+            )}
+
+            {(importProgress.status === 'failed' || importProgress.status === 'completed') &&
+              importProgress.albums.some((a: any) => a.status !== 'completed') && (
+              <div style={{ marginTop: '12px', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '13px', color: '#fcd34d' }}>
+                  {importProgress.albums.filter((a: any) => a.status !== 'completed').length} album(s) incomplete.
+                  Already-imported photos will be skipped automatically.
+                </span>
+                <button
+                  onClick={retryIncompleteAlbums}
+                  disabled={smugmugImporting}
+                  style={{
+                    padding: '5px 14px', borderRadius: 7, border: '1px solid rgba(251,191,36,0.4)',
+                    background: 'rgba(251,191,36,0.1)', color: '#fbbf24', fontSize: '13px',
+                    fontWeight: 600, cursor: smugmugImporting ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  ↩ Retry Incomplete
+                </button>
+              </div>
             )}
           </div>
         )}
