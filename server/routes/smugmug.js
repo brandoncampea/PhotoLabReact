@@ -1045,13 +1045,13 @@ router.get('/albums', adminRequired, async (req, res) => {
       [studioId]
     );
 
-    const nickname = String(config?.nickname || '').trim();
+    let nickname = String(config?.nickname || '').trim();
     const apiKey = String(process.env.SMUGMUG_API_KEY || '').trim();
     const apiSecret = String(process.env.SMUGMUG_API_SECRET || '').trim();
     const accessToken = String(config?.accessToken || '').trim();
     const accessTokenSecret = String(config?.accessTokenSecret || '').trim();
 
-    if (!nickname) {
+    if (!accessToken || !accessTokenSecret) {
       return res.status(400).json({ error: 'SmugMug account not connected. Please connect via OAuth first.' });
     }
 
@@ -1071,6 +1071,24 @@ router.get('/albums', adminRequired, async (req, res) => {
           secret: accessTokenSecret,
         },
       };
+    }
+
+    // Lazily fetch and save nickname if it was never stored (e.g. nickname fetch failed during OAuth)
+    if (!nickname && authContext) {
+      try {
+        const userPayload = await requestSmugMugJson('/api/v2!authuser', apiKey, authContext);
+        const fetchedNickname = userPayload?.Response?.User?.NickName || '';
+        if (fetchedNickname) {
+          await query(`UPDATE studio_smugmug_config SET nickname = $1 WHERE studio_id = $2`, [fetchedNickname, studioId]);
+          nickname = fetchedNickname;
+        }
+      } catch (nickErr) {
+        console.error('[SmugMug] Failed to lazily fetch nickname:', nickErr?.message);
+      }
+    }
+
+    if (!nickname) {
+      return res.status(400).json({ error: 'SmugMug account connected but nickname could not be resolved. Please reconnect.' });
     }
 
     const albumRows = await fetchAllSmugMugObjects(
@@ -1168,13 +1186,17 @@ router.post('/import', adminRequired, async (req, res) => {
       [studioId]
     );
 
-    const nickname = String(config?.nickname || '').trim();
+    let nickname = String(config?.nickname || '').trim();
     const apiKey = String(process.env.SMUGMUG_API_KEY || '').trim();
     const apiSecret = String(process.env.SMUGMUG_API_SECRET || '').trim();
     const accessToken = String(config?.accessToken || '').trim();
     const accessTokenSecret = String(config?.accessTokenSecret || '').trim();
     const selectedAlbums = Array.isArray(req.body?.albums) ? req.body.albums : [];
     const requestedJobId = String(req.body?.jobId || '').trim();
+
+    if (!accessToken || !accessTokenSecret) {
+      return res.status(400).json({ error: 'SmugMug account not connected. Please connect via OAuth first.' });
+    }
 
     let authContext = null;
     if (apiKey && apiSecret && accessToken && accessTokenSecret) {
@@ -1194,8 +1216,22 @@ router.post('/import', adminRequired, async (req, res) => {
       };
     }
 
+    // Lazily fetch and save nickname if it was never stored
+    if (!nickname && authContext) {
+      try {
+        const userPayload = await requestSmugMugJson('/api/v2!authuser', apiKey, authContext);
+        const fetchedNickname = userPayload?.Response?.User?.NickName || '';
+        if (fetchedNickname) {
+          await query(`UPDATE studio_smugmug_config SET nickname = $1 WHERE studio_id = $2`, [fetchedNickname, studioId]);
+          nickname = fetchedNickname;
+        }
+      } catch (nickErr) {
+        console.error('[SmugMug] Failed to lazily fetch nickname during import:', nickErr?.message);
+      }
+    }
+
     if (!nickname) {
-      return res.status(400).json({ error: 'SmugMug account not connected. Please connect via OAuth first.' });
+      return res.status(400).json({ error: 'SmugMug account connected but nickname could not be resolved. Please reconnect.' });
     }
 
     if (!selectedAlbums.length) {
