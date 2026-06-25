@@ -285,13 +285,13 @@ router.get('/', authRequired, async (req, res) => {
     const studioId = user?.studio_id;
     if (studioId) {
       albums = await queryRows(`
-        SELECT 
+        SELECT
           a.id,
           COALESCE(a.name, a.title) as name,
           a.description,
           a.cover_image_url as coverImageUrl,
           a.cover_photo_id as coverPhotoId,
-          a.photo_count as photoCount,
+          COALESCE(pc.photoCount, 0) as photoCount,
           a.category,
           a.school_tags as schoolTags,
           a.price_list_id as priceListId,
@@ -307,18 +307,19 @@ router.get('/', authRequired, async (req, res) => {
           s.public_slug as "studioPublicSlug"
         FROM albums a
         LEFT JOIN studios s ON s.id = a.studio_id
+        LEFT JOIN (SELECT album_id, COUNT(*) as photoCount FROM photos GROUP BY album_id) pc ON pc.album_id = a.id
         WHERE a.studio_id = $1
         ORDER BY a.created_at DESC
       `, [studioId]);
     } else if (user?.role === 'super_admin') {
       albums = await queryRows(`
-        SELECT 
+        SELECT
           a.id,
           COALESCE(a.name, a.title) as name,
           a.description,
           a.cover_image_url as coverImageUrl,
           a.cover_photo_id as coverPhotoId,
-          a.photo_count as photoCount,
+          COALESCE(pc.photoCount, 0) as photoCount,
           a.category,
           a.school_tags as schoolTags,
           a.price_list_id as priceListId,
@@ -334,6 +335,7 @@ router.get('/', authRequired, async (req, res) => {
           s.public_slug as "studioPublicSlug"
         FROM albums a
         LEFT JOIN studios s ON s.id = a.studio_id
+        LEFT JOIN (SELECT album_id, COUNT(*) as photoCount FROM photos GROUP BY album_id) pc ON pc.album_id = a.id
         ORDER BY a.created_at DESC
       `);
     } else {
