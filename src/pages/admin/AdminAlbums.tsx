@@ -508,8 +508,7 @@ const AdminAlbums: React.FC = () => {
       title={title}
       onClick={onClick}
       style={{
-        flex: 1,
-        padding: '6px 0',
+        padding: '6px 4px',
         fontSize: '0.75rem',
         fontWeight: 700,
         borderRadius: 7,
@@ -518,8 +517,8 @@ const AdminAlbums: React.FC = () => {
         color,
         cursor: 'pointer',
         transition: 'background 0.15s, border 0.15s',
-        minWidth: 0,
         whiteSpace: 'nowrap',
+        textAlign: 'center',
       }}
       onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = `${color}22`; (e.currentTarget as HTMLButtonElement).style.borderColor = `${color}66`; }}
       onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = `${color}12`; (e.currentTarget as HTMLButtonElement).style.borderColor = `${color}33`; }}
@@ -727,7 +726,7 @@ const AdminAlbums: React.FC = () => {
                   </div>
 
                   {/* Action buttons */}
-                  <div style={{ padding: '0.65rem 1rem 0.85rem', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  <div style={{ padding: '0.65rem 1rem 0.85rem', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 5 }}>
                     {actionBtn('Edit', '#a78bfa', () => handleEdit(album))}
                     {actionBtn('Photos', '#79c0ff', () => { window.location.href = `/admin/photos?album=${album.id}`; }, 'View Photos')}
                     {actionBtn('Share', '#7ee787', () => { navigator.clipboard.writeText(shareUrl); alert('Link copied!'); }, 'Copy Share Link')}
