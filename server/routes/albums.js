@@ -172,7 +172,7 @@ router.get('/public', async (req, res) => {
           a.description,
           a.cover_image_url as coverImageUrl,
           a.cover_photo_id as coverPhotoId,
-          a.photo_count as photoCount,
+          COALESCE(pc.photoCount, 0) as photoCount,
           a.category,
           a.school_tags as schoolTags,
           a.price_list_id as priceListId,
@@ -186,6 +186,7 @@ router.get('/public', async (req, res) => {
           a.created_at as createdDate
         FROM albums a
         LEFT JOIN shipping_config sc ON sc.id = a.studio_id
+        LEFT JOIN (SELECT album_id, COUNT(*) as photoCount FROM photos GROUP BY album_id) pc ON pc.album_id = a.id
         INNER JOIN photos p ON p.album_id = a.id
         WHERE a.studio_id = $1 AND a.published = 1 AND a.hidden = 0
           AND (
@@ -196,13 +197,13 @@ router.get('/public', async (req, res) => {
     } else {
       // Only return albums that are published, not hidden, and not deleted
       albums = await queryRows(`
-        SELECT 
+        SELECT
           a.id,
           COALESCE(a.name, a.title) as name,
           a.description,
           a.cover_image_url as coverImageUrl,
           a.cover_photo_id as coverPhotoId,
-          a.photo_count as photoCount,
+          COALESCE(pc.photoCount, 0) as photoCount,
           a.category,
           a.school_tags as schoolTags,
           a.price_list_id as priceListId,
@@ -216,6 +217,7 @@ router.get('/public', async (req, res) => {
           a.created_at as createdDate
         FROM albums a
         LEFT JOIN shipping_config sc ON sc.id = a.studio_id
+        LEFT JOIN (SELECT album_id, COUNT(*) as photoCount FROM photos GROUP BY album_id) pc ON pc.album_id = a.id
         WHERE a.studio_id = $1 AND a.published = 1 AND a.hidden = 0
         ORDER BY a.created_at DESC
       `, [studio.id]);
