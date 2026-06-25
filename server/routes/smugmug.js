@@ -443,7 +443,14 @@ const fetchAllSmugMugObjects = async (initialPath, apiKey, locatorNames = [], au
 
   while (nextPath && page < 100) {
     page += 1;
-    const payload = await requestSmugMugJson(nextPath, apiKey, authContext);
+    let payload;
+    try {
+      payload = await requestSmugMugJson(nextPath, apiKey, authContext);
+    } catch (err) {
+      // SmugMug returns 404 when paginating past the last page (e.g. exactly 100 albums)
+      if (String(err?.message || '').includes('(404)')) break;
+      throw err;
+    }
     const response = payload?.Response || {};
 
     for (const locatorName of locatorNames) {
