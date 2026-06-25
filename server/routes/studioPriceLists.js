@@ -132,6 +132,18 @@ router.put('/:id', async (req, res) => {
   }
 });
 
+// DELETE a studio price list and its items
+router.delete('/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    await mssql.query('DELETE FROM studio_price_list_items WHERE studio_price_list_id = @p1', [id]);
+    await mssql.query('DELETE FROM studio_price_lists WHERE id = @p1', [id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete studio price list' });
+  }
+});
+
 // GET all items for a studio price list
 router.get('/:id/items', async (req, res) => {
   const { id } = req.params;

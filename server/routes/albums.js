@@ -20,7 +20,7 @@ import express from 'express';
 import mssql from '../mssql.cjs';
 const { queryRow, queryRows, query } = mssql;
 import { requireActiveSubscription, enforceAlbumQuotaForStudio, isStudioSubscriptionActive } from '../middleware/subscription.js';
-import { authRequired } from '../middleware/auth.js';
+import { authRequired, adminRequired } from '../middleware/auth.js';
 import { deleteBlobByUrl } from '../services/azureStorage.js';
 const router = express.Router();
 
@@ -1074,6 +1074,162 @@ router.get('/:id/favorite-stats', authRequired, async (req, res) => {
     res.json({ stats: stats || [] });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Album-level player tag suggestions ────────────────────────────────────────
+
+const ensureAlbumPlayerSuggestionsTable = async () => {
+  await query(`
+    IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'album_player_tag_suggestions')
+    BEGIN
+      CREATE TABLE album_player_tag_suggestions (
+        id                  INT IDENTITY(1,1) PRIMARY KEY,
+        album_id            INT NOT NULL,
+        studio_id           INT NOT NULL,
+        submitted_by_user_id INT NULL,
+        player_name         NVARCHAR(255) NOT NULL,
+        player_number       NVARCHAR(50) NULL,
+        notes               NVARCHAR(500) NULL,
+        submitted_by_name   NVARCHAR(255) NULL,
+        submitted_by_email  NVARCHAR(255) NULL,
+        status              NVARCHAR(20) NOT NULL DEFAULT 'pending',
+        submitted_at        DATETIME2 DEFAULT GETDATE(),
+        reviewed_at         DATETIME2 NULL,
+        reviewed_by_user_id INT NULL,
+        review_note         NVARCHAR(500) NULL,
+        FOREIGN KEY (album_id) REFERENCES albums(id) ON DELETE CASCADE,
+        FOREIGN KEY (studio_id) REFERENCES studios(id)
+      )
+    END
+  `);
+};
+
+// Customer submits a player tag suggestion for an album (requires login)
+router.post('/:albumId/player-suggestions', authRequired, async (req, res) => {
+  try {
+    await ensureAlbumPlayerSuggestionsTable();
+    const albumId = Number(req.params.albumId);
+    const playerName = String(req.body?.playerName || '').trim();
+    const playerNumber = String(req.body?.playerNumber || '').trim();
+    const notes = String(req.body?.notes || '').trim();
+
+    if (!playerName || playerName.length < 2 || playerName.length > 200) {
+      return res.status(400).json({ error: 'Please enter a valid player name (2–200 chars)' });
+    }
+
+    const album = await queryRow(
+      `SELECT id, studio_id as studioId FROM albums WHERE id = $1`,
+      [albumId]
+    );
+    if (!album) return res.status(404).json({ error: 'Album not found' });
+
+    // Prevent duplicates from the same user
+    const dup = await queryRow(
+      `SELECT TOP 1 id FROM album_player_tag_suggestions
+       WHERE album_id = $1 AND submitted_by_user_id = $2 AND LOWER(player_name) = LOWER($3) AND status = 'pending'`,
+      [albumId, req.user.id, playerName]
+    );
+    if (dup) {
+      return res.json({ success: true, message: 'You already have a pending tag for this player in this album.' });
+    }
+
+    await query(
+      `INSERT INTO album_player_tag_suggestions
+         (album_id, studio_id, submitted_by_user_id, player_name, player_number, notes, submitted_by_name, submitted_by_email)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [
+        albumId,
+        Number(album.studioId),
+        req.user.id,
+        playerName,
+        playerNumber || null,
+        notes || null,
+        String(req.user.name || req.user.email || '').trim() || null,
+        String(req.user.email || '').trim() || null,
+      ]
+    );
+    return res.json({ success: true, message: 'Thanks! The studio will review your tag and make sure this player is found in future photos.' });
+  } catch (err) {
+    console.error('[ALBUM-TAG] submit error:', err);
+    return res.status(500).json({ error: 'Failed to submit tag suggestion' });
+  }
+});
+
+// Admin: get pending album player suggestions for a specific album
+router.get('/:albumId/player-suggestions', adminRequired, async (req, res) => {
+  try {
+    await ensureAlbumPlayerSuggestionsTable();
+    const albumId = Number(req.params.albumId);
+    const status = String(req.query.status || 'pending');
+    const rows = await queryRows(
+      `SELECT id, player_name as playerName, player_number as playerNumber, notes,
+              submitted_by_name as submittedByName, submitted_by_email as submittedByEmail,
+              status, submitted_at as submittedAt, reviewed_at as reviewedAt, review_note as reviewNote
+       FROM album_player_tag_suggestions
+       WHERE album_id = $1 AND status = $2
+       ORDER BY submitted_at DESC`,
+      [albumId, status]
+    );
+    return res.json({ suggestions: rows || [] });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin: get pending counts per album for the studio
+router.get('/player-suggestions/pending-counts', adminRequired, async (req, res) => {
+  try {
+    await ensureAlbumPlayerSuggestionsTable();
+    const studioId = Number(req.user.studioId || req.query.studioId || 0);
+    if (!studioId) return res.json({ counts: {} });
+    const rows = await queryRows(
+      `SELECT album_id as albumId, COUNT(*) as cnt
+       FROM album_player_tag_suggestions
+       WHERE studio_id = $1 AND status = 'pending'
+       GROUP BY album_id`,
+      [studioId]
+    );
+    const counts = {};
+    for (const r of (rows || [])) counts[String(r.albumId)] = Number(r.cnt || 0);
+    return res.json({ counts });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin: approve or reject an album player suggestion
+router.post('/player-suggestions/:id/review', adminRequired, async (req, res) => {
+  try {
+    await ensureAlbumPlayerSuggestionsTable();
+    const id = Number(req.params.id);
+    const decision = String(req.body?.decision || '');
+    const reviewNote = String(req.body?.note || '').trim();
+
+    if (decision !== 'approve' && decision !== 'reject') {
+      return res.status(400).json({ error: 'decision must be approve or reject' });
+    }
+
+    const row = await queryRow(
+      `SELECT id, studio_id as studioId FROM album_player_tag_suggestions WHERE id = $1`,
+      [id]
+    );
+    if (!row) return res.status(404).json({ error: 'Suggestion not found' });
+
+    const studioId = Number(req.user.studioId || 0);
+    if (req.user.role === 'studio_admin' && Number(row.studioId) !== studioId) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    await query(
+      `UPDATE album_player_tag_suggestions
+       SET status = $1, reviewed_at = GETDATE(), reviewed_by_user_id = $2, review_note = $3
+       WHERE id = $4`,
+      [decision === 'approve' ? 'approved' : 'rejected', req.user.id, reviewNote || null, id]
+    );
+    return res.json({ success: true });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
   }
 });
 

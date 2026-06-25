@@ -201,7 +201,7 @@ const Sidebar: React.FC = () => {
           {link(isSuperAdmin ? '/super-admin/reports' : '/admin/reports', 'Reports', '📈')}
           {isStudioAdmin && link('/admin/studio-tickets', 'My Tickets', '🎫')}
           {isSuperAdmin && link('/admin/tickets', 'All Tickets', '📋')}
-          {isSuperAdmin && link('/admin/price-lists', 'Studio Price Lists', '💲')}
+          {(isStudioAdmin || isSuperAdmin) && link('/admin/price-lists', 'Studio Price Lists', '💲')}
 
           {/* Super Admin section */}
           {isSuperAdmin && (

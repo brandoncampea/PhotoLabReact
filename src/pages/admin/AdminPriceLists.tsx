@@ -594,6 +594,17 @@ const [savingProductKey, setSavingProductKey] = useState<string | null>(null);
 		}
 	};
 
+	const handleDeletePriceList = async (list: any) => {
+		if (!window.confirm(`Delete "${list.name}"? This will remove all pricing data for this list and cannot be undone.`)) return;
+		try {
+			await studioPriceListService.deleteList(list.id);
+			setPriceLists(prev => prev.filter((l: any) => l.id !== list.id));
+			if (selectedPriceList?.id === list.id) setSelectedPriceList(null);
+		} catch {
+			setError('Failed to delete price list');
+		}
+	};
+
 	const handleToggleOffered = async (item: any, offered: boolean) => {
 		if (!selectedPriceList) return;
 		try {
@@ -933,6 +944,12 @@ const [savingProductKey, setSavingProductKey] = useState<string | null>(null);
 									{list.description && <>{list.super_price_list_name ? ' — ' : ''}{list.description}</>}
 								</span>
 							)}
+							<button
+								onClick={() => handleDeletePriceList(list)}
+								className="btn btn-danger"
+								style={{ marginLeft: 'auto', padding: '2px 10px', fontSize: '0.8rem' }}
+								title="Delete price list"
+							>Delete</button>
 						</li>
 					))}
 				</ul>
@@ -944,6 +961,12 @@ const [savingProductKey, setSavingProductKey] = useState<string | null>(null);
 					<button className="admin-price-lists-back-btn" onClick={() => setSelectedPriceList(null)}>← Price Lists</button>
 					<span className="admin-price-lists-nav-name">{selectedPriceList.name}</span>
 					{selectedPriceList.super_price_list_name && <span className="admin-price-lists-nav-meta">from {selectedPriceList.super_price_list_name}</span>}
+					<button
+						onClick={() => handleDeletePriceList(selectedPriceList)}
+						className="btn btn-danger"
+						style={{ marginLeft: 'auto', padding: '3px 12px', fontSize: '0.82rem' }}
+						title="Delete this price list"
+					>Delete List</button>
 				</div>
 				<div className="admin-orders-card">
 					<h3>Items for {selectedPriceList.name}</h3>

@@ -91,6 +91,26 @@ const AdminAlbums: React.FC = () => {
   const [tagSuggestionsActionId, setTagSuggestionsActionId] = useState<number | null>(null);
   const [tagSuggestionsMessage, setTagSuggestionsMessage] = useState('');
 
+  // Album-level player tag suggestions
+  type AlbumPlayerSuggestion = {
+    id: number;
+    playerName: string;
+    playerNumber?: string | null;
+    notes?: string | null;
+    submittedByName?: string | null;
+    submittedByEmail?: string | null;
+    status: 'pending' | 'approved' | 'rejected';
+    submittedAt?: string;
+    reviewedAt?: string | null;
+    reviewNote?: string | null;
+  };
+  const [pendingPlayerTagCounts, setPendingPlayerTagCounts] = useState<Record<string, number>>({});
+  const [playerTagReviewAlbum, setPlayerTagReviewAlbum] = useState<Album | null>(null);
+  const [albumPlayerSuggestions, setAlbumPlayerSuggestions] = useState<AlbumPlayerSuggestion[]>([]);
+  const [albumPlayerSuggestionsLoading, setAlbumPlayerSuggestionsLoading] = useState(false);
+  const [albumPlayerSuggestionsActionId, setAlbumPlayerSuggestionsActionId] = useState<number | null>(null);
+  const [albumPlayerSuggestionsMessage, setAlbumPlayerSuggestionsMessage] = useState('');
+
   // Per-album price overrides
   const [priceOverrides, setPriceOverrides] = useState<{ productSizeId: number; sizeName: string; productName: string; productId: number; price: number }[]>([]);
   const [overrideDrafts, setOverrideDrafts] = useState<Record<number, string>>({});
@@ -128,6 +148,54 @@ const AdminAlbums: React.FC = () => {
     } catch (error) {
       console.error('Failed to load pending tag suggestion counts:', error);
       setPendingTagCounts({});
+    }
+  };
+
+  const loadPendingPlayerTagCounts = async () => {
+    try {
+      const res = await api.get('/albums/player-suggestions/pending-counts');
+      setPendingPlayerTagCounts(res.data?.counts || {});
+    } catch {
+      setPendingPlayerTagCounts({});
+    }
+  };
+
+  const openPlayerTagReviewModal = async (album: Album) => {
+    setPlayerTagReviewAlbum(album);
+    setAlbumPlayerSuggestions([]);
+    setAlbumPlayerSuggestionsMessage('');
+    setAlbumPlayerSuggestionsLoading(true);
+    try {
+      const res = await api.get(`/albums/${album.id}/player-suggestions?status=pending`);
+      setAlbumPlayerSuggestions(res.data?.suggestions || []);
+    } catch {
+      setAlbumPlayerSuggestionsMessage('Failed to load suggestions.');
+    } finally {
+      setAlbumPlayerSuggestionsLoading(false);
+    }
+  };
+
+  const closePlayerTagReviewModal = () => {
+    setPlayerTagReviewAlbum(null);
+    setAlbumPlayerSuggestions([]);
+    setAlbumPlayerSuggestionsMessage('');
+    setAlbumPlayerSuggestionsActionId(null);
+  };
+
+  const handleReviewAlbumPlayerSuggestion = async (id: number, decision: 'approve' | 'reject') => {
+    if (!playerTagReviewAlbum) return;
+    try {
+      setAlbumPlayerSuggestionsActionId(id);
+      setAlbumPlayerSuggestionsMessage('');
+      await api.post(`/albums/player-suggestions/${id}/review`, { decision });
+      const res = await api.get(`/albums/${playerTagReviewAlbum.id}/player-suggestions?status=pending`);
+      setAlbumPlayerSuggestions(res.data?.suggestions || []);
+      await loadPendingPlayerTagCounts();
+      setAlbumPlayerSuggestionsMessage(decision === 'approve' ? 'Approved.' : 'Rejected.');
+    } catch {
+      setAlbumPlayerSuggestionsMessage('Failed to process review.');
+    } finally {
+      setAlbumPlayerSuggestionsActionId(null);
     }
   };
 
@@ -387,7 +455,7 @@ const AdminAlbums: React.FC = () => {
   };
 
   useEffect(() => {
-    Promise.all([loadAlbums(), loadCategories(), loadPriceLists(), loadSchoolRoster(), loadPendingTagCounts()]);
+    Promise.all([loadAlbums(), loadCategories(), loadPriceLists(), loadSchoolRoster(), loadPendingTagCounts(), loadPendingPlayerTagCounts()]);
   }, [effectiveStudioId]);
 
   const PAGE_SIZE = 12;
@@ -586,6 +654,7 @@ const AdminAlbums: React.FC = () => {
                   ? `/api/photos/${album.coverImageUrl}/asset?variant=thumbnail`
                   : album.coverImageUrl || '/default-cover.png';
               const pendingCount = Number(pendingTagCounts[String(album.id)] || 0);
+              const pendingPlayerCount = Number(pendingPlayerTagCounts[String(album.id)] || 0);
               const priceListName = priceLists.find(pl => pl.id === album.priceListId)?.name;
 
               return (
@@ -666,6 +735,9 @@ const AdminAlbums: React.FC = () => {
                     {pendingCount > 0
                       ? actionBtn(`Tags (${pendingCount})`, '#fbbf24', () => openTagReviewModal(album), 'Review tag suggestions')
                       : actionBtn('Tags', '#4a4a6a', () => openTagReviewModal(album), 'Review tag suggestions')}
+                    {pendingPlayerCount > 0
+                      ? actionBtn(`Players (${pendingPlayerCount})`, '#34d399', () => openPlayerTagReviewModal(album), 'Review album player tags')
+                      : actionBtn('Players', '#3a4a3a', () => openPlayerTagReviewModal(album), 'Review album player tags')}
                     {actionBtn('Delete', '#f87171', () => handleDelete(album.id))}
                   </div>
                 </div>
@@ -769,6 +841,73 @@ const AdminAlbums: React.FC = () => {
           </div>
         </div>
       )}
+      {/* Album-level player tag suggestion review modal */}
+      {playerTagReviewAlbum && (
+        <div className="modal-overlay" onClick={closePlayerTagReviewModal}>
+          <div className="modal-content admin-modal-content" onClick={e => e.stopPropagation()}>
+            <div className="modal-header admin-modal-header">
+              <h2>👤 Player Tag Suggestions</h2>
+              <button onClick={closePlayerTagReviewModal} className="btn-close">×</button>
+            </div>
+            <div className="modal-body admin-modal-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+              <p style={{ marginTop: 0, color: '#bbb' }}>
+                Album: <strong>{playerTagReviewAlbum.name}</strong>
+              </p>
+              <p style={{ marginTop: 0, fontSize: 12, color: '#666' }}>
+                Customers spotted these players in this album. Approve to let them know you'll tag them going forward.
+              </p>
+              {albumPlayerSuggestionsMessage && (
+                <div style={{ marginBottom: 12, color: albumPlayerSuggestionsMessage.toLowerCase().includes('failed') ? '#ff9a9a' : '#79d279' }}>
+                  {albumPlayerSuggestionsMessage}
+                </div>
+              )}
+              {albumPlayerSuggestionsLoading ? (
+                <div style={{ color: '#aaa' }}>Loading…</div>
+              ) : albumPlayerSuggestions.length === 0 ? (
+                <div style={{ color: '#aaa' }}>No pending player tag suggestions for this album.</div>
+              ) : (
+                <div style={{ display: 'grid', gap: 10 }}>
+                  {albumPlayerSuggestions.map(s => (
+                    <div key={s.id} style={{ border: '1px solid #2d2b45', borderRadius: 8, padding: 12, background: '#19182a' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 6 }}>
+                        <div>
+                          <div style={{ fontWeight: 700, color: '#fff', fontSize: 14 }}>
+                            {s.playerName}{s.playerNumber ? <span style={{ color: '#9ca3af', fontWeight: 400 }}> #{s.playerNumber}</span> : null}
+                          </div>
+                          {s.notes && <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 2 }}>{s.notes}</div>}
+                          {s.submittedByName && <div style={{ fontSize: 11, color: '#555', marginTop: 4 }}>Submitted by {s.submittedByName}</div>}
+                        </div>
+                        <div style={{ fontSize: 10, color: '#555', whiteSpace: 'nowrap' }}>
+                          {s.submittedAt ? new Date(s.submittedAt).toLocaleDateString() : ''}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button
+                          className="btn"
+                          style={{ background: '#166534', color: '#86efac', border: '1px solid rgba(134,239,172,0.3)', padding: '5px 12px', opacity: albumPlayerSuggestionsActionId === s.id ? 0.6 : 1, cursor: albumPlayerSuggestionsActionId === s.id ? 'not-allowed' : 'pointer' }}
+                          disabled={albumPlayerSuggestionsActionId === s.id}
+                          onClick={() => handleReviewAlbumPlayerSuggestion(s.id, 'approve')}
+                        >
+                          ✓ Approve
+                        </button>
+                        <button
+                          className="btn"
+                          style={{ background: '#7f1d1d', color: '#fca5a5', border: '1px solid rgba(252,165,165,0.3)', padding: '5px 12px', opacity: albumPlayerSuggestionsActionId === s.id ? 0.6 : 1, cursor: albumPlayerSuggestionsActionId === s.id ? 'not-allowed' : 'pointer' }}
+                          disabled={albumPlayerSuggestionsActionId === s.id}
+                          onClick={() => handleReviewAlbumPlayerSuggestion(s.id, 'reject')}
+                        >
+                          ✕ Reject
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal-content admin-modal-content" onClick={(e) => e.stopPropagation()}>

@@ -45,4 +45,8 @@ export const studioPriceListService = {
     const res = await api.put(`/studio-price-lists/${listId}/items/${itemId}/move-category`, { targetCategory, targetProductName });
     return res.data;
   },
+  async deleteList(id: number) {
+    const res = await api.delete(`/studio-price-lists/${id}`);
+    return res.data;
+  },
 };

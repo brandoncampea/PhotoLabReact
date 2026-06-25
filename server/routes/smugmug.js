@@ -932,19 +932,37 @@ const getSmugMugStorageMode = () => (
 );
 
 const uploadImportedImage = async (albumId, image, imageBuffer) => {
-  const contentType = 'image/jpeg';
   const blobName = makeBlobName(albumId, image.fileName);
 
   if (!isAzureStorageConfigured()) {
     return {
       url: image.sourceUrl,
+      thumbUrl: image.sourceUrl,
       storage: 'smugmug-source',
     };
   }
 
-  const uploadedUrl = await uploadImageBufferToAzure(imageBuffer, blobName, contentType);
+  // Upload full-size image
+  const uploadedUrl = await uploadImageBufferToAzure(imageBuffer, blobName, 'image/jpeg');
+
+  // Generate and upload 400px thumbnail
+  let thumbUrl = uploadedUrl;
+  try {
+    const sharp = await import('sharp');
+    const safeBase = image.fileName.replace(/\s+/g, '_').replace(/\.[^.]+$/, '.jpg');
+    const thumbBlobName = `albums/${albumId}/thumb_${safeBase}`;
+    const thumbBuffer = await sharp.default(imageBuffer)
+      .resize({ width: 400, withoutEnlargement: true })
+      .jpeg({ quality: 80 })
+      .toBuffer();
+    thumbUrl = await uploadImageBufferToAzure(thumbBuffer, thumbBlobName, 'image/jpeg');
+  } catch (thumbErr) {
+    console.warn('[SmugMug import] Thumbnail generation failed, using full image:', thumbErr?.message);
+  }
+
   return {
     url: uploadedUrl,
+    thumbUrl,
     storage: 'azure',
   };
 };
@@ -1535,7 +1553,7 @@ router.post('/import', adminRequired, async (req, res) => {
                  height = $7
              WHERE id = $8`,
             [
-              uploadedImage.url,
+              uploadedImage.thumbUrl,
               uploadedImage.url,
               image.description || '',
               metadataJson,
@@ -1564,7 +1582,7 @@ router.post('/import', adminRequired, async (req, res) => {
             [
               albumId,
               image.fileName,
-              uploadedImage.url,
+              uploadedImage.thumbUrl,
               uploadedImage.url,
               image.description || '',
               metadataJson,

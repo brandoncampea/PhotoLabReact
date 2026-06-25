@@ -17,6 +17,7 @@ import PackageProgressBar from '../components/PackageProgressBar';
 import './AlbumDetails.css';
 import { Helmet } from 'react-helmet-async';
 import PhotoOrderPanel from '../components/PhotoOrderPanel';
+import FeaturePromoModal from '../components/FeaturePromoModal';
 
 
 type ProductWithMatch = Product & {
@@ -129,6 +130,16 @@ const AlbumDetails: React.FC = () => {
   const [favEmail, setFavEmail] = useState('');
   const [favEmailSending, setFavEmailSending] = useState(false);
   const [favEmailSent, setFavEmailSent] = useState(false);
+
+  const [showPromoModal, setShowPromoModal] = useState(false);
+
+  // Album-level player tag suggestion
+  const [showPlayerSuggestModal, setShowPlayerSuggestModal] = useState(false);
+  const [playerSuggestName, setPlayerSuggestName] = useState('');
+  const [playerSuggestNumber, setPlayerSuggestNumber] = useState('');
+  const [playerSuggestNotes, setPlayerSuggestNotes] = useState('');
+  const [playerSuggestSubmitting, setPlayerSuggestSubmitting] = useState(false);
+  const [playerSuggestMessage, setPlayerSuggestMessage] = useState('');
 
 
 
@@ -310,6 +321,34 @@ const AlbumDetails: React.FC = () => {
       setFavEmailSent(true);
     } catch { /* non-fatal */ }
     setFavEmailSending(false);
+  };
+
+  const handleSubmitPlayerSuggestion = async () => {
+    if (!album) return;
+    if (!user) {
+      setPlayerSuggestMessage('Please log in to suggest a player.');
+      navigate('/login');
+      return;
+    }
+    const name = playerSuggestName.trim();
+    if (!name) { setPlayerSuggestMessage('Please enter a player name.'); return; }
+    try {
+      setPlayerSuggestSubmitting(true);
+      setPlayerSuggestMessage('');
+      const res = await api.post(`/albums/${album.id}/player-suggestions`, {
+        playerName: name,
+        playerNumber: playerSuggestNumber.trim() || undefined,
+        notes: playerSuggestNotes.trim() || undefined,
+      });
+      setPlayerSuggestMessage(res.data?.message || 'Tag submitted!');
+      setPlayerSuggestName('');
+      setPlayerSuggestNumber('');
+      setPlayerSuggestNotes('');
+    } catch (err: any) {
+      setPlayerSuggestMessage(err?.response?.data?.error || 'Failed to submit.');
+    } finally {
+      setPlayerSuggestSubmitting(false);
+    }
   };
 
   const handleSubmitTagSuggestion = async () => {
@@ -1550,6 +1589,21 @@ const AlbumDetails: React.FC = () => {
                 Save & Share
               </button>
             )}
+            <button
+              type="button"
+              onClick={() => { setShowPlayerSuggestModal(true); setPlayerSuggestMessage(''); }}
+              style={{ padding: '5px 12px', borderRadius: 20, border: '1px solid rgba(99,179,120,0.4)', background: 'rgba(99,179,120,0.08)', color: '#6ee7a0', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+            >
+              👤 Tag a Player
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowPromoModal(true)}
+              style={{ padding: '5px 12px', borderRadius: 20, border: '1px solid rgba(255,210,80,0.35)', background: 'rgba(255,210,80,0.07)', color: '#fcd34d', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+              title="See what you can do here"
+            >
+              ✨ What's New
+            </button>
           </div>
         </div>
       </div>
@@ -1684,6 +1738,72 @@ const AlbumDetails: React.FC = () => {
       )}
 
     </div>
+
+      {/* Feature promo modal — shown once to first-time visitors, or on demand */}
+      <FeaturePromoModal forceShow={showPromoModal} onDismiss={() => setShowPromoModal(false)} />
+
+      {/* Suggest a player modal */}
+      {showPlayerSuggestModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ background: '#16162a', border: '1px solid rgba(99,179,120,0.25)', borderRadius: 16, padding: 26, maxWidth: 400, width: '100%' }}>
+            <div style={{ fontSize: 18, fontWeight: 700, color: '#fff', marginBottom: 4 }}>👤 Tag a Player</div>
+            <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 18 }}>
+              Spot someone you know in this album? Tell us and the studio will make sure they're tagged in all their photos.
+            </div>
+            {playerSuggestMessage ? (
+              <>
+                <div style={{ fontSize: 13, color: playerSuggestMessage.startsWith('Thanks') || playerSuggestMessage.startsWith('You already') ? '#86efac' : '#f87171', marginBottom: 16, lineHeight: 1.5 }}>{playerSuggestMessage}</div>
+                <button type="button" onClick={() => { setShowPlayerSuggestModal(false); setPlayerSuggestMessage(''); }} style={{ width: '100%', padding: '10px 0', borderRadius: 8, border: 'none', background: '#7b61ff', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>Done</button>
+              </>
+            ) : (
+              <>
+                <div style={{ marginBottom: 10 }}>
+                  <label style={{ fontSize: 11, color: '#9ca3af', display: 'block', marginBottom: 4 }}>Player Name *</label>
+                  <input
+                    type="text"
+                    value={playerSuggestName}
+                    onChange={e => setPlayerSuggestName(e.target.value)}
+                    placeholder="e.g. Jordan Smith"
+                    autoFocus
+                    style={{ width: '100%', padding: '9px 11px', borderRadius: 7, border: '1px solid #2e2b4a', background: '#1a1a2e', color: '#fff', fontSize: 13, boxSizing: 'border-box' }}
+                  />
+                </div>
+                <div style={{ marginBottom: 10 }}>
+                  <label style={{ fontSize: 11, color: '#9ca3af', display: 'block', marginBottom: 4 }}>Jersey # (optional)</label>
+                  <input
+                    type="text"
+                    value={playerSuggestNumber}
+                    onChange={e => setPlayerSuggestNumber(e.target.value)}
+                    placeholder="e.g. 23"
+                    style={{ width: '100%', padding: '9px 11px', borderRadius: 7, border: '1px solid #2e2b4a', background: '#1a1a2e', color: '#fff', fontSize: 13, boxSizing: 'border-box' }}
+                  />
+                </div>
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ fontSize: 11, color: '#9ca3af', display: 'block', marginBottom: 4 }}>Notes (optional)</label>
+                  <input
+                    type="text"
+                    value={playerSuggestNotes}
+                    onChange={e => setPlayerSuggestNotes(e.target.value)}
+                    placeholder="e.g. wearing red jersey, front row"
+                    style={{ width: '100%', padding: '9px 11px', borderRadius: 7, border: '1px solid #2e2b4a', background: '#1a1a2e', color: '#fff', fontSize: 13, boxSizing: 'border-box' }}
+                  />
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button type="button" onClick={() => setShowPlayerSuggestModal(false)} style={{ flex: 1, padding: '9px 0', borderRadius: 8, border: '1px solid #2e2b4a', background: 'transparent', color: '#9ca3af', fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
+                  <button
+                    type="button"
+                    onClick={handleSubmitPlayerSuggestion}
+                    disabled={!playerSuggestName.trim() || playerSuggestSubmitting}
+                    style={{ flex: 2, padding: '9px 0', borderRadius: 8, border: 'none', background: '#22c55e', color: '#fff', fontWeight: 700, cursor: 'pointer', opacity: (!playerSuggestName.trim() || playerSuggestSubmitting) ? 0.6 : 1 }}
+                  >
+                    {playerSuggestSubmitting ? 'Submitting…' : 'Submit Tag'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Favorites email prompt modal */}
       {showFavEmailPrompt && (
