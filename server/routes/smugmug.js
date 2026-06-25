@@ -1091,26 +1091,37 @@ router.get('/albums', adminRequired, async (req, res) => {
       return res.status(400).json({ error: 'SmugMug account connected but nickname could not be resolved. Please reconnect.' });
     }
 
-    const albumRows = await fetchAllSmugMugObjects(
-      `/api/v2/user/${encodeURIComponent(nickname)}!albums?count=100`,
-      apiKey,
-      ['Album', 'Albums'],
-      authContext
-    );
+    let albumRows;
+    try {
+      albumRows = await fetchAllSmugMugObjects(
+        `/api/v2/user/${encodeURIComponent(nickname)}!albums?count=100`,
+        apiKey,
+        ['Album', 'Albums'],
+        authContext
+      );
+    } catch (smugErr) {
+      console.error('[SmugMug] Album fetch failed:', smugErr?.message);
+      return res.status(500).json({ error: `SmugMug API error: ${smugErr?.message || 'unknown'}` });
+    }
     const albums = normalizeAlbums(albumRows);
 
-    const importedRows = await queryRows(
-      `SELECT
-         smugmug_album_key as albumKey,
-         local_album_id as localAlbumId,
-         imported_at as importedAt
-       FROM studio_smugmug_imports
-       WHERE studio_id = $1`,
-      [studioId]
-    );
+    let importedRows = [];
+    try {
+      importedRows = await queryRows(
+        `SELECT
+           smugmug_album_key as albumKey,
+           local_album_id as localAlbumId,
+           imported_at as importedAt
+         FROM studio_smugmug_imports
+         WHERE studio_id = $1`,
+        [studioId]
+      );
+    } catch (importErr) {
+      console.error('[SmugMug] Could not load imported rows:', importErr?.message);
+    }
 
     const importedMap = new Map(
-      importedRows.map((row) => [String(row.albumKey || ''), {
+      (importedRows || []).map((row) => [String(row.albumKey || ''), {
         localAlbumId: row.localAlbumId ? Number(row.localAlbumId) : null,
         importedAt: row.importedAt || null,
       }])
@@ -1130,7 +1141,7 @@ router.get('/albums', adminRequired, async (req, res) => {
     });
   } catch (error) {
     console.error('SmugMug albums list error:', error);
-    res.status(500).json({ error: 'Failed to load SmugMug albums' });
+    res.status(500).json({ error: `Failed to load SmugMug albums: ${error?.message || 'unknown error'}` });
   }
 });
 
