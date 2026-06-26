@@ -1,5 +1,11 @@
 [
   {
+    "version": "June 26, 2026",
+    "title": "Add customer booking request flow and dashboard pending link",
+    "summary": "1 update on June 26, 2026.",
+    "content": "- Add customer booking request flow and dashboard pending link"
+  },
+  {
     "version": "June 25, 2026",
     "title": "Fix: Studio Dashboard Recent Orders Profit Now Accounts for All Costs",
     "summary": "The Studio Profit column on the studio dashboard recent orders table was missing WHCC lab tax and uncovered shipping costs, causing it to overstate profit on pass-through shipping orders.",
