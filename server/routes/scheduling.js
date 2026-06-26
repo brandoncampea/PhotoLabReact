@@ -363,7 +363,7 @@ router.get('/studios/:studioId/bookings', authRequired, async (req, res) => {
               COALESCE(b.booking_end_time, b.manual_end_time) as endTime,
               COALESCE(a.location, b.manual_location) as location,
               COALESCE(a.staff_name, b.manual_staff_name) as staffName,
-              t.name as sessionTypeName, t.price as sessionTypePrice, t.duration_minutes as durationMinutes,
+              b.source as source, COALESCE(t.name, b.session_type_name_text) as sessionTypeName, t.price as sessionTypePrice, t.duration_minutes as durationMinutes,
               ${retainerColumnsReady ? 't.retainer_amount as retainerAmount, b.balance_amount as balanceAmount, b.balance_payment_status as balancePaymentStatus, b.balance_payment_method as balancePaymentMethod' : 'NULL as retainerAmount, NULL as balanceAmount, NULL as balancePaymentStatus, NULL as balancePaymentMethod'}
        FROM scheduling_bookings b
        LEFT JOIN scheduling_availability a ON a.id = b.availability_id
@@ -778,6 +778,76 @@ router.post('/public/:studioSlug/book', async (req, res) => {
   } catch (err) {
     console.error('[scheduling] book error:', err);
     res.status(500).json({ error: 'Failed to submit booking request' });
+  }
+});
+
+router.post('/public/:studioSlug/request', async (req, res) => {
+  try {
+    const { customerName, customerEmail, customerPhone, sessionTypeName, preferredDate, preferredTime, preferredLocation, customerNotes } = req.body;
+    if (!customerName || !customerEmail) return res.status(400).json({ error: 'Name and email are required' });
+
+    const studio = await queryRow(
+      `SELECT s.id, s.name, COALESCE(NULLIF(s.email,''), pc.email) as email
+       FROM studios s LEFT JOIN profile_config pc ON pc.studio_id = s.id
+       WHERE s.public_slug = $1`,
+      [req.params.studioSlug]
+    );
+    if (!studio) return res.status(404).json({ error: 'Studio not found' });
+
+    await query(
+      `INSERT INTO scheduling_bookings
+       (studio_id, source, customer_name, customer_email, customer_phone, customer_notes,
+        manual_date, manual_start_time, manual_location, session_type_name_text)
+       VALUES ($1, 'request', $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [studio.id, customerName, customerEmail, customerPhone || null, customerNotes || null,
+       preferredDate || null, preferredTime || null, preferredLocation || null, sessionTypeName || null]
+    );
+
+    const dateLabel = preferredDate
+      ? new Date(preferredDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+      : '';
+
+    if (studio.email) {
+      sendEmail({
+        to: studio.email,
+        subject: `New custom session request — ${customerName}`,
+        html: `
+          <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;background:#181a1b;color:#e0e0e0;border-radius:12px">
+            <h2 style="color:#a78bfa;margin:0 0 12px 0">New Custom Session Request</h2>
+            <p style="color:#bdbdbd"><strong style="color:#e0e0e0">From:</strong> ${customerName} (${customerEmail})</p>
+            ${sessionTypeName ? `<p style="color:#bdbdbd"><strong style="color:#e0e0e0">Session type:</strong> ${sessionTypeName}</p>` : ''}
+            ${dateLabel ? `<p style="color:#bdbdbd"><strong style="color:#e0e0e0">Preferred date:</strong> ${dateLabel}</p>` : ''}
+            ${preferredTime ? `<p style="color:#bdbdbd"><strong style="color:#e0e0e0">Preferred time:</strong> ${preferredTime}</p>` : ''}
+            ${preferredLocation ? `<p style="color:#bdbdbd"><strong style="color:#e0e0e0">Preferred location:</strong> ${preferredLocation}</p>` : ''}
+            ${customerPhone ? `<p style="color:#bdbdbd"><strong style="color:#e0e0e0">Phone:</strong> ${customerPhone}</p>` : ''}
+            ${customerNotes ? `<p style="color:#bdbdbd"><strong style="color:#e0e0e0">Notes:</strong> ${customerNotes}</p>` : ''}
+            <a href="${APP_URL()}/admin/scheduling" style="display:inline-block;padding:12px 28px;background:#7c5cff;color:#fff;border-radius:10px;text-decoration:none;font-weight:700;margin-top:16px">Review in Dashboard</a>
+          </div>
+        `,
+        text: `New custom session request from ${customerName} (${customerEmail}).${sessionTypeName ? `\nSession type: ${sessionTypeName}` : ''}${dateLabel ? `\nPreferred date: ${dateLabel}` : ''}${preferredTime ? `\nPreferred time: ${preferredTime}` : ''}${preferredLocation ? `\nPreferred location: ${preferredLocation}` : ''}${customerNotes ? `\n\nNotes: ${customerNotes}` : ''}\n\nManage: ${APP_URL()}/admin/scheduling`,
+      }).catch(() => {});
+    }
+
+    sendEmail({
+      to: customerEmail,
+      subject: `Session request received — ${studio.name}`,
+      html: `
+        <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;background:#181a1b;color:#e0e0e0;border-radius:12px">
+          <h2 style="color:#a78bfa;margin:0 0 12px 0">Request Received</h2>
+          <p style="color:#bdbdbd">Hi ${customerName},</p>
+          <p style="color:#bdbdbd">Your custom session request with <strong style="color:#e0e0e0">${studio.name}</strong> has been received.</p>
+          ${sessionTypeName ? `<p style="color:#bdbdbd"><strong style="color:#e0e0e0">Session type:</strong> ${sessionTypeName}</p>` : ''}
+          ${dateLabel ? `<p style="color:#bdbdbd"><strong style="color:#e0e0e0">Preferred date:</strong> ${dateLabel}</p>` : ''}
+          <p style="color:#bdbdbd">The studio will reach out within 24–48 hours to confirm details and next steps.</p>
+        </div>
+      `,
+      text: `Hi ${customerName},\n\nYour custom session request with ${studio.name} has been received.${sessionTypeName ? `\nSession type: ${sessionTypeName}` : ''}${dateLabel ? `\nPreferred date: ${dateLabel}` : ''}\n\nThe studio will be in touch soon.`,
+    }).catch(() => {});
+
+    res.status(201).json({ success: true });
+  } catch (err) {
+    console.error('[scheduling] request error:', err);
+    res.status(500).json({ error: 'Failed to submit request' });
   }
 });
 

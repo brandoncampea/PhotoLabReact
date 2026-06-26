@@ -91,6 +91,8 @@ const mssql = require('../mssql.cjs');
     await query(`IF COL_LENGTH('scheduling_bookings', 'manual_end_time') IS NULL ALTER TABLE scheduling_bookings ADD manual_end_time NVARCHAR(10)`);
     await query(`IF COL_LENGTH('scheduling_bookings', 'manual_location') IS NULL ALTER TABLE scheduling_bookings ADD manual_location NVARCHAR(500)`);
     await query(`IF COL_LENGTH('scheduling_bookings', 'manual_staff_name') IS NULL ALTER TABLE scheduling_bookings ADD manual_staff_name NVARCHAR(255)`);
+    await query(`IF COL_LENGTH('scheduling_bookings', 'source') IS NULL ALTER TABLE scheduling_bookings ADD source NVARCHAR(20)`);
+    await query(`IF COL_LENGTH('scheduling_bookings', 'session_type_name_text') IS NULL ALTER TABLE scheduling_bookings ADD session_type_name_text NVARCHAR(255)`);
 
     await query(`
       IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'scheduling_fee_config')

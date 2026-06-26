@@ -505,9 +505,11 @@ const [batchRange, setBatchRange] = useState<'day' | 'week' | 'month'>('day');
           <div className="dashboard-card-value">{stats.schedulingStats?.totalBookings ?? 0}</div>
           <div className="dashboard-card-sub">{stats.schedulingStats?.upcomingBookings ?? 0} upcoming · {stats.schedulingStats?.approvedBookings ?? 0} approved</div>
           {(stats.schedulingStats?.pendingBookings ?? 0) > 0 && (
-            <div style={{ marginTop: 8, background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 8, padding: '6px 10px', fontSize: '0.8rem', color: '#f59e0b', fontWeight: 700 }}>
-              {stats.schedulingStats!.pendingBookings} pending review
-            </div>
+            <Link to="/admin/scheduling" style={{ textDecoration: 'none', display: 'block', marginTop: 8 }}>
+              <div style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 8, padding: '6px 10px', fontSize: '0.8rem', color: '#f59e0b', fontWeight: 700, cursor: 'pointer' }}>
+                {stats.schedulingStats!.pendingBookings} pending review
+              </div>
+            </Link>
           )}
           {(stats.schedulingStats?.upcomingBookingsList?.length ?? 0) > 0 && (
             <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>

@@ -75,9 +75,12 @@ export default function BookingPage() {
   const [selectedType, setSelectedType] = useState<SessionType | null>(null);
   const [selectedAvail, setSelectedAvail] = useState<Availability | null>(null);
   const [selectedTime, setSelectedTime] = useState('');
-  const [step, setStep] = useState<'type' | 'slot' | 'form' | 'done'>('type');
+  const [step, setStep] = useState<'type' | 'slot' | 'form' | 'done' | 'request' | 'requestDone'>('type');
   const defaultName = user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() : '';
   const [form, setForm] = useState({ name: defaultName, email: user?.email || '', phone: '', notes: '' });
+  const [reqForm, setReqForm] = useState({ name: defaultName, email: user?.email || '', phone: '', sessionType: '', preferredDate: '', preferredTime: '', location: '', notes: '' });
+  const [reqSubmitting, setReqSubmitting] = useState(false);
+  const [reqError, setReqError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [loadingSlots, setLoadingSlots] = useState(false);
@@ -181,6 +184,33 @@ export default function BookingPage() {
     finally { setSubmitting(false); }
   };
 
+  const submitRequest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reqForm.name || !reqForm.email) return;
+    setReqSubmitting(true);
+    setReqError('');
+    try {
+      const res = await fetch(`/api/scheduling/public/${studioSlug}/request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customerName: reqForm.name,
+          customerEmail: reqForm.email,
+          customerPhone: reqForm.phone || null,
+          sessionTypeName: reqForm.sessionType || null,
+          preferredDate: reqForm.preferredDate || null,
+          preferredTime: reqForm.preferredTime || null,
+          preferredLocation: reqForm.location || null,
+          customerNotes: reqForm.notes || null,
+        }),
+      });
+      const d = await res.json();
+      if (!res.ok) { setReqError(d.error || 'Failed to submit'); return; }
+      setStep('requestDone');
+    } catch { setReqError('Network error. Please try again.'); }
+    finally { setReqSubmitting(false); }
+  };
+
   // Build set of available date strings for the calendar
   const availDateSet = new Set(availabilities.map(a => a.date));
 
@@ -236,6 +266,29 @@ export default function BookingPage() {
                 {selectedAvail.sessionDuration && ` (${selectedAvail.sessionDuration} min)`}
                 {selectedAvail.location && ` · ${selectedAvail.location}`}
               </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (step === 'requestDone') {
+    return (
+      <div style={wrap}>
+        <div style={card}>
+          <h1 style={heading}>Request Sent!</h1>
+          <p style={{ color: '#bdbdbd', lineHeight: 1.6 }}>
+            Thanks{reqForm.name ? `, ${reqForm.name}` : ''}! Your session request with <strong style={{ color: '#e0e0e0' }}>{studioName}</strong> has been received.
+            The studio will review your request and follow up to confirm details.
+          </p>
+          {(reqForm.preferredDate || reqForm.sessionType || reqForm.location) && (
+            <div style={{ background: '#1a1a24', border: '1px solid #3a3656', borderRadius: 10, padding: '12px 16px', marginTop: 16 }}>
+              <div style={{ color: '#a78bfa', fontWeight: 700, marginBottom: 4 }}>Your request</div>
+              {reqForm.sessionType && <div style={{ color: '#bdbdbd', fontSize: '0.88rem', marginBottom: 2 }}>{reqForm.sessionType}</div>}
+              {reqForm.preferredDate && <div style={{ color: '#e0e0e0' }}>{fmtDate(reqForm.preferredDate)}</div>}
+              {reqForm.preferredTime && <div style={{ color: '#bdbdbd', fontSize: '0.88rem' }}>{fmtTime(reqForm.preferredTime)}</div>}
+              {reqForm.location && <div style={{ color: '#bdbdbd', fontSize: '0.88rem' }}>{reqForm.location}</div>}
             </div>
           )}
         </div>
@@ -308,6 +361,15 @@ export default function BookingPage() {
               Not sure? Show all available times
             </button>
           </div>
+          <div style={{ marginTop: 28, background: 'rgba(124,92,255,0.07)', border: '1px solid rgba(124,92,255,0.22)', borderRadius: 14, padding: '18px 22px', display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <div style={{ fontWeight: 700, color: '#e0e0f0', fontSize: '0.97rem', marginBottom: 4 }}>Need a specific date or time?</div>
+              <div style={{ color: '#8888a0', fontSize: '0.85rem', lineHeight: 1.5 }}>Don't see a time that works? Submit a request and the studio will reach out to confirm a date, time, and details.</div>
+            </div>
+            <button onClick={() => setStep('request')} style={{ padding: '10px 20px', background: '#7c5cff', color: '#fff', border: 'none', borderRadius: 10, fontWeight: 700, fontSize: '0.88rem', cursor: 'pointer', flexShrink: 0 }}>
+              Request Custom Date →
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -316,12 +378,13 @@ export default function BookingPage() {
   return (
     <div style={wrap}>
       <div style={card}>
-        <h1 style={heading}>Book a Session</h1>
+        <h1 style={heading}>{step === 'request' ? 'Request a Session' : 'Book a Session'}</h1>
         <p style={sub}>{studioName || 'Loading…'}</p>
 
         {error && <div style={{ background: '#2d1a1a', color: '#ffb3b3', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: '0.9rem' }}>{error}</div>}
 
         {/* Step indicator */}
+        {step !== 'request' && (
         <div style={{ display: 'flex', gap: 10, marginBottom: '1.25rem' }}>
           {sessionTypes.length > 0 && (
             <div style={{ fontSize: '0.78rem', color: step === 'type' ? '#a78bfa' : '#4a4a5a', fontWeight: 700, cursor: 'pointer' }} onClick={() => setStep('type')}>
@@ -335,6 +398,7 @@ export default function BookingPage() {
             {stepNums.form}. Your Info
           </div>
         </div>
+        )}
 
         {/* Step 2: Pick date + time */}
         {step === 'slot' && (
@@ -481,6 +545,14 @@ export default function BookingPage() {
                   </>
                 )
             }
+            {!loadingSlots && (
+              <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid #2e2e3e', textAlign: 'center' }}>
+                <div style={{ color: '#6b6b80', fontSize: '0.82rem', marginBottom: 8 }}>Don't see a time that works for you?</div>
+                <button onClick={() => setStep('request')} style={{ background: 'none', border: '1px solid #3a3656', borderRadius: 8, color: '#a78bfa', fontSize: '0.82rem', fontWeight: 600, padding: '6px 14px', cursor: 'pointer' }}>
+                  Request a Custom Date →
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -512,6 +584,43 @@ export default function BookingPage() {
             </button>
             <p style={{ color: '#4a4a5a', fontSize: '0.78rem', textAlign: 'center', marginTop: 10 }}>
               Your request will be reviewed by the studio. No payment is collected at this step.
+            </p>
+          </form>
+        )}
+
+        {/* Step: Custom request form */}
+        {step === 'request' && (
+          <form onSubmit={submitRequest}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+              <button type="button" onClick={() => setStep(sessionTypes.length > 0 ? 'type' : 'slot')} style={ghostBtn}>← Back</button>
+              <span style={{ color: '#a78bfa', fontWeight: 700, fontSize: '0.9rem' }}>Custom Session Request</span>
+            </div>
+            <div style={{ background: '#1a1a24', border: '1px solid #3a3656', borderRadius: 10, padding: '10px 14px', marginBottom: 14 }}>
+              <div style={{ color: '#a78bfa', fontWeight: 700, fontSize: '0.8rem', marginBottom: 3 }}>How it works</div>
+              <div style={{ color: '#8888a0', fontSize: '0.82rem', lineHeight: 1.55 }}>Tell us what you're looking for and when. The studio will review your request and reach out to confirm the date, time, and payment details.</div>
+            </div>
+            {reqError && <div style={{ background: '#2d1a1a', color: '#ffb3b3', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: '0.9rem' }}>{reqError}</div>}
+            <label style={labelStyle}>Your Name *</label>
+            <input style={inputStyle} value={reqForm.name} onChange={e => setReqForm(f => ({ ...f, name: e.target.value }))} required placeholder="Full name" />
+            <label style={labelStyle}>Email *</label>
+            <input style={inputStyle} type="email" value={reqForm.email} onChange={e => setReqForm(f => ({ ...f, email: e.target.value }))} required placeholder="you@example.com" />
+            <label style={labelStyle}>Phone <span style={{ color: '#4a4a5a', fontWeight: 400 }}>(optional)</span></label>
+            <input style={inputStyle} type="tel" value={reqForm.phone} onChange={e => setReqForm(f => ({ ...f, phone: e.target.value }))} placeholder="(555) 000-0000" />
+            <label style={labelStyle}>Type of session <span style={{ color: '#4a4a5a', fontWeight: 400 }}>(optional)</span></label>
+            <input style={inputStyle} value={reqForm.sessionType} onChange={e => setReqForm(f => ({ ...f, sessionType: e.target.value }))} placeholder="e.g. Family portraits, headshots, graduation…" />
+            <label style={labelStyle}>Preferred date <span style={{ color: '#4a4a5a', fontWeight: 400 }}>(optional)</span></label>
+            <input style={{ ...inputStyle, colorScheme: 'dark' }} type="date" value={reqForm.preferredDate} onChange={e => setReqForm(f => ({ ...f, preferredDate: e.target.value }))} />
+            <label style={labelStyle}>Preferred time <span style={{ color: '#4a4a5a', fontWeight: 400 }}>(optional)</span></label>
+            <input style={{ ...inputStyle, colorScheme: 'dark' }} type="time" value={reqForm.preferredTime} onChange={e => setReqForm(f => ({ ...f, preferredTime: e.target.value }))} />
+            <label style={labelStyle}>Preferred location <span style={{ color: '#4a4a5a', fontWeight: 400 }}>(optional)</span></label>
+            <input style={inputStyle} value={reqForm.location} onChange={e => setReqForm(f => ({ ...f, location: e.target.value }))} placeholder="Studio, outdoor park, specific address…" />
+            <label style={labelStyle}>Notes <span style={{ color: '#4a4a5a', fontWeight: 400 }}>(optional)</span></label>
+            <textarea style={{ ...inputStyle, resize: 'vertical', minHeight: 72 }} value={reqForm.notes} onChange={e => setReqForm(f => ({ ...f, notes: e.target.value }))} placeholder="Anything else the studio should know…" />
+            <button type="submit" style={{ ...primaryBtn, opacity: reqSubmitting ? 0.6 : 1, cursor: reqSubmitting ? 'not-allowed' : 'pointer' }} disabled={reqSubmitting}>
+              {reqSubmitting ? 'Submitting…' : 'Send Request'}
+            </button>
+            <p style={{ color: '#4a4a5a', fontSize: '0.78rem', textAlign: 'center', marginTop: 10 }}>
+              No payment is collected now. The studio will reach out to confirm details.
             </p>
           </form>
         )}
