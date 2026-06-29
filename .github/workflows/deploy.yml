@@ -40,23 +40,17 @@ jobs:
           fi
           echo "Build artifacts verified."
 
+      - name: Install production dependencies
+        run: npm ci --omit=dev --legacy-peer-deps
+
       - name: Prepare deployment bundle
         run: |
           rm -rf deploy
           mkdir -p deploy
           cp -R server deploy/server
           cp -R dist deploy/dist
-          cp package-lock.json deploy/
-          # Strip the build script so Oryx doesn't try to re-run the Vite frontend build.
-          # The pre-built dist/ is already in the zip; Oryx only needs to run npm install.
-          node -e "
-            const fs = require('fs');
-            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-            delete pkg.scripts.build;
-            fs.writeFileSync('deploy/package.json', JSON.stringify(pkg, null, 2));
-          "
-          # .npmrc tells Kudu to skip devDeps and allow legacy peer deps when it runs npm install
-          printf 'legacy-peer-deps=true\nomit=dev\n' > deploy/.npmrc
+          cp package.json package-lock.json deploy/
+          cp -R node_modules deploy/node_modules
 
       - name: Create deployment zip
         run: |
@@ -66,7 +60,7 @@ jobs:
             dist \
             package.json \
             package-lock.json \
-            .npmrc \
+            node_modules \
             -x "**/.DS_Store" "**/*.log" "**/test-results/**" "**/playwright-report/**" "server/uploads/**" "server/*.db" "server/*.db.*"
           cd ..
           ls -lh appservice-deploy.zip
@@ -140,8 +134,8 @@ jobs:
             APP_URL="https://${APP_HOST}"
           fi
           SETTINGS=(
-            "SCM_DO_BUILD_DURING_DEPLOYMENT=true"
-            "ENABLE_ORYX_BUILD=true"
+            "SCM_DO_BUILD_DURING_DEPLOYMENT=false"
+            "ENABLE_ORYX_BUILD=false"
             "NODE_ENV=production"
             "WEBSITE_NODE_DEFAULT_VERSION=~22"
             "NODE_OPTIONS=--no-deprecation"
