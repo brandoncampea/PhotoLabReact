@@ -512,6 +512,7 @@ const SuperAdminDashboard: React.FC = () => {
               const isExpanded = expandedStudio === studio.id;
               const currentProfit = Number(summary.currentStudioProfit || 0);
               const totalProfit = Number(summary.totalStudioProfit || 0);
+              const totalPlatformMargin = Number(summary.totalPlatformMargin || 0);
               const revenue = Math.max(0, Number(summary.totalRevenue) - Number(summary.totalTax || 0));
 
               const statCell = (label: string, value: string, color?: string) => (
@@ -547,7 +548,8 @@ const SuperAdminDashboard: React.FC = () => {
                       {/* Primary stats inline */}
                       <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', marginLeft: 8 }}>
                         {statCell('Revenue', `$${revenue.toFixed(2)}`)}
-                        {statCell('Total Profit', `$${totalProfit.toFixed(2)}`, '#7ee787')}
+                        {statCell('Studio Profit', `$${totalProfit.toFixed(2)}`, '#7ee787')}
+                        {statCell('Platform Margin', `$${totalPlatformMargin.toFixed(2)}`, '#60a5fa')}
                         {statCell('Current Profit', `$${currentProfit.toFixed(2)}`, currentProfit > 0 ? '#fbbf24' : '#5a5a72')}
                         {statCell('Paid Out', `$${Number(summary.totalPayouts || 0).toFixed(2)}`)}
                       </div>

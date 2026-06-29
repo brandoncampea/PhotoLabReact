@@ -1347,30 +1347,55 @@ router.get('/:studioId/subscription', authRequired, async (req, res) => {
     }
 
     const studio = await queryRow(`
-      SELECT 
-        id,
-        name,
-        subscription_plan,
-        subscription_status,
-        subscription_start,
-        subscription_end,
-        is_free_subscription,
-        cancellation_requested,
-        cancellation_date,
-        billing_cycle
-      FROM studios
-      WHERE id = $1
+      SELECT
+        s.id,
+        s.name,
+        s.subscription_plan,
+        s.subscription_status,
+        s.subscription_start,
+        s.subscription_end,
+        s.is_free_subscription,
+        s.cancellation_requested,
+        s.cancellation_date,
+        s.billing_cycle,
+        sp.id as plan_id,
+        sp.monthly_price,
+        sp.yearly_price,
+        sp.features as plan_features,
+        sp.description as plan_description
+      FROM studios s
+      LEFT JOIN subscription_plans sp ON LOWER(sp.name) = LOWER(s.subscription_plan)
+      WHERE s.id = $1
     `, [studioId]);
 
     if (!studio) {
       return res.status(404).json({ error: 'Studio not found' });
     }
 
-    // Get the plan details
-    const plan = studio.subscription_plan ? SUBSCRIPTION_PLANS[studio.subscription_plan] : null;
+    let planFeatures = [];
+    try { planFeatures = studio.plan_features ? JSON.parse(studio.plan_features) : []; } catch {}
+
+    const plan = studio.plan_id ? {
+      id: studio.plan_id,
+      monthlyPrice: parseFloat(studio.monthly_price) || 0,
+      yearlyPrice: studio.yearly_price != null ? parseFloat(studio.yearly_price) : null,
+      features: planFeatures,
+      description: studio.plan_description,
+    } : null;
 
     res.json({
-      studio,
+      studio: {
+        id: studio.id,
+        name: studio.name,
+        subscription_plan: studio.subscription_plan,
+        subscription_status: studio.subscription_status,
+        subscription_start: studio.subscription_start,
+        subscription_end: studio.subscription_end,
+        is_free_subscription: studio.is_free_subscription,
+        cancellation_requested: studio.cancellation_requested,
+        cancellation_date: studio.cancellation_date,
+        billing_cycle: studio.billing_cycle,
+      },
       plan
     });
   } catch (error) {
@@ -1400,7 +1425,17 @@ router.get('/:studioId/usage', authRequired, async (req, res) => {
       return res.status(404).json({ error: 'Studio not found' });
     }
 
-    const plan = studio.subscriptionPlan ? SUBSCRIPTION_PLANS[studio.subscriptionPlan] : null;
+    let plan = null;
+    if (studio.subscriptionPlan) {
+      try {
+        const dbPlan = await queryRow(
+          `SELECT TOP 1 id, name, max_albums as maxAlbums, max_storage_gb as maxStorageGb
+           FROM subscription_plans WHERE LOWER(name) = LOWER($1)`,
+          [studio.subscriptionPlan]
+        );
+        if (dbPlan) plan = dbPlan;
+      } catch {}
+    }
 
     const albumStats = await queryRow(
       `SELECT COUNT(*) as albumCount
@@ -1666,8 +1701,9 @@ router.patch('/:studioId/subscription', authRequired, async (req, res) => {
     if (stripeCustomerId) updateData.stripe_customer_id = stripeCustomerId;
     if (stripeSubscriptionId) updateData.stripe_subscription_id = stripeSubscriptionId;
     if (billingCycle) updateData.billing_cycle = billingCycle;
-    if (isFreeSubscription !== undefined) updateData.is_free_subscription = !!isFreeSubscription;
-    
+    // Use 0/1 integers for BIT columns — some MSSQL driver versions reject JS booleans
+    if (isFreeSubscription !== undefined) updateData.is_free_subscription = isFreeSubscription ? 1 : 0;
+
     // If activating subscription, clear any pending cancellation
     if (subscriptionStatus === 'active') {
       updateData.cancellation_requested = 0;
@@ -1689,17 +1725,33 @@ router.patch('/:studioId/subscription', authRequired, async (req, res) => {
       WHERE id = $${values.length}
     `, values);
 
-    const updatedStudio = await queryRow('SELECT * FROM studios WHERE id = $1', [studioId]);
+    const updatedStudio = await queryRow(`
+      SELECT id, name, email, subscription_plan, subscription_status, billing_cycle,
+             subscription_start, subscription_end, stripe_customer_id, stripe_subscription_id,
+             is_free_subscription, cancellation_requested, cancellation_date
+      FROM studios WHERE id = $1
+    `, [studioId]);
     res.json(updatedStudio);
   } catch (error) {
-    console.error('Update subscription error:', error);
-    res.status(500).json({ error: 'Failed to update subscription' });
+    console.error('Update subscription error:', error?.message || error, error?.stack);
+    res.status(500).json({ error: error?.message || 'Failed to update subscription' });
   }
 });
 
 // Get subscription plans (public)
-router.get('/plans/list', (req, res) => {
-  res.json(SUBSCRIPTION_PLANS);
+router.get('/plans/list', async (req, res) => {
+  try {
+    const plans = await queryRows(
+      `SELECT id, name, monthly_price, yearly_price, features, description, stripe_monthly_price_id, stripe_yearly_price_id
+       FROM subscription_plans WHERE is_active = 1 ORDER BY monthly_price ASC`
+    );
+    res.json(plans.map(p => ({
+      ...p,
+      features: (() => { try { return p.features ? JSON.parse(p.features) : []; } catch { return []; } })(),
+    })));
+  } catch {
+    res.json([]);
+  }
 });
 
 // Get studio fees

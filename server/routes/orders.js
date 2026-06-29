@@ -3393,6 +3393,12 @@ router.use((req, res, next) => {
   return authRequired(req, res, next);
 });
 
+// HEAD requests come from link previewers / browsers prefetching — respond quickly
+router.head('/digital-download/:token', (req, res) => {
+  res.setHeader('Content-Type', 'application/zip');
+  res.status(200).end();
+});
+
 router.get('/digital-download/:token', async (req, res) => {
   try {
     const token = String(req.params.token || '').trim();
@@ -3492,10 +3498,20 @@ router.get('/digital-download/:token', async (req, res) => {
     // store=true: no compression — JPEGs are already compressed, skipping zlib makes
     // packing much faster with no meaningful size difference
     const archive = archiver('zip', { store: true });
+
+    // Must be registered before pipe — throw inside event handler becomes uncaught exception
+    archive.on('error', (error) => {
+      console.error('[digital-download] Archive error:', error?.message || error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Archive creation failed' });
+      } else {
+        try { res.end(); } catch {}
+      }
+    });
+
     archive.pipe(res);
 
-    // Build deduplicated file names first, then download all blobs in parallel
-    // so Azure transfers overlap instead of running sequentially
+    // Build deduplicated file names
     const usedNames = new Map();
     const entries = photoRows
       .filter((photo) => photo.fullImageUrl)
@@ -3509,20 +3525,16 @@ router.get('/digital-download/:token', async (req, res) => {
         return { photo, finalName };
       });
 
-    const BATCH = 8;
-    for (let i = 0; i < entries.length; i += BATCH) {
-      const batch = entries.slice(i, i + BATCH);
-      const buffers = await Promise.all(
-        batch.map(({ photo }) => downloadBlob(photo.fullImageUrl).catch(() => null))
-      );
-      for (let j = 0; j < batch.length; j++) {
-        if (buffers[j]) archive.append(buffers[j], { name: batch[j].finalName });
+    // Stream each blob directly to archiver instead of buffering to memory.
+    // Sequential downloads avoid exhausting Azure connection limits and keep
+    // memory usage flat regardless of album size.
+    for (const { photo, finalName } of entries) {
+      const downloadResponse = await downloadBlob(photo.fullImageUrl, 'stream').catch(() => null);
+      if (downloadResponse?.readableStreamBody) {
+        archive.append(downloadResponse.readableStreamBody, { name: finalName });
       }
     }
 
-    archive.on('error', (error) => {
-      throw error;
-    });
     await archive.finalize();
     return;
   } catch (error) {

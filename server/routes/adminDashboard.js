@@ -72,11 +72,13 @@ router.get('/studio-revenue-details', adminRequired, async (req, res) => {
         if (req.user?.role !== 'super_admin') {
             return res.status(403).json({ error: 'Forbidden' });
         }
-        const [hasPackageNameRow, hasProductSizeIdRow, hasStudioRevAmtRow2, hasProdCostAmtRow2] = await Promise.all([
+        const [hasPackageNameRow, hasProductSizeIdRow, hasStudioRevAmtRow2, hasProdCostAmtRow2, hasBaseRevAmtRow2, hasSuperAdminShareRow2] = await Promise.all([
             queryRow(`SELECT CASE WHEN COL_LENGTH('order_items', 'package_name') IS NOT NULL THEN 1 ELSE 0 END as v`),
             queryRow(`SELECT CASE WHEN COL_LENGTH('order_items', 'product_size_id') IS NOT NULL THEN 1 ELSE 0 END as v`),
             queryRow(`SELECT CASE WHEN COL_LENGTH('order_items', 'studio_revenue_amount') IS NOT NULL THEN 1 ELSE 0 END as v`),
             queryRow(`SELECT CASE WHEN COL_LENGTH('order_items', 'production_cost_amount') IS NOT NULL THEN 1 ELSE 0 END as v`),
+            queryRow(`SELECT CASE WHEN COL_LENGTH('order_items', 'base_revenue_amount') IS NOT NULL THEN 1 ELSE 0 END as v`),
+            queryRow(`SELECT CASE WHEN COL_LENGTH('order_items', 'super_admin_share_amount') IS NOT NULL THEN 1 ELSE 0 END as v`),
         ]);
         const hasPackageCols = Number(hasPackageNameRow?.v || 0) === 1;
         const hasProductSizeId = Number(hasProductSizeIdRow?.v || 0) === 1;
@@ -87,6 +89,13 @@ router.get('/studio-revenue-details', adminRequired, async (req, res) => {
         const whccExpr2 = Number(hasProdCostAmtRow2?.v || 0) === 1
             ? 'COALESCE(oi.production_cost_amount, 0)'
             : '0';
+        const baseRevExpr2 = Number(hasBaseRevAmtRow2?.v || 0) === 1
+            ? 'COALESCE(oi.base_revenue_amount, 0)'
+            : '0';
+        // Platform margin per item = super_admin_share (base price - WHCC cost) — what the platform earns
+        const platformShareExpr2 = Number(hasSuperAdminShareRow2?.v || 0) === 1
+            ? `COALESCE(oi.super_admin_share_amount, ${baseRevExpr2} - ${whccExpr2})`
+            : `${baseRevExpr2} - ${whccExpr2}`;
 
         await ensurePayoutTables();
 
@@ -125,7 +134,8 @@ router.get('/studio-revenue-details', adminRequired, async (req, res) => {
                   o.created_at,
                   o.status,
                   COALESCE(SUM(${studioRevExpr2}), 0) as studio_revenue,
-                  COALESCE(SUM(${whccExpr2}), 0) as whcc_cost
+                  COALESCE(SUM(${whccExpr2}), 0) as whcc_cost,
+                  COALESCE(SUM(${platformShareExpr2}), 0) as platform_share
                 FROM orders o
                 LEFT JOIN order_items oi ON oi.order_id = o.id
                 WHERE o.studio_id = $1
@@ -147,8 +157,12 @@ router.get('/studio-revenue-details', adminRequired, async (req, res) => {
                 const studioRevenue = Number(order.studio_revenue || 0);
                 const whccCost = Number(order.whcc_cost || 0);
                 const stripeFeeAmount = Number(order.stripe_fee_amount || 0);
-                // Studio profit = retail revenue - WHCC cost - Stripe fee
+                const platformShare = Number(order.platform_share || 0);
+                const shippingMargin = Number(order.shipping_margin || 0);
+                // Studio profit = retail revenue - WHCC cost - Stripe fee (what the studio keeps)
                 order.studio_profit = studioRevenue - whccCost - stripeFeeAmount;
+                // Platform margin = platform share per item + shipping margin - Stripe fee
+                order.platform_margin = platformShare + shippingMargin - stripeFeeAmount;
                 order.is_paid = paidOrderMap.has(Number(order.id));
                 order.payout_id = paidOrderMap.get(Number(order.id)) || null;
 
@@ -177,6 +191,13 @@ router.get('/studio-revenue-details', adminRequired, async (req, res) => {
             const currentStudioProfit = orders
                 .filter(o => !o.is_paid)
                 .reduce((sum, order) => sum + Number(order.studio_profit || 0), 0);
+            const totalPlatformMargin = orders.reduce(
+                (sum, order) => sum + Number(order.platform_margin || 0),
+                0
+            );
+            const currentPlatformMargin = orders
+                .filter(o => !o.is_paid)
+                .reduce((sum, order) => sum + Number(order.platform_margin || 0), 0);
 
             // Payout history for this studio
             const payoutHistory = await queryRows(`
@@ -196,6 +217,8 @@ router.get('/studio-revenue-details', adminRequired, async (req, res) => {
                     ...summary,
                     totalStudioProfit,
                     currentStudioProfit,
+                    totalPlatformMargin,
+                    currentPlatformMargin,
                     totalPayouts,
                 },
                 orders,
@@ -307,20 +330,22 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
         const customerStudioFilter = studioId ? `studio_id = ${studioId}` : '';
         const userStudioFilter = studioId ? ` AND studio_id = ${studioId}` : '';
 
-        const totalOrdersRow = await queryRow(
-            `SELECT COUNT(*) as count FROM orders o WHERE 1=1${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}`
-        );
-        const totalOrders = totalOrdersRow?.count || 0;
-
-        const totalRevenueRow = await queryRow(
-            `SELECT ISNULL(SUM(o.total), 0) as sum
+        // Run all initial scalar queries and column checks in parallel
+        const [
+            totalOrdersRow,
+            totalRevenueRow,
+            revenueCompositionRow,
+            hasPackageNameRow,
+            hasStudioRevenueAmtRow,
+            hasBaseRevenueAmtRow,
+            hasProductionCostAmtRow,
+            hasSuperAdminShareAmtRow,
+        ] = await Promise.all([
+            queryRow(`SELECT COUNT(*) as count FROM orders o WHERE 1=1${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}`),
+            queryRow(`SELECT ISNULL(SUM(o.total), 0) as sum
              FROM orders o
-             WHERE LOWER(o.status) NOT IN ('cancelled', 'refunded')${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}`
-        );
-        const totalRevenue = Number(totalRevenueRow?.sum || 0);
-
-        const revenueCompositionRow = await queryRow(
-            `SELECT
+             WHERE LOWER(o.status) NOT IN ('cancelled', 'refunded')${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}`),
+            queryRow(`SELECT
                 COALESCE(SUM(COALESCE(o.subtotal, 0)), 0) as totalSubtotal,
                 COALESCE(SUM(COALESCE(o.tax_amount, 0)), 0) as totalTax,
                 COALESCE(SUM(COALESCE(o.shipping_cost, 0)), 0) as totalShipping,
@@ -330,17 +355,15 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
                     ELSE 0
                 END), 0) as totalDiscounts
              FROM orders o
-             WHERE LOWER(o.status) NOT IN ('cancelled', 'refunded')${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}`
-        );
-
-        // Check which optional columns exist before including them in queries
-        const [hasPackageNameRow, hasStudioRevenueAmtRow, hasBaseRevenueAmtRow, hasProductionCostAmtRow, hasSuperAdminShareAmtRow] = await Promise.all([
+             WHERE LOWER(o.status) NOT IN ('cancelled', 'refunded')${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}`),
             queryRow(`SELECT CASE WHEN COL_LENGTH('order_items', 'package_name') IS NOT NULL THEN 1 ELSE 0 END as v`),
             queryRow(`SELECT CASE WHEN COL_LENGTH('order_items', 'studio_revenue_amount') IS NOT NULL THEN 1 ELSE 0 END as v`),
             queryRow(`SELECT CASE WHEN COL_LENGTH('order_items', 'base_revenue_amount') IS NOT NULL THEN 1 ELSE 0 END as v`),
             queryRow(`SELECT CASE WHEN COL_LENGTH('order_items', 'production_cost_amount') IS NOT NULL THEN 1 ELSE 0 END as v`),
             queryRow(`SELECT CASE WHEN COL_LENGTH('order_items', 'super_admin_share_amount') IS NOT NULL THEN 1 ELSE 0 END as v`),
         ]);
+        const totalOrders = totalOrdersRow?.count || 0;
+        const totalRevenue = Number(totalRevenueRow?.sum || 0);
         const hasStudioRevenueAmt = Number(hasStudioRevenueAmtRow?.v || 0) === 1;
         const hasBaseRevenueAmt = Number(hasBaseRevenueAmtRow?.v || 0) === 1;
         const hasProductionCostAmt = Number(hasProductionCostAmtRow?.v || 0) === 1;
@@ -410,24 +433,20 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
         const avgProfitPerProduct = totalProductsSold > 0 ? (totalGrossRevenue / totalProductsSold) : 0;
         const breakdownSuperAdminRevenue = totalGrossRevenue;
         // Total profit = gross revenue + subscription revenue
-        const subscriptionRevenue = isSuperAdmin ? await stripeService.getSubscriptionRevenue() : 0;
+        // 5-second timeout guards against Stripe API hangs that can stall the entire request
+        const subscriptionRevenue = isSuperAdmin
+            ? await Promise.race([
+                stripeService.getSubscriptionRevenue(),
+                new Promise(resolve => setTimeout(() => resolve(0), 5000)),
+            ])
+            : 0;
         const totalGrossMargin = totalGrossRevenue + subscriptionRevenue;
 
-        // Always count unique user_id from orders for total customers (active customers)
-        const totalCustomersRow = await queryRow(`SELECT COUNT(DISTINCT user_id) as count FROM orders${customerStudioFilter ? ' WHERE ' + customerStudioFilter : ''}`);
-        const totalCustomers = totalCustomersRow?.count || 0;
-
-        const pendingOrdersRow = await queryRow(
-            `SELECT COUNT(*) as count FROM orders o WHERE LOWER(o.status) = 'pending'${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}`
-        );
-        const pendingOrders = pendingOrdersRow?.count || 0;
-
-        const batchOrdersRow = await queryRow(
-            `SELECT COUNT(*) as count FROM orders o WHERE o.is_batch = 1${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}`
-        );
-        const batchOrders = batchOrdersRow?.count || 0;
-
-        const recentOrderRows = await queryRows(
+        const [totalCustomersRow, pendingOrdersRow, batchOrdersRow, recentOrderRows] = await Promise.all([
+            queryRow(`SELECT COUNT(DISTINCT user_id) as count FROM orders${customerStudioFilter ? ' WHERE ' + customerStudioFilter : ''}`),
+            queryRow(`SELECT COUNT(*) as count FROM orders o WHERE LOWER(o.status) = 'pending'${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}`),
+            queryRow(`SELECT COUNT(*) as count FROM orders o WHERE o.is_batch = 1${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}`),
+            queryRows(
             `SELECT TOP 10
                 o.id,
                 o.user_id,
@@ -451,7 +470,10 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
              WHERE 1=1${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}
              GROUP BY o.id, o.user_id, o.total, o.subtotal, o.tax_amount, o.shipping_cost, o.discount_code, o.status, o.created_at, u.email
              ORDER BY o.created_at DESC`
-        );
+        )]);
+        const totalCustomers = totalCustomersRow?.count || 0;
+        const pendingOrders = pendingOrdersRow?.count || 0;
+        const batchOrders = batchOrdersRow?.count || 0;
 
         const recentOrders = (recentOrderRows || []).map((order) => {
             const studioRevenue = Number(order.studioRevenue || 0);
@@ -467,279 +489,48 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
             };
         });
 
-        const revenueDayRows = await queryRows(
-            `SELECT FORMAT(o.created_at, 'yyyy-MM-dd') as label, SUM(o.total) as value
-             FROM orders o
-             WHERE LOWER(o.status) NOT IN ('cancelled', 'refunded')
-                 AND o.created_at >= DATEADD(day, -29, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}
-             GROUP BY FORMAT(o.created_at, 'yyyy-MM-dd')
-             ORDER BY label ASC`
-        );
-
-        const revenueWeekRows = await queryRows(
-            `SELECT FORMAT(DATEADD(day, -1 * (DATEPART(weekday, o.created_at) - 1), CAST(o.created_at AS date)), 'yyyy-MM-dd') as label,
-                            SUM(o.total) as value
-             FROM orders o
-             WHERE LOWER(o.status) NOT IN ('cancelled', 'refunded')
-                 AND o.created_at >= DATEADD(week, -11, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}
-             GROUP BY FORMAT(DATEADD(day, -1 * (DATEPART(weekday, o.created_at) - 1), CAST(o.created_at AS date)), 'yyyy-MM-dd')
-             ORDER BY label ASC`
-        );
-
-        const revenueMonthRows = await queryRows(
-            `SELECT FORMAT(o.created_at, 'yyyy-MM') as label, SUM(o.total) as value
-             FROM orders o
-             WHERE LOWER(o.status) NOT IN ('cancelled', 'refunded')
-                 AND o.created_at >= DATEADD(month, -11, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}
-             GROUP BY FORMAT(o.created_at, 'yyyy-MM')
-             ORDER BY label ASC`
-        );
-
         // Gross revenue series = platform base - WHCC cost (super_admin_share) per time period
         const grossRevenueExpr = grossRevExpr;
 
-        const superAdminRevenueDayRows = await queryRows(
-            `SELECT FORMAT(o.created_at, 'yyyy-MM-dd') as label,
-                    SUM(${grossRevenueExpr}) as value
-             FROM orders o
-             INNER JOIN order_items oi ON oi.order_id = o.id
-             WHERE LOWER(o.status) NOT IN ('cancelled', 'refunded')
-                 AND o.created_at >= DATEADD(day, -29, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}
-             GROUP BY FORMAT(o.created_at, 'yyyy-MM-dd')
-             ORDER BY label ASC`
-        );
-
-        const superAdminRevenueWeekRows = await queryRows(
-            `SELECT FORMAT(DATEADD(day, -1 * (DATEPART(weekday, o.created_at) - 1), CAST(o.created_at AS date)), 'yyyy-MM-dd') as label,
-                    SUM(${grossRevenueExpr}) as value
-             FROM orders o
-             INNER JOIN order_items oi ON oi.order_id = o.id
-             WHERE LOWER(o.status) NOT IN ('cancelled', 'refunded')
-                 AND o.created_at >= DATEADD(week, -11, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}
-             GROUP BY FORMAT(DATEADD(day, -1 * (DATEPART(weekday, o.created_at) - 1), CAST(o.created_at AS date)), 'yyyy-MM-dd')
-             ORDER BY label ASC`
-        );
-
-        const superAdminRevenueMonthRows = await queryRows(
-            `SELECT FORMAT(o.created_at, 'yyyy-MM') as label,
-                    SUM(${grossRevenueExpr}) as value
-             FROM orders o
-             INNER JOIN order_items oi ON oi.order_id = o.id
-             WHERE LOWER(o.status) NOT IN ('cancelled', 'refunded')
-                 AND o.created_at >= DATEADD(month, -11, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}
-             GROUP BY FORMAT(o.created_at, 'yyyy-MM')
-             ORDER BY label ASC`
-        );
-
-        const productsSoldDayRows = await queryRows(
-            `SELECT FORMAT(o.created_at, 'yyyy-MM-dd') as label,
-                            SUM(COALESCE(oi.quantity, 0)) as value
-             FROM orders o
-             INNER JOIN order_items oi ON oi.order_id = o.id
-             WHERE LOWER(o.status) NOT IN ('cancelled', 'refunded')
-                 AND o.created_at >= DATEADD(day, -29, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}
-             GROUP BY FORMAT(o.created_at, 'yyyy-MM-dd')
-             ORDER BY label ASC`
-        );
-
-        const productsSoldWeekRows = await queryRows(
-            `SELECT FORMAT(DATEADD(day, -1 * (DATEPART(weekday, o.created_at) - 1), CAST(o.created_at AS date)), 'yyyy-MM-dd') as label,
-                            SUM(COALESCE(oi.quantity, 0)) as value
-             FROM orders o
-             INNER JOIN order_items oi ON oi.order_id = o.id
-             WHERE LOWER(o.status) NOT IN ('cancelled', 'refunded')
-                 AND o.created_at >= DATEADD(week, -11, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}
-             GROUP BY FORMAT(DATEADD(day, -1 * (DATEPART(weekday, o.created_at) - 1), CAST(o.created_at AS date)), 'yyyy-MM-dd')
-             ORDER BY label ASC`
-        );
-
-        const productsSoldMonthRows = await queryRows(
-            `SELECT FORMAT(o.created_at, 'yyyy-MM') as label,
-                            SUM(COALESCE(oi.quantity, 0)) as value
-             FROM orders o
-             INNER JOIN order_items oi ON oi.order_id = o.id
-             WHERE LOWER(o.status) NOT IN ('cancelled', 'refunded')
-                 AND o.created_at >= DATEADD(month, -11, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}
-             GROUP BY FORMAT(o.created_at, 'yyyy-MM')
-             ORDER BY label ASC`
-        );
-
-        const taxDayRows = await queryRows(
-            `SELECT FORMAT(o.created_at, 'yyyy-MM-dd') as label, SUM(COALESCE(o.tax_amount, 0)) as value
-             FROM orders o
-             WHERE LOWER(o.status) NOT IN ('cancelled', 'refunded')
-                 AND o.created_at >= DATEADD(day, -29, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}
-             GROUP BY FORMAT(o.created_at, 'yyyy-MM-dd')
-             ORDER BY label ASC`
-        );
-
-        const taxWeekRows = await queryRows(
-            `SELECT FORMAT(DATEADD(day, -1 * (DATEPART(weekday, o.created_at) - 1), CAST(o.created_at AS date)), 'yyyy-MM-dd') as label,
-                            SUM(COALESCE(o.tax_amount, 0)) as value
-             FROM orders o
-             WHERE LOWER(o.status) NOT IN ('cancelled', 'refunded')
-                 AND o.created_at >= DATEADD(week, -11, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}
-             GROUP BY FORMAT(DATEADD(day, -1 * (DATEPART(weekday, o.created_at) - 1), CAST(o.created_at AS date)), 'yyyy-MM-dd')
-             ORDER BY label ASC`
-        );
-
-        const taxMonthRows = await queryRows(
-            `SELECT FORMAT(o.created_at, 'yyyy-MM') as label, SUM(COALESCE(o.tax_amount, 0)) as value
-             FROM orders o
-             WHERE LOWER(o.status) NOT IN ('cancelled', 'refunded')
-                 AND o.created_at >= DATEADD(month, -11, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}
-             GROUP BY FORMAT(o.created_at, 'yyyy-MM')
-             ORDER BY label ASC`
-        );
-
-        const ordersDayRows = await queryRows(
-            `SELECT FORMAT(o.created_at, 'yyyy-MM-dd') as label, COUNT(*) as value
-             FROM orders o
-             WHERE o.created_at >= DATEADD(day, -29, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}
-             GROUP BY FORMAT(o.created_at, 'yyyy-MM-dd')
-             ORDER BY label ASC`
-        );
-
-        const ordersWeekRows = await queryRows(
-            `SELECT FORMAT(DATEADD(day, -1 * (DATEPART(weekday, o.created_at) - 1), CAST(o.created_at AS date)), 'yyyy-MM-dd') as label,
-                            COUNT(*) as value
-             FROM orders o
-             WHERE o.created_at >= DATEADD(week, -11, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}
-             GROUP BY FORMAT(DATEADD(day, -1 * (DATEPART(weekday, o.created_at) - 1), CAST(o.created_at AS date)), 'yyyy-MM-dd')
-             ORDER BY label ASC`
-        );
-
-        const ordersMonthRows = await queryRows(
-            `SELECT FORMAT(o.created_at, 'yyyy-MM') as label, COUNT(*) as value
-             FROM orders o
-             WHERE o.created_at >= DATEADD(month, -11, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}
-             GROUP BY FORMAT(o.created_at, 'yyyy-MM')
-             ORDER BY label ASC`
-        );
-
-        // Customers graph: count new unique customers who placed their first order in each period
-        const customersDayRows = await queryRows(
-            `SELECT label, COUNT(*) as value FROM (
-                SELECT FORMAT(MIN(o.created_at), 'yyyy-MM-dd') as label, o.user_id
-                FROM orders o
-                WHERE o.created_at >= DATEADD(day, -29, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}
-                GROUP BY o.user_id
-            ) t
-            GROUP BY label
-            ORDER BY label ASC`
-        );
-
-        const customersWeekRows = await queryRows(
-            `SELECT label, COUNT(*) as value FROM (
-                SELECT FORMAT(DATEADD(day, -1 * (DATEPART(weekday, MIN(o.created_at)) - 1), CAST(MIN(o.created_at) AS date)), 'yyyy-MM-dd') as label, o.user_id
-                FROM orders o
-                WHERE o.created_at >= DATEADD(week, -11, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}
-                GROUP BY o.user_id
-            ) t
-            GROUP BY label
-            ORDER BY label ASC`
-        );
-
-        const customersMonthRows = await queryRows(
-            `SELECT label, COUNT(*) as value FROM (
-                SELECT FORMAT(MIN(o.created_at), 'yyyy-MM') as label, o.user_id
-                FROM orders o
-                WHERE o.created_at >= DATEADD(month, -11, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}
-                GROUP BY o.user_id
-            ) t
-            GROUP BY label
-            ORDER BY label ASC`
-        );
-
-        const pendingDayRows = await queryRows(
-            `SELECT FORMAT(o.created_at, 'yyyy-MM-dd') as label, COUNT(*) as value
-             FROM orders o
-             WHERE LOWER(o.status) = 'pending'
-                 AND o.created_at >= DATEADD(day, -29, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}
-             GROUP BY FORMAT(o.created_at, 'yyyy-MM-dd')
-             ORDER BY label ASC`
-        );
-
-        const pendingWeekRows = await queryRows(
-            `SELECT FORMAT(DATEADD(day, -1 * (DATEPART(weekday, o.created_at) - 1), CAST(o.created_at AS date)), 'yyyy-MM-dd') as label,
-                            COUNT(*) as value
-             FROM orders o
-             WHERE LOWER(o.status) = 'pending'
-                 AND o.created_at >= DATEADD(week, -11, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}
-             GROUP BY FORMAT(DATEADD(day, -1 * (DATEPART(weekday, o.created_at) - 1), CAST(o.created_at AS date)), 'yyyy-MM-dd')
-             ORDER BY label ASC`
-        );
-
-        const pendingMonthRows = await queryRows(
-            `SELECT FORMAT(o.created_at, 'yyyy-MM') as label, COUNT(*) as value
-             FROM orders o
-             WHERE LOWER(o.status) = 'pending'
-                 AND o.created_at >= DATEADD(month, -11, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}
-             GROUP BY FORMAT(o.created_at, 'yyyy-MM')
-             ORDER BY label ASC`
-        );
-
-        const batchDayRows = await queryRows(
-            `SELECT FORMAT(o.created_at, 'yyyy-MM-dd') as label, COUNT(*) as value
-             FROM orders o
-             WHERE o.is_batch = 1
-                 AND o.created_at >= DATEADD(day, -29, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}
-             GROUP BY FORMAT(o.created_at, 'yyyy-MM-dd')
-             ORDER BY label ASC`
-        );
-
-        const batchWeekRows = await queryRows(
-            `SELECT FORMAT(DATEADD(day, -1 * (DATEPART(weekday, o.created_at) - 1), CAST(o.created_at AS date)), 'yyyy-MM-dd') as label,
-                            COUNT(*) as value
-             FROM orders o
-             WHERE o.is_batch = 1
-                 AND o.created_at >= DATEADD(week, -11, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}
-             GROUP BY FORMAT(DATEADD(day, -1 * (DATEPART(weekday, o.created_at) - 1), CAST(o.created_at AS date)), 'yyyy-MM-dd')
-             ORDER BY label ASC`
-        );
-
-        const batchMonthRows = await queryRows(
-            `SELECT FORMAT(o.created_at, 'yyyy-MM') as label, COUNT(*) as value
-             FROM orders o
-             WHERE o.is_batch = 1
-                 AND o.created_at >= DATEADD(month, -11, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}
-             GROUP BY FORMAT(o.created_at, 'yyyy-MM')
-             ORDER BY label ASC`
-        );
-
-        const discountOverviewRow = await queryRow(
-            `SELECT
-                COUNT(*) as discountedOrders,
-                COALESCE(SUM(CASE
-                    WHEN discount_code IS NOT NULL AND discount_code <> ''
-                    THEN CASE
-                        WHEN (COALESCE(subtotal, 0) + COALESCE(tax_amount, 0) + COALESCE(shipping_cost, 0) - COALESCE(total, 0)) > 0
-                        THEN (COALESCE(subtotal, 0) + COALESCE(tax_amount, 0) + COALESCE(shipping_cost, 0) - COALESCE(total, 0))
-                        ELSE 0
-                    END
-                    ELSE 0
-                END), 0) as totalDiscountAmount,
-                COALESCE(SUM(CASE WHEN discount_code IS NOT NULL AND discount_code <> '' THEN COALESCE(total, 0) ELSE 0 END), 0) as discountedRevenue
-             FROM orders o
-             WHERE discount_code IS NOT NULL AND discount_code <> ''${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}`
-        );
-
-        const topDiscountCodes = await queryRows(
-            `SELECT TOP 5
-                discount_code as code,
-                COUNT(*) as uses,
-                COALESCE(SUM(CASE
-                    WHEN (COALESCE(subtotal, 0) + COALESCE(tax_amount, 0) + COALESCE(shipping_cost, 0) - COALESCE(total, 0)) > 0
-                    THEN (COALESCE(subtotal, 0) + COALESCE(tax_amount, 0) + COALESCE(shipping_cost, 0) - COALESCE(total, 0))
-                    ELSE 0
-                END), 0) as totalDiscountAmount,
-                COALESCE(SUM(COALESCE(total, 0)), 0) as revenueInfluenced,
-                MAX(created_at) as lastUsedAt
-             FROM orders o
-             WHERE discount_code IS NOT NULL AND discount_code <> ''${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}
-             GROUP BY discount_code
-             ORDER BY uses DESC, totalDiscountAmount DESC`
-        );
+        // Run all 28 time series + discount queries in parallel
+        const [
+            revenueDayRows, revenueWeekRows, revenueMonthRows,
+            superAdminRevenueDayRows, superAdminRevenueWeekRows, superAdminRevenueMonthRows,
+            productsSoldDayRows, productsSoldWeekRows, productsSoldMonthRows,
+            taxDayRows, taxWeekRows, taxMonthRows,
+            ordersDayRows, ordersWeekRows, ordersMonthRows,
+            customersDayRows, customersWeekRows, customersMonthRows,
+            pendingDayRows, pendingWeekRows, pendingMonthRows,
+            batchDayRows, batchWeekRows, batchMonthRows,
+            discountOverviewRow, topDiscountCodes,
+        ] = await Promise.all([
+            queryRows(`SELECT FORMAT(o.created_at, 'yyyy-MM-dd') as label, SUM(o.total) as value FROM orders o WHERE LOWER(o.status) NOT IN ('cancelled', 'refunded') AND o.created_at >= DATEADD(day, -29, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''} GROUP BY FORMAT(o.created_at, 'yyyy-MM-dd') ORDER BY label ASC`),
+            queryRows(`SELECT FORMAT(DATEADD(day, -1 * (DATEPART(weekday, o.created_at) - 1), CAST(o.created_at AS date)), 'yyyy-MM-dd') as label, SUM(o.total) as value FROM orders o WHERE LOWER(o.status) NOT IN ('cancelled', 'refunded') AND o.created_at >= DATEADD(week, -11, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''} GROUP BY FORMAT(DATEADD(day, -1 * (DATEPART(weekday, o.created_at) - 1), CAST(o.created_at AS date)), 'yyyy-MM-dd') ORDER BY label ASC`),
+            queryRows(`SELECT FORMAT(o.created_at, 'yyyy-MM') as label, SUM(o.total) as value FROM orders o WHERE LOWER(o.status) NOT IN ('cancelled', 'refunded') AND o.created_at >= DATEADD(month, -11, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''} GROUP BY FORMAT(o.created_at, 'yyyy-MM') ORDER BY label ASC`),
+            queryRows(`SELECT FORMAT(o.created_at, 'yyyy-MM-dd') as label, SUM(${grossRevenueExpr}) as value FROM orders o INNER JOIN order_items oi ON oi.order_id = o.id WHERE LOWER(o.status) NOT IN ('cancelled', 'refunded') AND o.created_at >= DATEADD(day, -29, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''} GROUP BY FORMAT(o.created_at, 'yyyy-MM-dd') ORDER BY label ASC`),
+            queryRows(`SELECT FORMAT(DATEADD(day, -1 * (DATEPART(weekday, o.created_at) - 1), CAST(o.created_at AS date)), 'yyyy-MM-dd') as label, SUM(${grossRevenueExpr}) as value FROM orders o INNER JOIN order_items oi ON oi.order_id = o.id WHERE LOWER(o.status) NOT IN ('cancelled', 'refunded') AND o.created_at >= DATEADD(week, -11, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''} GROUP BY FORMAT(DATEADD(day, -1 * (DATEPART(weekday, o.created_at) - 1), CAST(o.created_at AS date)), 'yyyy-MM-dd') ORDER BY label ASC`),
+            queryRows(`SELECT FORMAT(o.created_at, 'yyyy-MM') as label, SUM(${grossRevenueExpr}) as value FROM orders o INNER JOIN order_items oi ON oi.order_id = o.id WHERE LOWER(o.status) NOT IN ('cancelled', 'refunded') AND o.created_at >= DATEADD(month, -11, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''} GROUP BY FORMAT(o.created_at, 'yyyy-MM') ORDER BY label ASC`),
+            queryRows(`SELECT FORMAT(o.created_at, 'yyyy-MM-dd') as label, SUM(COALESCE(oi.quantity, 0)) as value FROM orders o INNER JOIN order_items oi ON oi.order_id = o.id WHERE LOWER(o.status) NOT IN ('cancelled', 'refunded') AND o.created_at >= DATEADD(day, -29, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''} GROUP BY FORMAT(o.created_at, 'yyyy-MM-dd') ORDER BY label ASC`),
+            queryRows(`SELECT FORMAT(DATEADD(day, -1 * (DATEPART(weekday, o.created_at) - 1), CAST(o.created_at AS date)), 'yyyy-MM-dd') as label, SUM(COALESCE(oi.quantity, 0)) as value FROM orders o INNER JOIN order_items oi ON oi.order_id = o.id WHERE LOWER(o.status) NOT IN ('cancelled', 'refunded') AND o.created_at >= DATEADD(week, -11, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''} GROUP BY FORMAT(DATEADD(day, -1 * (DATEPART(weekday, o.created_at) - 1), CAST(o.created_at AS date)), 'yyyy-MM-dd') ORDER BY label ASC`),
+            queryRows(`SELECT FORMAT(o.created_at, 'yyyy-MM') as label, SUM(COALESCE(oi.quantity, 0)) as value FROM orders o INNER JOIN order_items oi ON oi.order_id = o.id WHERE LOWER(o.status) NOT IN ('cancelled', 'refunded') AND o.created_at >= DATEADD(month, -11, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''} GROUP BY FORMAT(o.created_at, 'yyyy-MM') ORDER BY label ASC`),
+            queryRows(`SELECT FORMAT(o.created_at, 'yyyy-MM-dd') as label, SUM(COALESCE(o.tax_amount, 0)) as value FROM orders o WHERE LOWER(o.status) NOT IN ('cancelled', 'refunded') AND o.created_at >= DATEADD(day, -29, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''} GROUP BY FORMAT(o.created_at, 'yyyy-MM-dd') ORDER BY label ASC`),
+            queryRows(`SELECT FORMAT(DATEADD(day, -1 * (DATEPART(weekday, o.created_at) - 1), CAST(o.created_at AS date)), 'yyyy-MM-dd') as label, SUM(COALESCE(o.tax_amount, 0)) as value FROM orders o WHERE LOWER(o.status) NOT IN ('cancelled', 'refunded') AND o.created_at >= DATEADD(week, -11, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''} GROUP BY FORMAT(DATEADD(day, -1 * (DATEPART(weekday, o.created_at) - 1), CAST(o.created_at AS date)), 'yyyy-MM-dd') ORDER BY label ASC`),
+            queryRows(`SELECT FORMAT(o.created_at, 'yyyy-MM') as label, SUM(COALESCE(o.tax_amount, 0)) as value FROM orders o WHERE LOWER(o.status) NOT IN ('cancelled', 'refunded') AND o.created_at >= DATEADD(month, -11, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''} GROUP BY FORMAT(o.created_at, 'yyyy-MM') ORDER BY label ASC`),
+            queryRows(`SELECT FORMAT(o.created_at, 'yyyy-MM-dd') as label, COUNT(*) as value FROM orders o WHERE o.created_at >= DATEADD(day, -29, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''} GROUP BY FORMAT(o.created_at, 'yyyy-MM-dd') ORDER BY label ASC`),
+            queryRows(`SELECT FORMAT(DATEADD(day, -1 * (DATEPART(weekday, o.created_at) - 1), CAST(o.created_at AS date)), 'yyyy-MM-dd') as label, COUNT(*) as value FROM orders o WHERE o.created_at >= DATEADD(week, -11, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''} GROUP BY FORMAT(DATEADD(day, -1 * (DATEPART(weekday, o.created_at) - 1), CAST(o.created_at AS date)), 'yyyy-MM-dd') ORDER BY label ASC`),
+            queryRows(`SELECT FORMAT(o.created_at, 'yyyy-MM') as label, COUNT(*) as value FROM orders o WHERE o.created_at >= DATEADD(month, -11, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''} GROUP BY FORMAT(o.created_at, 'yyyy-MM') ORDER BY label ASC`),
+            queryRows(`SELECT label, COUNT(*) as value FROM (SELECT FORMAT(MIN(o.created_at), 'yyyy-MM-dd') as label, o.user_id FROM orders o WHERE o.created_at >= DATEADD(day, -29, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''} GROUP BY o.user_id) t GROUP BY label ORDER BY label ASC`),
+            queryRows(`SELECT label, COUNT(*) as value FROM (SELECT FORMAT(DATEADD(day, -1 * (DATEPART(weekday, MIN(o.created_at)) - 1), CAST(MIN(o.created_at) AS date)), 'yyyy-MM-dd') as label, o.user_id FROM orders o WHERE o.created_at >= DATEADD(week, -11, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''} GROUP BY o.user_id) t GROUP BY label ORDER BY label ASC`),
+            queryRows(`SELECT label, COUNT(*) as value FROM (SELECT FORMAT(MIN(o.created_at), 'yyyy-MM') as label, o.user_id FROM orders o WHERE o.created_at >= DATEADD(month, -11, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''} GROUP BY o.user_id) t GROUP BY label ORDER BY label ASC`),
+            queryRows(`SELECT FORMAT(o.created_at, 'yyyy-MM-dd') as label, COUNT(*) as value FROM orders o WHERE LOWER(o.status) = 'pending' AND o.created_at >= DATEADD(day, -29, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''} GROUP BY FORMAT(o.created_at, 'yyyy-MM-dd') ORDER BY label ASC`),
+            queryRows(`SELECT FORMAT(DATEADD(day, -1 * (DATEPART(weekday, o.created_at) - 1), CAST(o.created_at AS date)), 'yyyy-MM-dd') as label, COUNT(*) as value FROM orders o WHERE LOWER(o.status) = 'pending' AND o.created_at >= DATEADD(week, -11, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''} GROUP BY FORMAT(DATEADD(day, -1 * (DATEPART(weekday, o.created_at) - 1), CAST(o.created_at AS date)), 'yyyy-MM-dd') ORDER BY label ASC`),
+            queryRows(`SELECT FORMAT(o.created_at, 'yyyy-MM') as label, COUNT(*) as value FROM orders o WHERE LOWER(o.status) = 'pending' AND o.created_at >= DATEADD(month, -11, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''} GROUP BY FORMAT(o.created_at, 'yyyy-MM') ORDER BY label ASC`),
+            queryRows(`SELECT FORMAT(o.created_at, 'yyyy-MM-dd') as label, COUNT(*) as value FROM orders o WHERE o.is_batch = 1 AND o.created_at >= DATEADD(day, -29, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''} GROUP BY FORMAT(o.created_at, 'yyyy-MM-dd') ORDER BY label ASC`),
+            queryRows(`SELECT FORMAT(DATEADD(day, -1 * (DATEPART(weekday, o.created_at) - 1), CAST(o.created_at AS date)), 'yyyy-MM-dd') as label, COUNT(*) as value FROM orders o WHERE o.is_batch = 1 AND o.created_at >= DATEADD(week, -11, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''} GROUP BY FORMAT(DATEADD(day, -1 * (DATEPART(weekday, o.created_at) - 1), CAST(o.created_at AS date)), 'yyyy-MM-dd') ORDER BY label ASC`),
+            queryRows(`SELECT FORMAT(o.created_at, 'yyyy-MM') as label, COUNT(*) as value FROM orders o WHERE o.is_batch = 1 AND o.created_at >= DATEADD(month, -11, CAST(GETDATE() AS date))${orderStudioFilter ? ' AND ' + orderStudioFilter : ''} GROUP BY FORMAT(o.created_at, 'yyyy-MM') ORDER BY label ASC`),
+            queryRow(`SELECT COUNT(*) as discountedOrders, COALESCE(SUM(CASE WHEN discount_code IS NOT NULL AND discount_code <> '' THEN CASE WHEN (COALESCE(subtotal, 0) + COALESCE(tax_amount, 0) + COALESCE(shipping_cost, 0) - COALESCE(total, 0)) > 0 THEN (COALESCE(subtotal, 0) + COALESCE(tax_amount, 0) + COALESCE(shipping_cost, 0) - COALESCE(total, 0)) ELSE 0 END ELSE 0 END), 0) as totalDiscountAmount, COALESCE(SUM(CASE WHEN discount_code IS NOT NULL AND discount_code <> '' THEN COALESCE(total, 0) ELSE 0 END), 0) as discountedRevenue FROM orders o WHERE discount_code IS NOT NULL AND discount_code <> ''${orderStudioFilter ? ' AND ' + orderStudioFilter : ''}`),
+            queryRows(`SELECT TOP 5 discount_code as code, COUNT(*) as uses, COALESCE(SUM(CASE WHEN (COALESCE(subtotal, 0) + COALESCE(tax_amount, 0) + COALESCE(shipping_cost, 0) - COALESCE(total, 0)) > 0 THEN (COALESCE(subtotal, 0) + COALESCE(tax_amount, 0) + COALESCE(shipping_cost, 0) - COALESCE(total, 0)) ELSE 0 END), 0) as totalDiscountAmount, COALESCE(SUM(COALESCE(total, 0)), 0) as revenueInfluenced, MAX(created_at) as lastUsedAt FROM orders o WHERE discount_code IS NOT NULL AND discount_code <> ''${orderStudioFilter ? ' AND ' + orderStudioFilter : ''} GROUP BY discount_code ORDER BY uses DESC, totalDiscountAmount DESC`),
+        ]);
 
         const formatSeries = (rows) => ({
             labels: rows.map((r) => r.label),
@@ -792,58 +583,12 @@ router.get('/dashboard-stats', adminRequired, async (req, res) => {
 
 
 
-              // Log and run analytics queries for debugging
-              const totalVisitorsQuery = `SELECT COUNT(DISTINCT JSON_VALUE(event_data, '$.sessionId')) as count
-                  FROM analytics
-                  ${buildWhere("event_type = 'site_visit'", analyticsStudioFilter, analyticsTimeFilter)}`;
-              console.log('[analytics] totalVisitorsQuery:', totalVisitorsQuery);
-              const totalVisitorsRow = await queryRow(totalVisitorsQuery);
-              console.log('[analytics] totalVisitorsRow:', totalVisitorsRow);
-
-              const totalPageViewsQuery = `SELECT COUNT(*) as count
-                  FROM analytics
-                  ${buildWhere("event_type = 'page_view'", analyticsStudioFilter, analyticsTimeFilter)}`;
-              console.log('[analytics] totalPageViewsQuery:', totalPageViewsQuery);
-              const totalPageViewsRow = await queryRow(totalPageViewsQuery);
-              console.log('[analytics] totalPageViewsRow:', totalPageViewsRow);
-
-              const albumViewsQuery = `SELECT TOP 5
-                                        TRY_CAST(JSON_VALUE(a.event_data, '$.albumId') AS INT) as albumId,
-                                        COALESCE(NULLIF(MAX(JSON_VALUE(a.event_data, '$.albumName')), ''), MAX(al.name), CONCAT('Album #', TRY_CAST(JSON_VALUE(a.event_data, '$.albumId') AS INT))) as albumName,
-                                        MAX(al.cover_image_url) as coverImageUrl,
-                                        SUM(CASE WHEN a.event_type = 'album_view' THEN 1 ELSE 0 END) as opens,
-                                        SUM(CASE WHEN a.event_type = 'album_card_click' THEN 1 ELSE 0 END) as clicks,
-                                        COUNT(*) as views
-                                    FROM analytics a
-                                    LEFT JOIN albums al ON al.id = TRY_CAST(JSON_VALUE(a.event_data, '$.albumId') AS INT)
-                                    ${buildWhere("a.event_type IN ('album_view', 'album_card_click')", '', analyticsTimeFilter ? analyticsTimeFilter.replace(/\bcreated_at\b/g, 'a.created_at') : '')}
-                                    ${albumPhotoStudioFilter}
-                                    GROUP BY TRY_CAST(JSON_VALUE(a.event_data, '$.albumId') AS INT)
-                  ORDER BY views DESC`;
-              console.log('[analytics] albumViewsQuery:', albumViewsQuery);
-              const albumViewsRows = await queryRows(albumViewsQuery);
-              console.log('[analytics] albumViewsRows:', albumViewsRows);
-
-              const photoViewsQuery = `SELECT TOP 5
-                                        TRY_CAST(JSON_VALUE(a.event_data, '$.photoId') AS INT) as photoId,
-                                        COALESCE(MAX(TRY_CAST(JSON_VALUE(a.event_data, '$.albumId') AS INT)), MAX(p.album_id)) as albumId,
-                                        COALESCE(NULLIF(MAX(JSON_VALUE(a.event_data, '$.photoFileName')), ''), MAX(p.file_name)) as photoFileName,
-                                        COALESCE(NULLIF(MAX(JSON_VALUE(a.event_data, '$.albumName')), ''), MAX(al.name)) as albumName,
-                                        MAX(p.thumbnail_url) as thumbnailUrl,
-                                        MAX(p.full_image_url) as fullImageUrl,
-                                        SUM(CASE WHEN a.event_type = 'photo_view' THEN 1 ELSE 0 END) as opens,
-                                        SUM(CASE WHEN a.event_type = 'photo_thumbnail_click' THEN 1 ELSE 0 END) as clicks,
-                                        COUNT(*) as views
-                                    FROM analytics a
-                                    LEFT JOIN photos p ON p.id = TRY_CAST(JSON_VALUE(a.event_data, '$.photoId') AS INT)
-                                    LEFT JOIN albums al ON al.id = COALESCE(TRY_CAST(JSON_VALUE(a.event_data, '$.albumId') AS INT), p.album_id)
-                                    ${buildWhere("a.event_type IN ('photo_view', 'photo_thumbnail_click')", '', analyticsTimeFilter ? analyticsTimeFilter.replace(/\bcreated_at\b/g, 'a.created_at') : '')}
-                                    ${albumPhotoStudioFilter}
-                                    GROUP BY TRY_CAST(JSON_VALUE(a.event_data, '$.photoId') AS INT)
-                  ORDER BY views DESC`;
-              console.log('[analytics] photoViewsQuery:', photoViewsQuery);
-              const photoViewsRows = await queryRows(photoViewsQuery);
-              console.log('[analytics] photoViewsRows:', photoViewsRows);
+              const [totalVisitorsRow, totalPageViewsRow, albumViewsRows, photoViewsRows] = await Promise.all([
+                queryRow(`SELECT COUNT(DISTINCT JSON_VALUE(event_data, '$.sessionId')) as count FROM analytics ${buildWhere("event_type = 'site_visit'", analyticsStudioFilter, analyticsTimeFilter)}`),
+                queryRow(`SELECT COUNT(*) as count FROM analytics ${buildWhere("event_type = 'page_view'", analyticsStudioFilter, analyticsTimeFilter)}`),
+                queryRows(`SELECT TOP 5 TRY_CAST(JSON_VALUE(a.event_data, '$.albumId') AS INT) as albumId, COALESCE(NULLIF(MAX(JSON_VALUE(a.event_data, '$.albumName')), ''), MAX(al.name), CONCAT('Album #', TRY_CAST(JSON_VALUE(a.event_data, '$.albumId') AS INT))) as albumName, MAX(al.cover_image_url) as coverImageUrl, SUM(CASE WHEN a.event_type = 'album_view' THEN 1 ELSE 0 END) as opens, SUM(CASE WHEN a.event_type = 'album_card_click' THEN 1 ELSE 0 END) as clicks, COUNT(*) as views FROM analytics a LEFT JOIN albums al ON al.id = TRY_CAST(JSON_VALUE(a.event_data, '$.albumId') AS INT) ${buildWhere("a.event_type IN ('album_view', 'album_card_click')", '', analyticsTimeFilter ? analyticsTimeFilter.replace(/\bcreated_at\b/g, 'a.created_at') : '')} ${albumPhotoStudioFilter} GROUP BY TRY_CAST(JSON_VALUE(a.event_data, '$.albumId') AS INT) ORDER BY views DESC`),
+                queryRows(`SELECT TOP 5 TRY_CAST(JSON_VALUE(a.event_data, '$.photoId') AS INT) as photoId, COALESCE(MAX(TRY_CAST(JSON_VALUE(a.event_data, '$.albumId') AS INT)), MAX(p.album_id)) as albumId, COALESCE(NULLIF(MAX(JSON_VALUE(a.event_data, '$.photoFileName')), ''), MAX(p.file_name)) as photoFileName, COALESCE(NULLIF(MAX(JSON_VALUE(a.event_data, '$.albumName')), ''), MAX(al.name)) as albumName, MAX(p.thumbnail_url) as thumbnailUrl, MAX(p.full_image_url) as fullImageUrl, SUM(CASE WHEN a.event_type = 'photo_view' THEN 1 ELSE 0 END) as opens, SUM(CASE WHEN a.event_type = 'photo_thumbnail_click' THEN 1 ELSE 0 END) as clicks, COUNT(*) as views FROM analytics a LEFT JOIN photos p ON p.id = TRY_CAST(JSON_VALUE(a.event_data, '$.photoId') AS INT) LEFT JOIN albums al ON al.id = COALESCE(TRY_CAST(JSON_VALUE(a.event_data, '$.albumId') AS INT), p.album_id) ${buildWhere("a.event_type IN ('photo_view', 'photo_thumbnail_click')", '', analyticsTimeFilter ? analyticsTimeFilter.replace(/\bcreated_at\b/g, 'a.created_at') : '')} ${albumPhotoStudioFilter} GROUP BY TRY_CAST(JSON_VALUE(a.event_data, '$.photoId') AS INT) ORDER BY views DESC`),
+              ]);
 
             analytics = {
                 totalVisitors: Number(totalVisitorsRow?.count || 0),

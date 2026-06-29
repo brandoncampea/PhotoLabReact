@@ -1237,4 +1237,51 @@ router.post('/player-suggestions/:id/review', adminRequired, async (req, res) =>
   }
 });
 
+// Redirect to album cover photo — used as og:image for social share previews.
+// Generates a fresh signed URL on each request so the redirect target never expires.
+router.get('/:albumId/og-image', async (req, res) => {
+  try {
+    const albumId = parseInt(req.params.albumId, 10);
+    if (!albumId) return res.status(400).end();
+
+    const album = await queryRow(
+      `SELECT TOP 1 a.cover_photo_id, a.cover_image_url,
+              p.full_image_url as photo_url
+       FROM albums a
+       LEFT JOIN photos p ON p.id = a.cover_photo_id
+       WHERE a.id = $1`,
+      [albumId]
+    );
+
+    if (!album) return res.status(404).end();
+
+    const rawUrl = album.photo_url || album.cover_image_url;
+
+    if (rawUrl) {
+      if (/\.blob\.core\.windows\.net\//i.test(rawUrl) || !rawUrl.startsWith('http')) {
+        const { getSignedReadUrl } = await import('../services/azureStorage.js');
+        const signed = getSignedReadUrl(rawUrl, 2);
+        if (signed && signed !== rawUrl) return res.redirect(302, signed);
+      }
+      return res.redirect(302, rawUrl);
+    }
+
+    // Fallback: first photo in the album
+    const first = await queryRow(
+      `SELECT TOP 1 full_image_url FROM photos WHERE album_id = $1 ORDER BY sort_order ASC, id ASC`,
+      [albumId]
+    );
+    if (first?.full_image_url) {
+      const { getSignedReadUrl } = await import('../services/azureStorage.js');
+      const signed = getSignedReadUrl(first.full_image_url, 2);
+      return res.redirect(302, signed || first.full_image_url);
+    }
+
+    res.status(404).end();
+  } catch (err) {
+    console.error('[OG image] Error:', err?.message || err);
+    res.status(500).end();
+  }
+});
+
 export default router;

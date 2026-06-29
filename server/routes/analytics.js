@@ -2,7 +2,6 @@ import express from 'express';
 import mssql from '../mssql.cjs';
 const { queryRow, queryRows, query, tableExists } = mssql;
 import { adminRequired } from '../middleware/auth.js';
-import { SUBSCRIPTION_PLANS } from '../constants/subscriptions.js';
 import { buildSignedPhotoAssetUrl } from '../utils/photoAssetTokens.js';
 const router = express.Router();
 
@@ -54,8 +53,21 @@ const hasAdvancedAnalyticsAccess = async (req) => {
     [req.user.studio_id]
   );
 
-  const plan = studio?.subscriptionPlan ? SUBSCRIPTION_PLANS[studio.subscriptionPlan] : null;
-  const allowed = !!plan && Array.isArray(plan.features) && plan.features.includes('Advanced analytics') && !studio?.isFreeSubscription;
+  let plan = null;
+  let planFeatures = [];
+  if (studio?.subscriptionPlan) {
+    try {
+      const dbPlan = await queryRow(
+        `SELECT TOP 1 id, name, features FROM subscription_plans WHERE LOWER(name) = LOWER($1)`,
+        [studio.subscriptionPlan]
+      );
+      if (dbPlan) {
+        plan = dbPlan;
+        try { planFeatures = dbPlan.features ? JSON.parse(dbPlan.features) : []; } catch {}
+      }
+    } catch {}
+  }
+  const allowed = !!plan && planFeatures.includes('Advanced analytics') && !studio?.isFreeSubscription;
 
   return {
     allowed,

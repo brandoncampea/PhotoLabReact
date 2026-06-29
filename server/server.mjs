@@ -33,6 +33,7 @@ import studioDashboardRoutes from './routes/studioDashboard.js';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const blobSasRoutes = require('./routes/blobSas.cjs');
+const mssql = require('./mssql.cjs');
 import labsRouter from './routes/labs.js';
 import superPriceListsRouter from './routes/superPriceLists.js';
 import studioPriceListsRouter from './routes/studioPriceLists.js';
@@ -321,6 +322,64 @@ app.get('/health', (req, res) => {
 // Serve built frontend when available (single App Service deployment)
 if (hasClientBuild) {
   app.use(express.static(clientDistPath));
+
+  // OG meta tag injection for album share pages.
+  // Social crawlers don't run JS, so react-helmet tags are invisible to them.
+  // We intercept album routes, query the DB, and inject og: tags into index.html.
+  const escapeHtml = (s) => String(s || '')
+    .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  let _indexHtml = null;
+  const getIndexHtml = () => {
+    if (!_indexHtml) _indexHtml = fs.readFileSync(path.join(clientDistPath, 'index.html'), 'utf8');
+    return _indexHtml;
+  };
+
+  const serveAlbumWithOgTags = async (req, res, albumId) => {
+    try {
+      const { queryRow } = mssql;
+      const album = await queryRow(
+        `SELECT a.name, a.title, a.cover_photo_id, a.cover_image_url, s.name as studio_name
+         FROM albums a
+         LEFT JOIN studios s ON s.id = a.studio_id
+         WHERE a.id = $1`,
+        [parseInt(albumId, 10)]
+      );
+      if (!album) return res.sendFile(path.join(clientDistPath, 'index.html'));
+
+      const albumTitle = album.title || album.name || 'Photo Album';
+      const appUrl = (process.env.FRONTEND_URL || `https://${req.hostname}`).replace(/\/$/, '');
+      const ogImageUrl = `${appUrl}/api/albums/${albumId}/og-image`;
+      const ogUrl = `${appUrl}${req.path}`;
+      const description = album.studio_name
+        ? `Photos by ${album.studio_name}`
+        : 'View and download your photos';
+
+      const tags = [
+        `<meta property="og:title" content="${escapeHtml(albumTitle)}" />`,
+        `<meta property="og:description" content="${escapeHtml(description)}" />`,
+        `<meta property="og:image" content="${ogImageUrl}" />`,
+        `<meta property="og:image:width" content="1200" />`,
+        `<meta property="og:image:height" content="630" />`,
+        `<meta property="og:type" content="website" />`,
+        `<meta property="og:url" content="${ogUrl}" />`,
+        `<meta name="twitter:card" content="summary_large_image" />`,
+        `<meta name="twitter:title" content="${escapeHtml(albumTitle)}" />`,
+        `<meta name="twitter:description" content="${escapeHtml(description)}" />`,
+        `<meta name="twitter:image" content="${ogImageUrl}" />`,
+      ].join('\n    ');
+
+      const html = getIndexHtml().replace('</head>', `    ${tags}\n  </head>`);
+      res.set('Content-Type', 'text/html').send(html);
+    } catch (err) {
+      console.error('[OG] Failed to inject meta tags:', err?.message || err);
+      res.sendFile(path.join(clientDistPath, 'index.html'));
+    }
+  };
+
+  app.get('/albums/:albumId', (req, res) => serveAlbumWithOgTags(req, res, req.params.albumId));
+  app.get('/s/:studioSlug/albums/:albumId', (req, res) => serveAlbumWithOgTags(req, res, req.params.albumId));
 
   // SPA fallback for non-API routes
   app.get(/^(?!\/api|\/uploads).*/, (req, res) => {

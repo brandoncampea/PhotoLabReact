@@ -81,6 +81,9 @@ const StudioBilling: React.FC = () => {
   const [checkingOut, setCheckingOut] = useState(false);
   const [openingPortal, setOpeningPortal] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [reactivating, setReactivating] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -135,6 +138,39 @@ const StudioBilling: React.FC = () => {
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to open billing portal');
       setOpeningPortal(false);
+    }
+  };
+
+  const handleCancelSubscription = async () => {
+    if (!status?.studioId) return;
+    setCancelling(true);
+    setError(null);
+    try {
+      await api.post(`/studios/${status.studioId}/subscription/cancel`);
+      const sRes = await api.get('/stripe/subscription-status');
+      setStatus(sRes.data);
+      setToast('Your subscription has been cancelled and will end on ' + formatDate(sRes.data.subscriptionEnd) + '.');
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to cancel subscription');
+    } finally {
+      setCancelling(false);
+      setShowCancelModal(false);
+    }
+  };
+
+  const handleReactivate = async () => {
+    if (!status?.studioId) return;
+    setReactivating(true);
+    setError(null);
+    try {
+      await api.post(`/studios/${status.studioId}/subscription/reactivate`);
+      const sRes = await api.get('/stripe/subscription-status');
+      setStatus(sRes.data);
+      setToast('Your subscription has been reactivated and will continue to renew.');
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to reactivate subscription');
+    } finally {
+      setReactivating(false);
     }
   };
 
@@ -264,7 +300,7 @@ const StudioBilling: React.FC = () => {
                 )}
 
                 {(isActive || isPastDue) && status?.hasStripeCustomer && (
-                  <div style={{ marginTop: 20 }}>
+                  <div style={{ marginTop: 20, display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
                     <button
                       onClick={handleManageBilling}
                       disabled={openingPortal}
@@ -281,10 +317,49 @@ const StudioBilling: React.FC = () => {
                     >
                       {openingPortal ? 'Opening portal...' : 'Manage Billing & Invoices'}
                     </button>
-                    <p style={{ color: '#52525b', fontSize: 12, marginTop: 8 }}>
-                      Update payment method, download invoices, or cancel — managed securely by Stripe.
-                    </p>
+
+                    {isActive && !status.cancellationRequested && (
+                      <button
+                        onClick={() => setShowCancelModal(true)}
+                        style={{
+                          background: 'transparent',
+                          border: '1px solid rgba(239,68,68,0.4)',
+                          color: '#f87171',
+                          fontWeight: 600,
+                          fontSize: 14,
+                          borderRadius: 8,
+                          padding: '10px 22px',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Cancel Subscription
+                      </button>
+                    )}
+
+                    {status.cancellationRequested && (
+                      <button
+                        onClick={handleReactivate}
+                        disabled={reactivating}
+                        style={{
+                          background: reactivating ? 'rgba(74,222,128,0.1)' : 'rgba(74,222,128,0.15)',
+                          border: '1px solid rgba(74,222,128,0.4)',
+                          color: '#4ade80',
+                          fontWeight: 700,
+                          fontSize: 14,
+                          borderRadius: 8,
+                          padding: '10px 22px',
+                          cursor: reactivating ? 'not-allowed' : 'pointer',
+                        }}
+                      >
+                        {reactivating ? 'Reactivating...' : 'Undo Cancellation'}
+                      </button>
+                    )}
                   </div>
+                )}
+                {(isActive || isPastDue) && status?.hasStripeCustomer && (
+                  <p style={{ color: '#52525b', fontSize: 12, marginTop: 8 }}>
+                    Update payment method and download invoices via the billing portal.
+                  </p>
                 )}
               </div>
 
@@ -444,6 +519,61 @@ const StudioBilling: React.FC = () => {
           )}
         </div>
       </div>
+      {showCancelModal && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+          }}
+          onClick={() => !cancelling && setShowCancelModal(false)}
+        >
+          <div
+            style={{
+              background: '#1a1a2e', border: '1px solid rgba(239,68,68,0.4)',
+              borderRadius: 12, padding: 32, maxWidth: 440, width: '90%',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <h3 style={{ margin: '0 0 12px 0', fontSize: 18, fontWeight: 700, color: '#fff' }}>
+              Cancel Subscription?
+            </h3>
+            <p style={{ color: '#a1a1aa', fontSize: 14, margin: '0 0 8px 0' }}>
+              Your subscription will remain active until the end of your current billing period
+              {status?.subscriptionEnd ? ` (${formatDate(status.subscriptionEnd)})` : ''}.
+              After that date, your studio will be deactivated.
+            </p>
+            <p style={{ color: '#71717a', fontSize: 13, margin: '0 0 24px 0' }}>
+              You can undo this at any time before your billing period ends.
+            </p>
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowCancelModal(false)}
+                disabled={cancelling}
+                style={{
+                  background: 'transparent', border: '1px solid rgba(113,113,122,0.4)',
+                  color: '#a1a1aa', fontWeight: 600, fontSize: 14,
+                  borderRadius: 8, padding: '9px 20px', cursor: 'pointer',
+                }}
+              >
+                Keep Subscription
+              </button>
+              <button
+                onClick={handleCancelSubscription}
+                disabled={cancelling}
+                style={{
+                  background: cancelling ? 'rgba(239,68,68,0.3)' : 'rgba(239,68,68,0.15)',
+                  border: '1px solid rgba(239,68,68,0.5)',
+                  color: '#f87171', fontWeight: 700, fontSize: 14,
+                  borderRadius: 8, padding: '9px 20px',
+                  cursor: cancelling ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {cancelling ? 'Cancelling...' : 'Yes, Cancel Subscription'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AdminLayout>
   );
 };
