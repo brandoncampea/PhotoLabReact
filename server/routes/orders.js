@@ -3483,53 +3483,65 @@ router.get('/digital-download/:token', async (req, res) => {
       return res.redirect(302, buildSignedPhotoAssetUrl(orderItem.photoId, 'full', 'digital-download'));
     }
 
+    const sourceAlbumId = resolveDigitalSourceAlbumId({ item: orderItem, tokenPayload: payload });
+
+    let photoRows;
     const parsedPhotoIds = safeJsonParse(orderItem.photoIds, orderItem.photoId ? [orderItem.photoId] : []);
-    const photoIds = Array.isArray(parsedPhotoIds)
+    const storedPhotoIds = Array.isArray(parsedPhotoIds)
       ? parsedPhotoIds.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)
       : [];
 
-    if (!photoIds.length) {
+    if (storedPhotoIds.length) {
+      const placeholders = storedPhotoIds.map((_, index) => `$${index + 1}`).join(',');
+      photoRows = await queryRows(
+        `SELECT id, file_name as fileName, full_image_url as fullImageUrl
+         FROM photos
+         WHERE id IN (${placeholders})
+         ORDER BY id ASC`,
+        storedPhotoIds
+      );
+    } else if (sourceAlbumId) {
+      // photo_ids was not stored on the order item — fall back to all photos in the album
+      photoRows = await queryRows(
+        `SELECT id, file_name as fileName, full_image_url as fullImageUrl
+         FROM photos
+         WHERE album_id = $1
+         ORDER BY id ASC`,
+        [sourceAlbumId]
+      );
+    } else {
+      photoRows = [];
+    }
+
+    if (!photoRows || !photoRows.length) {
       return res.status(404).json({ error: 'No album photos found for this download' });
     }
 
-    const placeholders = photoIds.map((_, index) => `$${index + 1}`).join(',');
-    const photoRows = await queryRows(
-      `SELECT id, file_name as fileName, full_image_url as fullImageUrl
-       FROM photos
-       WHERE id IN (${placeholders})
-       ORDER BY id ASC`,
-      photoIds
-    );
-
-    if (!photoRows.length) {
-      return res.status(404).json({ error: 'Album photos are unavailable for download' });
-    }
-
     const { default: archiver } = await import('archiver');
-    const axios = (await import('axios')).default;
-    const assetBaseUrl = buildAssetBaseUrl(req);
-    const sourceAlbumId = resolveDigitalSourceAlbumId({ item: orderItem, tokenPayload: payload });
+    const { downloadBlob } = await import('../services/azureStorage.js');
     const archiveName = sanitizeDownloadFileName(`${orderItem.productName || 'album-download'}-${sourceAlbumId || 'album'}`, 'album-download');
 
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', `attachment; filename="${archiveName}.zip"`);
 
-    const archive = archiver('zip', { zlib: { level: 9 } });
+    // level 1 = fast compression (JPEGs are already compressed, higher levels give little gain)
+    const archive = archiver('zip', { zlib: { level: 1 } });
     archive.pipe(res);
 
     const usedNames = new Map();
     for (const photo of photoRows) {
-      const assetUrl = assetBaseUrl ? `${assetBaseUrl}${buildSignedPhotoAssetUrl(photo.id, 'full', 'digital-download')}` : '';
-      if (!assetUrl) continue;
+      if (!photo.fullImageUrl) continue;
 
-      const response = await axios.get(assetUrl, { responseType: 'stream' });
+      const downloadResponse = await downloadBlob(photo.fullImageUrl, 'stream');
+      if (!downloadResponse?.readableStreamBody) continue;
+
       const rawName = sanitizeDownloadFileName(photo.fileName || `photo-${photo.id}.jpg`, `photo-${photo.id}.jpg`);
       const currentCount = usedNames.get(rawName) || 0;
       usedNames.set(rawName, currentCount + 1);
       const finalName = currentCount === 0
         ? rawName
         : rawName.replace(/(\.[^.]+)?$/, `-${currentCount + 1}$1`);
-      archive.append(response.data, { name: finalName });
+      archive.append(downloadResponse.readableStreamBody, { name: finalName });
     }
 
     archive.on('error', (error) => {
