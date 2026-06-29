@@ -2018,6 +2018,7 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
           Authorization: `Bearer ${token}`,
           Accept: 'application/json',
         },
+        timeout: 10000,
       });
       catalogProducts = getCatalogProducts(catalogResponse.data);
     } catch (catalogError) {
@@ -2175,9 +2176,12 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
 
         // Fetch image as buffer and compute SHA-256 hash
         let imageHash = null;
-        let whccAssetPath = null;
+        let whccAssetPath = assetPath;
         let fetchedImageWidth = 0;
         let fetchedImageHeight = 0;
+        if (previewOnly) {
+          // Skip image download for preview — hash is only needed for actual WHCC submission
+        } else
         try {
           let fetchUrl = fetchAssetPath;
           let buffer = null;

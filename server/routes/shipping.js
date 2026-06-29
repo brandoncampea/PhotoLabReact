@@ -408,6 +408,7 @@ router.post('/whcc-live-quote', async (req, res) => {
     try {
       const catalogResp = await axios.get(`${baseUrl}/api/catalog`, {
         headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+        timeout: 10000,
       });
       catalogProducts = getCatalogProducts(catalogResp.data);
       console.log(`[whcc-live-quote] catalog fetched — ${catalogProducts.length} products`);
@@ -539,7 +540,7 @@ router.post('/whcc-live-quote', async (req, res) => {
     const importResp = await axios.post(
       `${baseUrl}/api/OrderImport`,
       whccPayload,
-      { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
+      { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, timeout: 15000 }
     );
 
     const importData = importResp.data;

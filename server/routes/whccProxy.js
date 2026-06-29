@@ -111,6 +111,66 @@ router.get('/whcc/product-attributes', adminRequired, async (req, res) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// GET /api/whcc/diagnostics  (admin only)
+// Tests WHCC connectivity: credentials present → token → catalog → reports each step.
+// ---------------------------------------------------------------------------
+router.get('/whcc/diagnostics', adminRequired, async (req, res) => {
+  const report = {};
+  const consumerKey = process.env.WHCC_CONSUMER_KEY || process.env.WHCC_API_KEY || null;
+  const consumerSecret = process.env.WHCC_CONSUMER_SECRET || process.env.WHCC_API_SECRET || null;
+  const isSandbox = process.env.WHCC_SANDBOX === 'true';
+  const baseUrl = isSandbox ? 'https://sandbox.apps.whcc.com' : 'https://apps.whcc.com';
+
+  report.credentials = {
+    consumerKeyPresent: !!consumerKey,
+    consumerSecretPresent: !!consumerSecret,
+    isSandbox,
+    baseUrl,
+    webhookUrl: process.env.WHCC_WEBHOOK_URL || `${process.env.APP_BASE_URL || ''}/api/webhooks/whcc`,
+  };
+
+  if (!consumerKey || !consumerSecret) {
+    return res.json({ ok: false, report });
+  }
+
+  // Token
+  try {
+    const t0 = Date.now();
+    const tokenResp = await axios.post(
+      `${baseUrl}/api/AccessToken`,
+      { grant_type: 'consumer_credentials', consumer_key: consumerKey, consumer_secret: consumerSecret },
+      { headers: { Accept: 'application/json', 'Content-Type': 'application/json' }, timeout: 10000 }
+    );
+    const token = tokenResp.data?.Token || tokenResp.data?.token || null;
+    report.token = { ok: !!token, ms: Date.now() - t0 };
+
+    if (token) {
+      // Catalog (just check first item count, don't return full payload)
+      try {
+        const t1 = Date.now();
+        const catResp = await axios.get(`${baseUrl}/api/catalog`, {
+          headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+          timeout: 10000,
+        });
+        const products = Array.isArray(catResp.data?.Products)
+          ? catResp.data.Products
+          : Array.isArray(catResp.data?.Categories)
+            ? catResp.data.Categories.flatMap(c => c.ProductList || [])
+            : [];
+        report.catalog = { ok: true, productCount: products.length, ms: Date.now() - t1 };
+      } catch (err) {
+        report.catalog = { ok: false, error: err?.response?.data || err.message, ms: null };
+      }
+    }
+  } catch (err) {
+    report.token = { ok: false, error: err?.response?.data || err.message };
+  }
+
+  const ok = !!(report.token?.ok && report.catalog?.ok);
+  return res.json({ ok, report });
+});
+
 const WHCC_PROD_URL = 'https://apps.whcc.com';
 const WHCC_SANDBOX_URL = 'https://sandbox.apps.whcc.com';
 
@@ -235,6 +295,7 @@ async function fetchToken(consumerKey, consumerSecret, isSandbox) {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
         },
+        timeout: 10000,
       }
     );
   } catch (err) {

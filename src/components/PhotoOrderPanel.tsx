@@ -644,8 +644,8 @@ const PhotoOrderPanel: React.FC<PhotoOrderPanelProps> = ({
 
         {/* Photo preview */}
         <div style={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', marginBottom: 18 }}>
-          <div style={{ width: 400, height: 267, maxWidth: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', background: '#18162a', borderRadius: 10, boxShadow: '0 2px 12px 0 rgba(123,97,255,0.10)', overflow: 'hidden' }}>
-            <WatermarkedImage src={`/api/photos/${photo.id}/asset?variant=thumbnail`} alt={photo.fileName} style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} studioId={studioId} lazy={false} />
+          <div style={{ width: '100%', maxWidth: 400, background: '#18162a', borderRadius: 10, boxShadow: '0 2px 12px 0 rgba(123,97,255,0.10)', overflow: 'hidden' }}>
+            <WatermarkedImage src={`/api/photos/${photo.id}/asset?variant=thumbnail`} alt={photo.fileName} fill={false} style={{ width: '100%', height: 'auto', display: 'block', maxHeight: 500 }} studioId={studioId} lazy={false} />
           </div>
         </div>
 

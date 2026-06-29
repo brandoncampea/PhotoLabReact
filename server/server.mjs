@@ -292,6 +292,18 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'Photo Lab API is running', version: appVersion });
 });
 
+// Temporary WHCC connectivity probe — remove after diagnosing
+app.get('/api/health/whcc', async (req, res) => {
+  const https = await import('https');
+  const start = Date.now();
+  const req2 = https.request({ hostname: 'apps.whcc.com', port: 443, path: '/', method: 'HEAD', timeout: 8000 }, (r) => {
+    res.json({ reachable: true, status: r.statusCode, ms: Date.now() - start });
+  });
+  req2.on('timeout', () => { req2.destroy(); res.json({ reachable: false, reason: 'timeout', ms: Date.now() - start }); });
+  req2.on('error', (e) => res.json({ reachable: false, reason: e.message, ms: Date.now() - start }));
+  req2.end();
+});
+
 // API root handler
 app.get('/api', (req, res) => {
   res.json({
