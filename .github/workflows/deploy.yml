@@ -47,8 +47,8 @@ jobs:
           cp -R server deploy/server
           cp -R dist deploy/dist
           cp package.json package-lock.json deploy/
-          cd deploy
-          npm ci --omit=dev --legacy-peer-deps
+          # .npmrc tells Kudu to skip devDeps and allow legacy peer deps when it runs npm ci
+          printf 'legacy-peer-deps=true\nomit=dev\n' > deploy/.npmrc
 
       - name: Create deployment zip
         run: |
@@ -56,9 +56,9 @@ jobs:
           zip -r ../appservice-deploy.zip \
             server \
             dist \
-            node_modules \
             package.json \
             package-lock.json \
+            .npmrc \
             -x "**/.DS_Store" "**/*.log" "**/test-results/**" "**/playwright-report/**" "server/uploads/**" "server/*.db" "server/*.db.*"
           cd ..
           ls -lh appservice-deploy.zip
@@ -132,8 +132,8 @@ jobs:
             APP_URL="https://${APP_HOST}"
           fi
           SETTINGS=(
-            "SCM_DO_BUILD_DURING_DEPLOYMENT=false"
-            "ENABLE_ORYX_BUILD=false"
+            "SCM_DO_BUILD_DURING_DEPLOYMENT=true"
+            "ENABLE_ORYX_BUILD=true"
             "NODE_ENV=production"
             "WEBSITE_NODE_DEFAULT_VERSION=~22"
             "NODE_OPTIONS=--no-deprecation"
