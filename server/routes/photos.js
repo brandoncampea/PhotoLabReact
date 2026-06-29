@@ -2873,10 +2873,21 @@ router.get('/:id/asset', async (req, res) => {
       console.error(`[ASSET ROUTE] Asset URL missing for id=${photoId}, variant=${variant}, photo=`, photo);
       return res.status(404).json({ error: 'Asset not found', photoId, variant, photo });
     }
-    // Set Content-Disposition header for download with correct filename
     const downloadName = photo.file_name || `photo-${photoId}.jpg`;
-    res.setHeader('Content-Disposition', `attachment; filename="${downloadName}"`);
     console.log(`[ASSET ROUTE] Serving asset for id=${photoId}, variant=${variant}, assetUrl=${assetUrl}, filename=${downloadName}`);
+
+    // For full-size photos redirect to a short-lived SAS URL so the client downloads
+    // directly from Azure Blob Storage — piping through Node.js causes timeouts on large files.
+    if (variant === 'full') {
+      const sasUrl = getSignedReadUrl(assetUrl, 1, {
+        contentDisposition: `attachment; filename="${downloadName}"`,
+      });
+      if (sasUrl && sasUrl !== assetUrl) {
+        return res.redirect(302, sasUrl);
+      }
+    }
+
+    res.setHeader('Content-Disposition', `attachment; filename="${downloadName}"`);
     await pipeAssetToResponse(assetUrl, res);
   } catch (error) {
     console.error('Error serving photo asset:', error);

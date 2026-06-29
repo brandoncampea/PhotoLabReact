@@ -104,7 +104,7 @@ export function getBlobNameFromUrlOrName(blobUrlOrName) {
   }
 }
 
-export function getSignedReadUrl(blobUrlOrName, expiresInHours = Number(process.env.AZURE_READ_SAS_HOURS || 24)) {
+export function getSignedReadUrl(blobUrlOrName, expiresInHours = Number(process.env.AZURE_READ_SAS_HOURS || 24), extra = {}) {
   if (!blobUrlOrName) return blobUrlOrName;
 
   const container = getContainerClient();
@@ -129,6 +129,7 @@ export function getSignedReadUrl(blobUrlOrName, expiresInHours = Number(process.
       startsOn,
       expiresOn,
       protocol: 'https',
+      ...extra,
     },
     sharedKeyCredential
   );
