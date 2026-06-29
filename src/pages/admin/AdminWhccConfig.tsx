@@ -255,8 +255,9 @@ const AdminWhccConfig = () => {
       await whccService.registerWebhook(webhookCallbackUri);
       setWebhookMessage('✓ Webhook registration requested. WHCC should send a verifier callback immediately.');
       await refreshWebhookStatus();
-    } catch (err) {
-      setWebhookMessage(`✗ Failed to register webhook: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } catch (err: any) {
+      const detail = err?.response?.data?.details || err?.response?.data?.error || (err instanceof Error ? err.message : 'Unknown error');
+      setWebhookMessage(`✗ Failed to register webhook: ${detail}`);
       setIsWebhookLoading(false);
     }
   };

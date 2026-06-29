@@ -263,10 +263,10 @@ function getCredentials(req) {
     process.env.WHCC_CONSUMER_SECRET ||
     req.body?.consumerSecret ||
     req.query?.consumerSecret;
-  const isSandbox =
-    process.env.WHCC_SANDBOX === 'true' ||
-    req.body?.isSandbox === true ||
-    req.query?.isSandbox === 'true';
+  // Env var takes precedence when explicitly set (handles both 'true' and 'false')
+  const isSandbox = process.env.WHCC_SANDBOX !== undefined && process.env.WHCC_SANDBOX !== ''
+    ? process.env.WHCC_SANDBOX === 'true'
+    : (req.body?.isSandbox === true || req.query?.isSandbox === 'true');
   return { consumerKey, consumerSecret, isSandbox };
 }
 
@@ -579,6 +579,7 @@ router.post('/whcc/webhook/register', adminRequired, async (req, res) => {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/x-www-form-urlencoded',
       },
+      timeout: 15000,
     });
 
     await ensureWebhookConfigRow(studioId);
@@ -594,6 +595,7 @@ router.post('/whcc/webhook/register', adminRequired, async (req, res) => {
 
     res.json({ studioId, callbackUri: studioCallbackUri, response: response.data });
   } catch (err) {
+    console.error('[WHCC][webhook/register] Error:', err?.response?.status, err?.response?.data || err.message);
     res.status(502).json({ error: 'Failed to register WHCC webhook', details: err?.response?.data || err.message });
   }
 });

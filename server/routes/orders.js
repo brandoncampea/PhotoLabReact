@@ -2208,50 +2208,15 @@ const submitOrderToWhcc = async (orderId, options = {}) => {
             const { downloadBlob } = await import('../services/azureStorage.js');
             buffer = await downloadBlob(blobPath);
             if (!buffer) throw new Error('Failed to fetch blob for internal asset');
+          } else if (/\.blob\.core\.windows\.net\//i.test(String(fetchUrl))) {
+            // Azure blob URL — use the SDK directly (avoids HTTP timeout, handles auth internally)
+            const { downloadBlob } = await import('../services/azureStorage.js');
+            console.log('[WHCC][DEBUG] Fetching asset via Azure SDK:', fetchUrl);
+            buffer = await downloadBlob(fetchUrl);
+            if (!buffer) throw new Error('Failed to download blob for hash computation');
           } else {
-            // Try fetching the public Azure Blob URL directly first
-            let fetchError = null;
-            try {
-              console.log('[WHCC][DEBUG] Fetching asset via public Azure URL', fetchUrl);
-              // Print the exact URL for comparison with standalone script
-              console.log('[WHCC][DEBUG] EXACT FETCH URL:', fetchUrl);
-              // Debug: print URL character codes to catch invisible encoding/whitespace issues
-              console.log('[WHCC][DEBUG] URL char codes:', Array.from(fetchUrl).map(c => c.charCodeAt(0)).join(','));
-              // Force no custom headers for Azure Blob fetch (fixes 404 issue)
-              const response = await axios.get(fetchUrl, { responseType: 'arraybuffer', headers: {} });
-              buffer = Buffer.from(response.data);
-            } catch (err) {
-              fetchError = err;
-              if (err.response) {
-                console.error('[WHCC][ERROR] Axios fetch failed:', {
-                  url: fetchUrl,
-                  status: err.response.status,
-                  statusText: err.response.statusText,
-                  headers: err.response.headers,
-                  data: err.response.data && typeof err.response.data === 'string' ? err.response.data.slice(0, 500) : '[binary]',
-                });
-              } else {
-                console.error('[WHCC][ERROR] Axios fetch failed (no response):', err.message || err);
-              }
-              // If public fetch fails, try with SAS URL
-              if (
-                typeof fetchUrl === 'string' &&
-                fetchUrl.includes('.blob.core.windows.net/') &&
-                !fetchUrl.includes('?') &&
-                process.env.AZURE_STORAGE_ACCOUNT &&
-                process.env.AZURE_STORAGE_KEY &&
-                (process.env.AZURE_CONTAINER_NAME || process.env.AZURE_STORAGE_CONTAINER)
-              ) {
-                const { getSignedReadUrl } = await import('../services/azureStorage.js');
-                const sasUrl = getSignedReadUrl(fetchUrl);
-                console.log('[WHCC][DEBUG] Public fetch failed, retrying with SAS URL:', sasUrl);
-                // Force no custom headers for Azure Blob fetch (fixes 404 issue)
-                const sasResponse = await axios.get(sasUrl, { responseType: 'arraybuffer', headers: {} });
-                buffer = Buffer.from(sasResponse.data);
-              } else {
-                throw fetchError;
-              }
-            }
+            const response = await axios.get(fetchUrl, { responseType: 'arraybuffer', headers: {}, timeout: 30000 });
+            buffer = Buffer.from(response.data);
           }
           imageHash = await computeImageSignature(buffer);
           const inferredDimensions = getImageDimensionsFromBuffer(buffer);
@@ -3524,24 +3489,35 @@ router.get('/digital-download/:token', async (req, res) => {
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', `attachment; filename="${archiveName}.zip"`);
 
-    // level 1 = fast compression (JPEGs are already compressed, higher levels give little gain)
-    const archive = archiver('zip', { zlib: { level: 1 } });
+    // store=true: no compression — JPEGs are already compressed, skipping zlib makes
+    // packing much faster with no meaningful size difference
+    const archive = archiver('zip', { store: true });
     archive.pipe(res);
 
+    // Build deduplicated file names first, then download all blobs in parallel
+    // so Azure transfers overlap instead of running sequentially
     const usedNames = new Map();
-    for (const photo of photoRows) {
-      if (!photo.fullImageUrl) continue;
+    const entries = photoRows
+      .filter((photo) => photo.fullImageUrl)
+      .map((photo) => {
+        const rawName = sanitizeDownloadFileName(photo.fileName || `photo-${photo.id}.jpg`, `photo-${photo.id}.jpg`);
+        const currentCount = usedNames.get(rawName) || 0;
+        usedNames.set(rawName, currentCount + 1);
+        const finalName = currentCount === 0
+          ? rawName
+          : rawName.replace(/(\.[^.]+)?$/, `-${currentCount + 1}$1`);
+        return { photo, finalName };
+      });
 
-      const downloadResponse = await downloadBlob(photo.fullImageUrl, 'stream');
-      if (!downloadResponse?.readableStreamBody) continue;
-
-      const rawName = sanitizeDownloadFileName(photo.fileName || `photo-${photo.id}.jpg`, `photo-${photo.id}.jpg`);
-      const currentCount = usedNames.get(rawName) || 0;
-      usedNames.set(rawName, currentCount + 1);
-      const finalName = currentCount === 0
-        ? rawName
-        : rawName.replace(/(\.[^.]+)?$/, `-${currentCount + 1}$1`);
-      archive.append(downloadResponse.readableStreamBody, { name: finalName });
+    const BATCH = 8;
+    for (let i = 0; i < entries.length; i += BATCH) {
+      const batch = entries.slice(i, i + BATCH);
+      const buffers = await Promise.all(
+        batch.map(({ photo }) => downloadBlob(photo.fullImageUrl).catch(() => null))
+      );
+      for (let j = 0; j < batch.length; j++) {
+        if (buffers[j]) archive.append(buffers[j], { name: batch[j].finalName });
+      }
     }
 
     archive.on('error', (error) => {
