@@ -46,8 +46,16 @@ jobs:
           mkdir -p deploy
           cp -R server deploy/server
           cp -R dist deploy/dist
-          cp package.json package-lock.json deploy/
-          # .npmrc tells Kudu to skip devDeps and allow legacy peer deps when it runs npm ci
+          cp package-lock.json deploy/
+          # Strip the build script so Oryx doesn't try to re-run the Vite frontend build.
+          # The pre-built dist/ is already in the zip; Oryx only needs to run npm install.
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            delete pkg.scripts.build;
+            fs.writeFileSync('deploy/package.json', JSON.stringify(pkg, null, 2));
+          "
+          # .npmrc tells Kudu to skip devDeps and allow legacy peer deps when it runs npm install
           printf 'legacy-peer-deps=true\nomit=dev\n' > deploy/.npmrc
 
       - name: Create deployment zip
