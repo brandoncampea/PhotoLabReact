@@ -1,5 +1,11 @@
 [
   {
+    "version": "June 29, 2026",
+    "title": "Fix WHCC timeouts, add connectivity diagnostics, fix photo preview aspect ratio",
+    "summary": "1 update on June 29, 2026.",
+    "content": "- Fix WHCC timeouts, add connectivity diagnostics, fix photo preview aspect ratio"
+  },
+  {
     "version": "June 26, 2026",
     "title": "Add customer booking request flow and dashboard pending link",
     "summary": "1 update on June 26, 2026.",
