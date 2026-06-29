@@ -522,6 +522,7 @@ const StudioSignup: React.FC = () => {
               style={inputStyle}
               type="password"
               name="adminPassword"
+              autoComplete="new-password"
               value={formData.adminPassword}
               onChange={handleInputChange}
               placeholder="At least 8 characters"
@@ -534,6 +535,7 @@ const StudioSignup: React.FC = () => {
               style={inputStyle}
               type="password"
               name="confirmPassword"
+              autoComplete="new-password"
               value={formData.confirmPassword}
               onChange={handleInputChange}
               placeholder="Confirm your password"

@@ -151,6 +151,7 @@ const AcceptInvite: React.FC = () => {
             <label style={labelStyle}>Password <span style={{ color: '#ff6b6b' }}>*</span></label>
             <input
               type="password"
+              autoComplete="new-password"
               value={password}
               onChange={e => setPassword(e.target.value)}
               placeholder="At least 8 characters"
@@ -163,6 +164,7 @@ const AcceptInvite: React.FC = () => {
             <label style={labelStyle}>Confirm Password <span style={{ color: '#ff6b6b' }}>*</span></label>
             <input
               type="password"
+              autoComplete="new-password"
               value={confirmPassword}
               onChange={e => setConfirmPassword(e.target.value)}
               placeholder="Confirm your password"

@@ -194,6 +194,7 @@ export const StudioSignup: React.FC<StudioSignupProps> = ({ onSignupSuccess }) =
               id="adminPassword"
               name="adminPassword"
               type="password"
+              autoComplete="new-password"
               placeholder="••••••••"
               value={formData.adminPassword}
               onChange={handleInputChange}
@@ -207,6 +208,7 @@ export const StudioSignup: React.FC<StudioSignupProps> = ({ onSignupSuccess }) =
               id="confirmPassword"
               name="confirmPassword"
               type="password"
+              autoComplete="new-password"
               placeholder="••••••••"
               value={formData.confirmPassword}
               onChange={handleInputChange}

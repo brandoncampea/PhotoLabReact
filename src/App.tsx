@@ -61,8 +61,6 @@ const BookingConfirmed = lazy(() => import('./pages/BookingConfirmed'));
 const AcceptInvite = lazy(() => import('./pages/AcceptInvite'));
 const AdminUsers = lazy(() => import('./pages/admin/AdminUsers'));
 const AdminStudioAdmins = lazy(() => import('./pages/admin/AdminStudioAdmins'));
-const AdminLogin = lazy(() => import('./pages/admin/AdminLogin'));
-const SuperAdminLogin = lazy(() => import('./pages/admin/SuperAdminLogin'));
 const CustomerAccount = lazy(() => import('./pages/CustomerAccount'));
 const FavoritePhotos = lazy(() => import('./pages/FavoritePhotos'));
 const ReleaseNotes = lazy(() => import('./pages/admin/ReleaseNotes'));
@@ -98,9 +96,9 @@ function App() {
                 <Route path="/search" element={<SearchPage />} />
                 <Route path="/studio/:studioSlug" element={<StudioPublicPage />} />
                 <Route path="/s/:studioSlug/albums/:albumId" element={<AlbumDetails />} />
-                {/* Admin and super admin login routes */}
-                <Route path="/admin/login" element={<Suspense fallback={<div>Loading...</div>}><AdminLogin /></Suspense>} />
-                <Route path="/super-admin/login" element={<Suspense fallback={<div>Loading...</div>}><SuperAdminLogin onLogin={() => {}} /></Suspense>} />
+                {/* Legacy login routes redirect to the unified login page */}
+                <Route path="/admin/login" element={<Navigate to="/login" replace />} />
+                <Route path="/super-admin/login" element={<Navigate to="/login" replace />} />
                 {/* Admin and super admin protected routes */}
                 <Route path="/super-admin" element={<AdminProtectedRoute><SuperAdminDashboard /></AdminProtectedRoute>} />
                 <Route path="/super-admin-pricing" element={<AdminProtectedRoute><SuperAdminPricing /></AdminProtectedRoute>} />

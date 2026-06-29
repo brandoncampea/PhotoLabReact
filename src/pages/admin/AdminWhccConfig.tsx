@@ -544,6 +544,7 @@ const AdminWhccConfig = () => {
           </label>
           <input
             type="password"
+            autoComplete="off"
             placeholder="RkZGRTM3MDk="
             style={{
               width: '100%',

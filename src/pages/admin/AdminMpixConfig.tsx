@@ -109,6 +109,7 @@ const AdminMpixConfig: React.FC = () => {
           </label>
           <input
             type="password"
+            autoComplete="off"
             value={config.apiKey}
             onChange={(e) => setConfig({ ...config, apiKey: e.target.value })}
             placeholder="Enter your Mpix API Key"
@@ -131,6 +132,7 @@ const AdminMpixConfig: React.FC = () => {
           </label>
           <input
             type="password"
+            autoComplete="off"
             value={config.apiSecret}
             onChange={(e) => setConfig({ ...config, apiSecret: e.target.value })}
             placeholder="Enter your Mpix API Secret"
