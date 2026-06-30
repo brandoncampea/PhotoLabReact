@@ -246,8 +246,10 @@ router.post('/signup', async (req, res) => {
   try {
     const {
       studioName, studioEmail, adminEmail, adminName, adminPassword,
-      planId, billingCycle = 'monthly',
+      planId, billingCycle = 'monthly', honeypot,
     } = req.body;
+
+    if (honeypot) return res.status(200).json({ ok: true });
 
     if (!studioName || !studioEmail || !adminEmail || !adminName || !adminPassword) {
       return res.status(400).json({ error: 'Missing required fields' });

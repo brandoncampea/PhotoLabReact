@@ -61,6 +61,7 @@ const StudioSignup: React.FC = () => {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [honeypot, setHoneypot] = useState('');
 
   useEffect(() => {
     const apiUrl = (import.meta as any).env?.VITE_API_URL || '/api';
@@ -95,6 +96,7 @@ const StudioSignup: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (honeypot) return;
     setError('');
 
     if (!selectedPlan) {
@@ -124,6 +126,7 @@ const StudioSignup: React.FC = () => {
           adminPassword: formData.adminPassword,
           planId: Number(selectedPlan),
           billingCycle,
+          honeypot,
         }),
       });
       const data = await res.json();
@@ -543,6 +546,15 @@ const StudioSignup: React.FC = () => {
             />
           </div>
 
+          <input
+            type="text"
+            value={honeypot}
+            onChange={e => setHoneypot(e.target.value)}
+            tabIndex={-1}
+            autoComplete="off"
+            aria-hidden="true"
+            style={{ position: 'absolute', left: -9999, width: 1, height: 1, opacity: 0 }}
+          />
           <button
             type="submit"
             disabled={loading || !selectedPlan}

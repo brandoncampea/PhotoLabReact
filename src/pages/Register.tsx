@@ -13,7 +13,8 @@ const Register: React.FC = () => {
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  
+  const [honeypot, setHoneypot] = useState('');
+
   const { register } = useAuth();
   const navigate = useNavigate();
 
@@ -26,6 +27,7 @@ const Register: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (honeypot) return;
     setError('');
 
     if (formData.password !== formData.confirmPassword) {
@@ -150,6 +152,15 @@ const Register: React.FC = () => {
                 />
               </div>
               
+              <input
+                type="text"
+                value={honeypot}
+                onChange={e => setHoneypot(e.target.value)}
+                tabIndex={-1}
+                autoComplete="off"
+                aria-hidden="true"
+                style={{ position: 'absolute', left: -9999, width: 1, height: 1, opacity: 0 }}
+              />
               <button type="submit" className="btn btn-primary" disabled={loading}>
                 {loading ? 'Creating account...' : 'Register'}
               </button>

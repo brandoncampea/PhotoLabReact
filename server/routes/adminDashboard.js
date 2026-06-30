@@ -99,8 +99,10 @@ router.get('/studio-revenue-details', adminRequired, async (req, res) => {
 
         await ensurePayoutTables();
 
-        // Get all studios
-        const studios = await queryRows('SELECT id, name FROM studios ORDER BY name');
+        // Get active studios only (exclude canceled/inactive)
+        const studios = await queryRows(
+            `SELECT id, name, subscription_status FROM studios WHERE subscription_status NOT IN ('inactive', 'canceled') ORDER BY name`
+        );
         // For each studio, get revenue/costs summary and all orders
         const studioDetails = [];
         for (const studio of studios) {

@@ -10,7 +10,8 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-producti
 // Register
 router.post('/register', async (req, res) => {
   try {
-    const { email, password, firstName, lastName, name } = req.body;
+    const { email, password, firstName, lastName, name, honeypot } = req.body;
+    if (honeypot) return res.status(200).json({ ok: true });
 
     // Normalize name fields for storage and response
     const safeFirst = (firstName || '').trim();

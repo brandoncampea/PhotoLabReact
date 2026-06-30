@@ -306,10 +306,12 @@ router.get('/', authRequired, async (req, res) => {
           a.hidden,
           a.created_at as createdDate,
           a.studio_id as "studioId",
-          s.public_slug as "studioPublicSlug"
+          s.public_slug as "studioPublicSlug",
+          pconf.custom_domain as "studioCustomDomain"
         FROM albums a
         LEFT JOIN studios s ON s.id = a.studio_id
         LEFT JOIN (SELECT album_id, COUNT(*) as photoCount FROM photos GROUP BY album_id) pc ON pc.album_id = a.id
+        LEFT JOIN profile_config pconf ON pconf.studio_id = a.studio_id
         WHERE a.studio_id = $1
         ORDER BY a.created_at DESC
       `, [studioId]);
@@ -334,10 +336,12 @@ router.get('/', authRequired, async (req, res) => {
           a.hidden,
           a.created_at as createdDate,
           a.studio_id as "studioId",
-          s.public_slug as "studioPublicSlug"
+          s.public_slug as "studioPublicSlug",
+          pconf.custom_domain as "studioCustomDomain"
         FROM albums a
         LEFT JOIN studios s ON s.id = a.studio_id
         LEFT JOIN (SELECT album_id, COUNT(*) as photoCount FROM photos GROUP BY album_id) pc ON pc.album_id = a.id
+        LEFT JOIN profile_config pconf ON pconf.studio_id = a.studio_id
         ORDER BY a.created_at DESC
       `);
     } else {
@@ -420,6 +424,7 @@ router.get('/', authRequired, async (req, res) => {
         viewOpenCount: Number(views.viewOpenCount) || 0,
         viewClickCount: Number(views.viewClickCount) || 0,
         studioPublicSlug: album.studioPublicSlug || null,
+        studioCustomDomain: album.studioCustomDomain || null,
       };
     });
     res.json(albumsWithStats);

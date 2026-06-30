@@ -44,6 +44,7 @@ const ChatPanel: React.FC = () => {
   const [sending, setSending] = useState(false);
   const [studioAdminUnread, setStudioAdminUnread] = useState(0);
   const [hasArchived, setHasArchived] = useState(false);
+  const [studioFilter, setStudioFilter] = useState('');
 
   // Refs so SSE handler always sees current values without stale closures
   const openRef = useRef(false);
@@ -356,58 +357,86 @@ const ChatPanel: React.FC = () => {
               <div style={{
                 width: 160,
                 borderRight: '1px solid #2d2d50',
-                overflowY: 'auto',
+                display: 'flex',
+                flexDirection: 'column',
                 background: '#181828',
                 flexShrink: 0,
               }}>
-                {studios.length === 0 && (
-                  <div style={{ padding: '16px 12px', color: '#555', fontSize: 12 }}>No studios yet</div>
-                )}
-                {studios.map(s => (
-                  <button
-                    key={s.id}
-                    onClick={() => selectStudio(s.id)}
+                <div style={{ padding: '8px 8px 6px', borderBottom: '1px solid #222238', flexShrink: 0 }}>
+                  <input
+                    value={studioFilter}
+                    onChange={e => setStudioFilter(e.target.value)}
+                    placeholder="Filter studios…"
                     style={{
-                      display: 'block',
                       width: '100%',
-                      textAlign: 'left',
-                      padding: '10px 12px',
-                      background: selectedStudioId === s.id ? '#252545' : 'none',
-                      border: 'none',
-                      borderBottom: '1px solid #222238',
-                      cursor: 'pointer',
+                      background: '#252540',
+                      border: '1px solid #3a3a60',
+                      borderRadius: 6,
+                      padding: '5px 8px',
                       color: '#e2e2f0',
+                      fontSize: 11,
+                      outline: 'none',
+                      boxSizing: 'border-box',
                     }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span style={{
-                        width: 7,
-                        height: 7,
-                        borderRadius: '50%',
-                        background: (onlineStudios.has(s.id) || s.online) ? '#4ade80' : '#444',
-                        flexShrink: 0,
-                      }} />
-                      <span style={{
-                        fontSize: 12,
-                        flex: 1,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                      }}>{s.name}</span>
-                      {s.unreadCount > 0 && (
-                        <span style={{
-                          background: '#2563eb',
-                          color: '#fff',
-                          borderRadius: 10,
-                          padding: '1px 6px',
-                          fontSize: 10,
-                          fontWeight: 700,
-                          flexShrink: 0,
-                        }}>{s.unreadCount}</span>
-                      )}
-                    </div>
-                  </button>
-                ))}
+                  />
+                </div>
+                <div style={{ flex: 1, overflowY: 'auto' }}>
+                  {(() => {
+                    const filtered = studioFilter.trim()
+                      ? studios.filter(s => s.name.toLowerCase().includes(studioFilter.toLowerCase()))
+                      : studios;
+                    if (filtered.length === 0) return (
+                      <div style={{ padding: '16px 12px', color: '#555', fontSize: 12 }}>
+                        {studioFilter.trim() ? 'No match' : 'No studios yet'}
+                      </div>
+                    );
+                    return filtered.map(s => (
+                      <button
+                        key={s.id}
+                        onClick={() => selectStudio(s.id)}
+                        style={{
+                          display: 'block',
+                          width: '100%',
+                          textAlign: 'left',
+                          padding: '10px 12px',
+                          background: selectedStudioId === s.id ? '#252545' : 'none',
+                          border: 'none',
+                          borderBottom: '1px solid #222238',
+                          cursor: 'pointer',
+                          color: '#e2e2f0',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{
+                            width: 7,
+                            height: 7,
+                            borderRadius: '50%',
+                            background: (onlineStudios.has(s.id) || s.online) ? '#4ade80' : '#444',
+                            flexShrink: 0,
+                          }} />
+                          <span style={{
+                            fontSize: 12,
+                            flex: 1,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}>{s.name}</span>
+                          {s.unreadCount > 0 && (
+                            <span style={{
+                              background: '#2563eb',
+                              color: '#fff',
+                              borderRadius: 10,
+                              padding: '1px 6px',
+                              fontSize: 10,
+                              fontWeight: 700,
+                              flexShrink: 0,
+                            }}>{s.unreadCount}</span>
+                          )}
+                        </div>
+                      </button>
+                    ));
+                  })()}
+                </div>
               </div>
             )}
 

@@ -783,7 +783,8 @@ router.post('/public/:studioSlug/book', async (req, res) => {
 
 router.post('/public/:studioSlug/request', async (req, res) => {
   try {
-    const { customerName, customerEmail, customerPhone, sessionTypeName, preferredDate, preferredTime, preferredLocation, customerNotes } = req.body;
+    const { customerName, customerEmail, customerPhone, sessionTypeName, preferredDate, preferredTime, preferredLocation, customerNotes, honeypot } = req.body;
+    if (honeypot) return res.status(200).json({ ok: true });
     if (!customerName || !customerEmail) return res.status(400).json({ error: 'Name and email are required' });
 
     const studio = await queryRow(

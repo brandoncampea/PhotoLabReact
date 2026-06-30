@@ -383,11 +383,17 @@ setEditingAlbum(album);
     setFavStatsLoading(false);
   };
 
+  const getShareOrigin = (album: any) => {
+    const domain = album?.studioCustomDomain;
+    return domain ? `https://${domain}` : window.location.origin;
+  };
+
   const getHiddenAlbumUrl = (albumId: number) => {
     const studioSlug = (editingAlbum as any)?.studioPublicSlug || localStorage.getItem('studioSlug') || '';
+    const origin = getShareOrigin(editingAlbum);
     return studioSlug
-      ? `${window.location.origin}/albums/${albumId}?studioSlug=${encodeURIComponent(studioSlug)}&hidden=1`
-      : `${window.location.origin}/albums/${albumId}?hidden=1`;
+      ? `${origin}/albums/${albumId}?studioSlug=${encodeURIComponent(studioSlug)}&hidden=1`
+      : `${origin}/albums/${albumId}?hidden=1`;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -644,9 +650,10 @@ setEditingAlbum(album);
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(270px, 1fr))', gap: '1rem' }}>
             {pagedAlbums.map((album) => {
               const studioSlug = (album as any).studioPublicSlug || localStorage.getItem('studioSlug') || '';
+              const shareOrigin = getShareOrigin(album);
               const shareUrl = studioSlug
-                ? `${window.location.origin}/albums/${album.id}?studioSlug=${encodeURIComponent(studioSlug)}`
-                : `${window.location.origin}/albums/${album.id}`;
+                ? `${shareOrigin}/albums/${album.id}?studioSlug=${encodeURIComponent(studioSlug)}`
+                : `${shareOrigin}/albums/${album.id}`;
               const coverSrc =
                 album.coverImageUrl && String(album.coverImageUrl).match(/^\d+$/)
                   ? `/api/photos/${album.coverImageUrl}/asset?variant=thumbnail`
@@ -1041,11 +1048,12 @@ setEditingAlbum(album);
               {/* ── Share Links & Referral Tracking ── */}
               {editingAlbum ? (() => {
                 const studioSlug = (editingAlbum as any).studioPublicSlug || localStorage.getItem('studioSlug') || '';
+                const editOrigin = getShareOrigin(editingAlbum);
                 const baseUrl = formData.hidden
                   ? getHiddenAlbumUrl(editingAlbum.id)
                   : studioSlug
-                    ? `${window.location.origin}/albums/${editingAlbum.id}?studioSlug=${encodeURIComponent(studioSlug)}`
-                    : `${window.location.origin}/albums/${editingAlbum.id}`;
+                    ? `${editOrigin}/albums/${editingAlbum.id}?studioSlug=${encodeURIComponent(studioSlug)}`
+                    : `${editOrigin}/albums/${editingAlbum.id}`;
                 return (
                   <div style={sectionStyle}>
                     <label style={labelStyle}>Share Link</label>

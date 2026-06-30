@@ -543,6 +543,20 @@ const SuperAdminDashboard: React.FC = () => {
                       >
                         {studio.name}
                       </button>
+                      {studio.subscription_status && (() => {
+                        const s = studio.subscription_status;
+                        const palette: Record<string, { bg: string; color: string }> = {
+                          active:   { bg: 'rgba(34,197,94,0.15)',  color: '#4ade80' },
+                          trialing: { bg: 'rgba(96,165,250,0.15)', color: '#60a5fa' },
+                          past_due: { bg: 'rgba(245,158,11,0.15)', color: '#fbbf24' },
+                        };
+                        const p = palette[s] || { bg: 'rgba(156,163,175,0.15)', color: '#9ca3af' };
+                        return (
+                          <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', padding: '2px 7px', borderRadius: 5, background: p.bg, color: p.color }}>
+                            {s.replace('_', ' ')}
+                          </span>
+                        );
+                      })()}
                       <span style={{ fontSize: 11, color: '#6b6b80' }}>{summary.orderCount} order{summary.orderCount !== 1 ? 's' : ''}</span>
 
                       {/* Primary stats inline */}

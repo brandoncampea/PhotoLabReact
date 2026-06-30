@@ -81,6 +81,7 @@ export default function BookingPage() {
   const [reqForm, setReqForm] = useState({ name: defaultName, email: user?.email || '', phone: '', sessionType: '', preferredDate: '', preferredTime: '', location: '', notes: '' });
   const [reqSubmitting, setReqSubmitting] = useState(false);
   const [reqError, setReqError] = useState('');
+  const [reqHoneypot, setReqHoneypot] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [loadingSlots, setLoadingSlots] = useState(false);
@@ -186,6 +187,7 @@ export default function BookingPage() {
 
   const submitRequest = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (reqHoneypot) { setStep('requestDone'); return; }
     if (!reqForm.name || !reqForm.email) return;
     setReqSubmitting(true);
     setReqError('');
@@ -202,6 +204,7 @@ export default function BookingPage() {
           preferredTime: reqForm.preferredTime || null,
           preferredLocation: reqForm.location || null,
           customerNotes: reqForm.notes || null,
+          honeypot: reqHoneypot,
         }),
       });
       const d = await res.json();
@@ -616,6 +619,15 @@ export default function BookingPage() {
             <input style={inputStyle} value={reqForm.location} onChange={e => setReqForm(f => ({ ...f, location: e.target.value }))} placeholder="Studio, outdoor park, specific address…" />
             <label style={labelStyle}>Notes <span style={{ color: '#4a4a5a', fontWeight: 400 }}>(optional)</span></label>
             <textarea style={{ ...inputStyle, resize: 'vertical', minHeight: 72 }} value={reqForm.notes} onChange={e => setReqForm(f => ({ ...f, notes: e.target.value }))} placeholder="Anything else the studio should know…" />
+            <input
+              type="text"
+              value={reqHoneypot}
+              onChange={e => setReqHoneypot(e.target.value)}
+              tabIndex={-1}
+              autoComplete="off"
+              aria-hidden="true"
+              style={{ position: 'absolute', left: -9999, width: 1, height: 1, opacity: 0 }}
+            />
             <button type="submit" style={{ ...primaryBtn, opacity: reqSubmitting ? 0.6 : 1, cursor: reqSubmitting ? 'not-allowed' : 'pointer' }} disabled={reqSubmitting}>
               {reqSubmitting ? 'Submitting…' : 'Send Request'}
             </button>

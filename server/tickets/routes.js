@@ -5,6 +5,35 @@ import { sendEmail } from '../services/emailService.js';
 const { query, queryRow, queryRows } = mssql;
 const router = express.Router();
 
+// POST /api/tickets/guest — unauthenticated submission, honeypot spam protection
+router.post('/guest', async (req, res) => {
+  const { subject, description, guestName, guestEmail, honeypot, meta } = req.body;
+
+  // Honeypot: bots fill hidden fields, humans don't
+  if (honeypot) return res.status(200).json({ ok: true }); // silent discard
+
+  if (!subject?.trim() || !description?.trim()) {
+    return res.status(400).json({ error: 'Subject and description are required.' });
+  }
+
+  const metaJson = JSON.stringify({
+    ...(meta && typeof meta === 'object' ? meta : {}),
+    guest: { name: guestName || null, email: guestEmail || null },
+  });
+
+  try {
+    const inserted = await queryRow(
+      `INSERT INTO tickets (subject, description, created_by, created_for_studio, status, escalated, comments, history, meta)
+       VALUES ($1, $2, NULL, NULL, 'open', 0, '[]', '[]', $3) RETURNING id`,
+      [subject.trim(), description.trim(), metaJson]
+    );
+    const ticket = await queryRow(`SELECT * FROM tickets WHERE id = $1`, [inserted?.id]);
+    res.status(201).json(formatTicket(ticket));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.use(requireStudioOrSuperAdmin);
 
 function parseJsonArray(val) {

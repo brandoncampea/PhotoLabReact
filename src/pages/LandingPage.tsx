@@ -278,6 +278,184 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ── FEATURE: FAVORITES & ORDERING ── */}
+      <section style={{ maxWidth: 1100, margin: '0 auto 5rem', padding: '0 1.5rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3rem', alignItems: 'center' }}>
+          {/* Visual */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            {/* Gallery strip with hearts */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
+              {[
+                { hearted: true,  label: '#24' },
+                { hearted: false, label: '#25' },
+                { hearted: true,  label: '#26' },
+                { hearted: true,  label: '#27' },
+                { hearted: false, label: '#28' },
+                { hearted: true,  label: '#29' },
+              ].map((p, i) => (
+                <div key={i} style={{ position: 'relative', aspectRatio: '4/3', background: `linear-gradient(135deg, ${['#1a1a2e','#1e2a1e','#1e1a2e','#2a1e1e','#1a2028','#2a1e28'][i]}, ${['#2d1f4e','#1a3d2a','#2e2d50','#4e1f1f','#1a2535','#3d1a2a'][i]})`, borderRadius: 10, border: p.hearted ? '1.5px solid rgba(244,114,182,0.45)' : '1px solid rgba(255,255,255,0.07)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem' }}>
+                  {['📸','🏅','🖼️','🎓','📷','🏆'][i]}
+                  <div style={{ position: 'absolute', top: 5, right: 6, fontSize: '1rem', color: p.hearted ? '#f472b6' : 'rgba(255,255,255,0.25)', textShadow: p.hearted ? '0 0 8px rgba(244,114,182,0.6)' : 'none' }}>
+                    {p.hearted ? '♥' : '♡'}
+                  </div>
+                  <div style={{ position: 'absolute', bottom: 4, left: 6, fontSize: '0.6rem', color: 'rgba(255,255,255,0.3)', fontWeight: 600 }}>{p.label}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Favorites bar */}
+            <div style={{ background: 'rgba(244,114,182,0.08)', border: '1px solid rgba(244,114,182,0.25)', borderRadius: 12, padding: '0.85rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <span style={{ fontSize: '1.1rem' }}>♥</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ color: '#f472b6', fontWeight: 700, fontSize: '0.88rem' }}>4 photos saved</div>
+                <div style={{ color: '#6b6b80', fontSize: '0.75rem' }}>Tap to share this list with family</div>
+              </div>
+              <div style={{ background: 'rgba(244,114,182,0.15)', border: '1px solid rgba(244,114,182,0.3)', borderRadius: 8, padding: '4px 12px', fontSize: '0.75rem', color: '#f472b6', fontWeight: 700, cursor: 'pointer' }}>Save & Share</div>
+            </div>
+
+            {/* Email save prompt */}
+            <div style={{ background: 'rgba(124,92,255,0.07)', border: '1px solid rgba(124,92,255,0.2)', borderRadius: 12, padding: '0.85rem 1rem' }}>
+              <div style={{ color: '#e0e0e0', fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>Save your favorites</div>
+              <div style={{ color: '#6b6b80', fontSize: '0.78rem', marginBottom: '0.6rem' }}>Enter your email and we'll send you a link so you can come back to your saved photos anytime.</div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <div style={{ flex: 1, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 7, padding: '6px 10px', fontSize: '0.78rem', color: '#6b6b80' }}>your@email.com</div>
+                <div style={{ background: '#7c5cff', borderRadius: 7, padding: '6px 14px', fontSize: '0.78rem', color: '#fff', fontWeight: 700 }}>Send Link</div>
+              </div>
+            </div>
+
+            {/* Order ready state */}
+            <div style={{ background: 'rgba(34,197,94,0.07)', border: '1px solid rgba(34,197,94,0.2)', borderRadius: 12, padding: '0.85rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <span style={{ fontSize: '1.1rem' }}>🛒</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ color: '#4ade80', fontWeight: 700, fontSize: '0.88rem' }}>Ready to order your 4 favorites</div>
+                <div style={{ color: '#6b6b80', fontSize: '0.75rem' }}>Everything you saved is still right here</div>
+              </div>
+              <div style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 8, padding: '4px 12px', fontSize: '0.75rem', color: '#4ade80', fontWeight: 700 }}>Order Now</div>
+            </div>
+          </div>
+
+          {/* Copy */}
+          <div>
+            <div style={{ display: 'inline-block', background: 'rgba(244,114,182,0.12)', border: '1px solid rgba(244,114,182,0.3)', borderRadius: 20, padding: '4px 14px', fontSize: '0.78rem', fontWeight: 700, color: '#f472b6', marginBottom: '1rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Customer Experience</div>
+            <h2 style={{ fontSize: 'clamp(1.6rem, 3vw, 2.2rem)', fontWeight: 800, color: '#fff', lineHeight: 1.25, marginBottom: '1rem' }}>
+              Let Them Browse First.<br />They'll Order When<br />They're Sure.
+            </h2>
+            <p style={{ color: '#9ca3af', fontSize: '1rem', lineHeight: 1.8, marginBottom: '1.5rem' }}>
+              Buying photos isn't an impulse decision. Customers want to browse, loop in grandma, sleep on it. Our favorites system is built for exactly that — they heart photos as they go, save the list to their email, share it with family, and come back when they're ready. No account required. No lost picks. No starting over.
+            </p>
+            <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 2rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {[
+                ['No account needed', 'Customers heart photos as they browse — no sign-up, no friction, nothing between them and your photos.'],
+                ['Save the link, come back anytime', 'Enter an email and get a permanent link to your saved picks — it works for weeks and survives closing the tab.'],
+                ['Share with family before ordering', 'One link, everyone votes. Grandparents can see the shortlist before anyone opens their wallet.'],
+                ['Order everything in one shot', 'Filter to favorites, pick sizes and products for each, and check out — all without losing track of a single photo.'],
+              ].map(([title, detail]) => (
+                <li key={title} style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
+                  <span style={{ flexShrink: 0, width: 22, height: 22, borderRadius: '50%', background: 'rgba(244,114,182,0.15)', border: '1px solid rgba(244,114,182,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 2, fontSize: '0.65rem', color: '#f472b6', fontWeight: 900 }}>✓</span>
+                  <div><span style={{ color: '#e0e0e0', fontWeight: 700 }}>{title} — </span><span style={{ color: '#9ca3af', fontSize: '0.93rem' }}>{detail}</span></div>
+                </li>
+              ))}
+            </ul>
+            <button className="btn btn-primary" onClick={() => navigate('/studio-signup')} style={{ fontSize: '0.95rem', padding: '0.7rem 1.75rem' }}>See It in Action</button>
+          </div>
+        </div>
+      </section>
+
+      {/* ── FEATURE: FOLLOW / REPEAT CUSTOMERS ── */}
+      <section style={{ background: 'linear-gradient(135deg, rgba(16,24,40,0.98) 0%, rgba(10,20,35,0.98) 100%)', border: '1px solid rgba(59,130,246,0.14)', borderRadius: 24, maxWidth: 1100, margin: '0 auto 5rem', padding: '3.5rem 2.5rem', position: 'relative', overflow: 'hidden' }}>
+        {/* Ambient glow */}
+        <div style={{ position: 'absolute', bottom: -100, left: -80, width: 360, height: 360, borderRadius: '50%', background: 'radial-gradient(circle, rgba(59,130,246,0.07) 0%, transparent 70%)', pointerEvents: 'none' }} />
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3.5rem', alignItems: 'center' }}>
+          {/* Copy */}
+          <div>
+            <div style={{ display: 'inline-block', background: 'rgba(59,130,246,0.12)', border: '1px solid rgba(59,130,246,0.32)', borderRadius: 20, padding: '4px 14px', fontSize: '0.78rem', fontWeight: 700, color: '#60a5fa', marginBottom: '1.25rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Built-in Repeat Business
+            </div>
+            <h2 style={{ fontSize: 'clamp(1.6rem, 3vw, 2.2rem)', fontWeight: 800, color: '#fff', lineHeight: 1.25, marginBottom: '1.1rem' }}>
+              Every Upload is a<br />Sales Email to People<br />Who Already Want to Buy
+            </h2>
+            <p style={{ color: '#9ca3af', fontSize: '1rem', lineHeight: 1.8, marginBottom: '1.75rem' }}>
+              Most photography businesses make one sale per event and hope the same families remember to come back next season. Follows change that math entirely. Parents follow their child, grandparents follow the team, coaches share the link with the whole roster — and every time you upload new photos, every one of them gets an email and lands right back in your storefront, ready to buy. Zero outreach. Zero marketing spend. Your past customers become your most reliable future revenue.
+            </p>
+            <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 2rem', display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+              {[
+                ['Follow any player by name', 'Fans and family search the player\'s name, hit follow, and they\'re done — no account required to get notified.'],
+                ['Follow whole schools and teams', 'Customers can subscribe to an entire school or sport category and catch every event you shoot there, automatically.'],
+                ['Instant email when new photos land', 'The moment you upload a new album, followers get a direct link. They\'re back in your store before you\'ve finished the upload.'],
+                ['Turns a one-time buyer into a season-long customer', 'A parent who buys once in October follows their kid\'s whole season — fall sports, winter leagues, spring tournaments, all of it.'],
+              ].map(([title, detail]) => (
+                <li key={title} style={{ display: 'flex', gap: '0.85rem', alignItems: 'flex-start' }}>
+                  <span style={{ flexShrink: 0, width: 22, height: 22, borderRadius: '50%', background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 3, fontSize: '0.65rem', color: '#60a5fa', fontWeight: 900 }}>✓</span>
+                  <div><span style={{ color: '#e0e0e0', fontWeight: 700 }}>{title} — </span><span style={{ color: '#9ca3af', fontSize: '0.93rem' }}>{detail}</span></div>
+                </li>
+              ))}
+            </ul>
+            <button className="btn btn-primary" onClick={() => navigate('/studio-signup')} style={{ fontSize: '0.95rem', padding: '0.7rem 1.75rem' }}>Start Building Your Audience</button>
+          </div>
+
+          {/* Visual */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            {/* Following cards */}
+            <div style={{ background: 'rgba(14,20,32,0.9)', border: '1px solid rgba(59,130,246,0.18)', borderRadius: 14, padding: '1rem 1.1rem' }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#3b82f6', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.65rem' }}>Following</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {[
+                  { initials: 'MJ', name: 'Marcus Johnson', detail: 'Riverside HS · Varsity Basketball', color: 'rgba(124,92,255,0.35)', new: true },
+                  { initials: 'EL', name: 'Emma Liu', detail: 'Westfield Academy · Gymnastics', color: 'rgba(244,114,182,0.3)', new: false },
+                  { initials: 'RV', name: 'Rivera, Tyler', detail: 'Lincoln HS · Baseball', color: 'rgba(34,197,94,0.3)', new: false },
+                ].map(p => (
+                  <div key={p.name} style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', background: 'rgba(255,255,255,0.03)', borderRadius: 9, padding: '7px 10px' }}>
+                    <div style={{ width: 32, height: 32, borderRadius: '50%', background: p.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, color: '#fff', fontSize: '0.72rem', flexShrink: 0 }}>{p.initials}</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ color: '#e0e0e0', fontWeight: 700, fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {p.name}
+                        {p.new && <span style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 8, padding: '1px 7px', fontSize: '0.65rem', color: '#4ade80', fontWeight: 700 }}>New photos!</span>}
+                      </div>
+                      <div style={{ color: '#4a5568', fontSize: '0.72rem' }}>{p.detail}</div>
+                    </div>
+                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: p.new ? '#4ade80' : '#2d3748', flexShrink: 0 }} />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* School / team follow */}
+            <div style={{ background: 'rgba(14,20,32,0.9)', border: '1px solid rgba(59,130,246,0.18)', borderRadius: 14, padding: '1rem 1.1rem' }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#3b82f6', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.65rem' }}>Teams & Schools</div>
+              {[
+                { name: 'Riverside HS', sports: ['Basketball', 'Soccer', 'Track'], followers: 47 },
+                { name: 'Westfield Academy', sports: ['Gymnastics', 'Swim'], followers: 23 },
+              ].map(school => (
+                <div key={school.name} style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', background: 'rgba(255,255,255,0.03)', borderRadius: 9, padding: '7px 10px', marginBottom: '0.5rem' }}>
+                  <div style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(59,130,246,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem', flexShrink: 0 }}>🏫</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ color: '#e0e0e0', fontWeight: 700, fontSize: '0.82rem' }}>{school.name}</div>
+                    <div style={{ color: '#4a5568', fontSize: '0.72rem' }}>{school.sports.join(' · ')}</div>
+                  </div>
+                  <div style={{ fontSize: '0.68rem', color: '#4a5568', fontWeight: 600, flexShrink: 0 }}>{school.followers} followers</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Notification email mockup */}
+            <div style={{ background: 'rgba(30,34,50,0.95)', border: '1px solid rgba(99,102,241,0.25)', borderRadius: 14, padding: '1rem 1.1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: '0.6rem' }}>
+                <span style={{ fontSize: '1rem' }}>📬</span>
+                <div>
+                  <div style={{ color: '#e0e0e0', fontWeight: 700, fontSize: '0.82rem' }}>New photos of Marcus Johnson</div>
+                  <div style={{ color: '#4a5568', fontSize: '0.7rem' }}>from Riverside Studio · just now</div>
+                </div>
+              </div>
+              <div style={{ color: '#9ca3af', fontSize: '0.75rem', lineHeight: 1.6, marginBottom: '0.65rem' }}>
+                12 new photos were just added to <span style={{ color: '#a78bfa' }}>Varsity Basketball — Spring Playoffs</span>. Come see them before everyone else.
+              </div>
+              <div style={{ display: 'inline-block', background: '#3b82f6', borderRadius: 7, padding: '5px 14px', fontSize: '0.75rem', color: '#fff', fontWeight: 700 }}>View Photos →</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* ── HOW IT WORKS ── */}
       <section style={{ maxWidth: 900, margin: '0 auto 5rem', padding: '0 1.5rem', textAlign: 'center' }}>
         <h2 style={{ fontSize: 'clamp(1.6rem, 3vw, 2.2rem)', fontWeight: 800, color: '#fff', marginBottom: '0.75rem' }}>Your Studio, Live in Minutes</h2>
@@ -364,6 +542,99 @@ export default function LandingPage() {
             <div style={{ textAlign: 'left' }}>
               <div style={{ color: '#fff', fontWeight: 700 }}>Rachel C.</div>
               <div style={{ color: '#6b6b80', fontSize: '0.82rem' }}>Sports & Portrait Photography Studio</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── MIGRATION / SWITCHING ── */}
+      <section style={{ maxWidth: 1100, margin: '0 auto 5rem', padding: '0 1.5rem' }}>
+        <div style={{ background: 'linear-gradient(135deg, rgba(14,14,28,0.95) 0%, rgba(20,14,40,0.95) 100%)', border: '1px solid rgba(124,92,255,0.22)', borderRadius: 24, padding: '3.5rem 3rem', position: 'relative', overflow: 'hidden' }}>
+          {/* Background glow */}
+          <div style={{ position: 'absolute', top: -80, right: -80, width: 320, height: 320, borderRadius: '50%', background: 'radial-gradient(circle, rgba(124,92,255,0.08) 0%, transparent 70%)', pointerEvents: 'none' }} />
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3.5rem', alignItems: 'center' }}>
+            {/* Left: copy */}
+            <div>
+              <div style={{ display: 'inline-block', background: 'rgba(124,92,255,0.15)', border: '1px solid rgba(124,92,255,0.35)', borderRadius: 20, padding: '4px 14px', fontSize: '0.78rem', fontWeight: 700, color: '#a78bfa', marginBottom: '1.25rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Switching Platforms
+              </div>
+              <h2 style={{ fontSize: 'clamp(1.6rem, 3vw, 2.2rem)', fontWeight: 800, color: '#fff', lineHeight: 1.25, marginBottom: '1.1rem' }}>
+                Already on SmugMug<br />or Pixieset? Good News.
+              </h2>
+              <p style={{ color: '#9ca3af', fontSize: '1rem', lineHeight: 1.8, marginBottom: '1.75rem' }}>
+                Switching platforms shouldn't mean starting from scratch. Every album, every photo, every folder you've built up over the years moves over automatically — organized exactly the way you left it. You don't re-upload a thing. You're live and selling the same day you sign up.
+              </p>
+              <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 2rem', display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                {[
+                  ['Your full catalog transfers automatically', 'Connect your SmugMug account and every album imports in one click — no manual uploads, no zip files, no starting over.'],
+                  ['Full resolution, zero compression', 'Your images arrive exactly as you delivered them. No quality loss, no metadata stripped, no surprises.'],
+                  ['Albums land organized and ready to sell', 'Your folder structure comes with them. Publish, set prices, and your storefront is live — often before lunch.'],
+                  ['Your clients never notice a thing', 'Share links keep working. Photos are still where customers expect them. The switch is invisible to everyone but you.'],
+                ].map(([title, detail]) => (
+                  <li key={title} style={{ display: 'flex', gap: '0.85rem', alignItems: 'flex-start' }}>
+                    <span style={{ flexShrink: 0, width: 22, height: 22, borderRadius: '50%', background: 'rgba(124,92,255,0.2)', border: '1px solid rgba(124,92,255,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 3, fontSize: '0.65rem', color: '#a78bfa', fontWeight: 900 }}>✓</span>
+                    <div><span style={{ color: '#e0e0e0', fontWeight: 700 }}>{title} — </span><span style={{ color: '#9ca3af', fontSize: '0.93rem' }}>{detail}</span></div>
+                  </li>
+                ))}
+              </ul>
+              <button className="btn btn-primary" onClick={() => navigate('/studio-signup')} style={{ fontSize: '0.95rem', padding: '0.75rem 1.9rem' }}>
+                Switch for Free
+              </button>
+            </div>
+
+            {/* Right: visual migration flow */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {/* From platforms */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                {[
+                  { name: 'SmugMug', color: 'rgba(34,197,94,0.1)', border: 'rgba(34,197,94,0.25)', dot: '#22c55e', albums: ['Fall Portraits 2023', 'Soccer — Westfield HS', 'Senior Portraits'] },
+                  { name: 'Pixieset', color: 'rgba(59,130,246,0.1)', border: 'rgba(59,130,246,0.25)', dot: '#60a5fa', albums: ['Spring Minis', 'Family Sessions', 'Weddings 2024'] },
+                ].map(platform => (
+                  <div key={platform.name} style={{ background: platform.color, border: `1px solid ${platform.border}`, borderRadius: 14, padding: '1rem 1.1rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: '0.75rem' }}>
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: platform.dot, display: 'inline-block' }} />
+                      <span style={{ fontWeight: 800, fontSize: '0.85rem', color: '#e0e0e0' }}>{platform.name}</span>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                      {platform.albums.map(album => (
+                        <div key={album} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(0,0,0,0.2)', borderRadius: 6, padding: '4px 8px' }}>
+                          <span style={{ fontSize: '0.7rem' }}>🖼️</span>
+                          <span style={{ fontSize: '0.72rem', color: '#9ca3af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{album}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Arrow + status */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1rem', padding: '0.5rem 0' }}>
+                <div style={{ flex: 1, height: 1, background: 'linear-gradient(90deg, transparent, rgba(124,92,255,0.4))' }} />
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                  <div style={{ background: 'rgba(124,92,255,0.15)', border: '1px solid rgba(124,92,255,0.4)', borderRadius: 20, padding: '5px 14px', fontSize: '0.75rem', fontWeight: 700, color: '#a78bfa' }}>
+                    ⟱ Importing…
+                  </div>
+                  <div style={{ fontSize: '0.68rem', color: '#4a4a6a', fontWeight: 600 }}>6 albums · 1,240 photos</div>
+                </div>
+                <div style={{ flex: 1, height: 1, background: 'linear-gradient(90deg, rgba(124,92,255,0.4), transparent)' }} />
+              </div>
+
+              {/* Destination */}
+              <div style={{ background: 'rgba(124,92,255,0.1)', border: '1px solid rgba(124,92,255,0.35)', borderRadius: 14, padding: '1.1rem 1.25rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: '0.75rem' }}>
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#a78bfa', display: 'inline-block' }} />
+                  <span style={{ fontWeight: 800, fontSize: '0.85rem', color: '#e0e0e0' }}>Your New Studio</span>
+                  <span style={{ marginLeft: 'auto', background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 10, padding: '2px 8px', fontSize: '0.68rem', color: '#4ade80', fontWeight: 700 }}>Live & selling</span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.4rem' }}>
+                  {['Fall Portraits 2023', 'Soccer — Westfield HS', 'Senior Portraits', 'Spring Minis', 'Family Sessions', 'Weddings 2024'].map(album => (
+                    <div key={album} style={{ background: 'rgba(124,92,255,0.1)', borderRadius: 6, padding: '4px 7px', fontSize: '0.67rem', color: '#c4b5fd', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {album}
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         </div>
