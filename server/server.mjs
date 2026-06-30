@@ -88,6 +88,7 @@ import reportsRoutes from './routes/reports.js';
 import releaseNotesRoutes from './routes/releaseNotes.js';
 import { autoGenerateReleaseNotes } from './startup/autoGenerateReleaseNotes.js';
 import rosterManagementRoutes from './routes/rosterManagement.js';
+import chatRoutes from './routes/chat.js';
 
 import runWhccEditorBackfillOnce from './startup/runWhccEditorBackfillOnce.js';
 import runWhccVariantSchemaMigrations from './startup/runWhccVariantSchemaMigrations.js';
@@ -274,6 +275,7 @@ app.use('/api/tickets', ticketRoutes);
 app.use('/api/reports', reportsRoutes);
 app.use('/api/release-notes', releaseNotesRoutes);
 app.use('/api/roster', rosterManagementRoutes);
+app.use('/api/chat', chatRoutes);
 
 // Notify watchers endpoint
 app.use('/api/notify-watchers', notifyWatchersRoutes);

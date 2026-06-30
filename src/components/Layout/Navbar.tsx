@@ -333,10 +333,12 @@ const Navbar: React.FC = () => {
 };
 
 import TicketFab from '../TicketFab';
+import ChatPanel from '../ChatPanel';
 
 const NavbarWithFab: React.FC = (props) => (
   <>
     <Navbar {...props} />
+    <ChatPanel />
     <TicketFab />
   </>
 );
