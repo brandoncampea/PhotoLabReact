@@ -1,5 +1,11 @@
 [
   {
+    "version": "June 30, 2026",
+    "title": "Seed profile_config from studio signup data instead of hardcoded placeholders",
+    "summary": "1 update on June 30, 2026.",
+    "content": "- Seed profile_config from studio signup data instead of hardcoded placeholders"
+  },
+  {
     "version": "June 29, 2026",
     "title": "Performance and reliability fixes for photo downloads and WHCC integration",
     "summary": "Full-size photo downloads now go directly from Azure Blob Storage to the browser instead of passing through the server, eliminating timeout errors. WHCC API calls now have explicit timeouts so failures surface quickly. The photo preview in the order panel now shows the image at its correct proportions.",
