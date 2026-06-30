@@ -112,7 +112,7 @@ const AdminAlbums: React.FC = () => {
   const [albumPlayerSuggestionsMessage, setAlbumPlayerSuggestionsMessage] = useState('');
 
   // Per-album price overrides
-  const [priceOverrides, setPriceOverrides] = useState<{ productSizeId: number; sizeName: string; productName: string; productId: number; price: number }[]>([]);
+  const [priceOverrides, setPriceOverrides] = useState<{ productSizeId: number; sizeName: string; productName: string; productId: number; price: number; overridePrice: number | null }[]>([]);
   const [overrideDrafts, setOverrideDrafts] = useState<Record<number, string>>({});
   const [overridesLoading, setOverridesLoading] = useState(false);
   const [overridesSaving, setOverridesSaving] = useState(false);
@@ -337,7 +337,7 @@ const AdminAlbums: React.FC = () => {
       const overrides = await albumAdminService.getPriceOverrides(albumId);
       setPriceOverrides(overrides);
       const drafts: Record<number, string> = {};
-      overrides.forEach(o => { drafts[o.productSizeId] = String(o.price); });
+      overrides.forEach(o => { drafts[o.productSizeId] = o.overridePrice != null ? String(o.overridePrice) : ''; });
       setOverrideDrafts(drafts);
     } catch { /* silent */ }
     setOverridesLoading(false);

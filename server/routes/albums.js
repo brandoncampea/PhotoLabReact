@@ -787,13 +787,26 @@ router.get('/:id/price-overrides', authRequired, async (req, res) => {
   try {
     await ensureAlbumPriceOverridesTable();
     const albumId = Number(req.params.id);
+    // Return all offered sizes from the album's price list, with any existing overrides joined in.
+    // Using LEFT JOIN so sizes appear even before any override has been saved.
     const overrides = await queryRows(
-      `SELECT apo.product_size_id as productSizeId, apo.price,
-              ps.size_name as sizeName, p.name as productName, p.id as productId
-       FROM album_price_overrides apo
-       JOIN product_sizes ps ON ps.id = apo.product_size_id
-       JOIN products p ON p.id = ps.product_id
-       WHERE apo.album_id = $1`,
+      `SELECT ps.id              AS productSizeId,
+              ps.size_name       AS sizeName,
+              p.name             AS productName,
+              p.id               AS productId,
+              spli.price         AS price,
+              apo.price          AS overridePrice
+       FROM   albums al
+       JOIN   studio_price_list_items spli ON spli.studio_price_list_id = al.price_list_id
+       JOIN   product_sizes ps ON ps.id = spli.product_size_id
+       JOIN   products p ON p.id = ps.product_id
+       LEFT JOIN album_price_overrides apo
+              ON apo.product_size_id = spli.product_size_id
+             AND apo.album_id = $1
+       WHERE  al.id = $1
+         AND  COALESCE(spli.is_offered, 1) = 1
+         AND  COALESCE(spli.is_deleted, 0) = 0
+       ORDER BY p.name, ps.size_name`,
       [albumId]
     );
     res.json({ overrides: overrides || [] });

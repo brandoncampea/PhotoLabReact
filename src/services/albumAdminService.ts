@@ -21,7 +21,7 @@ export const albumAdminService = {
     await api.delete(`/albums/${id}`);
   },
 
-  async getPriceOverrides(albumId: number): Promise<{ productSizeId: number; sizeName: string; productName: string; productId: number; price: number }[]> {
+  async getPriceOverrides(albumId: number): Promise<{ productSizeId: number; sizeName: string; productName: string; productId: number; price: number; overridePrice: number | null }[]> {
     const response = await api.get(`/albums/${albumId}/price-overrides`);
     return response.data.overrides || [];
   },

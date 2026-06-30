@@ -1,4 +1,5 @@
 import { Photo } from '../types';
+import FaceDetectionWorker from '../workers/faceDetection.worker?worker';
 
 export type FaceTagBox = {
   id: string;
@@ -10,91 +11,66 @@ export type FaceTagBox = {
   playerNumber?: string | null;
 };
 
-const clampPercent = (value: number) => Math.max(0, Math.min(100, value));
+type WorkerResponse = { id: string; faceBoxes: FaceTagBox[]; error: string | null };
+type PendingEntry = { resolve: (r: { faceBoxes: FaceTagBox[]; error: string | null }) => void; reject: (e: Error) => void };
 
-const loadImageElement = (src: string) => new Promise<HTMLImageElement>((resolve, reject) => {
-  const image = new Image();
-  image.crossOrigin = 'anonymous';
-  image.onload = () => resolve(image);
-  image.onerror = () => reject(new Error('Failed to load image for face detection'));
-  image.src = src;
-});
+let worker: Worker | null = null;
+let reqId = 0;
+const pending = new Map<string, PendingEntry>();
 
-
-import * as tf from '@tensorflow/tfjs';
-
-const getBlazeFaceModel = async () => {
-  // Ensure tf is ready and backend is set
-  await tf.ready();
-  const backend = tf.getBackend();
-  if (backend !== 'webgl' && backend !== 'cpu') {
-    // Try to set to webgl, fallback to cpu
-    try {
-      await tf.setBackend('webgl');
-    } catch {
-      await tf.setBackend('cpu');
-    }
+function getWorker(): Worker {
+  if (!worker) {
+    worker = new FaceDetectionWorker();
+    worker.onmessage = (e: MessageEvent<WorkerResponse>) => {
+      const entry = pending.get(e.data.id);
+      if (entry) {
+        pending.delete(e.data.id);
+        entry.resolve({ faceBoxes: e.data.faceBoxes, error: e.data.error });
+      }
+    };
+    worker.onerror = () => {
+      pending.forEach(e => e.reject(new Error('Face detection worker failed')));
+      pending.clear();
+      worker = null;
+    };
   }
-  // @ts-ignore
-  if (!window._blazeFaceModelPromise) {
-    // @ts-ignore
-    window._blazeFaceModelPromise = import('@tensorflow-models/blazeface').then((blazeface) => blazeface.load());
-  }
-  // @ts-ignore
-  return window._blazeFaceModelPromise;
-};
+  return worker;
+}
 
-export async function detectFaceBoxesFromImageElement(image: HTMLImageElement): Promise<{ faceBoxes: FaceTagBox[]; error?: string | null }> {
+export async function detectFaceBoxes(
+  photo: Photo,
+  resolvePhotoImageUrl: (photo: Photo) => Promise<string | null>
+): Promise<{ faceBoxes: FaceTagBox[]; error?: string | null }> {
   try {
-    const width = Number(image.naturalWidth || image.width || 0);
-    const height = Number(image.naturalHeight || image.height || 0);
-    if (!width || !height) {
-      return { faceBoxes: [], error: 'Image dimensions were unavailable for face detection.' };
-    }
+    const imageUrl = await resolvePhotoImageUrl(photo);
+    if (!imageUrl) return { faceBoxes: [], error: 'Could not resolve image URL' };
 
-    const model = await getBlazeFaceModel();
-    const predictions = await model.estimateFaces(image, { maxFaces: 10, scoreThreshold: 0.7 });
-    const mappedFaceBoxes: FaceTagBox[] = (predictions || []).map((prediction: any, index: number): FaceTagBox => {
-      const topLeft = Array.isArray(prediction.topLeft)
-        ? prediction.topLeft
-        : (prediction.topLeft?.arraySync?.() || [0, 0]);
-      const bottomRight = Array.isArray(prediction.bottomRight)
-        ? prediction.bottomRight
-        : (prediction.bottomRight?.arraySync?.() || [0, 0]);
-      const x1 = Number(topLeft?.[0] || 0);
-      const y1 = Number(topLeft?.[1] || 0);
-      const x2 = Number(bottomRight?.[0] || 0);
-      const y2 = Number(bottomRight?.[1] || 0);
-      const boxWidth = Math.max(0, x2 - x1);
-      const boxHeight = Math.max(0, y2 - y1);
-      return {
-        id: `face-${index + 1}`,
-        leftPct: clampPercent((x1 / width) * 100),
-        topPct: clampPercent((y1 / height) * 100),
-        widthPct: clampPercent((boxWidth / width) * 100),
-        heightPct: clampPercent((boxHeight / height) * 100),
-      };
+    const id = String(++reqId);
+    return new Promise((resolve, reject) => {
+      pending.set(id, { resolve, reject });
+      getWorker().postMessage({ id, imageUrl });
     });
-
-    const faceBoxes: FaceTagBox[] = mappedFaceBoxes.filter((box) => box.widthPct > 0 && box.heightPct > 0);
-    return { faceBoxes, error: null };
-  } catch (error) {
-    console.error('Client-side face box detection failed:', error);
-    return { faceBoxes: [], error: 'Face boxes could not be detected for this image.' };
+  } catch {
+    return { faceBoxes: [], error: 'Face detection failed' };
   }
 }
 
-export async function detectFaceBoxes(photo: Photo, resolvePhotoImageUrl: (photo: Photo) => Promise<string | null>): Promise<{ faceBoxes: FaceTagBox[]; error?: string | null }> {
+// Delegates to the worker via an in-memory data URL — kept for backward compatibility
+export async function detectFaceBoxesFromImageElement(
+  image: HTMLImageElement
+): Promise<{ faceBoxes: FaceTagBox[]; error?: string | null }> {
   try {
-    // Always use the provided resolvePhotoImageUrl result (backend asset endpoint) for face detection
-    const imageUrl = await resolvePhotoImageUrl(photo);
-    if (!imageUrl) {
-      return { faceBoxes: [], error: 'Could not load image for face detection.' };
-    }
-    const image = await loadImageElement(imageUrl);
-    return detectFaceBoxesFromImageElement(image);
-  } catch (error) {
-    console.error('Client-side face box detection failed:', error);
-    return { faceBoxes: [], error: 'Face boxes could not be detected for this image.' };
+    const canvas = document.createElement('canvas');
+    canvas.width = image.naturalWidth || image.width;
+    canvas.height = image.naturalHeight || image.height;
+    canvas.getContext('2d')!.drawImage(image, 0, 0);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+    const id = String(++reqId);
+    return new Promise((resolve, reject) => {
+      pending.set(id, { resolve, reject });
+      getWorker().postMessage({ id, imageUrl: dataUrl });
+    });
+  } catch {
+    return { faceBoxes: [], error: 'Face detection failed' };
   }
 }

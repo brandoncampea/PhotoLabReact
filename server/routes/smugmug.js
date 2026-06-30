@@ -832,51 +832,55 @@ const resolveSmugMugSourceUrl = async (image, apiKey, authContext = null) => {
 };
 
 const listAlbumImages = async (albumKey, apiKey, authContext = null) => {
-  let rows = [];
-
   const albumPayload = await requestSmugMugJson(`/api/v2/album/${encodeURIComponent(albumKey)}`, apiKey, authContext);
   const albumImagesUri = albumPayload?.Response?.Album?.Uris?.AlbumImages?.Uri;
 
+  // Use count=500 (SmugMug max) to minimise pagination round-trips
   const albumImagesPath = typeof albumImagesUri === 'string' && albumImagesUri.startsWith('/api/v2/')
-    ? `${albumImagesUri}${albumImagesUri.includes('?') ? '&' : '?'}count=100&_verbosity=2`
-    : `/api/v2/album/${encodeURIComponent(albumKey)}!images?count=100&_verbosity=2`;
+    ? `${albumImagesUri}${albumImagesUri.includes('?') ? '&' : '?'}count=500&_verbosity=2`
+    : `/api/v2/album/${encodeURIComponent(albumKey)}!images?count=500&_verbosity=2`;
 
-  rows = await fetchAllSmugMugObjects(
+  const rows = await fetchAllSmugMugObjects(
     albumImagesPath,
     apiKey,
     ['AlbumImage', 'Image'],
     authContext
   );
 
+  // Resolve source URLs concurrently (queue-based, 6 at a time) instead of one-by-one.
+  // Each image may require 1-3 extra SmugMug API calls to find the original URL, so
+  // running them serially is the single largest import bottleneck.
+  const URL_CONCURRENCY = 6;
+  const queue = [...rows];
   const out = [];
-  for (const imageRow of rows) {
-    const image = imageRow?.Image || imageRow;
-    const fileName = image?.FileName || image?.Name || '(unknown)';
-    let sourceUrl = null;
-    let urlType = 'none';
-    try {
-      const result = await resolveSmugMugSourceUrl(image, apiKey, authContext);
-      sourceUrl = result.sourceUrl;
-      urlType = result.urlType;
-    } catch (err) {
-      continue;
-    }
 
-    if (!sourceUrl) {
-      continue;
-    }
+  await Promise.all(
+    Array.from({ length: Math.min(URL_CONCURRENCY, rows.length) }, async () => {
+      let imageRow;
+      while ((imageRow = queue.shift()) !== undefined) {
+        const image = imageRow?.Image || imageRow;
+        const fileName = image?.FileName || image?.Name || '(unknown)';
+        let sourceUrl = null;
+        let urlType = 'none';
+        try {
+          const result = await resolveSmugMugSourceUrl(image, apiKey, authContext);
+          sourceUrl = result.sourceUrl;
+          urlType = result.urlType;
+        } catch {
+          continue;
+        }
+        if (!sourceUrl || isThumbnailLikeUrl(sourceUrl)) continue;
+        out.push({
+          id: image?.ImageKey || image?.Key || crypto.randomUUID(),
+          fileName,
+          description: image?.Caption || image?.Title || '',
+          sourceUrl,
+          sourceUrlType: urlType,
+        });
+      }
+    })
+  );
 
-    if (isThumbnailLikeUrl(sourceUrl)) {
-      continue;
-    }
-    out.push({
-      id: image?.ImageKey || image?.Key || crypto.randomUUID(),
-      fileName,
-      description: image?.Caption || image?.Title || '',
-      sourceUrl,
-      sourceUrlType: urlType,
-    });
-  }
   return out;
 };
 
@@ -1406,8 +1410,8 @@ router.post('/import', adminRequired, async (req, res) => {
 
       if (!album) {
         const created = await queryRow(
-          `INSERT INTO albums (name, title, description, studio_id, category)
-           VALUES ($1, $2, $3, $4, $5)
+          `INSERT INTO albums (name, title, description, studio_id, category, published)
+           VALUES ($1, $2, $3, $4, $5, 0)
            RETURNING id`,
           [albumName, albumName, albumDescription, studioId, 'SmugMug']
         );
@@ -1542,9 +1546,9 @@ router.post('/import', adminRequired, async (req, res) => {
         importedPhotoCount += 1;
       };
 
-      // Process up to 5 photos concurrently
+      // Process up to 8 photos concurrently (download + Azure upload are both network-bound)
       await Promise.all(
-        Array.from({ length: Math.min(5, images.length) }, async () => {
+        Array.from({ length: Math.min(8, images.length) }, async () => {
           let img;
           while ((img = imageQueue.shift()) !== undefined) {
             await processPhoto(img);

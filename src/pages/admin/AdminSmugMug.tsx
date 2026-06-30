@@ -129,6 +129,7 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
 
   const [smugmugNickname, setSmugmugNickname] = useState('');
   const [smugmugAlbums, setSmugmugAlbums] = useState<SmugMugAlbumOption[]>([]);
+  const [albumFilter, setAlbumFilter] = useState('');
   const [selectedSmugmugAlbums, setSelectedSmugmugAlbums] = useState<Record<string, boolean>>({});
   const [smugmugLoading, setSmugmugLoading] = useState(false);
   const [smugmugImporting, setSmugmugImporting] = useState(false);
@@ -136,12 +137,21 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
   const [importProgress, setImportProgress] = useState<SmugMugImportProgress | null>(null);
   const [storageMode, setStorageMode] = useState<'azure' | 'smugmug-source'>('azure');
 
+  const filteredAlbums = albumFilter.trim()
+    ? smugmugAlbums.filter((a) => a.name.toLowerCase().includes(albumFilter.trim().toLowerCase()))
+    : smugmugAlbums;
+
   const selectedAlbumCount = smugmugAlbums.reduce(
     (count, album) => count + (selectedSmugmugAlbums[album.albumKey] ? 1 : 0),
     0
   );
+  const filteredSelectableCount = filteredAlbums.filter((a) => !a.imported).length;
+  const filteredSelectedCount = filteredAlbums.reduce(
+    (count, a) => count + (selectedSmugmugAlbums[a.albumKey] ? 1 : 0),
+    0
+  );
   const selectableAlbumCount = smugmugAlbums.filter((album) => !album.imported).length;
-  const allAlbumsSelected = selectableAlbumCount > 0 && selectedAlbumCount === selectableAlbumCount;
+  const allAlbumsSelected = filteredSelectableCount > 0 && filteredSelectedCount === filteredSelectableCount;
 
   const getAuthHeaders = () => {
     const token = localStorage.getItem('authToken');
@@ -332,19 +342,23 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
   };
 
   const handleSelectAllAlbums = () => {
-    const next: Record<string, boolean> = {};
-    smugmugAlbums.forEach((album) => {
-      next[album.albumKey] = !album.imported;
+    setSelectedSmugmugAlbums((prev) => {
+      const next = { ...prev };
+      filteredAlbums.forEach((album) => {
+        if (!album.imported) next[album.albumKey] = true;
+      });
+      return next;
     });
-    setSelectedSmugmugAlbums(next);
   };
 
   const handleClearAllAlbums = () => {
-    const next: Record<string, boolean> = {};
-    smugmugAlbums.forEach((album) => {
-      next[album.albumKey] = false;
+    setSelectedSmugmugAlbums((prev) => {
+      const next = { ...prev };
+      filteredAlbums.forEach((album) => {
+        next[album.albumKey] = false;
+      });
+      return next;
     });
-    setSelectedSmugmugAlbums(next);
   };
 
   if (user?.role !== 'studio_admin' && user?.role !== 'super_admin') {
@@ -576,6 +590,22 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
         {smugmugAlbums.length > 0 && (
           <>
             <div style={{ marginTop: '12px', display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <input
+                type="text"
+                placeholder="Filter albums by name…"
+                value={albumFilter}
+                onChange={(e) => setAlbumFilter(e.target.value)}
+                style={{
+                  flex: '1 1 220px',
+                  padding: '7px 12px',
+                  borderRadius: 8,
+                  border: '1.5px solid var(--border-color)',
+                  background: 'rgba(22,22,35,0.9)',
+                  color: '#e4e4e7',
+                  fontSize: '0.875rem',
+                  outline: 'none',
+                }}
+              />
               <button
                 className="btn btn-secondary"
                 onClick={handleSelectAllAlbums}
@@ -586,17 +616,22 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
               <button
                 className="btn btn-secondary"
                 onClick={handleClearAllAlbums}
-                disabled={selectedAlbumCount === 0}
+                disabled={filteredSelectedCount === 0}
               >
                 Clear All
               </button>
               <span style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
-                {selectedAlbumCount} of {selectableAlbumCount} selectable selected
+                {selectedAlbumCount} of {selectableAlbumCount} selected
+                {albumFilter.trim() ? ` (${filteredAlbums.length} shown)` : ''}
               </span>
             </div>
 
             <div style={{ marginTop: '10px', border: '1px solid var(--border-color)', borderRadius: '8px', maxHeight: '420px', overflowY: 'auto' }}>
-            {smugmugAlbums.map((album) => (
+            {filteredAlbums.length === 0 ? (
+              <div style={{ padding: '16px 12px', color: 'var(--text-secondary)', fontSize: '14px' }}>
+                No albums match "{albumFilter}".
+              </div>
+            ) : filteredAlbums.map((album) => (
               <label
                 key={album.albumKey}
                 style={{
@@ -649,6 +684,7 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
               </label>
             ))}
             </div>
+
           </>
         )}
       </div>
