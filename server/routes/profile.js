@@ -153,8 +153,21 @@ router.get('/', authRequired, async (req, res) => {
         IF NOT EXISTS (SELECT 1 FROM profile_config WHERE studio_id = $1)
         BEGIN
           INSERT INTO profile_config (id, studio_id, owner_name, business_name, email, receive_order_notifications, logo_url)
-          SELECT ISNULL(MAX(id), 0) + 1, $1, 'John Smith', 'PhotoLab Studio', 'admin@photolab.com', 1, ''
-          FROM profile_config
+          SELECT
+            ISNULL((SELECT MAX(id) FROM profile_config), 0) + 1,
+            s.id,
+            COALESCE(u.name, s.name),
+            s.name,
+            s.email,
+            1,
+            ''
+          FROM studios s
+          LEFT JOIN (
+            SELECT TOP 1 studio_id, name FROM users
+            WHERE studio_id = $1 AND role IN ('studio_admin', 'admin')
+            ORDER BY id ASC
+          ) u ON u.studio_id = s.id
+          WHERE s.id = $1
         END
       `, [studioId]);
 
