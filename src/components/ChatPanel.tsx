@@ -43,6 +43,7 @@ const ChatPanel: React.FC = () => {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [studioAdminUnread, setStudioAdminUnread] = useState(0);
+  const [hasArchived, setHasArchived] = useState(false);
 
   // Refs so SSE handler always sees current values without stale closures
   const openRef = useRef(false);
@@ -68,6 +69,7 @@ const ChatPanel: React.FC = () => {
       if (!r.ok) return;
       const d = await r.json();
       setMessages(d.messages || []);
+      setHasArchived(!!d.hasArchived);
     } catch {}
   }, []);
 
@@ -222,16 +224,6 @@ const ChatPanel: React.FC = () => {
     const content = input.trim();
     if (!sid || !content || sending) return;
     setSending(true);
-    const optimistic: ChatMessage = {
-      id: Date.now(),
-      studioId: sid,
-      senderId: user!.id,
-      senderRole: user!.role,
-      senderName: `${user!.firstName} ${user!.lastName}`.trim() || user!.email,
-      content,
-      createdAt: new Date().toISOString(),
-    };
-    setMessages(prev => [...prev, optimistic]);
     setInput('');
     try {
       await fetch(`/api/chat/${sid}/messages`, {
@@ -240,7 +232,6 @@ const ChatPanel: React.FC = () => {
         body: JSON.stringify({ content }),
       });
     } catch {
-      setMessages(prev => prev.filter(m => m.id !== optimistic.id));
       setInput(content);
     } finally {
       setSending(false);
@@ -429,6 +420,14 @@ const ChatPanel: React.FC = () => {
                 </div>
               ) : (
                 <>
+                  {/* Archived banner */}
+                  {hasArchived && (
+                    <div style={{ padding: '6px 14px', background: '#1a1a35', borderBottom: '1px solid #2d2d50', fontSize: 12, color: '#888', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                      <span>📁</span>
+                      <span>Older messages archived to <a href="/admin/tickets" style={{ color: '#a78bfa', textDecoration: 'none' }}>tickets</a>.</span>
+                    </div>
+                  )}
+
                   {/* Messages */}
                   <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {messages.length === 0 && (

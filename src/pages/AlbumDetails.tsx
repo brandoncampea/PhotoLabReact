@@ -1151,7 +1151,6 @@ const AlbumDetails: React.FC = () => {
           scaleX: typeof cropData.scaleX === 'number' ? cropData.scaleX : 1,
           scaleY: typeof cropData.scaleY === 'number' ? cropData.scaleY : 1,
         });
-        console.log('[AlbumDetails] handleCropConfirm - cropperData:', cropData, 'displayed:', displayedWidth, displayedHeight, 'original:', originalWidth, originalHeight, 'scale:', scaleX, scaleY, 'final crop:', cropValues);
       } else {
         // Default to centered crop with correct aspect ratio for the product size
         let cropAspect = 1;
@@ -1177,7 +1176,6 @@ const AlbumDetails: React.FC = () => {
           return { x: cropX, y: cropY, width: cropWidth, height: cropHeight, rotate: 0, scaleX: 1, scaleY: 1 };
         }
         cropValues = getCenteredCrop(originalWidth, originalHeight, cropAspect);
-        console.log('[AlbumDetails] handleCropConfirm - no cropData or selectedPhoto, using centered aspect crop', cropValues);
       }
 
       if (packageCropSlotIndex !== null) {

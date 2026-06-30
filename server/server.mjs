@@ -87,6 +87,7 @@ import notifyWatchersRoutes from './routes/notifyWatchers.js';
 import reportsRoutes from './routes/reports.js';
 import releaseNotesRoutes from './routes/releaseNotes.js';
 import { autoGenerateReleaseNotes } from './startup/autoGenerateReleaseNotes.js';
+import { scheduleDailyArchive } from './startup/archiveChatToTickets.js';
 import rosterManagementRoutes from './routes/rosterManagement.js';
 import chatRoutes from './routes/chat.js';
 
@@ -457,6 +458,11 @@ initializeDatabaseWithRetry().then(() => {
   setTimeout(async () => {
     try { await autoGenerateReleaseNotes(); } catch (e) { console.error('[release-notes] startup run failed:', e); }
   }, 15_000);
+
+  // Archive chat messages older than 24h into tickets, then repeat daily
+  setTimeout(() => {
+    try { scheduleDailyArchive(); } catch (e) { console.error('[chat-archive] startup schedule failed:', e); }
+  }, 20_000);
 });
 
 // Global error handler (must be after all routes)

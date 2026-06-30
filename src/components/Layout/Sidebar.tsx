@@ -31,6 +31,22 @@ const Sidebar: React.FC = () => {
   const inStudioAdminMenu = isStudioAdmin || isActingAsStudio;
   const dashboardPath = isSuperAdmin && !isActingAsStudio ? '/super-admin' : '/admin/dashboard';
 
+  const [ticketBadge, setTicketBadge] = useState(0);
+  useEffect(() => {
+    if (!isSuperAdmin && !isStudioAdmin) return;
+    const fetchCounts = () => {
+      const token = localStorage.getItem('authToken');
+      if (!token) return;
+      fetch('/api/tickets/counts', { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => r.ok ? r.json() : null)
+        .then(d => { if (d) setTicketBadge(d.total || 0); })
+        .catch(() => {});
+    };
+    fetchCounts();
+    const interval = setInterval(fetchCounts, 60_000);
+    return () => clearInterval(interval);
+  }, [isSuperAdmin, isStudioAdmin]);
+
   // Measure the actual bottom of the top navbar so the pinned sidebar starts right below it
   useEffect(() => {
     const measure = () => {
@@ -62,7 +78,7 @@ const Sidebar: React.FC = () => {
 
   const isActive = (path: string) => location.pathname === path;
 
-  const link = (to: string, label: string, icon: string) => (
+  const link = (to: string, label: string, icon: string, badge?: number) => (
     <Link
       to={to}
       style={{
@@ -84,7 +100,23 @@ const Sidebar: React.FC = () => {
       onMouseLeave={e => { if (!isActive(to)) { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = '#c4c4de'; } }}
     >
       <span style={{ fontSize: '1rem', flexShrink: 0, width: 20, textAlign: 'center' }}>{icon}</span>
-      {label}
+      <span style={{ flex: 1 }}>{label}</span>
+      {badge != null && badge > 0 && (
+        <span style={{
+          background: '#4f46e5',
+          color: '#fff',
+          borderRadius: 99,
+          fontSize: '0.68rem',
+          fontWeight: 700,
+          padding: '1px 7px',
+          minWidth: 18,
+          textAlign: 'center',
+          lineHeight: '16px',
+          flexShrink: 0,
+        }}>
+          {badge > 99 ? '99+' : badge}
+        </span>
+      )}
     </Link>
   );
 
@@ -199,8 +231,8 @@ const Sidebar: React.FC = () => {
           {/* Support */}
           {sectionLabel('Support')}
           {link(isSuperAdmin ? '/super-admin/reports' : '/admin/reports', 'Reports', '📈')}
-          {isStudioAdmin && link('/admin/studio-tickets', 'My Tickets', '🎫')}
-          {isSuperAdmin && link('/admin/tickets', 'All Tickets', '📋')}
+          {isStudioAdmin && link('/admin/studio-tickets', 'My Tickets', '🎫', ticketBadge || undefined)}
+          {isSuperAdmin && link('/admin/tickets', 'All Tickets', '📋', ticketBadge || undefined)}
           {(isStudioAdmin || isSuperAdmin) && link('/admin/price-lists', 'Studio Price Lists', '💲')}
 
           {/* Super Admin section */}

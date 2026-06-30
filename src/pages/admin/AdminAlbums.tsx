@@ -308,8 +308,7 @@ const AdminAlbums: React.FC = () => {
     setShowModal(true);
   };
   const handleEdit = (album: Album) => {
-    console.log('[AdminAlbums] handleEdit album:', album);
-    setEditingAlbum(album);
+setEditingAlbum(album);
     setNewModalCategory('');
     setNewSchoolTag('');
     setFormData({

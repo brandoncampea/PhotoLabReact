@@ -2,11 +2,7 @@ import React, { useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { createTicket } from '../tickets/api';
-
-const getBrowserInfo = () => {
-  if (typeof navigator === 'undefined') return '';
-  return `${navigator.userAgent} (${navigator.platform})`;
-};
+import { getDiagnostics } from '../utils/diagnostics';
 
 const TicketFab: React.FC = () => {
   const [open, setOpen] = useState(false);
@@ -24,13 +20,10 @@ const TicketFab: React.FC = () => {
       await createTicket({
         subject,
         description,
-        createdBy: user?.id ? String(user.id) : '',
-        createdForStudio: user?.studioId ? String(user.studioId) : '',
         meta: {
           page: location.pathname + location.search,
-          user: user ? { id: user.id, email: user.email, name: user.firstName + ' ' + user.lastName } : null,
-          studio: user?.studioId ? String(user.studioId) : undefined,
-          browser: getBrowserInfo(),
+          user: user ? { id: user.id, email: user.email, name: `${user.firstName} ${user.lastName}`.trim(), role: user.role, studioId: user.studioId } : null,
+          diagnostics: getDiagnostics(),
         },
       });
       setSuccess(true);

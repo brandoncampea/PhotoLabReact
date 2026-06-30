@@ -203,7 +203,6 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (Array.isArray(opts.whccItemAttributeUIDs) && opts.whccItemAttributeUIDs.length > 0) {
         // Coerce all UIDs to numbers
         const coerced = opts.whccItemAttributeUIDs.map((x: any) => Number(x)).filter((x: any) => !isNaN(x));
-        console.log('[CartContext][DEBUG] Extracted whccItemAttributeUIDs:', opts.whccItemAttributeUIDs, 'Coerced:', coerced);
         return coerced;
       }
       // Fallback: try to infer from selected option keys (for legacy/other products)
@@ -218,7 +217,6 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
           possibleUIDs.push(Number(opts[k].uid));
         }
       }
-      console.log('[CartContext][DEBUG] Fallback attributeUIDs:', possibleUIDs, 'from opts:', opts);
       return possibleUIDs;
     };
     const attributeUIDs = extractAttributeUIDs(patchedProductOptions);
@@ -235,16 +233,6 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const isDigital = !!(product.isDigital || options?.digitalDownloadScope || product.editorProvider === 'digital');
     setItems((prevItems) => {
-      // Debug: log cart item attributes and productOptions before updating cart
-      console.log('[CartContext][DEBUG] Adding to cart:', {
-        photoId: photo.id,
-        productId: product.id,
-        productSizeId: size.id,
-        attributeUIDs,
-        finalAttributeUIDs,
-        productOptions: patchedProductOptions,
-        allOptions: options
-      });
       const existingItem = prevItems.find((item) => (
         item.photoId === photo.id
         && item.productId === product.id
@@ -435,7 +423,6 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Patch: Always force update, even if cropData is unchanged, to guarantee re-render
   const updateCropData = (photoId: number, cropData: CropData, productId?: number, productSizeId?: number) => {
-    console.log('[CartContext] updateCropData - saving cropData:', cropData, 'for photoId:', photoId, 'productId:', productId, 'productSizeId:', productSizeId);
     setItems((prevItems) => {
       let changed = false;
       const next = prevItems.map((item) => {
@@ -445,16 +432,13 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (matchPhoto && matchProduct && matchSize) {
           changed = true;
           const updated = { ...item, cropData: { ...cropData } };
-          console.log('[CartContext] updateCropData: updating item', { item, updated });
           return updated;
         }
         return item;
       });
       if (changed) {
-        console.log('[CartContext] updateCropData: new cart state', next);
         return next;
       } else {
-        console.log('[CartContext] updateCropData: no change, returning copy', next);
         return [...next];
       }
     });

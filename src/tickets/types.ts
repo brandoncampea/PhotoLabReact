@@ -2,7 +2,7 @@
 export type TicketStatus = 'open' | 'pending' | 'closed';
 export type TicketComment = {
   authorId: string;
-  authorType: 'customer' | 'studio' | 'admin';
+  authorType: 'customer' | 'studio' | 'admin' | 'super_admin';
   message: string;
   createdAt: string;
 };

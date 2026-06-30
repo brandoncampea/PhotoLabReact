@@ -54,10 +54,14 @@ const ensureTables = async () => {
         sender_role  NVARCHAR(50) NOT NULL,
         sender_name  NVARCHAR(255) NOT NULL,
         content      NVARCHAR(MAX) NOT NULL,
-        created_at   DATETIME2 DEFAULT CURRENT_TIMESTAMP
+        created_at   DATETIME2 DEFAULT CURRENT_TIMESTAMP,
+        archived_at  DATETIME2 NULL
       );
       CREATE INDEX idx_chat_msg_studio ON chat_messages(studio_id, created_at);
     END
+
+    IF COL_LENGTH('chat_messages', 'archived_at') IS NULL
+      ALTER TABLE chat_messages ADD archived_at DATETIME2 NULL;
 
     IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'chat_last_read')
     BEGIN
@@ -140,12 +144,13 @@ router.get('/studios', adminRequired, async (req, res) => {
         SELECT COUNT(*) FROM chat_messages cm
         WHERE cm.studio_id = s.id
           AND cm.sender_id != $1
+          AND cm.archived_at IS NULL
           AND cm.created_at > COALESCE(
             (SELECT last_read_at FROM chat_last_read WHERE user_id = $1 AND studio_id = s.id),
             '1900-01-01T00:00:00'
           )
       ), 0) AS unreadCount,
-      (SELECT MAX(created_at) FROM chat_messages WHERE studio_id = s.id) AS lastMessageAt
+      (SELECT MAX(created_at) FROM chat_messages WHERE studio_id = s.id AND archived_at IS NULL) AS lastMessageAt
     FROM studios s
     ORDER BY lastMessageAt DESC, s.name ASC
   `, [userId]);
@@ -175,16 +180,26 @@ router.get('/:studioId/messages', adminRequired, async (req, res) => {
   }
 
   await ensureTables();
-  const rows = await queryRows(`
-    SELECT TOP 100 id, studio_id AS studioId, sender_id AS senderId,
-      sender_role AS senderRole, sender_name AS senderName, content,
-      created_at AS createdAt
-    FROM chat_messages
-    WHERE studio_id = $1
-    ORDER BY created_at DESC
-  `, [studioId]);
 
-  res.json({ messages: (rows || []).reverse() });
+  const [rows, archivedRow] = await Promise.all([
+    queryRows(`
+      SELECT TOP 100 id, studio_id AS studioId, sender_id AS senderId,
+        sender_role AS senderRole, sender_name AS senderName, content,
+        created_at AS createdAt
+      FROM chat_messages
+      WHERE studio_id = $1 AND archived_at IS NULL
+      ORDER BY created_at DESC
+    `, [studioId]),
+    queryRows(`
+      SELECT TOP 1 id FROM chat_messages
+      WHERE studio_id = $1 AND archived_at IS NOT NULL
+    `, [studioId]),
+  ]);
+
+  res.json({
+    messages: (rows || []).reverse(),
+    hasArchived: !!(archivedRow && archivedRow.length),
+  });
 });
 
 // POST /api/chat/:studioId/messages  — send a message

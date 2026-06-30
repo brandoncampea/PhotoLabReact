@@ -80,25 +80,8 @@ const WhccProductImport: React.FC = () => {
     });
   };
 
-  // Debug: show the first product's structure for troubleshooting UID extraction
-
-  const firstCat = Object.keys(groupedProducts)[0];
-  const firstProd = firstCat && groupedProducts[firstCat]?.[0];
-  if (firstProd) {
-    // eslint-disable-next-line no-alert
-    alert('DEBUG: First Product Object: ' + JSON.stringify(firstProd, null, 2));
-    // eslint-disable-next-line no-console
-    console.log('DEBUG: First Product Object:', firstProd);
-  }
-
   return (
     <>
-      <div style={{ maxWidth: 700, margin: '0 auto', background: '#181818', color: '#a78bfa', borderRadius: 8, padding: 12, marginBottom: 16 }}>
-        <strong>DEBUG: First Product Object</strong>
-        <pre style={{ background: '#111', color: '#a78bfa', fontSize: 12, padding: 8, borderRadius: 6, margin: 0, overflowX: 'auto' }}>
-          {firstProd ? JSON.stringify(firstProd, null, 2) : 'No products loaded.'}
-        </pre>
-      </div>
       <div style={{ maxWidth: 500, margin: '0 auto', background: '#222', color: '#fff', borderRadius: 12, padding: 24 }}>
         <h2 style={{ textAlign: 'center', marginBottom: 16 }}>Import Products from WHCC</h2>
         <input
