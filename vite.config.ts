@@ -70,6 +70,9 @@ export default defineConfig({
       },
     },
   ],
+  worker: {
+    format: 'es',
+  },
   server: {
     port: 3004,
     proxy: {
@@ -78,7 +81,6 @@ export default defineConfig({
       '/uploads': backendOrigin,
       '/stripe': backendOrigin,
     },
-
   },
 });
 
