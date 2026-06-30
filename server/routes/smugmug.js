@@ -1205,8 +1205,342 @@ router.get('/import-progress/:jobId', adminRequired, async (req, res) => {
   }
 });
 
+const runSmugMugImport = async (importJob, { selectedAlbums, apiKey, authContext, studioId }) => {
+  const imported = [];
+
+  for (const selected of selectedAlbums) {
+    const albumKey = String(selected?.albumKey || '').trim();
+    const albumName = String(selected?.name || '').trim() || 'SmugMug Album';
+    const albumDescription = String(selected?.description || '').trim() || null;
+    if (!albumKey) {
+      continue;
+    }
+
+    const smugMugCoverImageKey = await getAlbumCoverImageKey(albumKey, apiKey, authContext);
+
+    const albumProgress = getAlbumProgress(importJob, albumKey);
+    if (albumProgress) {
+      albumProgress.status = 'preparing';
+    }
+
+    importJob.currentAlbumKey = albumKey;
+    importJob.currentAlbumName = albumName;
+    touchImportJob(importJob);
+
+    const existingImport = await queryRow(
+      `SELECT local_album_id as localAlbumId
+       FROM studio_smugmug_imports
+       WHERE studio_id = $1 AND smugmug_album_key = $2`,
+      [studioId, albumKey]
+    );
+
+    let images = [];
+    try {
+      images = await listAlbumImages(albumKey, apiKey, authContext);
+    } catch (imageError) {
+      const errMsg = imageError instanceof Error ? imageError.message : String(imageError);
+      if (albumProgress) {
+        albumProgress.status = 'failed';
+        albumProgress.photosTotal = 0;
+        albumProgress.photosProcessed = 0;
+        albumProgress.photosFailed = 0;
+        albumProgress.error = errMsg;
+      }
+      touchImportJob(importJob);
+      continue;
+    }
+
+    if (!images.length) {
+      if (existingImport?.localAlbumId) {
+        const emptyAlbum = await queryRow(
+          `SELECT id
+           FROM albums
+           WHERE id = $1 AND studio_id = $2 AND COALESCE(photo_count, 0) = 0`,
+          [existingImport.localAlbumId, studioId]
+        );
+
+        if (emptyAlbum) {
+          await query(
+            `DELETE FROM studio_smugmug_imports
+             WHERE studio_id = $1 AND smugmug_album_key = $2`,
+            [studioId, albumKey]
+          );
+          await query(
+            `DELETE FROM albums
+             WHERE id = $1 AND studio_id = $2 AND COALESCE(photo_count, 0) = 0`,
+            [existingImport.localAlbumId, studioId]
+          );
+        }
+      }
+
+      if (albumProgress) {
+        albumProgress.status = 'failed';
+        albumProgress.photosTotal = 0;
+        albumProgress.photosProcessed = 0;
+        albumProgress.photosFailed = 0;
+      }
+
+      pushPhotoProgress(importJob, {
+        albumKey,
+        albumName,
+        fileName: '(album)',
+        status: 'failed',
+        detail: authContext
+          ? 'No full-size image URLs were available for this album.'
+          : 'No OriginalUrl/full-size image URLs were available. Connect SmugMug OAuth and retry import.',
+      });
+
+      continue;
+    }
+
+    let album = null;
+    if (existingImport?.localAlbumId) {
+      album = await queryRow(
+        `SELECT id
+         FROM albums
+         WHERE id = $1 AND studio_id = $2`,
+        [existingImport.localAlbumId, studioId]
+      );
+    }
+
+    if (!album) {
+      album = await queryRow(
+        `SELECT id
+         FROM albums
+         WHERE studio_id = $1 AND COALESCE(name, title) = $2`,
+        [studioId, albumName]
+      );
+    }
+
+    if (!album) {
+      const created = await queryRow(
+        `INSERT INTO albums (name, title, description, studio_id, category, published)
+         VALUES ($1, $2, $3, $4, $5, 0)
+         RETURNING id`,
+        [albumName, albumName, albumDescription, studioId, 'SmugMug']
+      );
+      album = { id: created.id };
+    }
+
+    const albumId = Number(album.id);
+
+    if (albumProgress) {
+      albumProgress.status = 'importing';
+      albumProgress.photosTotal = images.length;
+    }
+    importJob.totals.photosTotal += images.length;
+    touchImportJob(importJob);
+
+    let importedPhotoCount = 0;
+    let firstImportedPhotoId = null;
+    let matchedCoverPhotoId = null;
+    const imageQueue = [...images];
+    const processPhoto = async (image) => {
+      const exists = await queryRow(
+        'SELECT TOP 1 id, width, height FROM photos WHERE album_id = $1 AND file_name = $2',
+        [albumId, image.fileName]
+      );
+      const existingWidth = Number(exists?.width || 0);
+      const existingHeight = Number(exists?.height || 0);
+      const existingIsThumbnail = !!exists
+        && existingWidth > 0
+        && existingHeight > 0
+        && existingWidth <= 200
+        && existingHeight <= 200;
+
+      if (exists && !existingIsThumbnail) {
+        importJob.totals.photosProcessed += 1;
+        importJob.totals.photosSkipped += 1;
+        if (albumProgress) {
+          albumProgress.photosProcessed += 1;
+          albumProgress.photosSkipped += 1;
+        }
+        if (!firstImportedPhotoId) firstImportedPhotoId = Number(exists.id || 0) || null;
+        if (
+          !matchedCoverPhotoId
+          && smugMugCoverImageKey
+          && String(image.id || '').trim()
+          && String(image.id).trim() === String(smugMugCoverImageKey).trim()
+        ) {
+          matchedCoverPhotoId = Number(exists.id || 0) || null;
+        }
+        pushPhotoProgress(importJob, { albumKey, albumName, fileName: image.fileName, status: 'skipped', detail: 'Already imported' });
+        return;
+      }
+
+      let imageBuffer;
+      try {
+        const downloadHeaders = {};
+        if (authContext?.oauth && authContext?.token?.key && authContext?.token?.secret && /^https:\/\/api\.smugmug\.com/i.test(String(image.sourceUrl || ''))) {
+          Object.assign(
+            downloadHeaders,
+            authContext.oauth.toHeader(authContext.oauth.authorize({ url: image.sourceUrl, method: 'GET' }, authContext.token))
+          );
+        }
+        const dlResponse = await fetch(image.sourceUrl, { headers: downloadHeaders });
+        if (!dlResponse.ok) {
+          importJob.totals.photosProcessed += 1;
+          importJob.totals.photosFailed += 1;
+          if (albumProgress) { albumProgress.photosProcessed += 1; albumProgress.photosFailed += 1; }
+          pushPhotoProgress(importJob, { albumKey, albumName, fileName: image.fileName, status: 'failed', detail: `Download failed (${dlResponse.status})` });
+          return;
+        }
+        imageBuffer = Buffer.from(await dlResponse.arrayBuffer());
+      } catch (error) {
+        importJob.totals.photosProcessed += 1;
+        importJob.totals.photosFailed += 1;
+        if (albumProgress) { albumProgress.photosProcessed += 1; albumProgress.photosFailed += 1; }
+        pushPhotoProgress(importJob, { albumKey, albumName, fileName: image.fileName, status: 'failed', detail: error instanceof Error ? error.message : 'Download failed' });
+        return;
+      }
+
+      const uploadedImage = await uploadImportedImage(albumId, image, imageBuffer);
+      const { width, height } = uploadedImage;
+
+      const metadataJson = JSON.stringify({
+        source: 'smugmug',
+        smugmugImageId: image.id,
+        importedAt: new Date().toISOString(),
+        storage: uploadedImage.storage,
+        originalSourceUrl: image.sourceUrl,
+        sourceUrlType: image.sourceUrlType || 'unknown',
+      });
+
+      if (exists?.id && existingIsThumbnail) {
+        await query(
+          `UPDATE photos SET thumbnail_url = $1, full_image_url = $2, description = $3, metadata = $4, file_size_bytes = $5, width = $6, height = $7 WHERE id = $8`,
+          [uploadedImage.thumbUrl, uploadedImage.url, image.description || '', metadataJson, imageBuffer.length, width, height, exists.id]
+        );
+        if (!firstImportedPhotoId) firstImportedPhotoId = Number(exists.id || 0) || null;
+        if (
+          !matchedCoverPhotoId
+          && smugMugCoverImageKey
+          && String(image.id || '').trim()
+          && String(image.id).trim() === String(smugMugCoverImageKey).trim()
+        ) {
+          matchedCoverPhotoId = Number(exists.id || 0) || null;
+        }
+      } else {
+        const insertedPhoto = await queryRow(
+          `INSERT INTO photos (album_id, file_name, thumbnail_url, full_image_url, description, metadata, file_size_bytes, width, height)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+          [albumId, image.fileName, uploadedImage.thumbUrl, uploadedImage.url, image.description || '', metadataJson, imageBuffer.length, width, height]
+        );
+        const insertedPhotoId = Number(insertedPhoto?.id || 0) || null;
+        if (!firstImportedPhotoId) firstImportedPhotoId = insertedPhotoId;
+        if (
+          !matchedCoverPhotoId
+          && insertedPhotoId
+          && smugMugCoverImageKey
+          && String(image.id || '').trim()
+          && String(image.id).trim() === String(smugMugCoverImageKey).trim()
+        ) {
+          matchedCoverPhotoId = insertedPhotoId;
+        }
+      }
+
+      importJob.totals.photosProcessed += 1;
+      importJob.totals.photosImported += 1;
+      if (albumProgress) { albumProgress.photosProcessed += 1; albumProgress.photosImported += 1; }
+      pushPhotoProgress(importJob, {
+        albumKey, albumName, fileName: image.fileName, status: 'imported',
+        detail: existingIsThumbnail ? 'Upgraded existing thumbnail to full-size import'
+          : (uploadedImage.storage === 'azure' ? 'Imported successfully' : 'Imported using SmugMug source URL'),
+      });
+      importedPhotoCount += 1;
+    };
+
+    // Process up to 8 photos concurrently (download + Azure upload are both network-bound)
+    await Promise.all(
+      Array.from({ length: Math.min(8, images.length) }, async () => {
+        let img;
+        while ((img = imageQueue.shift()) !== undefined) {
+          await processPhoto(img);
+        }
+      })
+    );
+
+    await query(
+      `UPDATE albums
+       SET photo_count = (SELECT COUNT(*) FROM photos WHERE album_id = $1)
+       WHERE id = $1`,
+      [albumId]
+    );
+
+    const coverPhotoIdToSet = matchedCoverPhotoId || firstImportedPhotoId;
+    if (coverPhotoIdToSet) {
+      await query(
+        `UPDATE albums
+         SET cover_photo_id = COALESCE(cover_photo_id, $2)
+         WHERE id = $1`,
+        [albumId, coverPhotoIdToSet]
+      );
+    }
+
+    if (importedPhotoCount === 0) {
+      if (!existingImport?.localAlbumId) {
+        await query(
+          `DELETE FROM albums
+           WHERE id = $1 AND studio_id = $2 AND COALESCE(photo_count, 0) = 0`,
+          [albumId, studioId]
+        );
+      }
+
+      if (albumProgress) {
+        albumProgress.status = 'failed';
+      }
+      pushPhotoProgress(importJob, {
+        albumKey,
+        albumName,
+        fileName: '(album)',
+        status: 'failed',
+        detail: 'No full-size photos were imported for this album.',
+      });
+      touchImportJob(importJob);
+      continue;
+    }
+
+    await query(
+      `IF EXISTS (SELECT 1 FROM studio_smugmug_imports WHERE studio_id = $1 AND smugmug_album_key = $2)
+       BEGIN
+         UPDATE studio_smugmug_imports
+         SET local_album_id = $3,
+             imported_at = CURRENT_TIMESTAMP,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE studio_id = $1 AND smugmug_album_key = $2
+       END
+       ELSE
+       BEGIN
+         INSERT INTO studio_smugmug_imports (studio_id, smugmug_album_key, local_album_id)
+         VALUES ($1, $2, $3)
+       END`,
+      [studioId, albumKey, albumId]
+    );
+
+    imported.push({
+      albumId,
+      albumKey,
+      name: albumName,
+      importedPhotoCount,
+    });
+
+    importJob.totals.albumsCompleted += 1;
+    if (albumProgress) {
+      albumProgress.status = 'completed';
+    }
+    importJob.imported = imported;
+    touchImportJob(importJob);
+  }
+
+  finishImportJob(importJob, {
+    status: 'completed',
+    currentAlbumKey: null,
+    currentAlbumName: '',
+    imported,
+  });
+};
+
 router.post('/import', adminRequired, async (req, res) => {
-  let importJob = null;
   try {
     if (req.user.role !== 'studio_admin' && req.user.role !== 'super_admin') {
       return res.status(403).json({ error: 'Unauthorized' });
@@ -1283,383 +1617,43 @@ router.post('/import', adminRequired, async (req, res) => {
       return res.status(400).json({ error: 'Select at least one album to import' });
     }
 
-    // Warn clearly if OAuth is missing — SmugMug will only return public/thumbnail URLs without it
     if (!authContext) {
-      const msg = `[SmugMug Import] WARNING: No OAuth credentials found for studioId=${studioId}. ` +
-        `accessToken=${accessToken ? 'SET' : 'MISSING'}, accessTokenSecret=${accessTokenSecret ? 'SET' : 'MISSING'}. ` +
-        `Full-size images CANNOT be downloaded from private albums without OAuth. Please re-connect SmugMug.`;
-      console.warn(msg);
+      console.warn(`[SmugMug Import] WARNING: No OAuth credentials for studioId=${studioId}`);
       return res.status(401).json({
         error: 'SmugMug OAuth credentials are missing or expired. Please reconnect SmugMug to continue.',
         needsOAuth: true,
       });
     }
 
-    importJob = createImportJob({
+    const importJob = createImportJob({
       jobId: requestedJobId,
       studioId,
       albums: selectedAlbums,
     });
 
-    const imported = [];
-
-    for (const selected of selectedAlbums) {
-      const albumKey = String(selected?.albumKey || '').trim();
-      const albumName = String(selected?.name || '').trim() || 'SmugMug Album';
-      const albumDescription = String(selected?.description || '').trim() || null;
-      if (!albumKey) {
-        continue;
-      }
-
-      const smugMugCoverImageKey = await getAlbumCoverImageKey(albumKey, apiKey, authContext);
-
-      const albumProgress = getAlbumProgress(importJob, albumKey);
-      if (albumProgress) {
-        albumProgress.status = 'preparing';
-      }
-
-      importJob.currentAlbumKey = albumKey;
-      importJob.currentAlbumName = albumName;
-      touchImportJob(importJob);
-
-      const existingImport = await queryRow(
-        `SELECT local_album_id as localAlbumId
-         FROM studio_smugmug_imports
-         WHERE studio_id = $1 AND smugmug_album_key = $2`,
-        [studioId, albumKey]
-      );
-
-      let images = [];
-      try {
-        images = await listAlbumImages(albumKey, apiKey, authContext);
-      } catch (imageError) {
-        const errMsg = imageError instanceof Error ? imageError.message : String(imageError);
-        // Continue with the next album if one album cannot be listed
-        if (albumProgress) {
-          albumProgress.status = 'failed';
-          albumProgress.photosTotal = 0;
-          albumProgress.photosProcessed = 0;
-          albumProgress.photosFailed = 0;
-          albumProgress.error = errMsg;
-        }
-        touchImportJob(importJob);
-        continue;
-      }
-
-      if (!images.length) {
-        if (existingImport?.localAlbumId) {
-          const emptyAlbum = await queryRow(
-            `SELECT id
-             FROM albums
-             WHERE id = $1 AND studio_id = $2 AND COALESCE(photo_count, 0) = 0`,
-            [existingImport.localAlbumId, studioId]
-          );
-
-          if (emptyAlbum) {
-            await query(
-              `DELETE FROM studio_smugmug_imports
-               WHERE studio_id = $1 AND smugmug_album_key = $2`,
-              [studioId, albumKey]
-            );
-            await query(
-              `DELETE FROM albums
-               WHERE id = $1 AND studio_id = $2 AND COALESCE(photo_count, 0) = 0`,
-              [existingImport.localAlbumId, studioId]
-            );
-          }
-        }
-
-        if (albumProgress) {
-          albumProgress.status = 'failed';
-          albumProgress.photosTotal = 0;
-          albumProgress.photosProcessed = 0;
-          albumProgress.photosFailed = 0;
-        }
-
-        pushPhotoProgress(importJob, {
-          albumKey,
-          albumName,
-          fileName: '(album)',
-          status: 'failed',
-          detail: authContext
-            ? 'No full-size image URLs were available for this album.'
-            : 'No OriginalUrl/full-size image URLs were available. Connect SmugMug OAuth and retry import.',
-        });
-
-        continue;
-      }
-
-      let album = null;
-      if (existingImport?.localAlbumId) {
-        album = await queryRow(
-          `SELECT id
-           FROM albums
-           WHERE id = $1 AND studio_id = $2`,
-          [existingImport.localAlbumId, studioId]
-        );
-      }
-
-      if (!album) {
-        album = await queryRow(
-          `SELECT id
-           FROM albums
-           WHERE studio_id = $1 AND COALESCE(name, title) = $2`,
-          [studioId, albumName]
-        );
-      }
-
-      if (!album) {
-        const created = await queryRow(
-          `INSERT INTO albums (name, title, description, studio_id, category, published)
-           VALUES ($1, $2, $3, $4, $5, 0)
-           RETURNING id`,
-          [albumName, albumName, albumDescription, studioId, 'SmugMug']
-        );
-        album = { id: created.id };
-      }
-
-      const albumId = Number(album.id);
-
-      if (albumProgress) {
-        albumProgress.status = 'importing';
-        albumProgress.photosTotal = images.length;
-      }
-      importJob.totals.photosTotal += images.length;
-      touchImportJob(importJob);
-
-      let importedPhotoCount = 0;
-      let firstImportedPhotoId = null;
-      let matchedCoverPhotoId = null;
-      const imageQueue = [...images];
-      const processPhoto = async (image) => {
-        const exists = await queryRow(
-          'SELECT TOP 1 id, width, height FROM photos WHERE album_id = $1 AND file_name = $2',
-          [albumId, image.fileName]
-        );
-        const existingWidth = Number(exists?.width || 0);
-        const existingHeight = Number(exists?.height || 0);
-        const existingIsThumbnail = !!exists
-          && existingWidth > 0
-          && existingHeight > 0
-          && existingWidth <= 200
-          && existingHeight <= 200;
-
-        if (exists && !existingIsThumbnail) {
-          importJob.totals.photosProcessed += 1;
-          importJob.totals.photosSkipped += 1;
-          if (albumProgress) {
-            albumProgress.photosProcessed += 1;
-            albumProgress.photosSkipped += 1;
-          }
-          if (!firstImportedPhotoId) firstImportedPhotoId = Number(exists.id || 0) || null;
-          if (
-            !matchedCoverPhotoId
-            && smugMugCoverImageKey
-            && String(image.id || '').trim()
-            && String(image.id).trim() === String(smugMugCoverImageKey).trim()
-          ) {
-            matchedCoverPhotoId = Number(exists.id || 0) || null;
-          }
-          pushPhotoProgress(importJob, { albumKey, albumName, fileName: image.fileName, status: 'skipped', detail: 'Already imported' });
-          return;
-        }
-
-        let imageBuffer;
-        try {
-          const downloadHeaders = {};
-          if (authContext?.oauth && authContext?.token?.key && authContext?.token?.secret && /^https:\/\/api\.smugmug\.com/i.test(String(image.sourceUrl || ''))) {
-            Object.assign(
-              downloadHeaders,
-              authContext.oauth.toHeader(authContext.oauth.authorize({ url: image.sourceUrl, method: 'GET' }, authContext.token))
-            );
-          }
-          const response = await fetch(image.sourceUrl, { headers: downloadHeaders });
-          if (!response.ok) {
-            importJob.totals.photosProcessed += 1;
-            importJob.totals.photosFailed += 1;
-            if (albumProgress) { albumProgress.photosProcessed += 1; albumProgress.photosFailed += 1; }
-            pushPhotoProgress(importJob, { albumKey, albumName, fileName: image.fileName, status: 'failed', detail: `Download failed (${response.status})` });
-            return;
-          }
-          imageBuffer = Buffer.from(await response.arrayBuffer());
-        } catch (error) {
-          importJob.totals.photosProcessed += 1;
-          importJob.totals.photosFailed += 1;
-          if (albumProgress) { albumProgress.photosProcessed += 1; albumProgress.photosFailed += 1; }
-          pushPhotoProgress(importJob, { albumKey, albumName, fileName: image.fileName, status: 'failed', detail: error instanceof Error ? error.message : 'Download failed' });
-          return;
-        }
-
-        const uploadedImage = await uploadImportedImage(albumId, image, imageBuffer);
-        const { width, height } = uploadedImage;
-
-        const metadataJson = JSON.stringify({
-          source: 'smugmug',
-          smugmugImageId: image.id,
-          importedAt: new Date().toISOString(),
-          storage: uploadedImage.storage,
-          originalSourceUrl: image.sourceUrl,
-          sourceUrlType: image.sourceUrlType || 'unknown',
-        });
-
-        if (exists?.id && existingIsThumbnail) {
-          await query(
-            `UPDATE photos SET thumbnail_url = $1, full_image_url = $2, description = $3, metadata = $4, file_size_bytes = $5, width = $6, height = $7 WHERE id = $8`,
-            [uploadedImage.thumbUrl, uploadedImage.url, image.description || '', metadataJson, imageBuffer.length, width, height, exists.id]
-          );
-          if (!firstImportedPhotoId) firstImportedPhotoId = Number(exists.id || 0) || null;
-          if (
-            !matchedCoverPhotoId
-            && smugMugCoverImageKey
-            && String(image.id || '').trim()
-            && String(image.id).trim() === String(smugMugCoverImageKey).trim()
-          ) {
-            matchedCoverPhotoId = Number(exists.id || 0) || null;
-          }
-        } else {
-          const insertedPhoto = await queryRow(
-            `INSERT INTO photos (album_id, file_name, thumbnail_url, full_image_url, description, metadata, file_size_bytes, width, height)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
-            [albumId, image.fileName, uploadedImage.thumbUrl, uploadedImage.url, image.description || '', metadataJson, imageBuffer.length, width, height]
-          );
-          const insertedPhotoId = Number(insertedPhoto?.id || 0) || null;
-          if (!firstImportedPhotoId) firstImportedPhotoId = insertedPhotoId;
-          if (
-            !matchedCoverPhotoId
-            && insertedPhotoId
-            && smugMugCoverImageKey
-            && String(image.id || '').trim()
-            && String(image.id).trim() === String(smugMugCoverImageKey).trim()
-          ) {
-            matchedCoverPhotoId = insertedPhotoId;
-          }
-        }
-
-        importJob.totals.photosProcessed += 1;
-        importJob.totals.photosImported += 1;
-        if (albumProgress) { albumProgress.photosProcessed += 1; albumProgress.photosImported += 1; }
-        pushPhotoProgress(importJob, {
-          albumKey, albumName, fileName: image.fileName, status: 'imported',
-          detail: existingIsThumbnail ? 'Upgraded existing thumbnail to full-size import'
-            : (uploadedImage.storage === 'azure' ? 'Imported successfully' : 'Imported using SmugMug source URL'),
-        });
-        importedPhotoCount += 1;
-      };
-
-      // Process up to 8 photos concurrently (download + Azure upload are both network-bound)
-      await Promise.all(
-        Array.from({ length: Math.min(8, images.length) }, async () => {
-          let img;
-          while ((img = imageQueue.shift()) !== undefined) {
-            await processPhoto(img);
-          }
-        })
-      );
-
-      await query(
-        `UPDATE albums
-         SET photo_count = (SELECT COUNT(*) FROM photos WHERE album_id = $1)
-         WHERE id = $1`,
-        [albumId]
-      );
-
-      const coverPhotoIdToSet = matchedCoverPhotoId || firstImportedPhotoId;
-      if (coverPhotoIdToSet) {
-        await query(
-          `UPDATE albums
-           SET cover_photo_id = COALESCE(cover_photo_id, $2)
-           WHERE id = $1`,
-          [albumId, coverPhotoIdToSet]
-        );
-      }
-
-      if (importedPhotoCount === 0) {
-        if (!existingImport?.localAlbumId) {
-          await query(
-            `DELETE FROM albums
-             WHERE id = $1 AND studio_id = $2 AND COALESCE(photo_count, 0) = 0`,
-            [albumId, studioId]
-          );
-        }
-
-        if (albumProgress) {
-          albumProgress.status = 'failed';
-        }
-        pushPhotoProgress(importJob, {
-          albumKey,
-          albumName,
-          fileName: '(album)',
-          status: 'failed',
-          detail: 'No full-size photos were imported for this album.',
-        });
-        touchImportJob(importJob);
-        continue;
-      }
-
-      await query(
-        `IF EXISTS (SELECT 1 FROM studio_smugmug_imports WHERE studio_id = $1 AND smugmug_album_key = $2)
-         BEGIN
-           UPDATE studio_smugmug_imports
-           SET local_album_id = $3,
-               imported_at = CURRENT_TIMESTAMP,
-               updated_at = CURRENT_TIMESTAMP
-           WHERE studio_id = $1 AND smugmug_album_key = $2
-         END
-         ELSE
-         BEGIN
-           INSERT INTO studio_smugmug_imports (studio_id, smugmug_album_key, local_album_id)
-           VALUES ($1, $2, $3)
-         END`,
-        [studioId, albumKey, albumId]
-      );
-
-      imported.push({
-        albumId,
-        albumKey,
-        name: albumName,
-        importedPhotoCount,
-      });
-
-      importJob.totals.albumsCompleted += 1;
-      if (albumProgress) {
-        albumProgress.status = 'completed';
-      }
-      importJob.imported = imported;
-      touchImportJob(importJob);
-    }
-
-    finishImportJob(importJob, {
-      status: 'completed',
-      currentAlbumKey: null,
-      currentAlbumName: '',
-      imported,
+    // Run the import in the background so the HTTP connection is not held open.
+    // The client polls /import-progress/:jobId for live updates.
+    runSmugMugImport(importJob, { selectedAlbums, apiKey, authContext, studioId }).catch((error) => {
+      const errorMsg = error instanceof Error ? error.message : String(error || 'Unknown error');
+      console.error('SmugMug background import error:', errorMsg, error?.stack || '');
+      finishImportJob(importJob, { status: 'failed', error: errorMsg });
     });
 
     res.json({
-      message: 'SmugMug import complete',
+      message: 'SmugMug import started',
       jobId: importJob.jobId,
       storageMode: importJob.storageMode,
-      imported,
     });
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error || 'Unknown error');
-    const errorStack = error instanceof Error ? error.stack : '';
-    console.error('SmugMug import error:', errorMsg, '\nStack:', errorStack);
-    if (importJob) {
-      finishImportJob(importJob, {
-        status: 'failed',
-        error: errorMsg,
-      });
-    }
-    const details = errorMsg;
-    if (/SmugMug request failed \(401\)/i.test(details)) {
+    console.error('SmugMug import error:', errorMsg, error?.stack || '');
+    if (/SmugMug request failed \(401\)/i.test(errorMsg)) {
       return res.status(401).json({
         error: 'SmugMug API unauthorized. Save a valid SmugMug API key (and reconnect OAuth for private images).',
-        details,
+        details: errorMsg,
       });
     }
-    res.status(500).json({ error: 'Failed to import SmugMug albums', details });
-
+    res.status(500).json({ error: 'Failed to import SmugMug albums', details: errorMsg });
   }
 });
 

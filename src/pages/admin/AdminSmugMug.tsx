@@ -255,30 +255,7 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
 
     let pollInterval: number | null = null;
 
-    const pollProgress = async () => {
-      try {
-        const progressResponse = await fetch(`/api/smugmug/import-progress/${jobId}`, {
-          headers: getAuthHeaders(),
-        });
-        if (!progressResponse.ok) return;
-        const progressData = await progressResponse.json();
-        if (progressData.status === 'expired') {
-          if (pollInterval !== null) { window.clearInterval(pollInterval); pollInterval = null; }
-          setImportProgress((prev: any) => prev ? { ...prev, status: 'completed' } : null);
-          return;
-        }
-        setStorageMode(progressData.storageMode === 'smugmug-source' ? 'smugmug-source' : 'azure');
-        setImportProgress(progressData);
-      } catch (err) {
-        console.error('Failed to load import progress:', err);
-      }
-    };
-
     try {
-      pollInterval = window.setInterval(() => {
-        pollProgress();
-      }, 800);
-
       const response = await fetch('/api/smugmug/import', {
         method: 'POST',
         headers: {
@@ -315,19 +292,55 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
       }
 
       const data = await response.json();
-      setStorageMode(data.storageMode === 'smugmug-source' ? 'smugmug-source' : 'azure');
-      await pollProgress();
-      const importedCount = Array.isArray(data.imported) ? data.imported.length : 0;
+      if (data.storageMode) {
+        setStorageMode(data.storageMode === 'smugmug-source' ? 'smugmug-source' : 'azure');
+      }
 
-      setSmugmugNotice(`Import completed. ${importedCount} album(s) processed.`);
+      // Import runs in the background — poll until it reports completed or failed.
+      let importedAlbumCount = 0;
+      await new Promise<void>((resolve) => {
+        const poll = async () => {
+          try {
+            const progressResponse = await fetch(`/api/smugmug/import-progress/${jobId}`, {
+              headers: getAuthHeaders(),
+            });
+            if (!progressResponse.ok) return;
+            const progressData = await progressResponse.json();
+
+            importedAlbumCount = progressData.totals?.albumsCompleted ?? importedAlbumCount;
+
+            if (progressData.status === 'expired') {
+              if (pollInterval !== null) { window.clearInterval(pollInterval); pollInterval = null; }
+              setImportProgress((prev: any) => prev ? { ...prev, status: 'completed' } : null);
+              resolve();
+              return;
+            }
+
+            setStorageMode(progressData.storageMode === 'smugmug-source' ? 'smugmug-source' : 'azure');
+            setImportProgress(progressData);
+
+            if (progressData.status === 'completed' || progressData.status === 'failed') {
+              if (pollInterval !== null) { window.clearInterval(pollInterval); pollInterval = null; }
+              resolve();
+            }
+          } catch (err) {
+            console.error('Failed to load import progress:', err);
+          }
+        };
+
+        pollInterval = window.setInterval(poll, 800);
+        poll();
+      });
+
+      setSmugmugNotice(`Import completed. ${importedAlbumCount} album(s) processed.`);
       await loadSmugmugAlbums();
     } catch (err: any) {
       setSmugmugNotice(err.message || 'SmugMug import failed');
     } finally {
       if (pollInterval !== null) {
         window.clearInterval(pollInterval);
+        pollInterval = null;
       }
-      await pollProgress();
       setSmugmugImporting(false);
     }
   };
