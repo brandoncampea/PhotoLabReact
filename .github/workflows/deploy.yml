@@ -234,47 +234,69 @@ jobs:
           USERNAME=$(echo "$CREDS" | python3 -c "import json,sys; print(json.load(sys.stdin).get('publishingUserName',''))")
           PASSWORD=$(echo "$CREDS" | python3 -c "import json,sys; print(json.load(sys.stdin).get('publishingPassword',''))")
 
-          wait_for_idle_deployment() {
+          kudu_status() {
+            LATEST=$(curl -sS -u "$USERNAME:$PASSWORD" "https://${KUDU_HOST}/api/deployments/latest" || true)
+            python3 -c "import json,sys; raw='${LATEST}'.strip(); print(json.loads(raw).get('status',-1) if raw else -1)" 2>/dev/null \
+              || echo "$LATEST" | python3 -c "import json,sys; raw=sys.stdin.read().strip(); print(json.loads(raw).get('status',-1) if raw else -1)" 2>/dev/null \
+              || echo -1
+          }
+
+          wait_for_idle() {
             for check in $(seq 1 60); do
-              LATEST=$(curl -sS -u "$USERNAME:$PASSWORD" "https://${KUDU_HOST}/api/deployments/latest" || true)
-              STATUS=$(echo "$LATEST" | python3 -c "import json,sys; raw=sys.stdin.read().strip(); print((json.loads(raw).get('status',-1) if raw else -1))" 2>/dev/null || echo -1)
-
+              STATUS=$(curl -sS -u "$USERNAME:$PASSWORD" "https://${KUDU_HOST}/api/deployments/latest" \
+                | python3 -c "import json,sys; raw=sys.stdin.read().strip(); print(json.loads(raw).get('status',-1) if raw else -1)" 2>/dev/null || echo -1)
               if [ "$STATUS" = "0" ] || [ "$STATUS" = "1" ] || [ "$STATUS" = "2" ]; then
-                echo "Another deployment is still running (status=${STATUS}). Waiting 20s..."
+                echo "Deployment in progress (status=${STATUS}). Waiting 20s..."
                 sleep 20
-                continue
+              else
+                return 0
               fi
-
-              return 0
             done
-
             echo "Timed out waiting for previous deployment to finish"
+            return 1
+          }
+
+          wait_for_completion() {
+            # SCM_DO_BUILD_DURING_DEPLOYMENT=false means no Oryx — Kudu updates
+            # /api/deployments/latest directly, so polling works reliably.
+            for poll in $(seq 1 40); do
+              sleep 30
+              STATUS=$(curl -sS -u "$USERNAME:$PASSWORD" "https://${KUDU_HOST}/api/deployments/latest" \
+                | python3 -c "import json,sys; raw=sys.stdin.read().strip(); print(json.loads(raw).get('status',-1) if raw else -1)" 2>/dev/null || echo -1)
+              echo "Poll ${poll}/40: Kudu status=${STATUS}"
+              if [ "$STATUS" = "4" ]; then
+                echo "Deployment succeeded."
+                return 0
+              elif [ "$STATUS" = "3" ]; then
+                echo "Deployment failed (Kudu status=3)."
+                return 1
+              fi
+            done
+            echo "Deployment polling timed out after 20 minutes."
             return 1
           }
 
           for attempt in 1 2 3; do
             echo "Deploy attempt ${attempt}/3"
-            wait_for_idle_deployment
+            wait_for_idle
 
-            # az webapp deploy (synchronous) blocks until Azure confirms completion.
-            # Oryx builds don't update Kudu's /api/deployments/latest, so polling
-            # that endpoint returns -1 forever — trust the CLI exit code instead.
+            # --async true returns immediately (no CLI timeout / 504), then we poll
+            # Kudu directly. The deprecated config-zip fallback is intentionally removed
+            # because it triggers an Oryx build that fails when vite is absent from
+            # prod node_modules.
             if az webapp deploy \
               --name ${{ env.AZURE_WEBAPP_NAME }} \
               --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
               --src-path appservice-deploy.zip \
-              --type zip; then
-              echo "Deployment completed successfully."
-              break
-            else
-              echo "az webapp deploy failed. Trying config-zip fallback..."
-              if az webapp deployment source config-zip \
-                --name ${{ env.AZURE_WEBAPP_NAME }} \
-                --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-                --src appservice-deploy.zip; then
-                echo "config-zip fallback succeeded."
+              --type zip \
+              --async true; then
+              echo "Deployment submitted. Polling Kudu for completion..."
+              if wait_for_completion; then
+                echo "Deployment completed successfully."
                 break
               fi
+            else
+              echo "az webapp deploy submission failed."
             fi
 
             if [ "$attempt" -eq 3 ]; then
@@ -282,7 +304,7 @@ jobs:
               exit 1
             fi
 
-            echo "Deployment failed. Waiting before retry..."
+            echo "Deployment failed. Waiting 60s before retry..."
             sleep 60
           done
 
