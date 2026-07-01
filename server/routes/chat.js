@@ -83,9 +83,12 @@ router.get('/events', adminRequired, async (req, res) => {
     return res.status(403).json({ error: 'Unauthorized' });
   }
 
-  await loadMssql();
-  const userRow = await queryRow('SELECT name FROM users WHERE id = $1', [user.id]);
-  const userName = String(userRow?.name || user.email || '').trim() || 'Unknown';
+  try { await loadMssql(); } catch { /* non-fatal: use email as fallback name */ }
+  let userName = String(user.email || '').trim() || 'Unknown';
+  try {
+    const userRow = await queryRow('SELECT name FROM users WHERE id = $1', [user.id]);
+    userName = String(userRow?.name || user.email || '').trim() || 'Unknown';
+  } catch { /* non-fatal */ }
 
   const studioId = user.role === 'studio_admin' ? Number(user.studio_id) : null;
 

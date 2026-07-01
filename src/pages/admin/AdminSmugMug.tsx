@@ -16,6 +16,8 @@ interface SmugMugAlbumOption {
   imported?: boolean;
   localAlbumId?: number | null;
   importedAt?: string | null;
+  securityType?: string;
+  passwordHint?: string | null;
 }
 
 interface SmugMugImportPhotoProgress {
@@ -131,6 +133,7 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
   const [smugmugAlbums, setSmugmugAlbums] = useState<SmugMugAlbumOption[]>([]);
   const [albumFilter, setAlbumFilter] = useState('');
   const [selectedSmugmugAlbums, setSelectedSmugmugAlbums] = useState<Record<string, boolean>>({});
+  const [albumPasswords, setAlbumPasswords] = useState<Record<string, string>>({});
   const [smugmugLoading, setSmugmugLoading] = useState(false);
   const [smugmugImporting, setSmugmugImporting] = useState(false);
   const [smugmugNotice, setSmugmugNotice] = useState('');
@@ -269,6 +272,7 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
             name: album.name,
             description: album.description,
           })),
+          albumPasswords,
         }),
       });
 
@@ -328,7 +332,7 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
           }
         };
 
-        pollInterval = window.setInterval(poll, 800);
+        pollInterval = window.setInterval(poll, 2500);
         poll();
       });
 
@@ -669,6 +673,9 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                     <span>{album.name}</span>
+                    {album.securityType === 'Password' && (
+                      <span title={album.passwordHint ? `Hint: ${album.passwordHint}` : 'Password protected'} style={{ fontSize: '13px', opacity: 0.7 }}>🔒</span>
+                    )}
                     {album.imported && (
                       <span
                         style={{
@@ -691,6 +698,25 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
                     <div style={{ fontSize: '12px', color: '#93c5fd', marginTop: '2px' }}>
                       {album.localAlbumId ? `Local album #${album.localAlbumId}` : 'Local album linked'}
                       {album.importedAt ? ` • Imported ${new Date(album.importedAt).toLocaleString()}` : ''}
+                    </div>
+                  )}
+                  {album.securityType === 'Password' && selectedSmugmugAlbums[album.albumKey] && (
+                    <div style={{ marginTop: '6px' }} onClick={(e) => e.preventDefault()}>
+                      <input
+                        type="password"
+                        placeholder={album.passwordHint ? `Password (hint: ${album.passwordHint})` : 'Album password'}
+                        value={albumPasswords[album.albumKey] || ''}
+                        onChange={(e) => setAlbumPasswords((prev) => ({ ...prev, [album.albumKey]: e.target.value }))}
+                        style={{
+                          fontSize: '13px',
+                          padding: '4px 8px',
+                          borderRadius: '5px',
+                          border: '1px solid var(--border-color)',
+                          background: 'var(--input-bg, #1a1a2a)',
+                          color: 'var(--text-primary)',
+                          width: '200px',
+                        }}
+                      />
                     </div>
                   )}
                 </div>

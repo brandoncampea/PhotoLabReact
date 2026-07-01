@@ -34,6 +34,46 @@ router.post('/guest', async (req, res) => {
   }
 });
 
+// GET /api/tickets/counts — badge counts for nav (no auth required; returns zeros when unauthenticated)
+router.get('/counts', async (req, res) => {
+  const { user } = req;
+  try {
+    if (user?.role === 'super_admin') {
+      const row = await queryRow(
+        `SELECT
+          SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END) AS openCount,
+          SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pendingCount,
+          SUM(CASE WHEN escalated = 1 THEN 1 ELSE 0 END) AS escalatedCount
+        FROM tickets WHERE status != 'closed'`,
+        []
+      );
+      return res.json({
+        open: Number(row?.openCount || 0),
+        pending: Number(row?.pendingCount || 0),
+        escalated: Number(row?.escalatedCount || 0),
+        total: Number(row?.openCount || 0) + Number(row?.pendingCount || 0),
+      });
+    } else if (user?.role === 'studio_admin' && user.studio_id) {
+      const row = await queryRow(
+        `SELECT
+          SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END) AS openCount,
+          SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pendingCount
+        FROM tickets WHERE status != 'closed' AND created_for_studio = $1`,
+        [user.studio_id]
+      );
+      return res.json({
+        open: Number(row?.openCount || 0),
+        pending: Number(row?.pendingCount || 0),
+        escalated: 0,
+        total: Number(row?.openCount || 0) + Number(row?.pendingCount || 0),
+      });
+    }
+    return res.json({ open: 0, pending: 0, escalated: 0, total: 0 });
+  } catch {
+    return res.json({ open: 0, pending: 0, escalated: 0, total: 0 });
+  }
+});
+
 router.use(requireStudioOrSuperAdmin);
 
 function parseJsonArray(val) {
@@ -64,47 +104,6 @@ function formatTicket(ticket) {
     escalated: ticket.escalated === true || ticket.escalated === 1,
   };
 }
-
-// GET /api/tickets/counts — badge counts for nav
-router.get('/counts', async (req, res) => {
-  const { user } = req;
-  try {
-    if (user.role === 'super_admin') {
-      const row = await queryRow(
-        `SELECT
-          SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END) AS openCount,
-          SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pendingCount,
-          SUM(CASE WHEN escalated = 1 THEN 1 ELSE 0 END) AS escalatedCount
-        FROM tickets WHERE status != 'closed'`,
-        []
-      );
-      res.json({
-        open: Number(row?.openCount || 0),
-        pending: Number(row?.pendingCount || 0),
-        escalated: Number(row?.escalatedCount || 0),
-        total: Number(row?.openCount || 0) + Number(row?.pendingCount || 0),
-      });
-    } else if (user.role === 'studio_admin' && user.studio_id) {
-      const row = await queryRow(
-        `SELECT
-          SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END) AS openCount,
-          SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pendingCount
-        FROM tickets WHERE status != 'closed' AND created_for_studio = $1`,
-        [user.studio_id]
-      );
-      res.json({
-        open: Number(row?.openCount || 0),
-        pending: Number(row?.pendingCount || 0),
-        escalated: 0,
-        total: Number(row?.openCount || 0) + Number(row?.pendingCount || 0),
-      });
-    } else {
-      res.json({ open: 0, pending: 0, escalated: 0, total: 0 });
-    }
-  } catch (err) {
-    res.json({ open: 0, pending: 0, escalated: 0, total: 0 });
-  }
-});
 
 // GET /api/tickets/mine — studio admin: tickets for their studio
 router.get('/mine', async (req, res) => {

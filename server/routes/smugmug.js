@@ -203,6 +203,33 @@ const finishImportJob = (job, updates = {}) => {
 
 const smugMugImportJobs = new Map();
 
+// Global cap on concurrent photo-processing slots across ALL active import jobs.
+// Each slot holds one full image buffer + libvips decoded memory (~70 MB peak),
+// so 4 slots caps memory pressure at ~300 MB regardless of how many studios
+// are importing simultaneously.
+const GLOBAL_IMPORT_SLOTS = 4;
+let globalImportSlotsInUse = 0;
+const globalImportQueue = [];
+
+const acquireImportSlot = () =>
+  new Promise((resolve) => {
+    const tryAcquire = () => {
+      if (globalImportSlotsInUse < GLOBAL_IMPORT_SLOTS) {
+        globalImportSlotsInUse += 1;
+        resolve();
+      } else {
+        globalImportQueue.push(tryAcquire);
+      }
+    };
+    tryAcquire();
+  });
+
+const releaseImportSlot = () => {
+  globalImportSlotsInUse -= 1;
+  const next = globalImportQueue.shift();
+  if (next) next();
+};
+
 const createImportJob = ({ jobId, studioId, albums }) => {
   const normalizedJobId = String(jobId || crypto.randomUUID());
   const selectedAlbums = Array.isArray(albums) ? albums : [];
@@ -428,12 +455,47 @@ const requestSmugMugJson = async (path, apiKey, authContext = null) => {
     Object.assign(headers, signed);
   }
 
+  if (authContext?.albumCookie) {
+    headers['Cookie'] = authContext.albumCookie;
+  }
+
   const response = await fetch(url.toString(), { headers });
   if (!response.ok) {
     const text = await response.text();
     throw new Error(`SmugMug request failed (${response.status}): ${text.slice(0, 250)}`);
   }
   return response.json();
+};
+
+const unlockSmugMugAlbum = async (albumKey, password, apiKey, authContext = null) => {
+  const url = new URL(`https://api.smugmug.com/api/v2/album/${encodeURIComponent(albumKey)}!unlock`);
+  if (apiKey) url.searchParams.set('APIKey', apiKey);
+
+  const headers = {
+    Accept: 'application/json',
+    'Accept-Version': 'v2',
+    'Content-Type': 'application/x-www-form-urlencoded',
+  };
+
+  if (authContext?.oauth && authContext?.token?.key && authContext?.token?.secret) {
+    const signed = authContext.oauth.toHeader(
+      authContext.oauth.authorize({ url: url.toString(), method: 'POST' }, authContext.token)
+    );
+    Object.assign(headers, signed);
+  }
+
+  const response = await fetch(url.toString(), {
+    method: 'POST',
+    headers,
+    body: `Password=${encodeURIComponent(password)}`,
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Failed to unlock album (${response.status}): ${text.slice(0, 200)}`);
+  }
+
+  return response.headers.get('set-cookie') || null;
 };
 
 const fetchAllSmugMugObjects = async (initialPath, apiKey, locatorNames = [], authContext = null) => {
@@ -475,6 +537,8 @@ const normalizeAlbums = (rows) => {
       description: album?.Description || '',
       imageCount: Number(album?.ImageCount || 0),
       webUri: album?.WebUri || '',
+      securityType: album?.SecurityType || 'None',
+      passwordHint: album?.PasswordHint || null,
     }))
     .filter((a) => a.albumKey);
 };
@@ -831,8 +895,16 @@ const resolveSmugMugSourceUrl = async (image, apiKey, authContext = null) => {
   return { sourceUrl: null, urlType: 'none' };
 };
 
-const listAlbumImages = async (albumKey, apiKey, authContext = null) => {
-  const albumPayload = await requestSmugMugJson(`/api/v2/album/${encodeURIComponent(albumKey)}`, apiKey, authContext);
+const listAlbumImages = async (albumKey, apiKey, authContext = null, password = null) => {
+  let resolveContext = authContext;
+  if (password) {
+    const cookie = await unlockSmugMugAlbum(albumKey, password, apiKey, authContext);
+    if (cookie) {
+      resolveContext = { ...authContext, albumCookie: cookie };
+    }
+  }
+
+  const albumPayload = await requestSmugMugJson(`/api/v2/album/${encodeURIComponent(albumKey)}`, apiKey, resolveContext);
   const albumImagesUri = albumPayload?.Response?.Album?.Uris?.AlbumImages?.Uri;
 
   // Use count=500 (SmugMug max) to minimise pagination round-trips
@@ -844,7 +916,7 @@ const listAlbumImages = async (albumKey, apiKey, authContext = null) => {
     albumImagesPath,
     apiKey,
     ['AlbumImage', 'Image'],
-    authContext
+    resolveContext
   );
 
   // Resolve source URLs concurrently (queue-based, 6 at a time) instead of one-by-one.
@@ -863,7 +935,7 @@ const listAlbumImages = async (albumKey, apiKey, authContext = null) => {
         let sourceUrl = null;
         let urlType = 'none';
         try {
-          const result = await resolveSmugMugSourceUrl(image, apiKey, authContext);
+          const result = await resolveSmugMugSourceUrl(image, apiKey, resolveContext);
           sourceUrl = result.sourceUrl;
           urlType = result.urlType;
         } catch {
@@ -1205,7 +1277,7 @@ router.get('/import-progress/:jobId', adminRequired, async (req, res) => {
   }
 });
 
-const runSmugMugImport = async (importJob, { selectedAlbums, apiKey, authContext, studioId }) => {
+const runSmugMugImport = async (importJob, { selectedAlbums, apiKey, authContext, studioId, albumPasswords = {} }) => {
   const imported = [];
 
   for (const selected of selectedAlbums) {
@@ -1236,7 +1308,7 @@ const runSmugMugImport = async (importJob, { selectedAlbums, apiKey, authContext
 
     let images = [];
     try {
-      images = await listAlbumImages(albumKey, apiKey, authContext);
+      images = await listAlbumImages(albumKey, apiKey, authContext, albumPasswords[albumKey] || null);
     } catch (imageError) {
       const errMsg = imageError instanceof Error ? imageError.message : String(imageError);
       if (albumProgress) {
@@ -1312,14 +1384,21 @@ const runSmugMugImport = async (importJob, { selectedAlbums, apiKey, authContext
       );
     }
 
+    const albumPassword = albumPasswords[albumKey] || null;
     if (!album) {
       const created = await queryRow(
-        `INSERT INTO albums (name, title, description, studio_id, category, published)
-         VALUES ($1, $2, $3, $4, $5, 0)
+        `INSERT INTO albums (name, title, description, studio_id, category, published, is_password_protected, password, password_hint)
+         VALUES ($1, $2, $3, $4, $5, 0, $6, $7, $8)
          RETURNING id`,
-        [albumName, albumName, albumDescription, studioId, 'SmugMug']
+        [albumName, albumName, albumDescription, studioId, 'SmugMug',
+          albumPassword ? 1 : 0, albumPassword, null]
       );
       album = { id: created.id };
+    } else if (albumPassword) {
+      await query(
+        `UPDATE albums SET is_password_protected = 1, password = $1 WHERE id = $2`,
+        [albumPassword, album.id]
+      );
     }
 
     const albumId = Number(album.id);
@@ -1374,6 +1453,7 @@ const runSmugMugImport = async (importJob, { selectedAlbums, apiKey, authContext
         return;
       }
 
+      await acquireImportSlot();
       let imageBuffer;
       try {
         const downloadHeaders = {};
@@ -1389,6 +1469,7 @@ const runSmugMugImport = async (importJob, { selectedAlbums, apiKey, authContext
           importJob.totals.photosFailed += 1;
           if (albumProgress) { albumProgress.photosProcessed += 1; albumProgress.photosFailed += 1; }
           pushPhotoProgress(importJob, { albumKey, albumName, fileName: image.fileName, status: 'failed', detail: `Download failed (${dlResponse.status})` });
+          releaseImportSlot();
           return;
         }
         imageBuffer = Buffer.from(await dlResponse.arrayBuffer());
@@ -1397,10 +1478,24 @@ const runSmugMugImport = async (importJob, { selectedAlbums, apiKey, authContext
         importJob.totals.photosFailed += 1;
         if (albumProgress) { albumProgress.photosProcessed += 1; albumProgress.photosFailed += 1; }
         pushPhotoProgress(importJob, { albumKey, albumName, fileName: image.fileName, status: 'failed', detail: error instanceof Error ? error.message : 'Download failed' });
+        releaseImportSlot();
         return;
       }
 
-      const uploadedImage = await uploadImportedImage(albumId, image, imageBuffer);
+      const fileSizeBytes = imageBuffer.length;
+      let uploadedImage;
+      try {
+        uploadedImage = await uploadImportedImage(albumId, image, imageBuffer);
+      } catch (uploadErr) {
+        importJob.totals.photosProcessed += 1;
+        importJob.totals.photosFailed += 1;
+        if (albumProgress) { albumProgress.photosProcessed += 1; albumProgress.photosFailed += 1; }
+        pushPhotoProgress(importJob, { albumKey, albumName, fileName: image.fileName, status: 'failed', detail: uploadErr?.message || 'Upload failed' });
+        return;
+      } finally {
+        imageBuffer = null; // release the download buffer as soon as possible
+        releaseImportSlot();
+      }
       const { width, height } = uploadedImage;
 
       const metadataJson = JSON.stringify({
@@ -1415,7 +1510,7 @@ const runSmugMugImport = async (importJob, { selectedAlbums, apiKey, authContext
       if (exists?.id && existingIsThumbnail) {
         await query(
           `UPDATE photos SET thumbnail_url = $1, full_image_url = $2, description = $3, metadata = $4, file_size_bytes = $5, width = $6, height = $7 WHERE id = $8`,
-          [uploadedImage.thumbUrl, uploadedImage.url, image.description || '', metadataJson, imageBuffer.length, width, height, exists.id]
+          [uploadedImage.thumbUrl, uploadedImage.url, image.description || '', metadataJson, fileSizeBytes, width, height, exists.id]
         );
         if (!firstImportedPhotoId) firstImportedPhotoId = Number(exists.id || 0) || null;
         if (
@@ -1430,7 +1525,7 @@ const runSmugMugImport = async (importJob, { selectedAlbums, apiKey, authContext
         const insertedPhoto = await queryRow(
           `INSERT INTO photos (album_id, file_name, thumbnail_url, full_image_url, description, metadata, file_size_bytes, width, height)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
-          [albumId, image.fileName, uploadedImage.thumbUrl, uploadedImage.url, image.description || '', metadataJson, imageBuffer.length, width, height]
+          [albumId, image.fileName, uploadedImage.thumbUrl, uploadedImage.url, image.description || '', metadataJson, fileSizeBytes, width, height]
         );
         const insertedPhotoId = Number(insertedPhoto?.id || 0) || null;
         // Keep the map current so concurrent workers don't double-insert
@@ -1458,9 +1553,11 @@ const runSmugMugImport = async (importJob, { selectedAlbums, apiKey, authContext
       importedPhotoCount += 1;
     };
 
-    // Process up to 8 photos concurrently (download + Azure upload are both network-bound)
+    // Drain the queue with enough workers to keep the pipeline busy. The global
+    // semaphore (GLOBAL_IMPORT_SLOTS) caps actual concurrent memory use across
+    // all simultaneous imports, so per-job workers just spin and wait for a slot.
     await Promise.all(
-      Array.from({ length: Math.min(8, images.length) }, async () => {
+      Array.from({ length: Math.min(GLOBAL_IMPORT_SLOTS, images.length) }, async () => {
         let img;
         while ((img = imageQueue.shift()) !== undefined) {
           await processPhoto(img);
@@ -1580,6 +1677,9 @@ router.post('/import', adminRequired, async (req, res) => {
     const accessTokenSecret = String(config?.accessTokenSecret || '').trim();
     const selectedAlbums = Array.isArray(req.body?.albums) ? req.body.albums : [];
     const requestedJobId = String(req.body?.jobId || '').trim();
+    const albumPasswords = (req.body?.albumPasswords && typeof req.body.albumPasswords === 'object' && !Array.isArray(req.body.albumPasswords))
+      ? req.body.albumPasswords
+      : {};
 
     if (!accessToken || !accessTokenSecret) {
       return res.status(400).json({ error: 'SmugMug account not connected. Please connect via OAuth first.' });
@@ -1641,7 +1741,7 @@ router.post('/import', adminRequired, async (req, res) => {
 
     // Run the import in the background so the HTTP connection is not held open.
     // The client polls /import-progress/:jobId for live updates.
-    runSmugMugImport(importJob, { selectedAlbums, apiKey, authContext, studioId }).catch((error) => {
+    runSmugMugImport(importJob, { selectedAlbums, apiKey, authContext, studioId, albumPasswords }).catch((error) => {
       const errorMsg = error instanceof Error ? error.message : String(error || 'Unknown error');
       console.error('SmugMug background import error:', errorMsg, error?.stack || '');
       finishImportJob(importJob, { status: 'failed', error: errorMsg });
