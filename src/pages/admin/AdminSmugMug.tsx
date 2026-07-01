@@ -303,12 +303,24 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
       // Import runs in the background — poll until it reports completed or failed.
       let importedAlbumCount = 0;
       await new Promise<void>((resolve) => {
+        let consecutiveFailures = 0;
+        const MAX_FAILURES = 8; // ~20s of 502s before giving up
+
         const poll = async () => {
           try {
             const progressResponse = await fetch(`/api/smugmug/import-progress/${jobId}`, {
               headers: getAuthHeaders(),
             });
-            if (!progressResponse.ok) return;
+            if (!progressResponse.ok) {
+              consecutiveFailures += 1;
+              if (consecutiveFailures >= MAX_FAILURES) {
+                if (pollInterval !== null) { window.clearInterval(pollInterval); pollInterval = null; }
+                setSmugmugNotice('Server restarted during import. The import may still be running — reload the page to check status.');
+                resolve();
+              }
+              return;
+            }
+            consecutiveFailures = 0;
             const progressData = await progressResponse.json();
 
             importedAlbumCount = progressData.totals?.albumsCompleted ?? importedAlbumCount;
@@ -327,8 +339,13 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
               if (pollInterval !== null) { window.clearInterval(pollInterval); pollInterval = null; }
               resolve();
             }
-          } catch (err) {
-            console.error('Failed to load import progress:', err);
+          } catch {
+            consecutiveFailures += 1;
+            if (consecutiveFailures >= MAX_FAILURES) {
+              if (pollInterval !== null) { window.clearInterval(pollInterval); pollInterval = null; }
+              setSmugmugNotice('Server restarted during import. The import may still be running — reload the page to check status.');
+              resolve();
+            }
           }
         };
 
@@ -701,9 +718,10 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
                     </div>
                   )}
                   {album.securityType === 'Password' && selectedSmugmugAlbums[album.albumKey] && (
-                    <div style={{ marginTop: '6px' }} onClick={(e) => e.preventDefault()}>
+                    <form style={{ marginTop: '6px' }} onSubmit={(e) => e.preventDefault()} onClick={(e) => e.preventDefault()}>
                       <input
                         type="password"
+                        autoComplete="new-password"
                         placeholder={album.passwordHint ? `Password (hint: ${album.passwordHint})` : 'Album password'}
                         value={albumPasswords[album.albumKey] || ''}
                         onChange={(e) => setAlbumPasswords((prev) => ({ ...prev, [album.albumKey]: e.target.value }))}
@@ -717,7 +735,7 @@ const AdminSmugMug: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
                           width: '200px',
                         }}
                       />
-                    </div>
+                    </form>
                   )}
                 </div>
               </label>
