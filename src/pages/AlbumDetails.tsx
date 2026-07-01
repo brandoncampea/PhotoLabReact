@@ -82,6 +82,10 @@ const AlbumDetails: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [isUnlocked, setIsUnlocked] = useState(() => !!sessionStorage.getItem(`album_unlocked_${albumId}`));
+  const [passwordInput, setPasswordInput] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordVerifying, setPasswordVerifying] = useState(false);
   const [addingKey, setAddingKey] = useState('');
   const [addMessage, setAddMessage] = useState('');
   const [tagSuggestionName, setTagSuggestionName] = useState('');
@@ -228,6 +232,54 @@ const AlbumDetails: React.FC = () => {
     setPendingTagSuggestionBaseMessage('');
   }, [selectedPhotoId]);
 
+  const loadAlbumContent = async (id: number) => {
+    const [photosRes, productsRes] = await Promise.all([
+      photoService.getPhotosByAlbum(id),
+      productService.getActiveProducts(id),
+    ]);
+    setPhotos(Array.isArray(photosRes) ? photosRes : []);
+    setProducts(Array.isArray(productsRes) ? productsRes : []);
+    try {
+      const pkgsRes = await api.get(`/packages/for-album/${id}`);
+      setPackages(pkgsRes.data || []);
+    } catch { /* packages are optional */ }
+    try {
+      const favRes = await api.get(`/albums/${id}/favorites?token=${encodeURIComponent(favToken)}`);
+      setFavorites(new Set((favRes.data.favorites || []).map(Number)));
+    } catch { /* non-fatal */ }
+    const refCode = new URLSearchParams(window.location.search).get('ref');
+    if (refCode) {
+      localStorage.setItem('albumRefCode', refCode);
+      api.post(`/albums/${id}/track-visit`, { code: refCode }).catch(() => {});
+    }
+  };
+
+  const handleUnlock = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!album) return;
+    const pw = passwordInput.trim();
+    if (!pw) { setPasswordError('Please enter the password.'); return; }
+    setPasswordVerifying(true);
+    setPasswordError('');
+    try {
+      await api.post(`/albums/${album.id}/unlock`, { password: pw });
+      sessionStorage.setItem(`album_unlocked_${albumId}`, '1');
+      setIsUnlocked(true);
+      setPasswordInput('');
+      setLoading(true);
+      try {
+        await loadAlbumContent(album.id);
+      } finally {
+        setLoading(false);
+      }
+    } catch (err: any) {
+      const status = Number(err?.response?.status || 0);
+      setPasswordError(status === 401 ? 'Incorrect password. Please try again.' : 'Unable to verify password. Please try again.');
+    } finally {
+      setPasswordVerifying(false);
+    }
+  };
+
   useEffect(() => {
     const id = Number(albumId);
     if (!Number.isInteger(id) || id <= 0) {
@@ -240,38 +292,22 @@ const AlbumDetails: React.FC = () => {
       setLoading(true);
       setError('');
       try {
-        const [albumRes, photosRes, productsRes] = await Promise.all([
-          api.get<Album>(`/albums/${id}`),
-          photoService.getPhotosByAlbum(id),
-          productService.getActiveProducts(id),
-        ]);
+        const slug = studioSlug || studioSlugFromQuery || '';
+        const albumRes = await api.get<Album>(
+          `/albums/${id}${slug ? `?studioSlug=${encodeURIComponent(slug)}` : ''}`
+        );
         setAlbum(albumRes.data);
-        setPhotos(Array.isArray(photosRes) ? photosRes : []);
-        setProducts(Array.isArray(productsRes) ? productsRes : []);
-        // Load packages for this album's effective price list (album list → studio default)
-        try {
-          const pkgsRes = await api.get(`/packages/for-album/${id}`);
-          setPackages(pkgsRes.data || []);
-        } catch { /* packages are optional */ }
-        // Track album view for analytics
         analyticsService.trackAlbumView(
           id,
           albumRes.data?.name || '',
           Number((albumRes.data as any)?.studioId || 0) || undefined
         );
 
-        // Load favorites for this session
-        try {
-          const favRes = await api.get(`/albums/${id}/favorites?token=${encodeURIComponent(favToken)}`);
-          setFavorites(new Set((favRes.data.favorites || []).map(Number)));
-        } catch { /* non-fatal */ }
-
-        // Track referral visit if ?ref= is in URL
-        const refCode = new URLSearchParams(window.location.search).get('ref');
-        if (refCode) {
-          localStorage.setItem('albumRefCode', refCode);
-          api.post(`/albums/${id}/track-visit`, { code: refCode }).catch(() => {});
+        if (albumRes.data?.isPasswordProtected && !isUnlocked) {
+          return; // show password prompt; content loaded after unlock
         }
+
+        await loadAlbumContent(id);
       } catch {
         setError('Failed to load album');
       } finally {
@@ -280,6 +316,7 @@ const AlbumDetails: React.FC = () => {
     };
 
     load();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [albumId]);
   // Track photo view for analytics when selectedPhoto changes
   useEffect(() => {
@@ -1277,6 +1314,41 @@ const AlbumDetails: React.FC = () => {
   if (loading) return <div className="loading">Loading album...</div>;
   if (error) return <div className="albums-error-message">{error}</div>;
   if (!album) return <div className="albums-error-message">Album not found</div>;
+
+  if (album.isPasswordProtected && !isUnlocked) {
+    return (
+      <div className="main-content dark-bg albums-full-height" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+        <div style={{ textAlign: 'center', padding: '40px 24px', maxWidth: 400, width: '100%' }}>
+          <div style={{ fontSize: 40, marginBottom: 16 }}>&#128274;</div>
+          <h2 style={{ color: '#c7bcff', marginBottom: 8 }}>{album.name}</h2>
+          <p style={{ color: '#a8a8b8', marginBottom: album.passwordHint ? 8 : 24 }}>This album is password protected.</p>
+          {album.passwordHint && (
+            <p style={{ color: '#7b8aad', fontSize: 13, marginBottom: 24, fontStyle: 'italic' }}>Hint: {album.passwordHint}</p>
+          )}
+          <form onSubmit={handleUnlock} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <input
+              type="password"
+              autoFocus
+              placeholder="Enter album password"
+              value={passwordInput}
+              onChange={e => setPasswordInput(e.target.value)}
+              autoComplete="current-password"
+              style={{ fontSize: 15, padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border-color, #3a3a5a)', background: 'var(--input-bg, #1a1a2a)', color: 'var(--text-primary, #e0e0f0)', width: '100%', boxSizing: 'border-box' }}
+            />
+            {passwordError && <p style={{ color: '#f87171', margin: 0, fontSize: 13 }}>{passwordError}</p>}
+            <button
+              type="submit"
+              disabled={passwordVerifying}
+              className="btn btn-primary"
+              style={{ padding: '10px 0', borderRadius: 8, fontWeight: 600, fontSize: 15, cursor: passwordVerifying ? 'not-allowed' : 'pointer' }}
+            >
+              {passwordVerifying ? 'Verifying...' : 'Unlock Album'}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   // Open Graph meta tags for album sharing
   const ogImageUrl = getOgImageUrl();

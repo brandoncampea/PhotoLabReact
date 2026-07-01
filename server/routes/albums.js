@@ -229,16 +229,20 @@ router.get('/public', async (req, res) => {
   }
 });
 
-const signAlbumForResponse = (album) => ({
-  ...album,
-  batchShippingActive: Boolean(album?.batchShippingActive),
-  albumPurchaseEnabled: album?.albumPurchaseEnabled === undefined || album?.albumPurchaseEnabled === null ? true : Boolean(album?.albumPurchaseEnabled),
-  studioBatchShippingActive: Boolean(album?.studioBatchShippingActive),
-  schoolTags: extractSchoolTags(album),
-  coverImageUrl: album?.coverPhotoId
-    ? String(album.coverPhotoId)
-    : album?.coverImageUrl || '',
-});
+const signAlbumForResponse = (album) => {
+  // eslint-disable-next-line no-unused-vars
+  const { password: _pw, ...rest } = album || {};
+  return {
+    ...rest,
+    batchShippingActive: Boolean(album?.batchShippingActive),
+    albumPurchaseEnabled: album?.albumPurchaseEnabled === undefined || album?.albumPurchaseEnabled === null ? true : Boolean(album?.albumPurchaseEnabled),
+    studioBatchShippingActive: Boolean(album?.studioBatchShippingActive),
+    schoolTags: extractSchoolTags(album),
+    coverImageUrl: album?.coverPhotoId
+      ? String(album.coverPhotoId)
+      : album?.coverImageUrl || '',
+  };
+};
 
 const addAlbumPreviewImages = async (albums) => {
   if (!albums.length) {
@@ -464,10 +468,34 @@ router.get('/school-roster', authRequired, async (req, res) => {
 });
 
 // Get album by ID
+router.post('/:id/unlock', async (req, res) => {
+  try {
+    const albumId = Number(req.params.id);
+    if (!albumId) return res.status(400).json({ error: 'Invalid album ID' });
+    const { password } = req.body || {};
+    if (typeof password !== 'string' || !password.trim()) {
+      return res.status(400).json({ error: 'Password is required' });
+    }
+    const album = await queryRow(
+      'SELECT id, is_password_protected, password FROM albums WHERE id = $1',
+      [albumId]
+    );
+    if (!album) return res.status(404).json({ error: 'Album not found' });
+    if (!album.is_password_protected || !album.password) return res.json({ ok: true });
+    if (album.password !== password.trim()) {
+      return res.status(401).json({ error: 'Incorrect password' });
+    }
+    return res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 router.get('/:id', async (req, res) => {
   try {
+    const studioSlug = String(req.query.studioSlug || '').trim();
     const album = await queryRow(`
-      SELECT 
+      SELECT
         a.id,
         COALESCE(a.name, a.title) as name,
         a.description,
@@ -478,7 +506,6 @@ router.get('/:id', async (req, res) => {
         a.school_tags as schoolTags,
         a.price_list_id as priceListId,
         a.is_password_protected as isPasswordProtected,
-        a.password,
         a.password_hint as passwordHint,
         COALESCE(a.batch_shipping_active, 0) as batchShippingActive,
         COALESCE(a.album_purchase_enabled, 1) as albumPurchaseEnabled,
@@ -489,7 +516,10 @@ router.get('/:id', async (req, res) => {
       FROM albums a
       LEFT JOIN shipping_config sc ON sc.id = a.studio_id
       WHERE a.id = $1
-    `, [req.params.id]);
+        AND ($2 = '' OR EXISTS (
+          SELECT 1 FROM studios s WHERE s.id = a.studio_id AND s.public_slug = $2
+        ))
+    `, [req.params.id, studioSlug]);
     if (!album) {
       return res.status(404).json({ error: 'Album not found' });
     }
