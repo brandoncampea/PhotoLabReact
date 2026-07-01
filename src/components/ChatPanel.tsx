@@ -192,10 +192,13 @@ const ChatPanel: React.FC = () => {
             }
           }
         } catch (e: any) {
-          if (e.name === 'AbortError' || cancelled) break;
+          // AbortError from visibility change: don't break, let the loop wait and retry
+          if (cancelled) break;
         }
         if (!cancelled) {
-          await new Promise(r => setTimeout(r, retryDelay));
+          // Wait longer if tab is hidden — no point reconnecting immediately in background
+          const delay = document.hidden ? 30_000 : retryDelay;
+          await new Promise(r => setTimeout(r, delay));
           // Exponential backoff: 3s → 6s → 12s → 24s → 30s max (only on failed connects)
           if (!connected) retryDelay = Math.min(retryDelay * 2, 30_000);
         }
@@ -204,12 +207,19 @@ const ChatPanel: React.FC = () => {
 
     connect();
 
+    // Abort the current connection when tab hides; the loop re-establishes when visible again
+    const onVisibilityChange = () => {
+      if (document.hidden) abort?.abort();
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
     if (isSuperAdmin) loadStudios();
     if (isStudioAdmin && user.studioId) loadMessages(user.studioId);
 
     return () => {
       cancelled = true;
       abort?.abort();
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, [user?.id, user?.role]);
 

@@ -1334,12 +1334,18 @@ const runSmugMugImport = async (importJob, { selectedAlbums, apiKey, authContext
     let importedPhotoCount = 0;
     let firstImportedPhotoId = null;
     let matchedCoverPhotoId = null;
+
+    // Pre-fetch all existing photos for this album in one query so processPhoto
+    // can do an in-memory lookup instead of one DB round-trip per photo.
+    const existingPhotoRows = await queryRows(
+      'SELECT id, file_name AS fileName, width, height FROM photos WHERE album_id = $1',
+      [albumId]
+    );
+    const existingByFileName = new Map((existingPhotoRows || []).map(p => [String(p.fileName), p]));
+
     const imageQueue = [...images];
     const processPhoto = async (image) => {
-      const exists = await queryRow(
-        'SELECT TOP 1 id, width, height FROM photos WHERE album_id = $1 AND file_name = $2',
-        [albumId, image.fileName]
-      );
+      const exists = existingByFileName.get(String(image.fileName)) ?? null;
       const existingWidth = Number(exists?.width || 0);
       const existingHeight = Number(exists?.height || 0);
       const existingIsThumbnail = !!exists
@@ -1427,6 +1433,8 @@ const runSmugMugImport = async (importJob, { selectedAlbums, apiKey, authContext
           [albumId, image.fileName, uploadedImage.thumbUrl, uploadedImage.url, image.description || '', metadataJson, imageBuffer.length, width, height]
         );
         const insertedPhotoId = Number(insertedPhoto?.id || 0) || null;
+        // Keep the map current so concurrent workers don't double-insert
+        if (insertedPhotoId) existingByFileName.set(String(image.fileName), { id: insertedPhotoId, width, height });
         if (!firstImportedPhotoId) firstImportedPhotoId = insertedPhotoId;
         if (
           !matchedCoverPhotoId

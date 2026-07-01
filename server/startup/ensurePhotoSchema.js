@@ -88,6 +88,19 @@ const mssql = require('../mssql.cjs');
         ALTER TABLE photo_tag_suggestions ADD studio_id INT NOT NULL DEFAULT 0;
     `);
 
+    // Covering index for the album_id + file_name lookup used during imports.
+    // INCLUDE (id, width, height) satisfies the query entirely from the index.
+    await query(`
+      IF NOT EXISTS (
+        SELECT 1 FROM sys.indexes
+        WHERE name = 'IX_photos_album_file'
+          AND object_id = OBJECT_ID('photos')
+      )
+        CREATE INDEX IX_photos_album_file
+          ON photos (album_id, file_name)
+          INCLUDE (id, width, height);
+    `);
+
     console.log('[startup] Photo schema migrations complete');
   } catch (err) {
     console.error('[startup] Failed to run photo schema migrations:', err);

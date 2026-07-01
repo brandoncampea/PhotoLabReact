@@ -115,8 +115,13 @@ router.get('/events', adminRequired, async (req, res) => {
     try { res.write(': hb\n\n'); } catch { clearInterval(hb); }
   }, 25000);
 
+  // Recycle the connection after 4 minutes so the server frees resources.
+  // The client's reconnect loop handles clean closes immediately.
+  const maxAge = setTimeout(() => res.end(), 4 * 60 * 1000);
+
   req.on('close', () => {
     clearInterval(hb);
+    clearTimeout(maxAge);
     if (user.role === 'super_admin') {
       superAdminConnections.delete(conn);
     } else if (studioId) {
