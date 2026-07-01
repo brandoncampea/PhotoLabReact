@@ -1,5 +1,11 @@
 [
   {
+    "version": "July 1, 2026",
+    "title": "password-protected SmugMug imports, global memory cap, and console error fixes",
+    "summary": "1 update on July 1, 2026.",
+    "content": "- feat: password-protected SmugMug imports, global memory cap, and console error fixes"
+  },
+  {
     "version": "June 30, 2026",
     "title": "Ticket System Overhaul: Dark Mode, Diagnostics, Escalation Alerts, and Chat Archival",
     "summary": "The support ticket system has been significantly enhanced with full dark mode styling, submission diagnostics, escalation email alerts to super admins, navigation sidebar badges, and automatic chat log archival. Debug log noise has been cleaned from the codebase.",
