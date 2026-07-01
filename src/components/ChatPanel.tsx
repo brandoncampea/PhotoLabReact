@@ -159,7 +159,9 @@ const ChatPanel: React.FC = () => {
     };
 
     const connect = async () => {
+      let retryDelay = 3000;
       while (!cancelled) {
+        let connected = false;
         try {
           abort = new AbortController();
           const token = getToken();
@@ -169,6 +171,9 @@ const ChatPanel: React.FC = () => {
           });
 
           if (!res.ok || !res.body) throw new Error('SSE connect failed');
+
+          connected = true;
+          retryDelay = 3000; // reset backoff on successful connection
 
           const reader = res.body.getReader();
           const dec = new TextDecoder();
@@ -189,7 +194,11 @@ const ChatPanel: React.FC = () => {
         } catch (e: any) {
           if (e.name === 'AbortError' || cancelled) break;
         }
-        if (!cancelled) await new Promise(r => setTimeout(r, 3000));
+        if (!cancelled) {
+          await new Promise(r => setTimeout(r, retryDelay));
+          // Exponential backoff: 3s → 6s → 12s → 24s → 30s max (only on failed connects)
+          if (!connected) retryDelay = Math.min(retryDelay * 2, 30_000);
+        }
       }
     };
 
